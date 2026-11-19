@@ -48,8 +48,8 @@ function lineFor(p: Plan, rng: Rng): string {
   const t = rng.pick(TARGET_TEXT[p.target]);
   const wpn: Record<Weapon, string> = { rocket: "rockets", shotgun: "my shotgun", grenade: "grenades" };
   const by: Record<Stance, string[]> = {
-    rush: [`I'm charging ${t} with ${wpn[p.weapon]}.`, `Straight at ${t}. ${cap(wpn[p.weapon])} up close.`, `No plan. Just ${t} and ${wpn[p.weapon]}.`],
-    distance: [`I'll hang back and send ${wpn[p.weapon]} at ${t}.`, `Long range. ${cap(t)} gets ${wpn[p.weapon]}.`, `Keep my distance, light up ${t}.`],
+    rush: [`I'm charging ${t} with ${wpn[p.weapon]}.`, `Straight at ${t}. ${cap(wpn[p.weapon])} up close.`, `No plan. Find ${t}, then ${wpn[p.weapon]}.`],
+    distance: [`I'll hang back and send ${wpn[p.weapon]} at ${t}.`, `Long range. ${cap(wpn[p.weapon])} for ${t}.`, `Keep my distance, light up ${t}.`],
     cover: [`Behind cover, picking off ${t}.`, `I'll hide and pop ${t} with ${wpn[p.weapon]}.`, `Walls first, then ${t}.`],
     item: [`Grab supplies, then hunt ${t}.`, `First the loot, then ${t}.`, `Every crate is mine. Then ${t}.`],
   };

@@ -667,17 +667,18 @@ export class Scene {
     const zl = z.center - z.half;
     const zr = z.center + z.half;
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 4);
-    if (zl > -60) {
+    const showZone = this.celebrateId < 0; // keep the celebrate screen clean
+    if (showZone && zl > -60) {
       zg.rect(-80, -40, zl + 80, 60).fill({ color: C.zone, alpha: 0.12 + pulse * 0.05 });
       zg.rect(zl - 0.08, -40, 0.16, 60).fill({ color: C.zone, alpha: 0.7 });
     }
-    if (zr < 60) {
+    if (showZone && zr < 60) {
       zg.rect(zr, -40, 80 - zr, 60).fill({ color: C.zone, alpha: 0.12 + pulse * 0.05 });
       zg.rect(zr - 0.08, -40, 0.16, 60).fill({ color: C.zone, alpha: 0.7 });
     }
     // chevrons pointing inward: the zone pushes
     const drift = (this.time * 1.6) % 1.6;
-    for (let row = 0; row < 4; row++) {
+    for (let row = 0; row < (showZone ? 4 : 0); row++) {
       const y = -(1 + row * 2.6);
       for (let i = 0; i < 3; i++) {
         const lx = zl - 1.0 - i * 1.6 + drift;
@@ -922,10 +923,10 @@ export class Scene {
 
 function g3(g: Graphics, x: number, y: number, dir: 1 | -1, alpha: number) {
   if (alpha <= 0) return;
-  g.moveTo(x - 0.3 * dir, y - 0.45)
-    .lineTo(x + 0.25 * dir, y)
-    .lineTo(x - 0.3 * dir, y + 0.45)
-    .stroke({ width: 0.16, color: 0xff6a7d, alpha, cap: "round", join: "round" });
+  g.moveTo(x - 0.2 * dir, y - 0.3)
+    .lineTo(x + 0.17 * dir, y)
+    .lineTo(x - 0.2 * dir, y + 0.3)
+    .stroke({ width: 0.12, color: 0xff6a7d, alpha, cap: "round", join: "round" });
 }
 
 function lerpColor(a: number, b: number, t: number): number {
