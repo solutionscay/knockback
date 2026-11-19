@@ -18,10 +18,10 @@ import {
   ITEM,
   PLANK,
   WEAPONS,
-  ZONE_HALF_WIDTHS,
-  ZONE_SHRINK_TICKS,
+  SUPPLY,
+  ZONE,
   groups,
-  zoneDps,
+  zoneHalfAt,
 } from "./constants";
 import { ARENA, type MapDef } from "./map";
 import { NavGraph } from "./nav";
@@ -35,11 +35,18 @@ export type EntityKind = "fighter" | "block" | "crate" | "barrel" | "plank" | "i
 export type ItemType = "health" | "grenade";
 export type ExplosionKind = "rocket" | "barrel" | "grenade";
 
-export interface Order {
-  /** Fighter id to attack. */
-  target: number;
+/** Who a fighter goes after. Resolved continuously during the fight. */
+export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotgun" | "leader";
+
+/**
+ * A fighter's one set of orders for the whole match, chosen before the fight
+ * (house bots now, an AI later). `line` is what it says in its intro.
+ */
+export interface Strategy {
+  target: TargetPref;
   weapon: Weapon;
   stance: Stance;
+  line: string;
 }
 
 export interface Input {
@@ -80,11 +87,12 @@ export interface Fighter {
   name: string;
   color: number;
   personality: Personality;
+  speed: number;
   entity: Entity;
   hp: number;
   alive: boolean;
   koTick: number;
-  koCause: "ringout" | "hp" | "zone" | null;
+  koCause: "ringout" | "hp" | null;
   koBy: number;
   facing: 1 | -1;
   aimX: number;
@@ -98,7 +106,7 @@ export interface Fighter {
   lastHitBy: number;
   lastHitTick: number;
   kbTick: number;
-  inZoneDamage: boolean;
+  outsideZone: boolean;
   // stats
   damageDealt: number;
   damageTaken: number;
@@ -131,19 +139,20 @@ export type SimEvent =
       chainFrom: ExplosionKind | "shotgun" | null;
     }
   | { type: "hit"; tick: number; target: number; source: number; damage: number; kb: number; x: number; y: number; cause: string }
-  | { type: "ko"; tick: number; fighter: number; cause: "ringout" | "hp" | "zone"; by: number; x: number; y: number }
+  | { type: "ko"; tick: number; fighter: number; cause: "ringout" | "hp"; by: number; x: number; y: number }
   | { type: "break"; tick: number; entity: number; kind: EntityKind; x: number; y: number; hw: number; hh: number }
   | { type: "pickup"; tick: number; fighter: number; item: ItemType; x: number; y: number }
   | { type: "impact"; tick: number; fighter: number; damage: number; x: number; y: number }
   | { type: "jump"; tick: number; fighter: number }
   | { type: "land"; tick: number; fighter: number; speed: number }
-  | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number };
+  | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number }
+  | { type: "barrelDrop"; tick: number; entity: number; x: number; y: number };
 
-export const FIGHTER_DEFS: { name: string; color: number; personality: Personality }[] = [
-  { name: "Red", color: 0xff4f4f, personality: "aggressive" },
-  { name: "Blue", color: 0x47a3ff, personality: "sniper" },
-  { name: "Green", color: 0x4fdc6a, personality: "coward" },
-  { name: "Gold", color: 0xffc733, personality: "opportunist" },
+export const FIGHTER_DEFS: { name: string; title: string; color: number; personality: Personality; speed: number }[] = [
+  { name: "Red", title: "The Brawler", color: 0xff4f4f, personality: "aggressive", speed: 1.12 },
+  { name: "Blue", title: "The Sniper", color: 0x47a3ff, personality: "sniper", speed: 1 },
+  { name: "Green", title: "The Rat", color: 0x4fdc6a, personality: "coward", speed: 1.05 },
+  { name: "Gold", title: "The Vulture", color: 0xffc733, personality: "opportunist", speed: 1 },
 ];
 
 let rapierReady: Promise<void> | null = null;
@@ -166,7 +175,6 @@ export class Sim {
   readonly world: RAPIER.World;
   readonly terrainBody: RAPIER.RigidBody;
   tick = 0;
-  round = 0;
   fighters: Fighter[] = [];
   entities = new Map<number, Entity>();
   private byCollider = new Map<number, Entity>();
@@ -174,8 +182,11 @@ export class Sim {
   planks: Entity[] = [];
   events: SimEvent[] = [];
   private nextId = 1;
-  zone = { center: 0, half: ZONE_HALF_WIDTHS[0]!, fromHalf: ZONE_HALF_WIDTHS[0]!, toHalf: ZONE_HALF_WIDTHS[0]!, shrinkStart: 0 };
-  stats = { blocksDestroyed: 0, cratesDestroyed: 0, barrelsExploded: 0, chainBarrels: 0, barrelToBarrel: 0, explosions: 0 };
+  zone = { center: 0, half: ZONE.startHalf };
+  /** Sandbox switch (tests): when false the zone neither shrinks nor pushes. */
+  zoneEnabled = true;
+  private supplyCount = 0;
+  stats = { blocksDestroyed: 0, cratesDestroyed: 0, barrelsExploded: 0, chainBarrels: 0, barrelToBarrel: 0, explosions: 0, barrelsDropped: 0 };
 
   constructor(seed: number, map: MapDef = ARENA) {
     this.map = map;
@@ -197,11 +208,11 @@ export class Sim {
       else this.addBox("barrel", p.x, p.y + 0.5, 0.34, 0.5, 0.9, BARREL.hp);
     }
     if (map.bridge) this.buildBridge(map.bridge);
-    this.zone.center = Math.round(this.rng.range(-7, 7) * 4) / 4;
+    this.zone.center = Math.round(this.rng.range(-5, 5) * 4) / 4;
 
     // Seat order is shuffled by seed so personalities do not own a spawn.
     const spawns = this.rng.shuffle(map.spawns.slice());
-    FIGHTER_DEFS.forEach((def, i) => this.addFighter(i, def, spawns[i]!.x));
+    FIGHTER_DEFS.forEach((def, i) => this.addFighter(i, def, spawns[i]!.x, spawns[i]!.y));
   }
 
   // ---------------------------------------------------------------- building
@@ -211,7 +222,7 @@ export class Sim {
     this.byCollider.set(e.collider.handle, e);
   }
 
-  private addBox(kind: EntityKind, x: number, y: number, hw: number, hh: number, density: number, hp: number): Entity {
+  addBox(kind: EntityKind, x: number, y: number, hw: number, hh: number, density: number, hp: number): Entity {
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic().setTranslation(x, y).setLinearDamping(0.05).setAngularDamping(0.3),
     );
@@ -247,8 +258,8 @@ export class Sim {
     if (prev) this.world.createImpulseJoint(RAPIER.JointData.revolute({ x: br.x1, y }, { x: w / 2, y: 0 }), this.terrainBody, prev.body, true);
   }
 
-  private addFighter(id: number, def: (typeof FIGHTER_DEFS)[number], x: number) {
-    const s = this.nav.surfaceAt(x, 50)!;
+  private addFighter(id: number, def: (typeof FIGHTER_DEFS)[number], x: number, sy: number) {
+    const s = this.nav.surfaceAt(x, sy + 0.1)!;
     const y = s.y + FIGHTER.halfHeight + FIGHTER.radius + 0.05;
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic().setTranslation(x, y).lockRotations().setCcdEnabled(true).setLinearDamping(0.1),
@@ -277,6 +288,7 @@ export class Sim {
       name: def.name,
       color: def.color,
       personality: def.personality,
+      speed: def.speed,
       entity: e,
       hp: FIGHTER.maxHp,
       alive: true,
@@ -286,7 +298,7 @@ export class Sim {
       facing: x < 0 ? 1 : -1,
       aimX: x < 0 ? 1 : -1,
       aimY: 0,
-      cooldown: { rocket: 0, shotgun: 0, grenade: 0 },
+      cooldown: { rocket: 45 + id * 7, shotgun: 30, grenade: 30 }, // nobody fires on the first frame
       grenades: 0,
       stun: 0,
       jumpCd: 0,
@@ -295,7 +307,7 @@ export class Sim {
       lastHitBy: -1,
       lastHitTick: -9999,
       kbTick: -1,
-      inZoneDamage: false,
+      outsideZone: false,
       damageDealt: 0,
       damageTaken: 0,
       kos: 0,
@@ -365,20 +377,33 @@ export class Sim {
 
   // ------------------------------------------------------------------ rounds
 
-  /** Called by the match at the start of each round (1-based). */
-  beginRound(round: number) {
-    this.round = round;
+  /** Lowest/highest x inside the zone that still has ground under it. */
+  private dropX(): number {
     const z = this.zone;
-    z.fromHalf = z.half;
-    z.toHalf = ZONE_HALF_WIDTHS[Math.min(round - 1, ZONE_HALF_WIDTHS.length - 1)]!;
-    z.shrinkStart = this.tick;
-    if (round === 3 || round === 5) {
-      // supply drop inside the zone
-      const lo = Math.max(this.map.minX + 3, z.center - z.toHalf + 1);
-      const hi = Math.min(this.map.maxX - 3, z.center + z.toHalf - 1);
-      let x = this.rng.range(lo, hi);
-      if (x > -3.6 && x < 3.6 && !this.bridgeIntact()) x = 0; // lands on the center platform
-      this.spawnItem(this.rng.chance(0.5) ? "health" : "grenade", x, 14);
+    const lo = Math.max(this.map.minX + 3, z.center - z.half + 1.5);
+    const hi = Math.min(this.map.maxX - 3, z.center + z.half - 1.5);
+    let x = this.rng.range(lo, hi);
+    if (x > -3.6 && x < 3.6) x = x < 0 ? -1.6 : 1.6; // land on the center platform, not in the pit
+    return x;
+  }
+
+  addBarrel(x: number, y: number, vx = 0, vy = 0): Entity {
+    const e = this.addBox("barrel", x, y, 0.34, 0.5, 0.9, BARREL.hp);
+    e.body.setLinvel({ x: vx, y: vy }, true);
+    this.events.push({ type: "barrelDrop", tick: this.tick, entity: e.id, x, y });
+    return e;
+  }
+
+  private supplyDrop() {
+    const n = this.supplyCount++;
+    if (n % 2 === 0) {
+      // barrels keep the chaos going late
+      const x = this.dropX();
+      this.addBarrel(x, 15);
+      this.addBarrel(x + (this.rng.chance(0.5) ? 0.75 : -0.75), 16.4);
+      this.stats.barrelsDropped += 2;
+    } else {
+      this.spawnItem(this.rng.chance(0.5) ? "health" : "grenade", this.dropX(), 15);
     }
   }
 
@@ -386,14 +411,34 @@ export class Sim {
 
   step(inputs: readonly Input[]) {
     const tick = this.tick;
-    // zone animation
     const z = this.zone;
-    const k = clamp((tick - z.shrinkStart) / ZONE_SHRINK_TICKS, 0, 1);
-    z.half = z.fromHalf + (z.toHalf - z.fromHalf) * k;
+    if (this.zoneEnabled) z.half = zoneHalfAt(tick);
+    if (tick >= SUPPLY.firstTick && (tick - SUPPLY.firstTick) % SUPPLY.interval === 0) this.supplyDrop();
 
     for (const f of this.fighters) {
       if (!f.alive) continue;
       this.applyInput(f, inputs[f.id] ?? NO_INPUT);
+      // the zone pushes outsiders back in (and can shove them into the pit)
+      const p = f.entity.body.translation();
+      const out = !this.zoneEnabled ? 0 : p.x < z.center - z.half ? z.center - z.half - p.x : p.x > z.center + z.half ? -(p.x - z.center - z.half) : 0;
+      f.outsideZone = out !== 0;
+      if (out !== 0) {
+        const dir = out > 0 ? 1 : -1;
+        const depth = Math.abs(out);
+        const v = f.entity.body.linvel();
+        let nvx: number;
+        if (f.grounded && f.stun === 0) {
+          // on foot: carried inward at least this fast, whatever the controller wants
+          const min = Math.min(14, ZONE.pushSpeed + ZONE.pushSpeedPerMeter * depth);
+          nvx = dir > 0 ? Math.max(v.x, min) : Math.min(v.x, -min);
+        } else {
+          // airborne or tumbling: a strong wind, so knockback flights still play out
+          const a = ZONE.pushAccel + ZONE.pushPerMeter * depth;
+          const w = v.x + dir * a * DT;
+          nvx = dir > 0 ? Math.max(v.x, Math.min(w, 14)) : Math.min(v.x, Math.max(w, -14));
+        }
+        f.entity.body.setLinvel({ x: nvx, y: v.y }, true);
+      }
     }
     this.updateRockets();
     this.updateFuses();
@@ -435,18 +480,6 @@ export class Sim {
         this.knockOut(f, "ringout", p.x, p.y);
         continue;
       }
-      // zone
-      f.inZoneDamage = p.x < z.center - z.half || p.x > z.center + z.half;
-      if (f.inZoneDamage) {
-        const dps = zoneDps(this.round);
-        f.hp -= dps * DT;
-        f.damageTaken += dps * DT;
-        if (f.hp <= 0) {
-          f.hp = 0;
-          this.knockOut(f, "zone", p.x, p.y);
-          continue;
-        }
-      }
       this.checkPickups(f, p.x, p.y);
     }
     // world-out cleanup for props
@@ -482,7 +515,7 @@ export class Sim {
       body.setLinvel({ x: vx, y: vy }, true);
       return;
     }
-    const target = clamp(inp.move, -1, 1) * FIGHTER.walkSpeed;
+    const target = clamp(inp.move, -1, 1) * FIGHTER.walkSpeed * f.speed;
     const accel = (f.grounded ? FIGHTER.groundAccel : FIGHTER.airAccel) * DT;
     vx += clamp(target - vx, -accel, accel);
     if (inp.jump && f.grounded && f.jumpCd === 0) {
@@ -772,7 +805,7 @@ export class Sim {
     }
   }
 
-  private knockOut(f: Fighter, cause: "ringout" | "hp" | "zone", x: number, y: number) {
+  private knockOut(f: Fighter, cause: "ringout" | "hp", x: number, y: number) {
     if (!f.alive) return;
     f.alive = false;
     f.koTick = this.tick;

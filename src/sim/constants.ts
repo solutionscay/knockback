@@ -3,10 +3,10 @@ export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
 export const GRAVITY = 20;
 
-export const ROUND_SECONDS = 6;
-export const ROUND_TICKS = ROUND_SECONDS * TICK_RATE;
-export const ROUNDS = 7;
-/** Once one fighter is left, the round runs this many more ticks, then the match ends. */
+/** A fight is one continuous brawl; time-out after this many seconds. */
+export const FIGHT_SECONDS = 90;
+export const FIGHT_TICKS = FIGHT_SECONDS * TICK_RATE;
+/** Once one fighter is left, the fight runs this many more ticks, then it ends. */
 export const FINISH_TICKS = 90;
 
 export const FIGHTER = {
@@ -18,31 +18,31 @@ export const FIGHTER = {
   airAccel: 28,
   jumpSpeed: 12,
   /** Knockback multiplier = 1 + (missing hp / 100) * kbGrowth */
-  kbGrowth: 2.0,
+  kbGrowth: 2.8,
   impactThreshold: 13,
-  impactDamagePerMs: 1.0,
+  impactDamagePerMs: 0.65,
   ringOutY: -10,
   ringOutX: 44,
 };
 
 export const WEAPONS = {
   rocket: {
-    cooldown: 140,
+    cooldown: 170,
     speed: 19,
     gravity: 7,
     radius: 2.7,
-    damage: 6,
+    damage: 3.3,
     knockback: 8.5,
     blockDamage: 34,
-    minRange: 2.8,
+    minRange: 1.5,
     maxLife: 240,
   },
   shotgun: {
-    cooldown: 54,
+    cooldown: 46,
     range: 7.5,
     pellets: 6,
-    pelletDamage: 1.4,
-    pelletKnock: 2.1,
+    pelletDamage: 1.2,
+    pelletKnock: 2.3,
     pelletBlockDamage: 5,
     pelletImpulse: 1.6,
   },
@@ -51,7 +51,7 @@ export const WEAPONS = {
     speed: 13,
     fuse: 100,
     radius: 3.0,
-    damage: 13,
+    damage: 8,
     knockback: 11,
     blockDamage: 40,
   },
@@ -60,7 +60,7 @@ export const WEAPONS = {
 export const BARREL = {
   hp: 12,
   radius: 3.7,
-  damage: 15,
+  damage: 10,
   knockback: 14,
   blockDamage: 55,
   fuseMin: 6,
@@ -84,9 +84,24 @@ export function groups(member: number, filter: number): number {
   return ((member & 0xffff) << 16) | (filter & 0xffff);
 }
 
-/** Safe zone half-widths per round (index 0 = round 1). */
-export const ZONE_HALF_WIDTHS = [40, 27, 20, 14.5, 10, 7, 5, 4];
-export const ZONE_SHRINK_TICKS = 180;
-export function zoneDps(round: number): number {
-  return 4 + 2 * round;
+/**
+ * Safe zone: holds, then shrinks steadily toward a seeded center. Outside it,
+ * fighters are pushed inward (no health drain), which can shove them into the pit.
+ */
+export const ZONE = {
+  startHalf: 26,
+  endHalf: 4.5,
+  holdTicks: 10 * TICK_RATE,
+  shrinkEndTicks: 80 * TICK_RATE,
+  pushSpeed: 4.5, // m/s inward on foot at the edge
+  pushSpeedPerMeter: 1.5,
+  pushAccel: 34, // m/s^2 in the air at the edge
+  pushPerMeter: 10, // extra m/s^2 per meter beyond the edge
+};
+export function zoneHalfAt(tick: number): number {
+  const k = Math.min(1, Math.max(0, (tick - ZONE.holdTicks) / (ZONE.shrinkEndTicks - ZONE.holdTicks)));
+  return ZONE.startHalf + (ZONE.endHalf - ZONE.startHalf) * k;
 }
+
+/** Supply drops: every interval, alternating barrels and an item, inside the zone. */
+export const SUPPLY = { firstTick: 9 * TICK_RATE, interval: 9 * TICK_RATE };

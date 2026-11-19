@@ -1,10 +1,11 @@
 /**
- * Order controller: turns a high-level order { target, weapon, stance } into
- * frame-by-frame inputs. The engine does all aiming and movement.
+ * Strategy controller: turns a fighter's match strategy { target preference,
+ * weapon, stance } into frame-by-frame inputs. The engine does all aiming,
+ * target picking and movement.
  */
-import { FIGHTER, WEAPONS, ZONE_HALF_WIDTHS } from "./constants";
+import { FIGHTER, WEAPONS, zoneHalfAt } from "./constants";
 import type { Link } from "./nav";
-import { clamp, NO_INPUT, type Fighter, type Input, type Order, type Sim, type Weapon } from "./sim";
+import { clamp, NO_INPUT, type Fighter, type Input, type Sim, type Strategy, type Weapon } from "./sim";
 
 export interface Goal {
   surface: number;
@@ -20,9 +21,12 @@ export const AIM_NOISE: Record<Fighter["personality"], number> = {
 };
 
 export class Controller {
-  order: Order;
+  strategy: Strategy;
   goal: Goal | null = null;
+  /** All controllers in the match (to resolve "whoever has the rocket"). */
+  peers: Controller[] = [];
   private nextEval = 0;
+  private nextRetarget = 0;
   private activeLink: Link | null = null;
   private stuck = 0;
   /** Effective target this tick (may differ from order.target if it is down). */
@@ -32,35 +36,61 @@ export class Controller {
     readonly fighterId: number,
     readonly aimNoise: number,
   ) {
-    this.order = { target: (fighterId + 1) % 4, weapon: "rocket", stance: "distance" };
+    this.strategy = { target: "nearest", weapon: "rocket", stance: "distance", line: "" };
   }
 
-  setOrder(o: Order, sim: Sim) {
-    this.order = o;
+  setStrategy(s: Strategy, sim: Sim) {
+    this.strategy = s;
     this.nextEval = sim.tick; // re-plan now
+    this.nextRetarget = sim.tick;
   }
 
+  /** Pick a target from the preference; sticky for a second so it does not flicker. */
   private resolveTarget(sim: Sim, me: Fighter): Fighter | null {
-    const t = sim.fighters[this.order.target];
-    if (t && t.alive && t.id !== me.id) return t;
+    const cur = this.targetId >= 0 ? sim.fighters[this.targetId] : undefined;
+    if (cur && cur.alive && cur.id !== me.id && sim.tick < this.nextRetarget) return cur;
+    this.nextRetarget = sim.tick + 60;
     const p = sim.pos(me);
-    let best: Fighter | null = null;
-    let bd = Infinity;
-    for (const o of sim.fighters) {
-      if (!o.alive || o.id === me.id) continue;
+    const foes = sim.fighters.filter((o) => o.alive && o.id !== me.id);
+    if (foes.length === 0) return null;
+    const dist = (o: Fighter) => {
       const q = sim.pos(o);
-      const d = Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
-      if (d < bd) {
-        bd = d;
+      return Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
+    };
+    const pref = this.strategy.target;
+    let score: (o: Fighter) => number;
+    switch (pref) {
+      case "weakest":
+        score = (o) => o.hp + dist(o) * 0.8;
+        break;
+      case "strongest":
+        score = (o) => -o.hp + dist(o) * 0.8;
+        break;
+      case "leader":
+        score = (o) => -o.damageDealt - o.kos * 40 + dist(o) * 0.8;
+        break;
+      case "rocket":
+      case "shotgun":
+        score = (o) => (this.peers[o.id]?.strategy.weapon === pref ? 0 : 40) + dist(o);
+        break;
+      default:
+        score = dist;
+    }
+    let best = foes[0]!;
+    let bs = score(best);
+    for (const o of foes) {
+      const v = score(o);
+      if (v < bs) {
+        bs = v;
         best = o;
       }
     }
     return best;
   }
 
-  /** The zone interval at the end of this round's shrink, with a margin. */
+  /** The zone interval two seconds from now, with a margin. */
   private zoneBounds(sim: Sim): [number, number] {
-    const half = ZONE_HALF_WIDTHS[Math.min(sim.round - 1, ZONE_HALF_WIDTHS.length - 1)] ?? 40;
+    const half = zoneHalfAt(sim.tick + 120);
     const h = Math.max(1.5, half - 1.2);
     return [sim.zone.center - h, sim.zone.center + h];
   }
@@ -72,7 +102,7 @@ export class Controller {
     const [zl, zr] = this.zoneBounds(sim);
     const zonePenalty = (x: number) => (x < zl ? 40 + (zl - x) * 6 : x > zr ? 40 + (x - zr) * 6 : 0);
     const weapon = this.weapon(me);
-    let stance = this.order.stance;
+    let stance = this.strategy.stance;
 
     if (stance === "item") {
       let best: Goal | null = null;
@@ -152,8 +182,8 @@ export class Controller {
   }
 
   private weapon(me: Fighter): Weapon {
-    if (this.order.weapon === "grenade" && me.grenades <= 0) return "rocket";
-    return this.order.weapon;
+    if (this.strategy.weapon === "grenade" && me.grenades <= 0) return "rocket";
+    return this.strategy.weapon;
   }
 
   think(sim: Sim): Input {
@@ -222,7 +252,8 @@ export class Controller {
     const dx0 = tp.x - mp.x;
     const dy0 = tp.y - mp.y;
     const dist = Math.sqrt(dx0 * dx0 + dy0 * dy0);
-    if (weapon === "rocket" && dist < WEAPONS.rocket.minRange) weapon = "shotgun"; // too close for a rocket
+    // Rockets work up close too, but the blast hits the shooter. No shotgun
+    // fallback: close range belongs to the fighters who chose shotguns.
     let ax = dx0;
     let ay = dy0;
     if (weapon === "rocket" || weapon === "grenade") {
@@ -241,7 +272,7 @@ export class Controller {
 
     let canFire = me.cooldown[weapon] === 0 && me.stun === 0;
     if (weapon === "shotgun") canFire &&= dist <= WEAPONS.shotgun.range - 0.6;
-    if (weapon === "rocket") canFire &&= dist <= 34;
+    if (weapon === "rocket") canFire &&= dist <= 34 && dist >= WEAPONS.rocket.minRange;
     if (weapon === "grenade") canFire &&= dist <= 14 && dist > 2.5;
     if (canFire) {
       // do not shoot straight into terrain right in front

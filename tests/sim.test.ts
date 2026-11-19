@@ -8,8 +8,10 @@ import {
   Match,
   NO_INPUT,
   replay,
-  ROUNDS,
-  ROUND_TICKS,
+  FIGHT_TICKS,
+  ZONE,
+  zoneHalfAt,
+  SUPPLY,
   Sim,
   WEAPONS,
   type Input,
@@ -26,7 +28,7 @@ function idle(): Input[] {
 /** A sim with all fighters parked far apart, so tests can stage things. */
 function stage(seed = 1): Sim {
   const sim = new Sim(seed);
-  sim.beginRound(1);
+  sim.zoneEnabled = false;
   const spots = [-27, -18, 18, 27.5];
   sim.fighters.forEach((f, i) => {
     const s = sim.nav.surfaceAt(spots[i]!, 50)!;
@@ -55,33 +57,35 @@ describe("determinism", () => {
       a.playToEnd();
       const b = new Match(seed);
       b.playToEnd();
-      expect(b.record.roundHashes).toEqual(a.record.roundHashes);
+      expect(b.record.checkpoints).toEqual(a.record.checkpoints);
       expect(b.record.finalHash).toBe(a.record.finalHash);
+      expect(b.strategies).toEqual(a.strategies);
     }
   });
 
-  test("a match record replays to the same state hash", () => {
+  test("a match record (seed + strategies) replays to the same state hash", () => {
     for (const seed of [3, 77, 1234, 99999, 4000000000]) {
       const m = new Match(seed);
       m.playToEnd();
       const rec = JSON.parse(JSON.stringify(m.record));
       const r = replay(rec);
-      expect(r.roundHashes).toEqual(m.record.roundHashes);
+      expect(r.checkpoints).toEqual(m.record.checkpoints);
       expect(r.finalHash).toBe(m.record.finalHash);
+      expect(r.match.result()).toEqual(m.result());
     }
   });
 
-  test("different seeds or different orders give different states", () => {
+  test("different seeds or different strategies give different states", () => {
     const a = new Match(5);
     a.playToEnd();
     const b = new Match(6);
     b.playToEnd();
     expect(a.record.finalHash).not.toBe(b.record.finalHash);
     const rec = JSON.parse(JSON.stringify(a.record));
-    rec.rounds[0][0].stance = rec.rounds[0][0].stance === "rush" ? "cover" : "rush";
-    rec.rounds[0][1].target = rec.rounds[0][1].target === 0 ? 2 : 0;
+    rec.strategies[0].stance = rec.strategies[0].stance === "rush" ? "cover" : "rush";
+    rec.strategies[1].weapon = rec.strategies[1].weapon === "rocket" ? "shotgun" : "rocket";
     const r = replay(rec);
-    expect(r.roundHashes[0]).not.toBe(a.record.roundHashes[0]);
+    expect(r.checkpoints[0]).not.toBe(a.record.checkpoints[0]);
   });
 
   test("hash is stable across interleaved matches (no hidden global state)", () => {
@@ -90,69 +94,109 @@ describe("determinism", () => {
     const x = new Match(42);
     const y = new Match(43);
     while (!x.over) {
-      x.playRound();
-      if (!y.over) y.playRound();
+      x.step();
+      y.step();
     }
     expect(x.record.finalHash).toBe(solo.record.finalHash);
   });
 });
 
-describe("round flow", () => {
-  test("rounds run at most ROUND_TICKS, the match at most ROUNDS rounds", () => {
-    for (const seed of [1, 2, 3, 4]) {
+describe("fight flow", () => {
+  test("a fight is one continuous brawl that ends with one fighter left or at time-out", () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
       const m = new Match(seed);
-      let rounds = 0;
-      while (!m.over) {
-        m.startRound();
-        let ticks = 1;
-        while (!m.stepAction()) ticks++;
-        expect(ticks).toBeLessThanOrEqual(ROUND_TICKS);
-        m.endRound();
-        rounds++;
-      }
-      expect(rounds).toBeLessThanOrEqual(ROUNDS);
-      expect(m.summaries.length).toBe(rounds);
-      expect(m.record.rounds.length).toBe(rounds);
-      expect(() => m.startRound()).toThrow();
-      // a match ends early only when at most one fighter is left
-      if (rounds < ROUNDS) expect(m.sim.alive().length).toBeLessThanOrEqual(1);
+      let ticks = 0;
+      while (!m.step()) ticks++;
+      ticks++;
+      expect(ticks).toBeLessThanOrEqual(FIGHT_TICKS);
+      const r = m.result();
+      if (ticks < FIGHT_TICKS) expect(m.sim.alive().length).toBeLessThanOrEqual(1);
+      if (r.reason === "last-standing") expect(r.survivors).toEqual([r.winner]);
+      expect(r.koLog.length).toBe(4 - r.survivors.length);
+      expect(m.step()).toBe(true); // stays over
     }
   });
 
-  test("the round ends FINISH_TICKS after the last knockout", () => {
+  test("the fight ends FINISH_TICKS after the last knockout", () => {
     const m = new Match(9);
-    m.startRound();
+    m.step();
     m.sim.fighters.slice(1).forEach((f) => m.sim.damageFighter(f, 1000, 0, 0, 0, "test", 0, 0));
     let ticks = 0;
-    while (!m.stepAction()) ticks++;
+    while (!m.step()) ticks++;
     expect(ticks + 1).toBe(FINISH_TICKS);
-    m.endRound();
-    expect(m.over).toBe(true);
-    expect(m.winner()).toBe(0);
+    const r = m.result();
+    expect(r.winner).toBe(0);
+    expect(r.reason).toBe("last-standing");
+    expect(r.kos[0]).toBe(3);
   });
 
-  test("safe zone shrinks every round and hurts fighters outside it", () => {
+  test("time-out winner has the most health", () => {
+    const m = new Match(10);
+    m.sim.fighters.forEach((f, i) => (f.hp = [40, 90, 60, 20][i]!));
+    const r = m.result();
+    expect(r.reason).toBe("time-out");
+    expect(r.winner).toBe(1);
+  });
+
+  test("the safe zone shrinks over time and pushes fighters back in without draining health", () => {
+    expect(zoneHalfAt(0)).toBe(ZONE.startHalf);
+    expect(zoneHalfAt(ZONE.shrinkEndTicks)).toBe(ZONE.endHalf);
+    expect(zoneHalfAt(ZONE.holdTicks + 600)).toBeLessThan(zoneHalfAt(ZONE.holdTicks));
     const sim = stage();
-    const halves: number[] = [];
-    for (let r = 1; r <= ROUNDS; r++) {
-      sim.beginRound(r);
-      for (let i = 0; i < 200; i++) sim.step(idle());
-      halves.push(sim.zone.half);
-    }
-    for (let i = 1; i < halves.length; i++) expect(halves[i]!).toBeLessThan(halves[i - 1]!);
-    const outside = sim.fighters.filter((f) => f.alive && f.inZoneDamage);
-    expect(sim.fighters.some((f) => f.koCause === "zone") || outside.length > 0).toBe(true);
+    sim.zoneEnabled = true;
+    sim.zone.center = 3; // left edge at -23 for the first seconds
+    const f = place(sim, 0, -27, 2.4); // 4 m outside, standing on the plateau
+    const hp = f.hp;
+    for (let i = 0; i < 6; i++) sim.step(idle());
+    expect(f.outsideZone).toBe(true);
+    expect(f.entity.body.linvel().x).toBeGreaterThan(4);
+    for (let i = 0; i < 120; i++) sim.step(idle());
+    expect(f.outsideZone).toBe(false);
+    expect(f.hp).toBe(hp);
   });
 
-  test("bots give every living fighter a valid order", () => {
-    const m = new Match(11);
-    const orders = m.startRound();
-    expect(orders.length).toBe(4);
-    for (const [i, o] of orders.entries()) {
-      expect(o.target).not.toBe(i);
-      expect(["rocket", "shotgun", "grenade"]).toContain(o.weapon);
-      expect(["rush", "distance", "cover", "item"]).toContain(o.stance);
+  test("supply drops bring in barrels and items during the fight", () => {
+    const sim = stage();
+    const barrels0 = [...sim.entities.values()].filter((e) => e.kind === "barrel").length;
+    const kinds: string[] = [];
+    while (sim.tick <= SUPPLY.firstTick + SUPPLY.interval + 1) {
+      sim.step(idle());
+      for (const e of sim.events) if (e.type === "barrelDrop" || e.type === "itemSpawn") kinds.push(e.type);
+      sim.events = [];
     }
+    expect(kinds.filter((k) => k === "barrelDrop").length).toBe(2);
+    expect(kinds).toContain("itemSpawn");
+    expect(sim.stats.barrelsDropped).toBe(2);
+    expect([...sim.entities.values()].filter((e) => e.kind === "barrel").length).toBeGreaterThan(barrels0);
+  });
+
+  test("bots give every fighter a valid strategy with an intro line", () => {
+    for (const seed of [11, 12, 13]) {
+      const m = new Match(seed);
+      expect(m.strategies.length).toBe(4);
+      for (const s of m.strategies) {
+        expect(["nearest", "weakest", "strongest", "rocket", "shotgun", "leader"]).toContain(s.target);
+        expect(["rocket", "shotgun", "grenade"]).toContain(s.weapon);
+        expect(["rush", "distance", "cover", "item"]).toContain(s.stance);
+        expect(s.line.length).toBeGreaterThan(10);
+      }
+      // the aggressive fighter always rushes with a shotgun
+      expect(m.strategies[0]!.stance).toBe("rush");
+      expect(m.strategies[0]!.weapon).toBe("shotgun");
+    }
+  });
+
+  test("fighters start close and meet in the first seconds", () => {
+    const m = new Match(31);
+    const xs = m.sim.fighters.map((f) => m.sim.pos(f).x);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(22);
+    let firstHit = -1;
+    m.onEvent = (e) => {
+      if (firstHit < 0 && e.type === "hit" && e.source >= 0 && e.source !== e.target) firstHit = e.tick;
+    };
+    for (let i = 0; i < 600 && firstHit < 0; i++) m.step();
+    expect(firstHit).toBeGreaterThan(0);
+    expect(firstHit).toBeLessThan(5 * 60);
   });
 });
 
@@ -312,20 +356,35 @@ describe("navigation and controllers", () => {
     }
   });
 
-  test("a rush order closes the distance to the target", () => {
-    const m = new Match(21);
-    m.startRound();
+  test("a rush strategy closes the distance to the target", () => {
+    const m = new Match(21, [
+      { target: "strongest", weapon: "shotgun", stance: "rush", line: "x" },
+      { target: "nearest", weapon: "rocket", stance: "cover", line: "x" },
+      { target: "nearest", weapon: "rocket", stance: "cover", line: "x" },
+      { target: "nearest", weapon: "rocket", stance: "cover", line: "x" },
+    ]);
     const sim = m.sim;
     const me = sim.fighters[0]!;
-    const target = sim.fighters.reduce((a, b) => (b.id !== 0 && Math.abs(sim.pos(b).x - sim.pos(me).x) > Math.abs(sim.pos(a).x - sim.pos(me).x) ? b : a));
-    m.controllers.forEach((c, i) =>
-      c.setOrder(i === 0 ? { target: target.id, weapon: "shotgun", stance: "rush" } : { target: 0, weapon: "shotgun", stance: "cover" }, sim),
-    );
-    const d0 = Math.abs(sim.pos(me).x - sim.pos(target).x);
-    for (let i = 0; i < 240; i++) m.stepAction();
-    if (me.alive && target.alive) {
-      const d1 = Math.abs(sim.pos(me).x - sim.pos(target).x);
-      expect(d1).toBeLessThan(d0 * 0.6);
+    m.step();
+    const t = sim.fighters[m.controllers[0]!.targetId]!;
+    const d0 = Math.hypot(sim.pos(me).x - sim.pos(t).x, sim.pos(me).y - sim.pos(t).y);
+    let closest = d0;
+    for (let i = 0; i < 240 && me.alive && t.alive; i++) {
+      m.step();
+      closest = Math.min(closest, Math.hypot(sim.pos(me).x - sim.pos(t).x, sim.pos(me).y - sim.pos(t).y));
     }
+    expect(d0).toBeGreaterThan(4);
+    expect(closest).toBeLessThan(2.5);
+  });
+
+  test("target preference 'rocket' picks a fighter whose strategy uses rockets", () => {
+    const m = new Match(22, [
+      { target: "rocket", weapon: "shotgun", stance: "rush", line: "x" },
+      { target: "nearest", weapon: "shotgun", stance: "cover", line: "x" },
+      { target: "nearest", weapon: "rocket", stance: "cover", line: "x" },
+      { target: "nearest", weapon: "shotgun", stance: "cover", line: "x" },
+    ]);
+    m.step();
+    expect(m.controllers[0]!.targetId).toBe(2);
   });
 });

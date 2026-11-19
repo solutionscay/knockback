@@ -1,87 +1,76 @@
 /**
- * House bots: pick one order per fighter per round. Four personalities.
- * They only choose { target, weapon, stance }; the controller does the rest.
- * Later, LLM agents will replace this function.
+ * House bots: before the fight, each fighter picks one strategy for the whole
+ * match { target preference, weapon, stance } and says it out loud.
+ * Later an AI replaces chooseStrategy(); the controller stays the same.
  */
 import type { Rng } from "./rng";
-import type { Fighter, Order, Sim, Stance, Weapon } from "./sim";
+import type { Fighter, Stance, Strategy, TargetPref, Weapon } from "./sim";
 
-function enemies(sim: Sim, me: Fighter): Fighter[] {
-  return sim.fighters.filter((f) => f.alive && f.id !== me.id);
+type Plan = Omit<Strategy, "line">;
+
+const PLANS: Record<Fighter["personality"], { plan: Plan; w: number }[]> = {
+  aggressive: [
+    { plan: { target: "nearest", weapon: "shotgun", stance: "rush" }, w: 4 },
+    { plan: { target: "rocket", weapon: "shotgun", stance: "rush" }, w: 3 },
+    { plan: { target: "strongest", weapon: "shotgun", stance: "rush" }, w: 2 },
+    { plan: { target: "leader", weapon: "shotgun", stance: "rush" }, w: 1 },
+  ],
+  sniper: [
+    { plan: { target: "strongest", weapon: "rocket", stance: "distance" }, w: 3 },
+    { plan: { target: "shotgun", weapon: "rocket", stance: "distance" }, w: 2 },
+    { plan: { target: "nearest", weapon: "rocket", stance: "cover" }, w: 2 },
+    { plan: { target: "leader", weapon: "rocket", stance: "distance" }, w: 1 },
+  ],
+  coward: [
+    { plan: { target: "nearest", weapon: "rocket", stance: "cover" }, w: 3 },
+    { plan: { target: "weakest", weapon: "rocket", stance: "item" }, w: 2 },
+    { plan: { target: "shotgun", weapon: "rocket", stance: "cover" }, w: 2 },
+    { plan: { target: "nearest", weapon: "shotgun", stance: "cover" }, w: 1 },
+  ],
+  opportunist: [
+    { plan: { target: "weakest", weapon: "shotgun", stance: "rush" }, w: 3 },
+    { plan: { target: "weakest", weapon: "rocket", stance: "distance" }, w: 2 },
+    { plan: { target: "leader", weapon: "rocket", stance: "item" }, w: 2 },
+    { plan: { target: "weakest", weapon: "grenade", stance: "item" }, w: 1 },
+  ],
+};
+
+const TARGET_TEXT: Record<TargetPref, string[]> = {
+  nearest: ["whoever is closest", "the first face I see", "anyone in arm's reach"],
+  weakest: ["whoever is bleeding", "the weakest one", "anyone who's limping"],
+  strongest: ["the toughest one here", "whoever has full health", "the big threat"],
+  rocket: ["whoever has the rocket", "the rocket crowd", "anyone with a launcher"],
+  shotgun: ["the shotgun crowd", "anyone holding a shotgun", "the close-range guys"],
+  leader: ["whoever is winning", "the leader", "the scoreboard king"],
+};
+
+function lineFor(p: Plan, rng: Rng): string {
+  const t = rng.pick(TARGET_TEXT[p.target]);
+  const wpn: Record<Weapon, string> = { rocket: "rockets", shotgun: "my shotgun", grenade: "grenades" };
+  const by: Record<Stance, string[]> = {
+    rush: [`I'm charging ${t} with ${wpn[p.weapon]}.`, `Straight at ${t}. ${cap(wpn[p.weapon])} up close.`, `No plan. Just ${t} and ${wpn[p.weapon]}.`],
+    distance: [`I'll hang back and send ${wpn[p.weapon]} at ${t}.`, `Long range. ${cap(t)} gets ${wpn[p.weapon]}.`, `Keep my distance, light up ${t}.`],
+    cover: [`Behind cover, picking off ${t}.`, `I'll hide and pop ${t} with ${wpn[p.weapon]}.`, `Walls first, then ${t}.`],
+    item: [`Grab supplies, then hunt ${t}.`, `First the loot, then ${t}.`, `Every crate is mine. Then ${t}.`],
+  };
+  return rng.pick(by[p.stance]);
 }
 
-function dist(sim: Sim, a: Fighter, b: Fighter): number {
-  const p = sim.pos(a);
-  const q = sim.pos(b);
-  const dx = p.x - q.x;
-  const dy = p.y - q.y;
-  return Math.sqrt(dx * dx + dy * dy);
+function cap(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function minBy<T>(arr: T[], key: (t: T) => number): T {
-  let best = arr[0] as T;
-  let bk = key(best);
-  for (const t of arr) {
-    const k = key(t);
-    if (k < bk) {
-      bk = k;
-      best = t;
-    }
-  }
-  return best;
-}
-
-export function decideOrder(sim: Sim, me: Fighter, rng: Rng): Order {
-  const foes = enemies(sim, me);
-  if (foes.length === 0) return { target: me.id, weapon: "rocket", stance: "distance" };
-  const nearest = minBy(foes, (f) => dist(sim, me, f));
-  const weakest = minBy(foes, (f) => f.hp);
-  const strongest = minBy(foes, (f) => -f.hp - f.damageDealt * 0.3);
-  const hasItems = sim.items().length > 0;
-  const nd = dist(sim, me, nearest);
-  let target: Fighter;
-  let weapon: Weapon;
-  let stance: Stance;
-
-  switch (me.personality) {
-    case "aggressive": {
-      target = rng.chance(0.8) ? nearest : rng.pick(foes);
-      const d = dist(sim, me, target);
-      weapon = d > 13 && rng.chance(0.6) ? "rocket" : "shotgun";
-      if (me.grenades > 0 && rng.chance(0.4)) weapon = "grenade";
-      stance = me.hp < 25 && rng.chance(0.3) ? (hasItems ? "item" : "cover") : "rush";
-      break;
-    }
-    case "sniper": {
-      target = rng.chance(0.65) ? strongest : rng.pick(foes);
-      weapon = me.grenades > 0 && rng.chance(0.25) ? "grenade" : "rocket";
-      stance = nd < 6 ? (rng.chance(0.5) ? "cover" : "distance") : "distance";
-      if (me.hp < 40 && hasItems && rng.chance(0.4)) stance = "item";
-      break;
-    }
-    case "coward": {
-      target = rng.chance(0.6) ? nearest : weakest;
-      weapon = me.grenades > 0 && rng.chance(0.5) ? "grenade" : "rocket";
-      stance = me.hp < 60 && hasItems ? "item" : rng.chance(0.75) ? "cover" : "distance";
-      if (foes.length === 1 && me.hp > foes[0]!.hp + 20) stance = "rush";
-      break;
-    }
-    case "opportunist": {
-      target = weakest;
-      const d = dist(sim, me, target);
-      if (target.hp < 45) {
-        stance = "rush";
-        weapon = d < 9 ? "shotgun" : "rocket";
-      } else if (hasItems && me.grenades === 0 && rng.chance(0.6)) {
-        stance = "item";
-        weapon = "rocket";
-      } else {
-        stance = rng.chance(0.6) ? "distance" : "cover";
-        weapon = "rocket";
-      }
-      if (me.grenades > 0 && rng.chance(0.5)) weapon = "grenade";
+export function chooseStrategy(me: Fighter, rng: Rng): Strategy {
+  const opts = PLANS[me.personality];
+  const total = opts.reduce((a, o) => a + o.w, 0);
+  let r = rng.next() * total;
+  let plan = opts[0]!.plan;
+  for (const o of opts) {
+    r -= o.w;
+    if (r < 0) {
+      plan = o.plan;
       break;
     }
   }
-  return { target: target.id, weapon, stance };
+  return { ...plan, line: lineFor(plan, rng) };
 }

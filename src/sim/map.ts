@@ -95,10 +95,11 @@ export const ARENA: MapDef = {
     { kind: "crate", x: -16, y: 3.0 },
   ],
   bridge: { x0: -3, x1: 3, y: 0, planks: 8 },
+  // Tight start: everyone begins within ~20 m, so the fight starts in seconds.
   spawns: [
-    { x: -25.5, y: 0 },
-    { x: -9, y: 0 },
-    { x: 9.5, y: 0 },
-    { x: 24, y: 0 },
+    { x: -9.5, y: 0 },
+    { x: -6.4, y: 5.0 },
+    { x: 9.4, y: 0 },
+    { x: 10.2, y: 4.6 },
   ],
 };
