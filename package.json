@@ -1,0 +1,21 @@
+{
+  "name": "knockback",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "batch": "bun scripts/batch.ts",
+    "record": "bun scripts/record.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier2d-deterministic-compat": "0.21.0",
+    "pixi.js": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "playwright": "1.65.1",
+    "typescript": "^7.0.2"
+  }
+}
