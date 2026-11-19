@@ -8,7 +8,8 @@ declare global {
       ready: boolean;
       advance: (dt: number, frames?: number) => void;
       newMatch: (seed: number) => void;
-      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[] };
+      setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
+      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[] };
       drainMoments: () => { time: number; kind: string; weight: number }[];
     };
   }
@@ -39,6 +40,14 @@ const game = new Game(app, {
   count: el("count"),
   callout: el("callout"),
   celebrate: el("celebrate"),
+  cam: el("cam"),
+});
+// camera bar + lineup chips: click to switch modes / follow a fighter
+document.getElementById("hud")!.addEventListener("click", (e) => {
+  const t = (e.target as HTMLElement).closest<HTMLElement>("[data-cam],[data-follow]");
+  if (!t) return;
+  if (t.dataset.cam) game.setCamera({ kind: t.dataset.cam === "all" ? "all" : "auto" });
+  else if (t.dataset.follow) game.toggleFollow(Number(t.dataset.follow));
 });
 // After the celebrate beat the next match starts by itself; ?hold waits for the button.
 game.autoNext = params.has("hold") || capture ? null : 6;
@@ -55,6 +64,10 @@ game.onNeedNewMatch = () => start(randomSeed());
 document.getElementById("new")!.addEventListener("click", () => start(randomSeed()));
 document.getElementById("reset")!.addEventListener("click", () => game.resetTally());
 window.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "a" || e.key === "A") game.setCamera({ kind: "auto" });
+  if (e.key === "v" || e.key === "V") game.setCamera({ kind: "all" });
+  if (e.key >= "1" && e.key <= "4") game.toggleFollow(Number(e.key) - 1);
   if (e.key === "n" || e.key === "N") start(randomSeed());
 });
 
@@ -71,6 +84,7 @@ if (capture) {
       app.renderer.render(app.stage);
     },
     newMatch: (seed) => start(seed),
+    setCamera: (mode) => game.setCamera(mode),
     state: () => ({
       beat: game.flow.beat.kind,
       beatIndex: game.flow.index,
@@ -78,6 +92,9 @@ if (capture) {
       over: game.match.over,
       hash: game.match.over ? game.match.record.finalHash : "",
       tally: game.tally.points.slice(),
+      camera: JSON.stringify(game.scene.camMode),
+      alive: game.match.sim.fighters.map((f) => f.alive),
+      hp: game.match.sim.fighters.map((f) => f.hp),
     }),
     drainMoments() {
       const m = game.moments;

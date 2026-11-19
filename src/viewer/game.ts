@@ -10,10 +10,11 @@ import { DT, FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import { Match, type MatchResult } from "../sim/match";
 import type { SimEvent, Strategy } from "../sim/sim";
 import { hex, portraitSvg } from "./portrait";
-import { Scene } from "./scene";
+import { Scene, type CamMode } from "./scene";
 
 const SLOW_TIME = 1.6;
 const TALLY_KEY = "knockback.tally.v1";
+const CAM_KEY = "knockback.camera.v1";
 
 export interface Moment {
   time: number;
@@ -28,6 +29,7 @@ export interface Hud {
   count: HTMLElement;
   callout: HTMLElement;
   celebrate: HTMLElement;
+  cam: HTMLElement;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -65,6 +67,8 @@ export class Game {
   ) {
     this.scene = new Scene(app);
     this.tally = this.loadTally();
+    this.scene.camMode = this.loadCamera();
+    this.scene.onFollowLost = () => this.setCamera({ kind: "auto" });
   }
 
   private loadTally(): Tally {
@@ -83,6 +87,51 @@ export class Game {
     }
   }
 
+  private loadCamera(): CamMode {
+    try {
+      const v = JSON.parse(sessionStorage.getItem(CAM_KEY) ?? "null");
+      if (v?.kind === "all") return { kind: "all" };
+      if (v?.kind === "follow" && Number.isInteger(v.id) && v.id >= 0 && v.id < 4) return { kind: "follow", id: v.id };
+    } catch {
+      /* ignore */
+    }
+    return { kind: "auto" };
+  }
+
+  /** View-only: changes what the camera frames, never the simulation. */
+  setCamera(mode: CamMode) {
+    this.scene.camMode = mode;
+    try {
+      sessionStorage.setItem(CAM_KEY, JSON.stringify(mode));
+    } catch {
+      /* private mode: still works for this page */
+    }
+    this.renderCamBar();
+  }
+
+  /** Follow a fighter; clicking the followed one again goes back to auto. */
+  toggleFollow(id: number) {
+    const m = this.scene.camMode;
+    if (m.kind === "follow" && m.id === id) this.setCamera({ kind: "auto" });
+    else this.setCamera({ kind: "follow", id });
+  }
+
+  renderCamBar() {
+    const bar = this.hud.cam;
+    const m = this.scene.camMode;
+    const sim = this.match?.sim;
+    const chips = (sim?.fighters ?? [])
+      .map((f) => {
+        const on = m.kind === "follow" && m.id === f.id;
+        return `<button type="button" class="f${on ? " on" : ""}${f.alive ? "" : " out"}" data-follow="${f.id}" style="--c:${hex(f.color)}" title="Follow ${esc(f.name)} (${f.id + 1})"><i></i>${esc(f.name)}</button>`;
+      })
+      .join("");
+    bar.innerHTML = `<span class="lbl">CAMERA</span>
+      <button type="button" data-cam="auto" class="${m.kind === "auto" ? "on" : ""}" title="Auto: frame the action (A)">Auto</button>
+      <button type="button" data-cam="all" class="${m.kind === "all" ? "on" : ""}" title="View all fighters (V)">View all</button>
+      <span class="sep"></span>${chips}`;
+  }
+
   resetTally() {
     this.tally = new Tally();
     this.saveTally();
@@ -97,15 +146,18 @@ export class Game {
     this.slow = 0;
     this.idleAfter = 0;
     this.lastResult = null;
-    for (const el of Object.values(this.hud)) {
+    for (const [k, el] of Object.entries(this.hud)) {
+      if (k === "cam") continue;
       el.className = "";
       el.innerHTML = "";
     }
     this.hud.lineup.innerHTML = this.match.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.personality, this.match.strategies[f.id]!.loadout[0])}<span>${esc(f.name)}</span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.personality, this.match.strategies[f.id]!.loadout[0])}<span>${esc(f.name)}</span></div>`)
       .join("");
     this.hud.lineup.className = "show";
     this.flow = new FlowRunner(matchBeats(this.match.sim.fighters.length), (b) => this.enter(b));
+    this.hud.cam.className = "show";
+    this.renderCamBar();
   }
 
   // ------------------------------------------------------------- beats
@@ -223,6 +275,7 @@ export class Game {
   private onEvent(e: SimEvent) {
     this.scene.onEvent(e);
     if (e.type === "ko") {
+      queueMicrotask(() => this.renderCamBar());
       this.hitPause = Math.max(this.hitPause, 0.14);
       this.slow = SLOW_TIME;
       const f = this.match.sim.fighters[e.fighter]!;

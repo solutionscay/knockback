@@ -487,6 +487,79 @@ body {
   font-size: 0.7em;
 }
 
+/* ---------------------------------------------------------- camera bar */
+#cam {
+  position: absolute;
+  left: 1.6vh;
+  bottom: 1.6vh;
+  display: flex;
+  align-items: center;
+  gap: 0.6vh;
+  padding: 0.6vh 0.8vh;
+  border-radius: 1.2vh;
+  background: rgba(7, 8, 13, 0.55);
+  pointer-events: auto;
+  opacity: 0.55;
+  transition: opacity 0.2s;
+  font: 700 1.35vh system-ui, sans-serif;
+}
+#cam:hover {
+  opacity: 1;
+}
+#cam .lbl {
+  font-size: 1.1vh;
+  letter-spacing: 0.2em;
+  opacity: 0.6;
+  margin: 0 0.4vh;
+}
+#cam .sep {
+  width: 1px;
+  height: 2.2vh;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 0.3vh;
+}
+#cam button {
+  font: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.8vh;
+  padding: 0.45vh 0.9vh;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5vh;
+}
+#cam button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+#cam button.on {
+  background: #f4f1ea;
+  color: #0b0d14;
+  border-color: #f4f1ea;
+}
+#cam button.f i {
+  width: 1.2vh;
+  height: 1.2vh;
+  border-radius: 50%;
+  background: var(--c);
+}
+#cam button.f.on {
+  background: var(--c);
+  border-color: var(--c);
+  color: #0b0d14;
+}
+#cam button.f.on i {
+  background: #0b0d14;
+}
+#cam button.f.out {
+  opacity: 0.35;
+}
+#lineup .chip {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 /* ---------------------------------------------------------- corner controls */
 #controls {
   position: fixed;

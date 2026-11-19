@@ -33,6 +33,12 @@ const C = {
   zone: 0xff2a4a,
 };
 
+/**
+ * Camera modes chosen by the viewer (view-only, never touches the sim):
+ * auto = frame the busiest action, all = everyone on screen, follow = one fighter.
+ */
+export type CamMode = { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number };
+
 interface Xform {
   x: number;
   y: number;
@@ -128,6 +134,11 @@ export class Scene {
    * off center (fraction of the view width), leaving room for cards.
    */
   focus: { id: number; offsetX: number; heightM: number } | null = null;
+  /** The viewer's camera choice; intro focus, level overview and celebrate override it. */
+  camMode: CamMode = { kind: "auto" };
+  /** Called when a followed fighter has been out for a beat (the game switches to auto). */
+  onFollowLost: (() => void) | null = null;
+  private followLostT = -1;
   /** Winner id while celebrating, else -1. */
   celebrateId = -1;
   private dropMarks = new Map<number, number>(); // entity id -> color
@@ -607,12 +618,16 @@ export class Scene {
       pts.push({ x: p.x, y: Math.max(-3, p.y), w: 1 + (this.activity[f.id] ?? 0), frame: true });
     }
     // rockets and explosions only pull the choice of window, not its size
-    for (const r of sim.rockets) pts.push({ x: r.x, y: r.y, w: 0.4, frame: false });
-    for (const h of this.hotspots) pts.push({ x: h.x, y: h.y, w: h.w, frame: false });
+    // (in "view all" they are framed too, kept inside the arena)
+    const all = this.camMode.kind === "all";
+    const lx0 = sim.level.minX - 2;
+    const lx1 = sim.level.maxX + 2;
+    for (const r of sim.rockets) pts.push({ x: clampN(r.x, lx0, lx1), y: clampN(r.y, -3, 14), w: 0.4, frame: all });
+    for (const h of this.hotspots) pts.push({ x: clampN(h.x, lx0, lx1), y: clampN(h.y, -3, 14), w: h.w, frame: all && h.w > 0.6 });
     if (!pts.some((p) => p.frame)) pts.push({ x: this.cam.x, y: 2, w: 1, frame: true });
-    const padX = 6;
-    const padY = 3.5;
-    const maxSpan = this.W / this.minScale() - padX * 2;
+    const padX = all ? 3.5 : 6;
+    const padY = all ? 2.5 : 3.5;
+    const maxSpan = all ? Infinity : this.W / this.minScale() - padX * 2;
     pts.sort((a, b) => a.x - b.x);
     let bestW = -1;
     let bi = 0;
@@ -644,11 +659,32 @@ export class Scene {
     y0 = Math.max(y0, -3);
     y1 = Math.max(y1, y0 + 2);
     let tx = (x0 + x1) / 2;
-    let ts = this.targetScale(x1 - x0 + padX * 2, y1 - y0 + padY * 2 + 1.5);
+    let ts = all
+      ? clampN(Math.min(this.W / (x1 - x0 + padX * 2), this.H / (y1 - y0 + padY * 2 + 1.5)), this.H / 46, this.H / 11)
+      : this.targetScale(x1 - x0 + padX * 2, y1 - y0 + padY * 2 + 1.5);
     // anchor near the bottom: the lowest fighter sits ~3 m above the bottom edge
     const viewH = this.H / ts;
     let ty = Math.max(y0 - 3.2 + viewH / 2, (y0 + y1) / 2 + 0.8);
-    let rate = 2.6;
+    let rate = all ? 3.5 : 2.6;
+    if (this.camMode.kind === "follow" && !this.focus && !this.overview) {
+      const fo = sim.fighters[this.camMode.id];
+      if (fo && fo.alive && !fo.removed) {
+        this.followLostT = -1;
+        const p = this.xform(fo.entity, alpha);
+        ts = this.H / 15;
+        tx = p.x;
+        ty = Math.max(p.y + 1.6, -7 + 7.5);
+        rate = 4;
+      } else {
+        // knocked out: hold on the spot for a beat, then hand back to auto
+        if (this.followLostT < 0) this.followLostT = 0;
+        this.followLostT += dt;
+        if (this.followLostT > 1.8) {
+          this.followLostT = -1;
+          this.onFollowLost?.();
+        }
+      }
+    }
     const ff = this.focus ? sim.fighters[this.focus.id] : undefined;
     if (this.focus && ff && !ff.removed) {
       const p = this.xform(ff.entity, alpha);
@@ -988,6 +1024,13 @@ export class Scene {
         const by = top - bh;
         const low = f.hp < 30;
         bars.roundRect(bx - 3 * ui, by - 3 * ui, bw + 6 * ui, bh + 6 * ui, 5 * ui).fill({ color: 0x07080d, alpha: 0.8 });
+        if (this.camMode.kind === "follow" && this.camMode.id === f.id && !this.focus && this.celebrateId < 0) {
+          // followed: a bobbing marker above the bar
+          const mx = sx;
+          const my = by - 12 * ui - Math.abs(Math.sin(this.time * 4)) * 5 * ui;
+          bars.poly([mx - 14 * ui, my - 16 * ui, mx + 14 * ui, my - 16 * ui, mx, my]).fill(f.color).stroke({ width: 3 * ui, color: 0x07080d });
+          bars.roundRect(bx - 6 * ui, by - 6 * ui, bw + 12 * ui, bh + 12 * ui, 7 * ui).stroke({ width: 2.5 * ui, color: f.color });
+        }
         bars.rect(bx, by, (bw * Math.max(0, v.ghostHp)) / 100, bh).fill({ color: 0xffffff, alpha: 0.85 });
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / 100, bh).fill(low && Math.floor(this.time * 6) % 2 === 0 ? 0xffffff : f.color);
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / 100, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
