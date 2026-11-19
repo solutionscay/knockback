@@ -8,7 +8,7 @@ declare global {
       ready: boolean;
       advance: (dt: number, frames?: number) => void;
       newMatch: (seed: number) => void;
-      state: () => { phase: string; round: number; finished: boolean; over: boolean; hash: string; moments: { time: number; kind: string; weight: number }[] };
+      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[] };
       drainMoments: () => { time: number; kind: string; weight: number }[];
     };
   }
@@ -31,12 +31,17 @@ await app.init({
 document.getElementById("app")!.appendChild(app.canvas);
 if (capture) document.body.classList.add("capture");
 
+const el = (id: string) => document.getElementById(id)!;
 const game = new Game(app, {
-  round: document.getElementById("round")!,
-  banner: document.getElementById("banner")!,
-  recap: document.getElementById("recap")!,
+  clock: el("clock"),
+  intro: el("intro"),
+  lineup: el("lineup"),
+  count: el("count"),
+  callout: el("callout"),
+  celebrate: el("celebrate"),
 });
-game.loop = params.has("loop");
+// After the celebrate beat the next match starts by itself; ?hold waits for the button.
+game.autoNext = params.has("hold") || capture ? null : 6;
 
 const seedEl = document.getElementById("seed")!;
 function start(seed: number) {
@@ -48,6 +53,7 @@ function start(seed: number) {
 }
 game.onNeedNewMatch = () => start(randomSeed());
 document.getElementById("new")!.addEventListener("click", () => start(randomSeed()));
+document.getElementById("reset")!.addEventListener("click", () => game.resetTally());
 window.addEventListener("keydown", (e) => {
   if (e.key === "n" || e.key === "N") start(randomSeed());
 });
@@ -66,12 +72,12 @@ if (capture) {
     },
     newMatch: (seed) => start(seed),
     state: () => ({
-      phase: game.phase,
-      round: game.match.round,
-      finished: game.finished,
+      beat: game.flow.beat.kind,
+      beatIndex: game.flow.index,
+      finished: game.flow.done,
       over: game.match.over,
       hash: game.match.over ? game.match.record.finalHash : "",
-      moments: game.moments,
+      tally: game.tally.points.slice(),
     }),
     drainMoments() {
       const m = game.moments;

@@ -1,6 +1,7 @@
 /**
- * Record full matches to a 1080p WebM with a headless browser, plus
- * screenshots of the best moments. The viewer runs in capture mode: it only
+ * Record full match loops (intros, countdown, fight, celebrate + tally) to a
+ * 1080p WebM with a headless browser, plus screenshots of the key beats and
+ * the best fight moments. The viewer runs in capture mode: it only
  * advances when told to, so every frame is exactly 1/30 s of game time no
  * matter how slow headless rendering is.
  *
@@ -21,7 +22,7 @@ const seeds = rest.slice(1).map(Number);
 if (seeds.length === 0) seeds.push(7, 42);
 
 const FPS = 30;
-const TAIL_SECONDS = 3.5; // keep filming the winner banner this long
+const TAIL_SECONDS = 0.6; // keep filming after the celebrate beat ends
 const framesDir = join(outDir, "frames");
 const shotsDir = join(outDir, "screenshots");
 rmSync(framesDir, { recursive: true, force: true });
@@ -59,38 +60,45 @@ const moments: { frame: number; kind: string; weight: number; seed: number }[] =
 for (const [mi, seed] of seeds.entries()) {
   if (mi > 0) await page.evaluate((s) => window.__kb!.newMatch(s), seed);
   let tail = -1;
-  let lastRound = 0;
+  let lastBeat = -1;
+  let checked = false;
   const t0 = performance.now();
+  const tag = `m${mi + 1}-seed${seed}`;
   for (;;) {
     await page.evaluate((dt) => {
       window.__kb!.advance(dt);
       (window as any).__stepAnims(dt * 1000);
     }, 1 / FPS);
-    const st = await page.evaluate(() => {
-      const s = window.__kb!.state();
-      return { phase: s.phase, round: s.round, over: s.over, hash: s.hash, moments: window.__kb!.drainMoments() };
-    });
+    const st = await page.evaluate(() => ({ ...window.__kb!.state(), moments: window.__kb!.drainMoments() }));
     await page.screenshot({ path: join(framesDir, `${String(frame).padStart(6, "0")}.jpg`), type: "jpeg", quality: 92 });
-    for (const m of st.moments) {
-      moments.push({ frame, kind: m.kind, weight: m.weight, seed });
-    }
-    if (st.round !== lastRound && st.phase === "planning") {
-      lastRound = st.round;
-      if (st.round === 1 || st.round === 4) pendingShots.push({ at: frame + 45, name: `m${mi + 1}-seed${seed}-round${st.round}-orders-locked` });
+    for (const m of st.moments) if (m.weight > 0) moments.push({ frame, kind: m.kind, weight: m.weight, seed });
+    if (st.beatIndex !== lastBeat) {
+      lastBeat = st.beatIndex;
+      // beat screenshots, timed to when each beat's animation has settled
+      if (st.beat === "intro") pendingShots.push({ at: frame + 52, name: `${tag}-intro-${st.beatIndex + 1}` });
+      if (st.beat === "countdown") pendingShots.push({ at: frame + 6, name: `${tag}-countdown-${3 - (st.beatIndex - 4)}` });
+      if (st.beat === "go") pendingShots.push({ at: frame + 5, name: `${tag}-fight` });
+      if (st.beat === "end") pendingShots.push({ at: frame + 12, name: `${tag}-end-callout` });
+      if (st.beat === "celebrate") pendingShots.push({ at: frame + 85, name: `${tag}-celebrate` });
     }
     for (const p of pendingShots.filter((p) => p.at === frame)) await page.screenshot({ path: join(shotsDir, `${p.name}.png`) });
-    if (st.phase === "final" && tail < 0) {
-      tail = Math.round(TAIL_SECONDS * FPS);
-      pendingShots.push({ at: frame + 25, name: `m${mi + 1}-seed${seed}-winner` });
+    if (st.over && !checked) {
+      checked = true;
       // cross-engine determinism check: Bun replays the same seed headless
       const m = new Match(seed);
       m.playToEnd();
       const same = m.record.finalHash === st.hash;
-      report.push(`seed ${seed}: browser hash ${st.hash}, bun hash ${m.record.finalHash} -> ${same ? "MATCH" : "MISMATCH"}; ${m.round} rounds`);
+      const r = m.result();
+      report.push(`seed ${seed}: browser hash ${st.hash}, bun hash ${m.record.finalHash} -> ${same ? "MATCH" : "MISMATCH"}; fight ${(r.ticks / 60).toFixed(1)} s, winner ${r.winner} (${r.reason}), tally after: ${st.tally.join(",")}`);
     }
+    if (st.finished && tail < 0) tail = Math.round(TAIL_SECONDS * FPS);
     frame++;
-    if (tail >= 0 && --tail <= 0) break;
-    if (frame % 300 === 0) console.log(`frame ${frame} (match ${mi + 1}, round ${st.round}, ${st.phase}) ${((performance.now() - t0) / 1000).toFixed(0)}s`);
+    if (tail >= 0 && --tail <= 0) {
+      const fin = await page.evaluate(() => window.__kb!.state().tally);
+      report.push(`  tally after match ${mi + 1}: ${fin.join(",")}`);
+      break;
+    }
+    if (frame % 300 === 0) console.log(`frame ${frame} (match ${mi + 1}, ${st.beat}) ${((performance.now() - t0) / 1000).toFixed(0)}s`);
   }
 }
 await browser.close();

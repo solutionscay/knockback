@@ -35,4 +35,4 @@ if (hostname === "0.0.0.0" || hostname === "::") {
     }
   }
 }
-console.log("  add ?seed=123 to pick a match, ?loop to auto-start new matches");
+console.log("  add ?seed=123 to pick a match, ?hold to wait for the Next match button");

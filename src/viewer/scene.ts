@@ -3,9 +3,9 @@
  * World units are meters with y up; the world container maps (x, y) to (x, -y).
  */
 import { Application, Container, Graphics, Text } from "pixi.js";
-import { FIGHTER, WEAPONS } from "../sim/constants";
+import { FIGHTER } from "../sim/constants";
 import type { Controller } from "../sim/controller";
-import type { Entity, Fighter, Order, Sim, SimEvent } from "../sim/sim";
+import type { Entity, Fighter, Sim, SimEvent } from "../sim/sim";
 import { Fx } from "./fx";
 
 const C = {
@@ -104,7 +104,6 @@ export class Scene {
   private prev = new Map<number, Xform>();
   private rocketPrev = new Map<number, { x: number; y: number }>();
   private floats: FloatText[] = [];
-  private tags: Text[] = [];
   cam = { x: 0, y: 4, s: 40 };
   private trauma = 0;
   private punch = 0;
@@ -112,12 +111,17 @@ export class Scene {
   private punchY = 0;
   private screenFlash = 0;
   private tickHits = new Map<number, { dmg: number; x: number; y: number; kb: number }>();
-  /** 0..1 progress of the "orders locked" beat, or -1 when hidden. */
-  planT = -1;
+  /**
+   * Camera override: frame one fighter up close. offsetX shifts the fighter
+   * off center (fraction of the view width), leaving room for cards.
+   */
+  focus: { id: number; offsetX: number; heightM: number } | null = null;
+  /** Winner id while celebrating, else -1. */
+  celebrateId = -1;
+  private dropMarks = new Map<number, number>(); // entity id -> color
   /** Camera interest per fighter (recent hits/shots), decays. */
   private activity: number[] = [0, 0, 0, 0];
   private hotspots: { x: number; y: number; w: number }[] = [];
-  orders: Order[] = [];
   time = 0;
 
   constructor(app: Application) {
@@ -154,6 +158,9 @@ export class Scene {
     this.fx.parts = [];
     this.trauma = 0;
     this.punch = 0;
+    this.focus = null;
+    this.celebrateId = -1;
+    this.dropMarks.clear();
     this.drawTerrain();
     for (const f of sim.fighters) this.fighters.push(this.makeFighter(f));
     this.syncProps();
@@ -384,7 +391,7 @@ export class Scene {
           this.float("RING OUT!", clampN(e.x, -30, 30), Math.max(e.y, -4) + 4, f.color, 1.8);
         } else {
           this.fx.burst(e.x, e.y, f.color);
-          this.float(e.cause === "zone" ? "ZONED" : "K.O.", e.x, e.y + 2, f.color, 1.8);
+          this.float("K.O.", e.x, e.y + 2, f.color, 1.8);
         }
         this.addShake(0.9);
         this.screenFlash = Math.max(this.screenFlash, 0.3);
@@ -409,6 +416,12 @@ export class Scene {
         this.fx.dust(p.x, sim.feetY(f), e.speed * 0.4);
         break;
       }
+      case "barrelDrop":
+        this.dropMarks.set(e.entity, 0xff6a3d);
+        break;
+      case "itemSpawn":
+        if (e.y > 8) this.dropMarks.set(e.entity, e.item === "health" ? 0x7dffa0 : 0xd8f06a);
+        break;
       case "pickup": {
         const f = sim.fighters[e.fighter]!;
         this.fx.burst(e.x, e.y, e.item === "health" ? 0x7dffa0 : 0xc6e05a);
@@ -609,12 +622,21 @@ export class Scene {
     }
     y0 = Math.max(y0, -3);
     y1 = Math.max(y1, y0 + 2);
-    const tx = (x0 + x1) / 2;
-    const ts = this.targetScale(x1 - x0 + padX * 2, y1 - y0 + padY * 2 + 1.5);
+    let tx = (x0 + x1) / 2;
+    let ts = this.targetScale(x1 - x0 + padX * 2, y1 - y0 + padY * 2 + 1.5);
     // anchor near the bottom: the lowest fighter sits ~3 m above the bottom edge
     const viewH = this.H / ts;
-    const ty = Math.max(y0 - 3.2 + viewH / 2, (y0 + y1) / 2 + 0.8);
-    const k = 1 - Math.exp(-dt * 2.6);
+    let ty = Math.max(y0 - 3.2 + viewH / 2, (y0 + y1) / 2 + 0.8);
+    let rate = 2.6;
+    const ff = this.focus ? sim.fighters[this.focus.id] : undefined;
+    if (this.focus && ff && !ff.removed) {
+      const p = this.xform(ff.entity, alpha);
+      ts = this.H / this.focus.heightM;
+      tx = p.x - (this.W / ts) * this.focus.offsetX;
+      ty = p.y + 0.6;
+      rate = 5;
+    }
+    const k = 1 - Math.exp(-dt * rate);
     this.cam.x += (tx - this.cam.x) * k;
     this.cam.y += (ty - this.cam.y) * k;
     this.cam.s += (ts - this.cam.s) * k;
@@ -652,6 +674,17 @@ export class Scene {
     if (zr < 60) {
       zg.rect(zr, -40, 80 - zr, 60).fill({ color: C.zone, alpha: 0.12 + pulse * 0.05 });
       zg.rect(zr - 0.08, -40, 0.16, 60).fill({ color: C.zone, alpha: 0.7 });
+    }
+    // chevrons pointing inward: the zone pushes
+    const drift = (this.time * 1.6) % 1.6;
+    for (let row = 0; row < 4; row++) {
+      const y = -(1 + row * 2.6);
+      for (let i = 0; i < 3; i++) {
+        const lx = zl - 1.0 - i * 1.6 + drift;
+        if (lx < zl - 0.3) g3(zg, lx, y, 1, (1 - (zl - lx) / 5) * 0.55);
+        const rx = zr + 1.0 + i * 1.6 - drift;
+        if (rx > zr + 0.3) g3(zg, rx, y, -1, (1 - (rx - zr) / 5) * 0.55);
+      }
     }
 
     // ------------------------------------------------ props
@@ -718,9 +751,34 @@ export class Scene {
       else if (f.alive) v.spin *= Math.max(0, 1 - dt * 14);
       if (Math.abs(v.spin) < 0.01 && f.alive) v.spin = 0;
       const rot = f.alive ? v.spin : -p.a;
-      v.root.position.set(p.x, -p.y);
+      const hop = this.celebrateId === f.id ? Math.abs(Math.sin(this.time * 5.5)) * 0.9 : 0;
+      v.root.position.set(p.x, -p.y - hop);
       v.root.rotation = rot;
+      if (this.celebrateId === f.id) {
+        if (hop < 0.08) {
+          v.sx = 1.25;
+          v.sy = 0.8;
+        }
+        if (Math.random() < 0.6) {
+          const cols = [f.color, 0xffffff, 0xffe14d, 0xff7ab8, 0x7de0ff];
+          this.fx.add({
+            x: p.x + (Math.random() - 0.5) * 14,
+            y: p.y + 7 + Math.random() * 2,
+            vx: (Math.random() - 0.5) * 2,
+            vy: -1 - Math.random() * 2,
+            life: 2.5,
+            size: 0.12 + Math.random() * 0.08,
+            color: cols[(Math.random() * cols.length) | 0]!,
+            kind: "square",
+            gravity: 2,
+            drag: 0.8,
+            rot: Math.random() * 6,
+            vr: (Math.random() - 0.5) * 12,
+          });
+        }
+      }
       v.root.scale.set(v.sx * (f.facing < 0 ? -1 : 1), v.sy);
+      if (this.celebrateId === f.id) v.root.scale.x = Math.abs(v.root.scale.x) * (Math.sin(this.time * 1.3) > 0 ? 1 : -1);
       v.root.alpha = f.alive ? 1 : Math.max(0, 1 - (sim.tick - f.koTick) / 120);
       // face
       const face = v.face;
@@ -739,30 +797,23 @@ export class Scene {
       }
       // gun
       const ctl = this.controllers[f.id];
-      let weapon: string = ctl ? ctl.order.weapon : "rocket";
+      let weapon: string = ctl ? ctl.strategy.weapon : "rocket";
       if (weapon === "grenade" && f.grenades <= 0) weapon = "rocket";
-      if (ctl && weapon === "rocket" && ctl.targetId >= 0) {
-        const t = sim.fighters[ctl.targetId]!;
-        if (t.alive && !t.removed) {
-          const tp = sim.pos(t);
-          if (Math.hypot(tp.x - p.x, tp.y - p.y) < WEAPONS.rocket.minRange) weapon = "shotgun";
-        }
-      }
       this.drawGun(v, weapon);
       v.gun.visible = f.alive;
       v.gun.position.set(-v.recoil * 0.5 * 1, -0.05);
       v.gun.rotation = Math.atan2(aimLocalY, aimLocalX);
       // hit flash
       v.flashT = Math.max(0, v.flashT - dt);
-      v.flash.alpha = v.flashT > 0 ? 0.85 : f.inZoneDamage && Math.floor(this.time * 8) % 2 === 0 ? 0.25 : 0;
-      v.flash.tint = f.inZoneDamage && v.flashT <= 0 ? 0xff3355 : 0xffffff;
+      v.flash.alpha = v.flashT > 0 ? 0.85 : f.outsideZone && Math.floor(this.time * 8) % 2 === 0 ? 0.25 : 0;
+      v.flash.tint = f.outsideZone && v.flashT <= 0 ? 0xff3355 : 0xffffff;
       // motion trail when launched
       v.trailT -= fxDt;
       if (speed > 11 && v.trailT <= 0 && f.alive) {
         v.trailT = 0.025;
         this.fx.add({ x: p.x, y: p.y, kind: "trail", life: 0.22, size: FIGHTER.halfHeight + FIGHTER.radius, aux: FIGHTER.radius, color: f.color, back: true });
       }
-      if (f.inZoneDamage && Math.random() < 0.3) this.fx.add({ x: p.x + (Math.random() - 0.5) * 0.8, y: p.y + (Math.random() - 0.5) * 1.4, vy: 2, life: 0.4, size: 0.08, color: 0xff4060 });
+      if (f.outsideZone && Math.random() < 0.3) this.fx.add({ x: p.x + (Math.random() - 0.5) * 0.8, y: p.y + (Math.random() - 0.5) * 1.4, vy: 2, life: 0.4, size: 0.08, color: 0xff4060 });
 
       // off-screen marker
       if (f.alive) {
@@ -803,8 +854,8 @@ export class Scene {
       }
     }
 
-    // ------------------------------------------------ planning lines
-    this.drawPlan(alpha);
+    // ------------------------------------------------ supply drop markers
+    this.drawDropMarks(alpha);
 
     // ------------------------------------------------ effects
     this.fx.draw(this.fxBack, this.fxFront);
@@ -833,67 +884,48 @@ export class Scene {
     if (this.screenFlash > 0) this.flashScreen.rect(0, 0, W, H).fill({ color: 0xfff4e0, alpha: this.screenFlash });
   }
 
-  private drawPlan(alpha: number) {
+  private drawDropMarks(alpha: number) {
     const g = this.planG;
     g.clear();
-    for (const t of this.tags) t.visible = false;
-    if (this.planT < 0) return;
-    const sim = this.sim;
-    const t = Math.min(1, this.planT * 2.2);
-    let ti = 0;
-    for (const f of sim.fighters) {
-      if (!f.alive) continue;
-      const o = this.orders[f.id];
-      if (!o) continue;
-      const tgt = sim.fighters[o.target];
-      if (!tgt || !tgt.alive || tgt.id === f.id) continue;
-      const a = this.xform(f.entity, alpha);
-      const b = this.xform(tgt.entity, alpha);
-      const ex = a.x + (b.x - a.x) * t;
-      const ey = a.y + (b.y - a.y) * t;
-      // dashed line
-      const len = Math.hypot(ex - a.x, ey - a.y);
-      const n = Math.max(1, Math.floor(len / 0.6));
-      const off = (this.time * 2) % 1;
-      for (let i = 0; i < n; i++) {
-        const u0 = (i + off * 0.5) / n;
-        const u1 = Math.min(1, (i + 0.55 + off * 0.5) / n);
-        g.moveTo(a.x + (ex - a.x) * u0, -(a.y + (ey - a.y) * u0))
-          .lineTo(a.x + (ex - a.x) * u1, -(a.y + (ey - a.y) * u1))
-          .stroke({ width: 0.12, color: f.color, alpha: 0.9, cap: "round" });
+    for (const [id, color] of this.dropMarks) {
+      const e = this.sim.entities.get(id);
+      if (!e) {
+        this.dropMarks.delete(id);
+        continue;
       }
-      if (t >= 1) {
-        // crosshair on target, offset per attacker so overlapping marks stay visible
-        const r = 0.95 + 0.12 * f.id;
-        g.circle(b.x, -b.y, r).stroke({ width: 0.09, color: f.color, alpha: 0.95 });
+      const p = this.xform(e, alpha);
+      if (p.y < 2.2 || e.body.linvel().y > -0.5) {
+        if (this.sim.tick > 0 && Math.abs(e.body.linvel().y) < 0.5) this.dropMarks.delete(id);
+        continue;
       }
-      // order tag under the fighter
-      let tag = this.tags[ti];
-      if (!tag) {
-        tag = new Text({
-          text: "",
-          style: { fontFamily: "Rubik, 'Arial Black', system-ui, sans-serif", fontWeight: "800", fontSize: 20, fill: 0xffffff, stroke: { color: 0x07080d, width: 5, join: "round" }, letterSpacing: 1 },
-        });
-        tag.anchor.set(0.5, 0);
-        this.textLayer.addChild(tag);
-        this.tags.push(tag);
-      }
-      ti++;
-      const weapon = o.weapon === "grenade" && f.grenades <= 0 ? "rocket" : o.weapon;
-      tag.text = `${o.stance.toUpperCase()} · ${weapon.toUpperCase()}`;
-      tag.style.fill = f.color;
-      tag.visible = true;
-      tag.scale.set(this.ui);
-      const W = this.W;
-      const H = this.H;
-      const s = this.world.scale.x;
-      const wx = this.world.position.x;
-      const wy = this.world.position.y;
-      tag.position.set(wx + a.x * s, wy - (a.y - FIGHTER.halfHeight - FIGHTER.radius - 0.15) * s);
-      void W;
-      void H;
+      const ground = this.sim.nav.surfaceAt(p.x, p.y)?.y ?? 0;
+      const a = 0.18 + 0.08 * Math.sin(this.time * 12);
+      g.rect(p.x - 0.4, -p.y, 0.8, p.y - ground).fill({ color, alpha: a });
+      g.ellipse(p.x, -ground, 0.9, 0.18).fill({ color, alpha: 0.5 });
     }
   }
+
+  /** Intro / countdown punctuation. */
+  blam(id: number) {
+    this.addShake(0.45);
+    const f = this.sim.fighters[id];
+    if (!f || f.removed) return;
+    const p = this.sim.pos(f);
+    this.fx.add({ x: p.x, y: p.y, kind: "ring", life: 0.45, size: 0.6, size1: 3.2, color: f.color, alpha: 1, aux: 0.22 });
+    this.fx.sparks(p.x, p.y, 0, 0, f.color, 14);
+    this.fighterView(id).flashT = 0.12;
+    this.fighterView(id).sx = 1.3;
+    this.fighterView(id).sy = 0.75;
+  }
+
+}
+
+function g3(g: Graphics, x: number, y: number, dir: 1 | -1, alpha: number) {
+  if (alpha <= 0) return;
+  g.moveTo(x - 0.3 * dir, y - 0.45)
+    .lineTo(x + 0.25 * dir, y)
+    .lineTo(x - 0.3 * dir, y + 0.45)
+    .stroke({ width: 0.16, color: 0xff6a7d, alpha, cap: "round", join: "round" });
 }
 
 function lerpColor(a: number, b: number, t: number): number {
