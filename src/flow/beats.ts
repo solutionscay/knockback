@@ -2,10 +2,11 @@
  * The match loop as data: a sequence of beats. Pure (no DOM, no Pixi), so the
  * look can change without touching the flow, and the flow can be tested.
  *
- *   intro x4 (BLAM)  ->  3  2  1  FIGHT!  ->  fight (open-ended)  ->  end  ->  celebrate
+ *   level card -> intro x4 (BLAM) -> 3 2 1 FIGHT! -> fight (open-ended) -> end -> celebrate
  */
 
 export type Beat =
+  | { kind: "level"; duration: number } // the generated arena: theme name, camera over the whole map
   | { kind: "intro"; fighter: number; duration: number }
   | { kind: "countdown"; value: 3 | 2 | 1; duration: number }
   | { kind: "go"; duration: number } // "FIGHT!" — the fight is already running
@@ -21,6 +22,7 @@ export function simRuns(b: Beat): "fight" | "afterglow" | "frozen" {
 }
 
 export interface BeatTiming {
+  level: number;
   intro: number;
   count: number;
   go: number;
@@ -28,10 +30,10 @@ export interface BeatTiming {
   celebrate: number;
 }
 
-export const DEFAULT_TIMING: BeatTiming = { intro: 2.4, count: 0.75, go: 0.9, end: 2.2, celebrate: 9 };
+export const DEFAULT_TIMING: BeatTiming = { level: 2.4, intro: 2.4, count: 0.75, go: 0.9, end: 2.2, celebrate: 9 };
 
 export function matchBeats(fighters: number, t: BeatTiming = DEFAULT_TIMING): Beat[] {
-  const beats: Beat[] = [];
+  const beats: Beat[] = [{ kind: "level", duration: t.level }];
   for (let i = 0; i < fighters; i++) beats.push({ kind: "intro", fighter: i, duration: t.intro });
   beats.push({ kind: "countdown", value: 3, duration: t.count });
   beats.push({ kind: "countdown", value: 2, duration: t.count });

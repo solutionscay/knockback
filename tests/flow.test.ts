@@ -13,10 +13,10 @@ const result = (winner: number, kos: number[]): MatchResult => ({
 });
 
 describe("match beats", () => {
-  test("the loop is intro x4, 3 2 1, FIGHT, fight, end, celebrate", () => {
+  test("the loop is level card, intro x4, 3 2 1, FIGHT, fight, end, celebrate", () => {
     const b = matchBeats(4);
     expect(b.map((x) => (x.kind === "countdown" ? String(x.value) : x.kind === "intro" ? `intro${x.fighter}` : x.kind))).toEqual([
-      "intro0", "intro1", "intro2", "intro3", "3", "2", "1", "go", "fight", "end", "celebrate",
+      "level", "intro0", "intro1", "intro2", "intro3", "3", "2", "1", "go", "fight", "end", "celebrate",
     ]);
     expect(b.filter((x) => simRuns(x) === "fight").map((x) => x.kind)).toEqual(["go", "fight"]);
     expect(simRuns(b[0]!)).toBe("frozen");
@@ -31,7 +31,7 @@ describe("match beats", () => {
     expect(r.beat.kind).toBe("end");
     for (let i = 0; i < 2000; i++) r.update(1 / 60, true);
     expect(r.done).toBe(true);
-    expect(entered).toEqual(["intro", "intro", "intro", "intro", "countdown", "countdown", "countdown", "go", "fight", "end", "celebrate"]);
+    expect(entered).toEqual(["level", "intro", "intro", "intro", "intro", "countdown", "countdown", "countdown", "go", "fight", "end", "celebrate"]);
   });
 
   test("a fight that ends during FIGHT! skips straight to the end beat", () => {
