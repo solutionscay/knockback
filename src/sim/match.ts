@@ -12,8 +12,10 @@ import { Rng } from "./rng";
 import { NO_INPUT, Sim, type SimEvent, type Strategy } from "./sim";
 
 export interface MatchRecord {
-  version: 2;
+  version: 3;
+  /** The seed makes the level too (levelgen.ts); theme/attempt are informational. */
   seed: number;
+  level: { theme: string; attempt: number; width: number };
   strategies: Strategy[];
   /** State hash every CHECKPOINT_TICKS, for pinpointing a divergence. */
   checkpoints: string[];
@@ -58,7 +60,7 @@ export class Match {
       c.peers = this.controllers;
       c.setStrategy(this.strategies[i]!, this.sim);
     }
-    this.record = { version: 2, seed, strategies: this.strategies.map((s) => ({ ...s })), checkpoints: [], finalHash: "", ticks: 0 };
+    this.record = { version: 3, seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), checkpoints: [], finalHash: "", ticks: 0 };
   }
 
   /** One physics tick of the fight. Returns true once the fight is over. */

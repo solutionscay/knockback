@@ -18,22 +18,32 @@ export const FIGHTER = {
   airAccel: 28,
   jumpSpeed: 12,
   /** Knockback multiplier = 1 + (missing hp / 100) * kbGrowth */
-  kbGrowth: 2.8,
+  kbGrowth: 2.5,
   impactThreshold: 13,
-  impactDamagePerMs: 0.65,
+  impactDamagePerMs: 0.55,
   ringOutY: -10,
   ringOutX: 44,
 };
 
+/** Explosion shape: fighters (damage, knockback), props (blockDamage) and terrain cells (terrainDamage). */
+export interface Blast {
+  radius: number;
+  damage: number;
+  knockback: number;
+  blockDamage: number;
+  terrainDamage: number;
+}
+
 export const WEAPONS = {
   rocket: {
-    cooldown: 170,
+    cooldown: 155,
     speed: 19,
     gravity: 7,
     radius: 2.7,
-    damage: 3.3,
-    knockback: 8.5,
+    damage: 2.7,
+    knockback: 9,
     blockDamage: 34,
+    terrainDamage: 95,
     minRange: 1.5,
     maxLife: 240,
   },
@@ -41,36 +51,87 @@ export const WEAPONS = {
     cooldown: 46,
     range: 7.5,
     pellets: 6,
-    pelletDamage: 1.2,
+    pelletDamage: 1.0,
     pelletKnock: 2.3,
     pelletBlockDamage: 5,
+    pelletTerrainDamage: 7,
     pelletImpulse: 1.6,
   },
+  /** Melee launch: the ring-out tool. */
+  bat: {
+    cooldown: 44,
+    reach: 0.95,
+    radius: 0.95,
+    damage: 6,
+    knockback: 10.8,
+    lift: 0.75,
+    propImpulse: 9,
+    terrainRadius: 0.7,
+    terrainDamage: 40,
+  },
   grenade: {
-    cooldown: 50,
+    cooldown: 130,
     speed: 13,
-    fuse: 100,
+    fuse: 85,
     radius: 3.0,
     damage: 8,
-    knockback: 11,
+    knockback: 12,
     blockDamage: 40,
+    terrainDamage: 105,
+  },
+  /** Hook: yanks a fighter (or a prop) toward the shooter. */
+  grapple: {
+    cooldown: 110,
+    range: 15,
+    pull: 15,
+    lift: 5,
+    damage: 2,
+    stun: 26,
   },
 } as const;
+
+/** Ticks to swap weapons (no firing meanwhile). */
+export const SWAP_TICKS = 10;
 
 export const BARREL = {
   hp: 12,
   radius: 3.7,
-  damage: 10,
+  damage: 8,
   knockback: 14,
   blockDamage: 55,
+  terrainDamage: 135,
   fuseMin: 6,
   fuseMax: 20,
 };
 
+/** TNT: lights on any hit, long visible fuse, the biggest crater. */
+export const TNT = { hp: 6, fuse: 150, chainFuse: 40, radius: 4.6, damage: 16, knockback: 16, blockDamage: 90, terrainDamage: 220 };
+/** Gas canister: when hit, it rockets away spinning, then bursts. */
+export const GAS = { hp: 8, thrustTicks: 85, thrust: 30, radius: 2.4, damage: 7, knockback: 10, blockDamage: 40, terrainDamage: 85 };
+export const STEEL = { density: 7 };
+/** Heavy bodies (steel crates, weights, big terrain pieces) falling on a fighter. */
+export const CRUSH = { minSpeed: 5, minMass: 4, perUnit: 1.4, max: 30 };
+export const GLASS = { hp: 1, shatterSpeed: 8 };
+export const PAD = { launch: 17.5, cooldown: 20, density: 6 };
+export const WEIGHT = { density: 7, ropeHp: 30 };
+/** Crumbling cells lose this many hit points per second while stood on. */
+export const CRUMBLE_DPS = 20;
+
 export const BLOCK = { size: 0.9, hp: 40, density: 1.4 };
-export const CRATE = { size: 0.8, hp: 14, density: 0.6, dropChance: 0.65 };
-export const PLANK = { w: 0.75, h: 0.22, hp: 16 };
+export const CRATE = { size: 0.8, hp: 14, density: 0.6, dropChance: 0.8 };
 export const ITEM = { size: 0.5, pickupRange: 1.1, healAmount: 35 };
+
+/** Power-up durations (ticks) and strengths. */
+export const POWER = {
+  shield: { ticks: 7 * 60, hits: 3, damageMul: 0.15, kbMul: 0.25 },
+  speed: { ticks: 8 * 60, mul: 1.45 },
+  heavy: { ticks: 10 * 60, kbMul: 0.5, speedMul: 0.82, densityMul: 3 },
+  damage: { ticks: 8 * 60, mul: 2, kbMul: 1.25 },
+  jump: { ticks: 12 * 60 },
+};
+
+/** Loose terrain pieces this small are cleared after this long (keeps body count down). */
+export const DEBRIS = { smallCells: 2, smallTicks: 6 * 60 };
 
 /** Collision groups. */
 export const G = {
@@ -97,11 +158,12 @@ export const ZONE = {
   pushSpeedPerMeter: 1.5,
   pushAccel: 34, // m/s^2 in the air at the edge
   pushPerMeter: 10, // extra m/s^2 per meter beyond the edge
+  shockAfter: 120, // ticks outside before the zone starts flinging you back in
+  shockEvery: 90,
+  shockX: 9,
+  shockY: 13,
+  shockDamage: 4,
 };
-export function zoneHalfAt(tick: number): number {
-  const k = Math.min(1, Math.max(0, (tick - ZONE.holdTicks) / (ZONE.shrinkEndTicks - ZONE.holdTicks)));
-  return ZONE.startHalf + (ZONE.endHalf - ZONE.startHalf) * k;
-}
 
 /** Supply drops: every interval, alternating barrels and an item, inside the zone. */
 export const SUPPLY = { firstTick: 9 * TICK_RATE, interval: 9 * TICK_RATE };
