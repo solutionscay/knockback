@@ -373,7 +373,7 @@ export class Scene {
         this.fx.sparks(e.x, e.y, 0, 0, 0xffffff, 8);
         this.addShake(0.25);
         this.fighterView(f.id).flashT = 0.1;
-        this.float(`${Math.round(e.damage)}`, e.x, e.y + 1, 0xffffff, 0.9);
+        if (e.damage >= 4) this.float(`${Math.round(e.damage)}`, e.x, e.y + 1, 0xffffff, 0.9);
         break;
       }
       case "ko": {
@@ -429,7 +429,7 @@ export class Scene {
     let bigHit = 0;
     for (const [id, h] of this.tickHits) {
       const f = this.sim.fighters[id]!;
-      if (h.dmg >= 2.5) this.float(`${Math.round(h.dmg)}`, h.x, h.y + 1.2, h.kb >= 14 ? 0xffe14d : 0xffffff, h.kb >= 14 ? 1.25 : 0.85);
+      if (h.dmg >= 5 || h.kb >= 14) this.float(`${Math.round(h.dmg)}`, h.x, h.y + 1.2, h.kb >= 14 ? 0xffe14d : 0xffffff, h.kb >= 14 ? 1.25 : 0.85);
       if (h.kb >= 14) {
         bigHit = Math.max(bigHit, h.kb);
         this.addShake(Math.min(0.5, h.kb / 50));
@@ -460,12 +460,12 @@ export class Scene {
   // --------------------------------------------------------------- render
 
   minScale() {
-    return this.H / 25;
+    return this.H / 19;
   }
 
   private targetScale(spanX: number, spanY: number) {
     const s = Math.min(this.W / spanX, this.H / spanY);
-    const maxS = this.H / 12;
+    const maxS = this.H / 11;
     const minS = this.minScale();
     return Math.max(minS, Math.min(maxS, s));
   }
@@ -566,15 +566,16 @@ export class Scene {
     // ------------------------------------------------ camera
     // Frame the fighters. If they are spread wider than the max zoom-out,
     // frame the busiest window (recent hits, shots, rockets in flight).
-    const pts: { x: number; y: number; w: number }[] = [];
+    const pts: { x: number; y: number; w: number; frame: boolean }[] = [];
     for (const f of sim.fighters) {
       if (!(f.alive || (!f.removed && sim.tick - f.koTick < 40))) continue;
       const p = this.xform(f.entity, alpha);
-      pts.push({ x: p.x, y: p.y, w: 1 + (this.activity[f.id] ?? 0) });
+      pts.push({ x: p.x, y: Math.max(-3, p.y), w: 1 + (this.activity[f.id] ?? 0), frame: true });
     }
-    for (const r of sim.rockets) pts.push({ x: r.x, y: Math.min(r.y, 12), w: 0.6 });
-    for (const h of this.hotspots) pts.push({ x: h.x, y: h.y, w: h.w });
-    if (pts.length === 0) pts.push({ x: this.cam.x, y: 2, w: 1 });
+    // rockets and explosions only pull the choice of window, not its size
+    for (const r of sim.rockets) pts.push({ x: r.x, y: r.y, w: 0.4, frame: false });
+    for (const h of this.hotspots) pts.push({ x: h.x, y: h.y, w: h.w, frame: false });
+    if (!pts.some((p) => p.frame)) pts.push({ x: this.cam.x, y: 2, w: 1, frame: true });
     const padX = 6;
     const padY = 3.5;
     const maxSpan = this.W / this.minScale() - padX * 2;
@@ -592,9 +593,14 @@ export class Scene {
         bj = j;
       }
     }
-    const inView = pts.slice(bi, bj);
-    const x0 = inView[0]!.x;
-    const x1 = inView[inView.length - 1]!.x;
+    let inView = pts.slice(bi, bj).filter((p) => p.frame);
+    if (inView.length === 0) inView = pts.filter((p) => p.frame).slice(0, 1);
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    for (const p of inView) {
+      x0 = Math.min(x0, p.x);
+      x1 = Math.max(x1, p.x);
+    }
     let y0 = Infinity;
     let y1 = -Infinity;
     for (const p of inView) {
