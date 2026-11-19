@@ -1,5 +1,5 @@
 /** Points per fight and the running tally across matches in a session. */
-import type { MatchResult } from "../sim/match";
+import type { FightResult as MatchResult } from "../sim/fight";
 
 export const POINTS = { win: 3, ko: 1 };
 

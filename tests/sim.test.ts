@@ -6,9 +6,9 @@ import {
   GAS,
   initPhysics,
   Mat,
-  Match,
+  Fight,
   POWER,
-  replay,
+  replayFight,
   SUPPLY,
   SWAP_TICKS,
   TNT,
@@ -30,9 +30,9 @@ const fire = (weapon: Input["weapon"], aimX = 1, aimY = 0): Input => ({ move: 0,
 describe("determinism and replay", () => {
   test("same seed gives the same hashes, many seeds (each on its own generated level)", () => {
     for (let seed = 1; seed <= 10; seed++) {
-      const a = new Match(seed);
+      const a = new Fight(seed);
       a.playToEnd();
-      const b = new Match(seed);
+      const b = new Fight(seed);
       b.playToEnd();
       expect(b.record.checkpoints).toEqual(a.record.checkpoints);
       expect(b.record.finalHash).toBe(a.record.finalHash);
@@ -42,10 +42,10 @@ describe("determinism and replay", () => {
 
   test("a match record (seed + strategies) replays to the same state hash", () => {
     for (const seed of [3, 77, 1234, 99999, 4000000000]) {
-      const m = new Match(seed);
+      const m = new Fight(seed);
       m.playToEnd();
       const rec = JSON.parse(JSON.stringify(m.record));
-      const r = replay(rec);
+      const r = replayFight(rec);
       expect(r.checkpoints).toEqual(m.record.checkpoints);
       expect(r.finalHash).toBe(m.record.finalHash);
       expect(r.match.result()).toEqual(m.result());
@@ -54,14 +54,14 @@ describe("determinism and replay", () => {
   });
 
   test("different strategies give different states; interleaving matches changes nothing", () => {
-    const a = new Match(5);
+    const a = new Fight(5);
     a.playToEnd();
     const rec = JSON.parse(JSON.stringify(a.record));
     rec.strategies[0].stance = rec.strategies[0].stance === "rush" ? "cover" : "rush";
     rec.strategies[1].loadout = ["grenade", "bat"];
-    expect(replay(rec).checkpoints[0]).not.toBe(a.record.checkpoints[0]);
-    const x = new Match(5);
-    const y = new Match(6);
+    expect(replayFight(rec).checkpoints[0]).not.toBe(a.record.checkpoints[0]);
+    const x = new Fight(5);
+    const y = new Fight(6);
     while (!x.over) {
       x.step();
       y.step();
@@ -73,7 +73,7 @@ describe("determinism and replay", () => {
 describe("fight flow", () => {
   test("one continuous fight that ends with one fighter left or at time-out", () => {
     for (const seed of [1, 2, 3, 4]) {
-      const m = new Match(seed);
+      const m = new Fight(seed);
       let ticks = 1;
       while (!m.step()) ticks++;
       expect(ticks).toBeLessThanOrEqual(FIGHT_TICKS);
@@ -84,7 +84,7 @@ describe("fight flow", () => {
   });
 
   test("the fight ends FINISH_TICKS after the last knockout", () => {
-    const m = new Match(9);
+    const m = new Fight(9);
     m.step();
     m.sim.fighters.slice(1).forEach((f) => m.sim.damageFighter(f, 1000, 0, 0, 0, "test", 0, 0));
     let ticks = 0;
@@ -96,7 +96,7 @@ describe("fight flow", () => {
 
   test("bots give every fighter a strategy with a two-weapon loadout and a line", () => {
     for (const seed of [11, 12, 13, 14]) {
-      const m = new Match(seed);
+      const m = new Fight(seed);
       for (const [i, s] of m.strategies.entries()) {
         expect(s.loadout.length).toBe(2);
         expect(s.loadout[0]).not.toBe(s.loadout[1]);
@@ -109,7 +109,7 @@ describe("fight flow", () => {
 
   test("fighters start close and meet in the first seconds", () => {
     for (const seed of [31, 32, 33]) {
-      const m = new Match(seed);
+      const m = new Fight(seed);
       const xs = m.sim.fighters.map((f) => m.sim.pos(f).x);
       expect(Math.max(...xs) - Math.min(...xs)).toBeLessThanOrEqual(24.5);
       let first = -1;
@@ -455,7 +455,7 @@ describe("weapons and switching", () => {
   });
 
   test("the controller picks the bat up close, rockets at range and the hook for a target on a ledge", () => {
-    const m = new Match(1, [
+    const m = new Fight(1, [
       { target: "nearest", stance: "rush", loadout: ["bat", "rocket"], line: "x" },
       { target: "nearest", stance: "cover", loadout: ["rocket", "shotgun"], line: "x" },
       { target: "nearest", stance: "cover", loadout: ["grapple", "rocket"], line: "x" },

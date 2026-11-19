@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { FlowRunner, matchBeats, scoreFight, simRuns, Tally, type Beat } from "../src/flow";
-import type { MatchResult } from "../src/sim/match";
+import type { FightResult as MatchResult } from "../src/sim/fight";
 
 const result = (winner: number, kos: number[]): MatchResult => ({
   winner,
