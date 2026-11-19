@@ -75,8 +75,9 @@ for (const [mi, seed] of seeds.entries()) {
     if (st.beatIndex !== lastBeat) {
       lastBeat = st.beatIndex;
       // beat screenshots, timed to when each beat's animation has settled
-      if (st.beat === "intro") pendingShots.push({ at: frame + 52, name: `${tag}-intro-${st.beatIndex + 1}` });
-      if (st.beat === "countdown") pendingShots.push({ at: frame + 6, name: `${tag}-countdown-${3 - (st.beatIndex - 4)}` });
+      if (st.beat === "level") pendingShots.push({ at: frame + 40, name: `${tag}-level-card` });
+      if (st.beat === "intro") pendingShots.push({ at: frame + 52, name: `${tag}-intro-${st.beatIndex}` });
+      if (st.beat === "countdown") pendingShots.push({ at: frame + 6, name: `${tag}-countdown-${3 - (st.beatIndex - 5)}` });
       if (st.beat === "go") pendingShots.push({ at: frame + 5, name: `${tag}-fight` });
       if (st.beat === "end") pendingShots.push({ at: frame + 12, name: `${tag}-end-callout` });
       if (st.beat === "celebrate") pendingShots.push({ at: frame + 85, name: `${tag}-celebrate` });

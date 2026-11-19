@@ -179,6 +179,41 @@ body {
   }
 }
 
+/* ---------------------------------------------------------- level card */
+#intro.level {
+  left: 0;
+  right: 0;
+  top: 8vh;
+  transform: none;
+  text-align: center;
+}
+#intro .levelcard {
+  display: inline-block;
+  padding: 2vh 5vh 2.4vh;
+  border-radius: 2.4vh;
+  background: rgba(7, 8, 13, 0.72);
+  animation: slam 0.45s cubic-bezier(0.15, 1.6, 0.35, 1) both;
+}
+#intro .kicker {
+  font-size: 2vh;
+  letter-spacing: 0.4em;
+  opacity: 0.7;
+}
+#intro .lvname {
+  font-size: 11vh;
+  line-height: 1;
+  color: #ffde4a;
+  text-shadow: 0 0.7vh 0 var(--shadow);
+}
+#intro .lvmeta {
+  margin-top: 1vh;
+  font-family: "Helvetica Neue", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 2.2vh;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
 /* ---------------------------------------------------------- countdown */
 #count {
   position: absolute;

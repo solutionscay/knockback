@@ -102,7 +102,7 @@ export class Game {
       el.innerHTML = "";
     }
     this.hud.lineup.innerHTML = this.match.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.personality, this.match.strategies[f.id]!.weapon)}<span>${esc(f.name)}</span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.personality, this.match.strategies[f.id]!.loadout[0])}<span>${esc(f.name)}</span></div>`)
       .join("");
     this.hud.lineup.className = "show";
     this.flow = new FlowRunner(matchBeats(this.match.sim.fighters.length), (b) => this.enter(b));
@@ -114,18 +114,31 @@ export class Game {
     const sim = this.match.sim;
     const h = this.hud;
     switch (b.kind) {
+      case "level": {
+        const lv = sim.level;
+        this.scene.overview = true;
+        h.intro.innerHTML = `
+          <div class="levelcard">
+            <div class="kicker">ARENA ${lv.seed}</div>
+            <div class="lvname">${esc(lv.name)}</div>
+            <div class="lvmeta">${lv.width} m wide · ${lv.platforms} platforms · ${lv.props.length} props · ${lv.pits.length} pit${lv.pits.length === 1 ? "" : "s"} · everything breaks</div>
+          </div>`;
+        restart(h.intro, "show level");
+        break;
+      }
       case "intro": {
+        this.scene.overview = false;
         const f = sim.fighters[b.fighter]!;
         const s = this.match.strategies[b.fighter]!;
         this.scene.focus = { id: f.id, offsetX: 0.2, heightM: 9 };
         h.intro.innerHTML = `
           <div class="card" style="--c:${hex(f.color)}">
-            <div class="portrait">${portraitSvg(f.color, f.personality, s.weapon)}</div>
+            <div class="portrait">${portraitSvg(f.color, f.personality, s.loadout[0])}</div>
             <div class="info">
               <div class="title">${titleOf(f.personality)}</div>
               <div class="name">${esc(f.name.toUpperCase())}</div>
               <div class="line"><span class="typed"></span><span class="caret"></span></div>
-              <div class="tags"><b>${STANCE[s.stance]}</b><b>${s.weapon.toUpperCase()}</b><b>TARGET: ${TARGET[s.target]}</b></div>
+              <div class="tags"><b>${STANCE[s.stance]}</b><b>${s.loadout[0].toUpperCase()} + ${s.loadout[1].toUpperCase()}</b><b>TARGET: ${TARGET[s.target]}</b></div>
             </div>
           </div>`;
         restart(h.intro, "show");
@@ -194,7 +207,7 @@ export class Game {
       .join("");
     return `
       <div class="winner" style="--c:${hex(w.color)}">
-        <div class="portrait">${portraitSvg(w.color, w.personality, this.match.strategies[w.id]!.weapon, "win")}</div>
+        <div class="portrait">${portraitSvg(w.color, w.personality, this.match.strategies[w.id]!.loadout[0], "win")}</div>
         <div class="big">${esc(w.name.toUpperCase())} WINS</div>
         <div class="why">${why} · ${(r.ticks / TICK_RATE).toFixed(0)} s</div>
       </div>

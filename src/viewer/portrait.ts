@@ -22,7 +22,11 @@ export function portraitSvg(color: number, personality: Personality, weapon: Wea
           ? `<path d="M46 26 L52 6 L62 22 L70 2 L78 22 L88 6 L94 26 Z" fill="#fff1a6" stroke="#b08a1e" stroke-width="2"/>`
           : `<path d="M40 30 q-14 -18 -6 -26 q8 6 14 22z M100 30 q14 -18 6 -26 q-8 6 -14 22z" fill="${c}" stroke="${dark}" stroke-width="4"/>`;
   const gun =
-    weapon === "shotgun"
+    weapon === "bat"
+      ? `<g transform="translate(66 104) rotate(-40)"><path d="M0 -5 L96 -12 L104 -6 L104 6 L96 12 L0 5 Z" fill="#d8a868" stroke="#6b4a2c" stroke-width="3"/><rect x="-6" y="-6" width="26" height="12" fill="#2a2d35"/></g>`
+      : weapon === "grapple"
+        ? `<g transform="translate(64 110) rotate(-6)"><rect x="-8" y="-9" width="62" height="18" rx="5" fill="#3a3f4a" stroke="#15171d" stroke-width="3"/><path d="M54 0 L76 -14 M54 0 L80 0 M54 0 L76 14" stroke="#c8ccd6" stroke-width="5" stroke-linecap="round"/></g>`
+        : weapon === "shotgun"
       ? `<g transform="translate(70 110) rotate(-8)"><rect x="0" y="-7" width="92" height="14" rx="4" fill="#2a2d35"/><rect x="26" y="-9" width="30" height="20" fill="#6b4a2c"/><rect x="-14" y="-6" width="24" height="20" fill="#6b4a2c"/></g>`
       : weapon === "grenade"
         ? `<g transform="translate(108 112)"><circle r="17" fill="#4b5a2a" stroke="#1d2410" stroke-width="4"/><rect x="-5" y="-26" width="10" height="10" fill="#888"/></g>`
