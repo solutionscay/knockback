@@ -5,18 +5,40 @@
  * advances when told to, so every frame is exactly 1/30 s of game time no
  * matter how slow headless rendering is.
  *
+ * Demos are filmed in the "View all" camera mode by default (the whole fight
+ * on screen); --camera picks another mode: auto | all | follow:1..4.
+ *
  *   bun run dev &                      # the viewer must be served
- *   bun scripts/record.ts <outdir> [seed1 seed2 ...] [--url http://localhost:5173]
+ *   bun scripts/record.ts <outdir> [seed1 seed2 ...] [--camera all] [--url http://localhost:5173]
  */
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { initPhysics, Match } from "../src/sim";
 
-const args = process.argv.slice(2);
-const urlIdx = args.indexOf("--url");
-const base = urlIdx >= 0 ? args[urlIdx + 1]! : "http://localhost:5173";
-const rest = urlIdx < 0 ? args : args.filter((_, i) => i !== urlIdx && i !== urlIdx + 1);
+// flags: --url <base>, --camera <auto|all|follow:N> (also --flag=value)
+const flags: Record<string, string> = {};
+const rest: string[] = [];
+{
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a.startsWith("--")) {
+      const [k, v] = a.slice(2).split("=", 2) as [string, string | undefined];
+      flags[k] = v ?? argv[++i] ?? "";
+    } else rest.push(a);
+  }
+}
+const base = flags.url || "http://localhost:5173";
+type CamMode = { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number };
+function parseCamera(v: string): CamMode {
+  if (v === "auto") return { kind: "auto" };
+  if (v === "all" || v === "view-all") return { kind: "all" };
+  const m = /^follow:([1-4])$/.exec(v);
+  if (m) return { kind: "follow", id: Number(m[1]) - 1 };
+  throw new Error(`--camera must be auto, all or follow:1..4 (got "${v}")`);
+}
+const camera = parseCamera(flags.camera || "all");
 const outDir = rest[0] ?? "out";
 const seeds = rest.slice(1).map(Number);
 if (seeds.length === 0) seeds.push(7, 42);
@@ -36,6 +58,9 @@ page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 
 await page.goto(`${base}/?seed=${seeds[0]}&capture`);
 await page.waitForFunction(() => window.__kb?.ready, null, { timeout: 60000 });
+
+await page.evaluate((c) => window.__kb!.setCamera(c), camera);
+console.log(`camera: ${JSON.stringify(camera)}`);
 
 // Drive CSS animations from game time too.
 await page.evaluate(() => {
@@ -59,6 +84,8 @@ const moments: { frame: number; kind: string; weight: number; seed: number }[] =
 
 for (const [mi, seed] of seeds.entries()) {
   if (mi > 0) await page.evaluate((s) => window.__kb!.newMatch(s), seed);
+  // a followed fighter that goes down hands the camera back to auto: restore the demo mode each match
+  await page.evaluate((c) => window.__kb!.setCamera(c), camera);
   let tail = -1;
   let lastBeat = -1;
   let checked = false;
@@ -131,4 +158,4 @@ const enc = Bun.spawnSync([
 if (enc.exitCode !== 0) console.error(enc.stderr.toString());
 console.log(report.join("\n"));
 console.log(`moments: ${picked.map((m) => `${m.kind}@${(m.frame / FPS).toFixed(1)}s`).join(", ")}`);
-await Bun.write(join(outDir, "record-report.txt"), [...report, `frames: ${frame} at ${FPS} fps`, ...picked.map((m) => `moment ${m.kind} frame ${m.frame}`)].join("\n") + "\n");
+await Bun.write(join(outDir, "record-report.txt"), [`camera: ${JSON.stringify(camera)}`, ...report, `frames: ${frame} at ${FPS} fps`, ...picked.map((m) => `moment ${m.kind} frame ${m.frame}`)].join("\n") + "\n");

@@ -135,7 +135,7 @@ export class Scene {
    */
   focus: { id: number; offsetX: number; heightM: number } | null = null;
   /** The viewer's camera choice; intro focus, level overview and celebrate override it. */
-  camMode: CamMode = { kind: "auto" };
+  camMode: CamMode = { kind: "all" };
   /** Called when a followed fighter has been out for a beat (the game switches to auto). */
   onFollowLost: (() => void) | null = null;
   private followLostT = -1;
@@ -611,15 +611,17 @@ export class Scene {
     // ------------------------------------------------ camera
     // Frame the fighters. If they are spread wider than the max zoom-out,
     // frame the busiest window (recent hits, shots, rockets in flight).
+    const all = this.camMode.kind === "all" && !this.focus && !this.overview;
+    // "view all" must also show a fighter down in a crater (bedrock top is at -7)
+    const floorY = all ? -6.6 : -3;
     const pts: { x: number; y: number; w: number; frame: boolean }[] = [];
     for (const f of sim.fighters) {
       if (!(f.alive || (!f.removed && sim.tick - f.koTick < 40))) continue;
       const p = this.xform(f.entity, alpha);
-      pts.push({ x: p.x, y: Math.max(-3, p.y), w: 1 + (this.activity[f.id] ?? 0), frame: true });
+      pts.push({ x: p.x, y: Math.max(floorY, p.y), w: 1 + (this.activity[f.id] ?? 0), frame: true });
     }
     // rockets and explosions only pull the choice of window, not its size
     // (in "view all" they are framed too, kept inside the arena)
-    const all = this.camMode.kind === "all";
     const lx0 = sim.level.minX - 2;
     const lx1 = sim.level.maxX + 2;
     for (const r of sim.rockets) pts.push({ x: clampN(r.x, lx0, lx1), y: clampN(r.y, -3, 14), w: 0.4, frame: all });
@@ -656,7 +658,7 @@ export class Scene {
       y0 = Math.min(y0, p.y);
       y1 = Math.max(y1, p.y);
     }
-    y0 = Math.max(y0, -3);
+    y0 = Math.max(y0, floorY);
     y1 = Math.max(y1, y0 + 2);
     let tx = (x0 + x1) / 2;
     let ts = all
@@ -713,7 +715,7 @@ export class Scene {
     let cy = this.cam.y + (this.punchY - this.cam.y) * pk * 0.35;
     const s = this.cam.s * (1 + pk * 0.25);
     // keep the bottom of the view from showing too much abyss
-    const minCy = -7 + H / s / 2;
+    const minCy = (all ? -7.6 : -7) + H / s / 2;
     if (cy < minCy) cy = minCy;
     this.trauma = Math.max(0, this.trauma - dt * 1.6);
     const sh = this.trauma * this.trauma;

@@ -23,7 +23,9 @@ bun run dev                    # http://localhost:5173
 bun run dev --host 0.0.0.0     # also on the LAN (prints the LAN URLs)
 ```
 
-URL options: `?seed=123` picks a match. The next match starts by itself a few
+Camera: **View all** (everyone on screen) is the default; `A` = Auto (frames the
+busiest action), `V` = View all, `1`-`4` = follow a fighter, or use the camera
+bar bottom-left. URL options: `?seed=123` picks a match. The next match starts by itself a few
 seconds after the celebrate screen; `?hold` waits for the Next match button
 instead. `N` or the corner button starts a new match; "Reset scores" clears the
 session scoreboard.
@@ -33,7 +35,7 @@ session scoreboard.
 ```sh
 bun test                       # determinism, fight flow, beats, scores, damage, explosions, ring-out
 bun run batch 200              # 200 headless bot fights + stats
-bun run record <outdir> 19 12  # 1080p WebM of full loops + screenshots (needs the dev server)
+bun run record <outdir> 6 104  # 1080p WebM of full loops in "View all" (--camera auto|all|follow:N); needs the dev server
 bun scripts/crosscheck.ts      # Chromium vs Bun state hash check (needs the dev server)
 bun scripts/levels.ts out.jpg  # contact sheet of generated levels (needs the dev server)
 bun scripts/fps.ts [seed]      # browser frame rate during a fight (needs the dev server)

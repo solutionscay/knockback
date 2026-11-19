@@ -90,12 +90,13 @@ export class Game {
   private loadCamera(): CamMode {
     try {
       const v = JSON.parse(sessionStorage.getItem(CAM_KEY) ?? "null");
-      if (v?.kind === "all") return { kind: "all" };
+      if (v?.kind === "auto") return { kind: "auto" };
       if (v?.kind === "follow" && Number.isInteger(v.id) && v.id >= 0 && v.id < 4) return { kind: "follow", id: v.id };
     } catch {
       /* ignore */
     }
-    return { kind: "auto" };
+    // default: everyone on screen (the operator's preference for watching)
+    return { kind: "all" };
   }
 
   /** View-only: changes what the camera frames, never the simulation. */
