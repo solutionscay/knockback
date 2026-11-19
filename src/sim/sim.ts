@@ -34,6 +34,7 @@ import {
   groups,
   type Blast,
 } from "./constants";
+import { CHARACTERS } from "./characters";
 import { dcos, dsin } from "./dmath";
 import { CELL, Mat, type Grid } from "./grid";
 import { generateLevel, PROP_HALF, type LevelDef, type PropKind } from "./levelgen";
@@ -52,7 +53,7 @@ export type EntityKind = PropKind | "fighter" | "chunk" | "item" | "grenade";
 export type ExplosionKind = "rocket" | "barrel" | "grenade" | "tnt" | "gas";
 
 /** Who a fighter goes after. Resolved continuously during the fight. */
-export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotgun" | "leader";
+export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotgun" | "leader" | "grudge";
 
 /**
  * A fighter's one set of orders for the whole match, chosen before the fight
@@ -61,6 +62,8 @@ export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotg
  */
 export interface Strategy {
   target: TargetPref;
+  /** For target "grudge": the fighter to go after. */
+  grudge?: number;
   stance: Stance;
   loadout: [Weapon, Weapon];
   line: string;
@@ -213,12 +216,14 @@ export type SimEvent =
   | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number }
   | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number };
 
-export const FIGHTER_DEFS: { name: string; title: string; color: number; personality: Personality; speed: number }[] = [
-  { name: "Red", title: "The Brawler", color: 0xff4f4f, personality: "aggressive", speed: 1.0 },
-  { name: "Blue", title: "The Sniper", color: 0x47a3ff, personality: "sniper", speed: 1.04 },
-  { name: "Green", title: "The Rat", color: 0x4fdc6a, personality: "coward", speed: 1.05 },
-  { name: "Gold", title: "The Vulture", color: 0xffc733, personality: "opportunist", speed: 1 },
-];
+/** Fighter identities come from the character data (characters.ts). */
+export const FIGHTER_DEFS: { name: string; title: string; color: number; personality: Personality; speed: number }[] = CHARACTERS.map((c) => ({
+  name: c.name,
+  title: c.title,
+  color: c.color,
+  personality: c.personality,
+  speed: c.speed,
+}));
 
 let rapierReady: Promise<void> | null = null;
 export function initPhysics(): Promise<void> {

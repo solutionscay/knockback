@@ -81,6 +81,9 @@ export class Controller {
       case "shotgun":
         score = (o) => (o.weapons.includes(pref) ? 0 : 40) + dist(o);
         break;
+      case "grudge":
+        score = (o) => (o.id === this.strategy.grudge ? 0 : 40) + dist(o);
+        break;
       default:
         score = dist;
     }

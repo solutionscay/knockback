@@ -42,6 +42,7 @@ const TARGET_TEXT: Record<TargetPref, string[]> = {
   rocket: ["whoever has the rocket", "the rocket crowd", "anyone with a launcher"],
   shotgun: ["the shotgun crowd", "anyone holding a shotgun", "the close-range guys"],
   leader: ["whoever is winning", "the leader", "the scoreboard king"],
+  grudge: ["the one who wronged me", "my old friend", "someone who owes me"],
 };
 
 const WPN: Record<Weapon, string> = { rocket: "rockets", shotgun: "my shotgun", bat: "the bat", grenade: "grenades", grapple: "the hook" };
