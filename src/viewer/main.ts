@@ -6,6 +6,7 @@ import { SoundDirector } from "./audio/director";
 import { AudioEngine, type LoggedCue } from "./audio/engine";
 import { mountSoundControls } from "./audio/ui";
 import { Game } from "./game";
+import { liveStreamUrl } from "./live-url";
 import { enableVideoMode, setVideoCaption, setVideoTag, TimelineLog, type Timeline } from "./video";
 import { sanitizeIdentities, sanitizeRecord, sanitizeSouls } from "./sanitize";
 
@@ -136,7 +137,7 @@ if (params.has("live")) {
   game.onNeedNewMatch = () => {
     if (lastRecord) location.href = `/?record=${encodeURIComponent(lastRecord)}`;
   };
-  const es = new EventSource("/api/live");
+  const es = new EventSource(liveStreamUrl(params));
   es.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === "match") {
