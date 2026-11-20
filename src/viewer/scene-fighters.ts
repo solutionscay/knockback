@@ -1,5 +1,4 @@
 import { Container, Graphics } from "pixi.js";
-import { FIGHTER, POWER, WEAPONS } from "../sim/constants";
 import type { Entity, Fighter, Sim } from "../sim/sim";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
@@ -256,7 +255,7 @@ export class FighterViews {
       ov.clear();
       if (f.alive) {
         if (f.railCharge > 0) {
-          const charge = f.railCharge / WEAPONS.railgun.chargeTicks;
+          const charge = f.railCharge / sim.ruleset.weapons.table.railgun.chargeTicks;
           ov.circle(v.gun.position.x + dcos(v.gun.rotation) * 0.9, v.gun.position.y + dsin(v.gun.rotation) * 0.9, 0.09 + charge * 0.18)
             .fill({ color: WEAPON_ACCENT.railgun, alpha: 0.35 + charge * 0.6 });
         }
@@ -381,7 +380,7 @@ export class FighterViews {
           const r = 20 * ui;
           bars.circle(ex, ey, r).fill({ color: 0x07080d, alpha: 0.75 }).stroke({ width: 3 * ui, color: f.color });
           bars.poly([ex + ca * r * 1.6, ey + sa * r * 1.6, ex + ca * r * 0.9 - sa * r * 0.6, ey + sa * r * 0.9 + ca * r * 0.6, ex + ca * r * 0.9 + sa * r * 0.6, ey + sa * r * 0.9 - ca * r * 0.6]).fill(f.color);
-          bars.rect(ex - r * 0.7, ey + r * 0.15, (r * 1.4 * f.hp) / 100, r * 0.3).fill(f.color);
+          bars.rect(ex - r * 0.7, ey + r * 0.15, (r * 1.4 * f.hp) / sim.ruleset.combat.fighter.maxHp, r * 0.3).fill(f.color);
           bars.circle(ex, ey - r * 0.25, r * 0.32).fill(f.color);
         }
       }
@@ -391,7 +390,7 @@ export class FighterViews {
         if (v.ghostHp < f.hp) v.ghostHp = f.hp;
         const sx = W / 2 + (p.x - cx - shx) * s;
         const sy = H / 2 - (p.y - cy - shy) * s;
-        const top = sy - (FIGHTER.halfHeight + FIGHTER.radius + 0.45) * s;
+        const top = sy - (sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.45) * s;
         const bw = 92 * ui;
         const bh = 12 * ui;
         const bx = sx - bw / 2;
@@ -405,12 +404,12 @@ export class FighterViews {
           bars.poly([mx - 14 * ui, my - 16 * ui, mx + 14 * ui, my - 16 * ui, mx, my]).fill(f.color).stroke({ width: 3 * ui, color: 0x07080d });
           bars.roundRect(bx - 6 * ui, by - 6 * ui, bw + 12 * ui, bh + 12 * ui, 7 * ui).stroke({ width: 2.5 * ui, color: f.color });
         }
-        bars.rect(bx, by, (bw * Math.max(0, v.ghostHp)) / 100, bh).fill({ color: 0xffffff, alpha: 0.85 });
-        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / 100, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
-        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / 100, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
+        bars.rect(bx, by, (bw * Math.max(0, v.ghostHp)) / sim.ruleset.combat.fighter.maxHp, bh).fill({ color: 0xffffff, alpha: 0.85 });
+        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / sim.ruleset.combat.fighter.maxHp, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
+        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / sim.ruleset.combat.fighter.maxHp, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
         for (let i = 1; i < 4; i++) bars.rect(bx + (bw * i) / 4 - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
         if (f.power.jetpack > 0 || f.jetting) {
-          const fuel = f.power.jetpack / POWER.jetpack.fuelTicks;
+          const fuel = f.power.jetpack / sim.ruleset.pickups.power.jetpack.fuelTicks;
           const fy = by + bh + 4 * ui;
           bars.roundRect(bx - 2 * ui, fy - 1 * ui, bw + 4 * ui, 6 * ui, 2 * ui).fill(0x07080d);
           bars.rect(bx, fy, bw, 4 * ui).fill(0x183a3b);

@@ -1,3 +1,4 @@
+import { resolveRuleset, type Ruleset } from "../sim/ruleset";
 /** Untrusted input (record files, the live stream) -> safe decisions and souls. Pure: no DOM, no Pixi. */
 import type { MatchRecord, PlanUpdate } from "../sim/match";
 import { MORALE_STATES } from "../sim/morale";
@@ -141,10 +142,17 @@ export function sanitizePlanUpdates(v: unknown): PlanUpdate[] {
   return out.sort((a, b) => a.tick - b.tick || a.fighter - b.fighter);
 }
 
+/** Rules are part of untrusted record and live-stream data. */
+export function sanitizeRuleset(raw: unknown): Ruleset | null {
+  try { return resolveRuleset(raw); } catch { return null; }
+}
+
 /** Sanitize a whole match record (replay files are untrusted). */
 export function sanitizeRecord(rec: unknown): MatchRecord | null {
   const r = rec as MatchRecord;
-  if (!r || typeof r !== "object" || !Number.isFinite(r.seed) || !Array.isArray(r.rounds) || r.rounds.length > 3 || (r.version !== 2 && r.version !== 3 && r.version !== 4)) return null;
+  if (!r || typeof r !== "object" || !Number.isFinite(r.seed) || !Array.isArray(r.rounds) || (r.version !== 2 && r.version !== 3 && r.version !== 4)) return null;
+  const ruleset = sanitizeRuleset(r.ruleset);
+  if (!ruleset || r.rounds.length > ruleset.round.maxRounds) return null;
   const souls = sanitizeSouls(r.souls);
   if (!souls) return null;
   const identities = r.version === 4 ? sanitizeIdentities(r.identities, Number(r.seed) >>> 0) : undefined;
@@ -152,6 +160,9 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
   return {
     ...r,
     version: r.version,
+    ruleset,
+    preset: typeof r.preset === "string" ? r.preset.slice(0, 64) : undefined,
+    presetVersion: Number.isInteger(r.presetVersion) && (r.presetVersion ?? 0) > 0 ? r.presetVersion : undefined,
     seed: Number(r.seed) >>> 0,
     souls,
     identities,

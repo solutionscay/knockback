@@ -131,7 +131,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs?: numb
       return;
     }
     if (r.outcome === "ok") {
-      const p = parseAnswer(r.raw!, me, match.names);
+      const p = parseAnswer(r.raw!, me, match.names, match.ruleset);
       // post-check (#4): an accusation the last round's facts don't support is logged, never rejected
       const lastStats = match.facts[match.facts.length - 1]?.stats;
       const warn = p.line && lastStats ? checkLine(p.line, me, match.names, checkFactsFromStats(lastStats)).mismatches.map((x) => `${x.claim}; facts: ${x.facts}`) : [];

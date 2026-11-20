@@ -1,3 +1,4 @@
+import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 /**
  * Mid-round check-ins (#9): every ~10 s of fight each AI seat gets a compact
  * status of the fight and may answer with a plan change. The fight never
@@ -73,9 +74,9 @@ export function checkinFlags(flags: Record<string, string | undefined>): false |
 }
 
 /** Check-in ticks of a round (fight ticks), before the cap: 600, 1200, ... */
-export function checkinTicks(cfg: CheckinConfig = CHECKIN): number[] {
+export function checkinTicks(cfg: CheckinConfig = CHECKIN, fightTicks = FIGHT_TICKS): number[] {
   const out: number[] = [];
-  const last = FIGHT_TICKS - cfg.noneInLastS * TICK_RATE;
+  const last = fightTicks - cfg.noneInLastS * TICK_RATE;
   for (let t = Math.round(cfg.firstS * TICK_RATE); t <= last; t += Math.round(cfg.everyS * TICK_RATE)) out.push(t);
   return out.slice(0, cfg.maxPerRound);
 }
@@ -203,7 +204,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
     round,
     tick,
     second: r1(tick / TICK_RATE),
-    secondsLeft: Math.max(0, r1((FIGHT_TICKS - tick) / TICK_RATE)),
+    secondsLeft: Math.max(0, r1((sim.ruleset.round.fightTicks - tick) / TICK_RATE)),
     zoneWidth: r1(sim.zone.half * 2),
     you: {
       name: names[me]!,
@@ -248,7 +249,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
  * The check-in prompt for CLI providers: short (target under 1,500
  * characters), facts first, the answer format last.
  */
-export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinConfig = CHECKIN): string {
+export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinConfig = CHECKIN, ruleset: Ruleset = CLASSIC): string {
   const y = st.you;
   // the soul's first sentence (not its Markdown headings): enough to stay in character
   const persona = soul ? (soul.body.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#")).join(" ").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s/)[0] ?? "").slice(0, 140) : "";
@@ -266,7 +267,7 @@ export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinC
     `PLAN: ${plan}.`,
     `RIVALS: ${rivals}.`,
     `LAST 10s: took ${took}; dealt ${dealt}.`,
-    `NEAREST PICKUPS: ${near}. FIRE: ${st.fire}.`,
+    `NEAREST PICKUPS: ${near}. FIRE: ${st.fire}.${ruleset.weapons.enabled.length !== CLASSIC.weapons.enabled.length || ruleset.pickups.enabled.length !== CLASSIC.pickups.enabled.length ? ` Enabled items: ${enabledItems(ruleset).join(", ")}.` : ""}`,
     `The fight keeps going while you think. Keep the plan, or change only what matters. Fields: target (a name or nearest|weakest|strongest|leader), stance (rush|distance|cover|item), weapons (1-3 pickups), retaliate (attacker|turn|ignore), rules (replaces yours, e.g. [{"when":"my_health_below","value":30,"do":"stance","stance":"cover"}]). line = what you shout (under ${cfg.maxLine} chars), why = reason.`,
     `Reply ONLY with JSON: {"keep":true} or e.g. {"target":"weakest","stance":"cover","line":"...","why":"..."}`,
   ].join("\n");
@@ -286,7 +287,7 @@ const PLAN_FIELDS = ["target", "stance", "weapons", "retaliate", "rules"] as con
  * The merged plan is validated like a round plan; anything invalid = keep.
  * A merge that changes nothing is a keep too.
  */
-export function parseCheckin(text: string, me: number, names: string[], current: Strategy, cfg: CheckinConfig = CHECKIN): CheckinAnswer {
+export function parseCheckin(text: string, me: number, names: string[], current: Strategy, cfg: CheckinConfig = CHECKIN, ruleset: Ruleset = CLASSIC): CheckinAnswer {
   const objs = jsonObjects(text).filter((o): o is Record<string, unknown> => !!o && typeof o === "object" && !Array.isArray(o));
   if (!objs.length) return { kind: "invalid", problems: ["no JSON object"] };
   const o = objs.find((x) => PLAN_FIELDS.some((k) => x[k] !== undefined)) ?? objs[0]!;
@@ -304,12 +305,12 @@ export function parseCheckin(text: string, me: number, names: string[], current:
     stance: o.stance ?? current.stance,
     retaliate: o.retaliate ?? current.retaliate ?? "turn",
   };
-  const v = validatePlan(merged, me, names);
+  const v = validatePlan(merged, me, names, ruleset);
   if (!v.strategy) return { kind: "invalid", problems: v.problems };
   const s: Strategy = { ...v.strategy, line: current.line ?? "" };
   let ruleProblems: string[] | undefined;
   if (o.rules !== undefined) {
-    const pr = parseRules(o.rules, me, names);
+    const pr = parseRules(o.rules, me, names, ruleset);
     if (pr.rules.length) s.rules = pr.rules;
     if (pr.problems.length) ruleProblems = pr.problems;
   } else if (current.rules?.length) s.rules = current.rules.map((r) => ({ ...r }));

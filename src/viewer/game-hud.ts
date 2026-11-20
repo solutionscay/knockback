@@ -1,8 +1,8 @@
 import { formatSeconds } from "../format";
 import type { Beat } from "../flow/beats";
 import { POINTS, Tally } from "../flow/score";
-import { FIGHT_TICKS, TICK_RATE } from "../sim/constants";
-import { ROUNDS_TO_WIN, type Match } from "../sim/match";
+import { TICK_RATE } from "../sim/constants";
+import { type Match } from "../sim/match";
 import type { MoraleState, RoundFacts } from "../sim/morale";
 import { behindHitText, topDamager } from "../sim/roundstats";
 import type { Sim, Strategy } from "../sim/sim";
@@ -84,7 +84,7 @@ export function renderCamBar(el: HTMLElement, m: CamMode, sim?: Sim) {
 export function pipsHtml(match: Match, size: "small" | "big"): string {
   const pips = match.identities.map((c, i) => {
     const w = match.wins[i]!;
-    const dots = Array.from({ length: ROUNDS_TO_WIN }, (_, k) => `<b class="${k < w ? "on" : ""}"></b>`).join("");
+    const dots = Array.from({ length: match.ruleset.round.winsToTake }, (_, k) => `<b class="${k < w ? "on" : ""}"></b>`).join("");
     return `<span class="pip" style="--c:${hex(c.color)}"><i></i>${size === "big" ? esc(c.name) : ""}${dots}</span>`;
   }).join("");
   return `<span class="pips pips-${size}">${pips}</span>`;
@@ -198,7 +198,7 @@ export function renderDialogueLine(el: HTMLElement, line: string, elapsed: numbe
 }
 
 export function renderRoundClock(el: HTMLElement, match: Match, tick: number) {
-  const left = Math.max(0, (FIGHT_TICKS - tick) / TICK_RATE);
+  const left = Math.max(0, (match.ruleset.round.fightTicks - tick) / TICK_RATE);
   const txt = `<span class="r">ROUND ${match.round}</span>${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${pipsHtml(match, "small")}`;
   if (el.innerHTML !== txt) el.innerHTML = txt;
   el.className = left < 10 ? "show low" : "show";

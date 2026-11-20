@@ -6,6 +6,7 @@
  * replay show it at the same place. While a fighter is on autopilot its chip
  * says AUTOPILOT and its visor shows the sleepy "..." face.
  */
+import { CLASSIC } from "../sim/ruleset";
 import type { Beat } from "../flow/beats";
 
 export interface ControlView {
@@ -21,25 +22,25 @@ export interface ControlView {
 const PHASES = ["plan", "fight", "roundEnd", "checkin"];
 
 /** Control events from the live stream or a record: checked, trimmed, at most 64. */
-export function sanitizeControl(raw: unknown): ControlView[] {
+export function sanitizeControl(raw: unknown, maxRounds = CLASSIC.round.maxRounds): ControlView[] {
   if (!Array.isArray(raw)) return [];
   const out: ControlView[] = [];
   for (const e of raw.slice(0, 64)) {
-    const v = sanitizeOne(e);
+    const v = sanitizeOne(e, maxRounds);
     if (v) out.push(v);
   }
   return out;
 }
 
-export function sanitizeOne(e: unknown): ControlView | null {
+export function sanitizeOne(e: unknown, maxRounds = CLASSIC.round.maxRounds): ControlView | null {
   if (!e || typeof e !== "object") return null;
   const o = e as Record<string, unknown>;
   const int = (v: unknown, lo: number, hi: number) => (Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi ? (v as number) : null);
   const seat = int(o.seat, 0, 3);
-  const round = int(o.round, 1, 3);
+  const round = int(o.round, 1, maxRounds);
   if (seat === null || round === null || (o.mode !== "autopilot" && o.mode !== "agent") || !PHASES.includes(o.phase as string)) return null;
   const tick = o.tick === null || o.tick === undefined ? null : int(o.tick, 0, 1e7);
-  const from = int(o.fromRound, 1, 4);
+  const from = int(o.fromRound, 1, maxRounds + 1);
   return { seat, mode: o.mode, round, phase: o.phase as ControlView["phase"], tick, line: typeof o.line === "string" ? o.line.slice(0, 140) : "", ...(from !== null ? { fromRound: from } : {}) };
 }
 

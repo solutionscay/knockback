@@ -1,3 +1,4 @@
+import { allowedWeapon, CLASSIC, type Ruleset } from "../sim/ruleset";
 /**
  * Lenient parsing of an AI answer: find a balanced JSON object anywhere in the
  * text (models wrap JSON in Markdown or prose), then validate it against the
@@ -69,7 +70,7 @@ function itemOf(v: unknown): ItemType | undefined {
  * item_near, and to the action otherwise; "do_item" (or "weapon") names the
  * action's item when the trigger already uses "item".
  */
-export function parseRules(raw: unknown, me: number, names: string[]): { rules: Rule[]; problems: string[] } {
+export function parseRules(raw: unknown, me: number, names: string[], ruleset: Ruleset = CLASSIC): { rules: Rule[]; problems: string[] } {
   const problems: string[] = [];
   if (raw === undefined || raw === null) return { rules: [], problems };
   if (!Array.isArray(raw)) return { rules: [], problems: [`rules: expected a list, got ${typeof raw}`] };
@@ -123,7 +124,7 @@ export function parseRules(raw: unknown, me: number, names: string[]): { rules: 
     }
     const cl = cleanLine(x.label);
     const rule: Rule = { ...r, label: cl ? (cl.length > MAX_RULE_LABEL ? cl.slice(0, MAX_RULE_LABEL).trim() : cl) : autoLabel(r, names) };
-    const bad = checkRule(rule, me);
+    const bad = checkRule(rule, me, ruleset);
     if (bad) return void problems.push(`${tag}${cl ? ` ("${rule.label}")` : ""}: ${bad}`);
     const key = ruleKey(rule);
     if (seen.has(key)) return void problems.push(`${tag} ("${rule.label}"): duplicate rule, dropped`);
@@ -149,12 +150,13 @@ export interface Parsed {
  * Weapons: 1 to 3 different pickups to go for, best first ("loadout" is
  * accepted as an old spelling).
  */
-export function validatePlan(o: Record<string, unknown>, me: number, names: string[]): { strategy: Strategy | null; problems: string[] } {
+export function validatePlan(o: Record<string, unknown>, me: number, names: string[], ruleset: Ruleset = CLASSIC): { strategy: Strategy | null; problems: string[] } {
   const problems: string[] = [];
   const weapon = (v: unknown): Weapon | null => {
     if (typeof v !== "string") return null;
     const w = v.toLowerCase().trim();
-    return isPickupWeapon(w) ? w : (WEAPON_ALIAS[w] ?? null);
+    const candidate = isPickupWeapon(w) ? w : WEAPON_ALIAS[w];
+    return allowedWeapon(ruleset, candidate) ? candidate : null;
   };
   const rawW = o.weapons ?? o.loadout;
   const ws = Array.isArray(rawW) ? rawW.map(weapon) : typeof rawW === "string" ? [weapon(rawW)] : [];
@@ -183,14 +185,14 @@ export function validatePlan(o: Record<string, unknown>, me: number, names: stri
   return { strategy: { target: target!, ...(grudge !== undefined ? { grudge } : {}), stance: stance!, weapons, retaliate, line: "" }, problems };
 }
 
-export function parseAnswer(text: string, me: number, names: string[]): Parsed {
+export function parseAnswer(text: string, me: number, names: string[], ruleset: Ruleset = CLASSIC): Parsed {
   const objs = jsonObjects(text).filter((o): o is Record<string, unknown> => !!o && typeof o === "object" && !Array.isArray(o));
   if (!objs.length) return { strategy: null, line: null, problems: ["no JSON object"] };
   let best: Parsed | null = null;
   for (const o of objs) {
-    const v = validatePlan(o, me, names);
+    const v = validatePlan(o, me, names, ruleset);
     const why = cleanWhy(o.why ?? o.reason);
-    const pr = parseRules(o.rules, me, names);
+    const pr = parseRules(o.rules, me, names, ruleset);
     if (v.strategy && pr.rules.length) v.strategy.rules = pr.rules;
     const p: Parsed = { strategy: v.strategy, line: cleanLine(o.line ?? o.say), problems: v.problems, ...(why ? { why } : {}), ...(pr.problems.length ? { ruleProblems: pr.problems } : {}) };
     if (p.strategy && p.line) return p;

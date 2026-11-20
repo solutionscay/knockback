@@ -8,7 +8,7 @@ import { mountSoundControls } from "./audio/ui";
 import { Game } from "./game";
 import { liveStreamUrl } from "./live-url";
 import { enableVideoMode, setVideoCaption, setVideoTag, TimelineLog, type Timeline } from "./video";
-import { sanitizeIdentities, sanitizeRecord, sanitizeSouls } from "./sanitize";
+import { sanitizeIdentities, sanitizeRecord, sanitizeRuleset, sanitizeSouls } from "./sanitize";
 
 declare global {
   interface Window {
@@ -142,7 +142,9 @@ if (params.has("live")) {
     const msg = JSON.parse(ev.data);
     if (msg.type === "match") {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
-      game.newMatch(Number(msg.seed) >>> 0, { live: true, souls: sanitizeSouls(msg.souls), identities: sanitizeIdentities(msg.identities), labels: viewerLabels(msg.labels) });
+      const ruleset = sanitizeRuleset(msg.ruleset);
+      if (!ruleset) return;
+      game.newMatch(Number(msg.seed) >>> 0, { live: true, ruleset, souls: sanitizeSouls(msg.souls), identities: sanitizeIdentities(msg.identities), labels: viewerLabels(msg.labels) });
     } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta, msg.checkinTicks);
     else if (msg.type === "control") game.pushControl(msg); // an agent dropped or came back (#22)
     else if (msg.type === "checkin") game.pushCheckin(msg.round, msg.tick, msg.leadTicks); // a mid-round check-in opened (#9)

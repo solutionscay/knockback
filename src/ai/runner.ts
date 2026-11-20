@@ -1,3 +1,4 @@
+import type { Ruleset } from "../sim/ruleset";
 /**
  * MatchRunner: one best-of-3 match with any mix of seats (house bot, local AI
  * provider, remote agent), the loop that scripts/ai-match.ts used to own.
@@ -25,7 +26,7 @@ import { checkinSummaryLines, planChangeSummary } from "./checkin-log";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
-  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string }
+  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string; ruleset?: Ruleset }
   | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[]; checkinTicks?: number[] }
   | { type: "round"; round: number; winner: number; seconds: number; reason: string; wins: number[]; kos: RoundFacts["stats"]["kos"]; summary: string[] }
   | { type: "done"; record: string | null; winner: number; wins: number[] }
@@ -67,6 +68,9 @@ export interface ControlEvent {
 }
 
 export interface RunnerOptions {
+  ruleset?: Ruleset;
+  preset?: string;
+  presetVersion?: number;
   seed: number;
   seats: Seat[];
   /** overrides every seat's own deadline (the --deadline flag) */
@@ -147,7 +151,7 @@ export class MatchRunner {
 
   constructor(readonly opts: RunnerOptions) {
     const souls: Soul[] = opts.seats.map((s) => s.soul);
-    this.match = new Match(opts.seed, { souls, ...(opts.identityWishes ? { identityWishes: opts.identityWishes } : {}) });
+    this.match = new Match(opts.seed, { souls, ruleset: opts.ruleset, preset: opts.preset, presetVersion: opts.presetVersion, ...(opts.identityWishes ? { identityWishes: opts.identityWishes } : {}) });
     this.labels = opts.labels ?? opts.seats.map((s) => s.provider?.label ?? "house");
     this.lineup = opts.lineup ?? opts.seats.map((s) => s.providerName);
     this.checkin = opts.checkins ? { ...CHECKIN, ...(typeof opts.checkins === "object" ? opts.checkins : {}) } : null;
@@ -175,7 +179,7 @@ export class MatchRunner {
     this.t0 = performance.now();
     this.startedAtMs = Date.now();
     const m = this.match;
-    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme });
+    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme, ruleset: m.ruleset });
   }
 
   private stratText(s: { stance: string; weapons: string[]; target: string; grudge?: number; retaliate?: string }) {
@@ -269,7 +273,7 @@ export class MatchRunner {
     this.prompts.push({ round, prompts: ask.prompts, raw: ask.raw });
     const decidedAt = Date.now();
     // the round's check-in schedule: a live viewer holds at each tick until that check-in is open or over (#9)
-    const schedule = !replayed && this.checkin && this.checkinAsk.some(Boolean) ? checkinTicks(this.checkin) : null;
+    const schedule = !replayed && this.checkin && this.checkinAsk.some(Boolean) ? checkinTicks(this.checkin, this.match.ruleset.round.fightTicks) : null;
     this.emit({ type: "decisions", round, decisions: ask.decisions, meta: ask.meta, ...(schedule ? { checkinTicks: schedule } : {}) });
     this.say(replayed ? `ROUND ${round} plans (replayed from storage)` : `ROUND ${round} plans (${formatSeconds(askMs)} to decide)`);
     ask.decisions.forEach((d, i) => {
@@ -332,7 +336,7 @@ export class MatchRunner {
     const fightAt = this.fightStartAt(round, ask.decisions.map((d) => d.line), decidedAt);
     if (broadcast) this.fighting = { round, fightAt };
     try {
-      for (const tick of checkinTicks(cfg)) {
+      for (const tick of checkinTicks(cfg, this.match.ruleset.round.fightTicks)) {
         if (match.stepUntil(tick)) break;
         const fight = match.fight!;
         if (fight.sim.alive().length < 2) break;
@@ -375,7 +379,7 @@ export class MatchRunner {
     const fight = match.fight!;
     const names = this.names;
     const st = checkinStatus(fight, seat, names, round);
-    const prompt = buildCheckinPrompt(st, this.opts.seats[seat]!.soul, cfg);
+    const prompt = buildCheckinPrompt(st, this.opts.seats[seat]!.soul, cfg, match.ruleset);
     const provider = this.labels[seat]!;
     const t0 = performance.now();
     const ctl = new AbortController();
@@ -394,7 +398,7 @@ export class MatchRunner {
         raw = got;
         meta.answerChars = got.length;
         const current = fight.controllers[seat]!.strategy;
-        const a = parseCheckin(got, seat, names, current, cfg);
+        const a = parseCheckin(got, seat, names, current, cfg, match.ruleset);
         if (a.kind === "invalid") Object.assign(meta, { outcome: "invalid", detail: a.problems.join(", ").slice(0, 200) });
         else if (a.kind === "keep") Object.assign(meta, { outcome: "keep", ...(a.line ? { detail: `line: ${a.line}` } : {}) });
         else {

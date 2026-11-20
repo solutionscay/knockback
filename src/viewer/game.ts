@@ -1,3 +1,4 @@
+import type { Ruleset } from "../sim/ruleset";
 /**
  * Viewer loop for a best-of-3 match: walks the beats (src/flow) and draws each.
  *   level card -> intro lines -> [3 2 1 FIGHT! -> round -> round result
@@ -12,7 +13,7 @@ import type { Identity } from "../sim/identity";
 import type { Soul } from "../sim/soul";
 import { DT } from "../sim/constants";
 import type { Fight } from "../sim/fight";
-import { Match, ROUNDS_TO_WIN, type DecisionMeta, type MatchRecord } from "../sim/match";
+import { Match, type DecisionMeta, type MatchRecord } from "../sim/match";
 import type { SimEvent } from "../sim/sim";
 import { VoiceSession, type Decision } from "../sim/voice";
 import { hex } from "./portrait";
@@ -150,12 +151,12 @@ export class Game {
    * exactly (all decisions from the record). `live`: decisions arrive later via
    * pushDecisions() (AI fighters thinking on the server).
    */
-  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; control?: unknown } = {}) {
-    this.ap.reset(sanitizeControl(opts.control));
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; control?: unknown; ruleset?: Ruleset } = {}) {
     this.apUntil = 0;
     document.getElementById("autopilot-callout")?.classList.remove("show");
     // live: the server's identities come as wishes; they are valid and distinct, so they are kept as they are
-    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, souls: opts.souls, identityWishes: opts.identities });
+    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, identityWishes: opts.identities });
+    this.ap.reset(sanitizeControl(opts.control, this.match.ruleset.round.maxRounds));
     this.match.onEvent = (e) => this.onEvent(e);
     this.labels = opts.labels ?? null;
     this.live = !!opts.live;
@@ -168,7 +169,7 @@ export class Game {
       // show the arena while the fighters think about round 1
       this.waitingRound = 1;
       this.shown = null as unknown as Fight;
-      const preview = new Match(seed, { souls: this.match.souls, identityWishes: this.match.identities });
+      const preview = new Match(seed, { ruleset: this.match.ruleset, souls: this.match.souls, identityWishes: this.match.identities });
       preview.prepareRound();
       this.shown = preview.fight!;
       this.scene.load(this.shown.sim);
@@ -205,7 +206,7 @@ export class Game {
 
   /** Live match: an agent dropped (the house bot took its fighter) or came back (#22). */
   pushControl(raw: unknown) {
-    const e = sanitizeOne(raw);
+    const e = sanitizeOne(raw, this.match.ruleset.round.maxRounds);
     if (e) this.ap.push(e);
   }
 
@@ -379,7 +380,7 @@ export class Game {
         saveTally(this.tally);
         const w = this.match.identities[facts.winner]!;
         const decided = this.match.over;
-        h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span><span class="rmodel">${modelBadgeHtml(this.seatLabels()[facts.winner]!, "lg")}</span>${pipsHtml(this.match, "big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
+        h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span><span class="rmodel">${modelBadgeHtml(this.seatLabels()[facts.winner]!, "lg")}</span>${pipsHtml(this.match, "big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === this.match.ruleset.round.winsToTake - 1 && this.match.round === this.match.ruleset.round.maxRounds - 1 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
         h.callout.innerHTML += recapHtml(this.match, facts, this.plans.roundFirings, this.plans.roundKos, this.seatLabels());
         if (this.match.diverged >= 0) h.callout.innerHTML += `<span class="small diverged">REPLAY DIVERGED IN ROUND ${this.match.diverged} · THIS RECORD WAS MADE BY AN OLDER ENGINE</span>`;
         restart(h.callout, "show");
