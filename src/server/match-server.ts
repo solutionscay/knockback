@@ -15,6 +15,7 @@ import { selectRuleset, storedRuleset, type MatchRuleset } from "./match-ruleset
  *   POST /api/matches/:id/leave       (seat token) the house bot takes the seat
  *   GET  /api/matches/:id/report      plans and results so far (?round=n for one round)
  *   GET  /api/live?match=:id          spectator stream (SSE); without ?match: the newest match
+ *   GET  /api/replays, /api/agents/:name, /share/:id.svg   read-only data for the site pages (site.ts)
  *
  * Joining returns a seat token valid for that match and seat only; turn, plan
  * and leave need it in `Authorization: Bearer <token>`. The server keeps only
@@ -40,6 +41,7 @@ import { exampleSouls } from "../sim/souls";
 import { errorResponse, HttpError, json, MAX_BODY, RateLimiter, readJson } from "./limits";
 import { LiveStream } from "./live";
 import { lobbyPage } from "./lobby";
+import { siteRoute } from "./site";
 import { ENGINE_VERSION, recordEngine } from "../sim/engine-version";
 import { checkinSchema, planSchema, RemoteSeat } from "./remote";
 import type { CheckinConfig } from "../ai/checkin";
@@ -617,7 +619,8 @@ export class ServerMatch {
                 winner: names[f.winner],
                 reason: f.reason,
                 seconds: Math.round(f.seconds),
-                knockouts: f.stats.kos.map((k) => ({ victim: names[k.victim], by: k.by >= 0 && k.by !== k.victim ? names[k.by] : null, weapon: k.weapon, cause: k.cause })),
+                knockouts: f.stats.kos.map((k) => ({ victim: names[k.victim], by: k.by >= 0 && k.by !== k.victim ? names[k.by] : null, weapon: k.weapon, cause: k.cause, tick: k.tick ?? null })),
+                ticks: rec.fight.ticks,
                 summary: Object.fromEntries(names.map((n, s) => [n, f.stats.summary[s]])),
                 finalHash: rec.fight.finalHash,
               }
@@ -800,7 +803,7 @@ export class MatchServer {
     const url = new URL(req.url);
     if (url.pathname === "/lobby" && req.method === "GET") return new Response(lobbyPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     if (url.pathname === "/models" && req.method === "GET") return new Response(modelsPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
-    if (!url.pathname.startsWith("/api/") && url.pathname !== "/api") return null;
+    if (!url.pathname.startsWith("/api/") && url.pathname !== "/api" && !url.pathname.startsWith("/share/")) return null;
     if (url.pathname === "/api/health") return this.health();
     try {
       this.ipLimit.take(ip);
@@ -872,6 +875,9 @@ export class MatchServer {
       if (method !== want) throw new HttpError(405, `use ${want} for ${path}`, undefined, { allow: want });
     };
     if (path === "/api") return json(apiIndex(this.opts.open));
+    // the site pages' read-only data (#22): /api/replays, /api/agents/:name, /share/:id.svg
+    const site = await siteRoute(this, req, path, url);
+    if (site) return site;
     if (path === "/api/live") {
       allow("GET");
       const mid = url.searchParams.get("match");
@@ -1077,9 +1083,12 @@ function apiIndex(open: boolean) {
       "POST /api/matches/:id/leave": "the house bot takes your seat (before the start: the seat is free again)",
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
       "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
-      "GET /lobby": "landing page: the live match, the match list, the model leaderboard, how to join",
+      "GET /lobby": "the site (#22): lobby, /watch/:id, /replay/:id, /agent/:name, /replays (served by bun run match-server)",
       "GET /models": "the model leaderboard page: which model wins most",
       "GET /api/models": "model leaderboard from the record index: per engine version and overall, match win rate with a 95% interval, round wins, knockouts, ring-outs, damage, survival, fallbacks, autopilot; head-to-head (?min=N sets the provisional cut, default 10)",
+      "GET /api/replays?limit=30": "saved matches, newest first: line-up, models, result, theme, lines and plans per round",
+      "GET /api/agents/:name": "an agent's bot, persona summary, record and recent matches (from the last 300 stored matches)",
+      "GET /share/:id.svg": "the 1200x630 share card of a finished match",
       "GET /api/records": "index of saved records (path, seed, hashes, winner, engine version; old = made by another engine, shown as a summary, not replayed)",
     },
     limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },
