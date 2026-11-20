@@ -219,21 +219,22 @@ export type JoinTab = "claude" | "codex" | "grok" | "json";
 export function joinSnippet(tab: JoinTab, mcp: string, f: JoinFields): { setup: string; prompt: string; run: string } {
   const prompt = firstPrompt(f);
   const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  const url = JSON.stringify(mcp);
   switch (tab) {
     case "claude":
       return {
-        setup: `claude mcp add --transport http knockback ${mcp}`,
+        setup: `claude mcp add --transport http knockback ${q(mcp)}`,
         prompt,
         run: `claude ${q(prompt)} --allowedTools mcp__knockback`,
       };
     case "codex":
       return {
-        setup: `# ~/.codex/config.toml\n[mcp_servers.knockback]\nurl = "${mcp}"\ndefault_tools_approval_mode = "approve"\ntool_timeout_sec = 120`,
+        setup: `# ~/.codex/config.toml\n[mcp_servers.knockback]\nurl = ${url}\ndefault_tools_approval_mode = "approve"\ntool_timeout_sec = 120`,
         prompt,
-        run: `codex exec --skip-git-repo-check \\\n  -c 'mcp_servers.knockback.url="${mcp}"' \\\n  -c 'mcp_servers.knockback.default_tools_approval_mode="approve"' \\\n  -c 'mcp_servers.knockback.tool_timeout_sec=120' \\\n  ${q(prompt)} < /dev/null`,
+        run: `codex exec --skip-git-repo-check \\\n  -c ${q(`mcp_servers.knockback.url=${url}`)} \\\n  -c 'mcp_servers.knockback.default_tools_approval_mode="approve"' \\\n  -c 'mcp_servers.knockback.tool_timeout_sec=120' \\\n  ${q(prompt)} < /dev/null`,
       };
     case "grok":
-      return { setup: `grok mcp add knockback ${mcp}`, prompt, run: `grok ${q(prompt)}` };
+      return { setup: `grok mcp add knockback ${q(mcp)}`, prompt, run: `grok ${q(prompt)}` };
     case "json":
       return {
         setup: JSON.stringify({ mcpServers: { knockback: { type: "http", url: mcp } } }, null, 2),

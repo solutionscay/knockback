@@ -147,7 +147,10 @@ describe("JOIN panel (#42)", () => {
       expect(s.setup).toContain("https://kb.example/mcp");
       expect(s.prompt).toContain("Brix");
     }
-    expect(joinSnippet("claude", "https://kb.example/mcp", f).setup).toBe("claude mcp add --transport http knockback https://kb.example/mcp");
+    expect(joinSnippet("claude", "https://kb.example/mcp", f).setup).toBe("claude mcp add --transport http knockback 'https://kb.example/mcp'");
+    const endpoint = mcpUrlFrom({ mcp: "https://kb.example/region&zone/mcp" }, "https://fallback.example");
+    expect(joinSnippet("grok", endpoint, f).setup).toBe(`grok mcp add knockback '${endpoint}'`);
+    expect(joinSnippet("codex", endpoint, f).run).toContain(`-c 'mcp_servers.knockback.url="${endpoint}"'`);
     expect(JSON.parse(joinSnippet("json", "https://kb.example/mcp", f).setup)).toEqual({ mcpServers: { knockback: { type: "http", url: "https://kb.example/mcp" } } });
     const run = joinSnippet("claude", "https://kb.example/mcp", f).run;
     expect(run).toContain(`'\\''quoted'\\''`);

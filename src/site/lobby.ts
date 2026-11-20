@@ -5,7 +5,7 @@
  */
 import { badge } from "./badge";
 import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
-import { ago, boardFromModels, boardFromReplays, cap, clock, feedEntries, liveMatch, queue, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type ReplayInfo, scoreline } from "./data";
+import { ago, boardFromModels, boardFromReplays, cap, clock, feedEntries, joinSnippet, liveMatch, queue, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type ReplayInfo, scoreline } from "./data";
 import { $, every, getJson, html, mount, raw } from "./dom";
 import { openJoin } from "./join";
 import { picksSlot } from "./picks";
@@ -46,7 +46,7 @@ export function lobbyPage(root: HTMLElement) {
       </aside>
     </div>`,
   );
-  $("#l-one")!.textContent = `claude mcp add --transport http knockback ${location.origin}/mcp`;
+  $("#l-one")!.textContent = joinSnippet("claude", `${location.origin}/mcp`, { name: "", persona: "", owner: "" }).setup;
 
   let lineup: LiveLineup | null = null;
   let entries: FeedEntry[] = [];
