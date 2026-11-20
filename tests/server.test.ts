@@ -281,7 +281,8 @@ describe("match server API", () => {
     expect(rep.status).toBe("over");
     expect(rep.rounds.length).toBe(seen.rounds);
     for (const r of rep.rounds) {
-      expect(r.plans.map((p: any) => p.meta.outcome)).toEqual(["ok", "ok", "fallback-timeout", "house"]);
+      expect(r.plans.map((p: any) => p.meta.outcome).filter((_: unknown, i: number) => i !== 2)).toEqual(["ok", "ok", "house"]);
+      expect(["fallback-timeout", "fallback-error"]).toContain(r.plans[2].meta.outcome); // missed deadline -> autopilot (#22)
       expect(r.plans[0].meta.provider).toBe("remote/Planner");
       expect(r.plans[1].line).toBe("Raw reply works.");
     }

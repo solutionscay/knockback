@@ -10,6 +10,7 @@
  * can implement it; SqliteStore is the bun:sqlite one for local and LAN use.
  */
 import { Database } from "bun:sqlite";
+import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
 import type { DecisionMeta } from "../sim/match";
 import type { Decision } from "../sim/voice";
@@ -98,6 +99,9 @@ export interface MatchStore {
   listRounds(matchId: string): Promise<RoundRow[]>;
   insertPlan(p: PlanRow): Promise<void>;
   getPlan(matchId: string, round: number, seat: number): Promise<PlanRow | null>;
+  /** a change of control (autopilot / agent back, #22), in order */
+  insertControl(matchId: string, idx: number, e: ControlEvent): Promise<void>;
+  listControl(matchId: string): Promise<ControlEvent[]>;
   insertRecord(r: RecordRow): Promise<void>;
   getRecord(matchId: string): Promise<RecordRow | null>;
   listRecords(limit?: number): Promise<RecordRow[]>;
@@ -158,6 +162,13 @@ export const MIGRATIONS: string[] = [
      hashes TEXT NOT NULL,             -- JSON string[] (final hash per round)
      winner INTEGER NOT NULL,
      created_at INTEGER NOT NULL
+   );`,
+  // 2 (#22): who controls each fighter, as it changes (autopilot / agent back)
+  `CREATE TABLE control (
+     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+     idx INTEGER NOT NULL,
+     event TEXT NOT NULL,              -- JSON ControlEvent (seat, mode, round, phase, tick, reason, line, fromRound)
+     PRIMARY KEY (match_id, idx)
    );`,
 ];
 
@@ -281,6 +292,12 @@ export class SqliteStore implements MatchStore {
   async getPlan(matchId: string, round: number, seat: number) {
     const r = this.db.query("SELECT * FROM plans WHERE match_id = ? AND round = ? AND seat = ?").get(matchId, round, seat) as Row | null;
     return r ? { matchId, round, seat, raw: r.raw as string, at: r.at as number } : null;
+  }
+  async insertControl(matchId: string, idx: number, e: ControlEvent) {
+    this.db.query("INSERT OR REPLACE INTO control (match_id, idx, event) VALUES (?, ?, ?)").run(matchId, idx, j(e));
+  }
+  async listControl(matchId: string) {
+    return (this.db.query("SELECT event FROM control WHERE match_id = ? ORDER BY idx").all(matchId) as Row[]).map((r) => p<ControlEvent>(r.event));
   }
   async insertRecord(r: RecordRow) {
     this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt);

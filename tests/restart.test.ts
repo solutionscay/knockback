@@ -65,10 +65,9 @@ function agent(server: () => Server, token: string, silent: boolean) {
         if (r.status !== 200) throw new Error(`turn ${r.status}: ${JSON.stringify(t)}`);
         if (t.status === "over") return t;
         if (t.status !== "turn") continue;
-        if (silent) {
-          await Bun.sleep(t.msLeft + 50);
-          continue;
-        }
+        // "slow" (was silent): answers just before the deadline, so round 2 is still being asked when the server
+        // is killed; a seat that missed a deadline would go on autopilot (#22) and be decided at once
+        if (silent) await Bun.sleep(Math.max(0, t.msLeft - 600));
         await fetch(`${s.base}/api/matches/${s.match}/plan`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ round: t.round, ...PLAN }) });
       } catch (e) {
         if (e instanceof Error && e.message.startsWith("turn ")) throw e;

@@ -36,6 +36,8 @@ import { errorResponse, HttpError, json, MAX_BODY, RateLimiter, readJson } from 
 import { LiveStream } from "./live";
 import { lobbyPage } from "./lobby";
 import { planSchema, RemoteSeat } from "./remote";
+import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
+import type { ControlEvent } from "../ai/runner";
 import { SqliteStore, type MatchRow, type MatchStore, type SeatRow } from "./store";
 
 export const MAX_PERSONA = 8_000;
@@ -64,6 +66,10 @@ export interface SeatAgent {
   ip: string;
   /** long polls in flight */
   polls: number;
+  /** last authenticated request from this seat (presence) */
+  lastSeen: number;
+  /** the house bot drives this fighter until the agent comes back (#22): why */
+  autopilot: string | null;
 }
 
 /** "remote" (an agent's seat), "house" (the house bot), or a local provider name (CLI only). */
@@ -92,6 +98,14 @@ export interface ServerOptions {
   store?: MatchStore;
   /** shown by GET /api/health (e.g. the image's git revision) */
   version?: string;
+  /**
+   * "broadcast" (#22): rounds run at viewer speed, the server waits until a
+   * round has played out for spectators before asking for the next one.
+   * "fast" (default here, for tests): no waiting.
+   */
+  pace?: "fast" | "broadcast";
+  /** a dropped connection becomes autopilot if the seat sends nothing for this long (default 5 s) */
+  dropGraceMs?: number;
   log?: (s: string) => void;
 }
 
@@ -203,7 +217,7 @@ export class ServerMatch {
 
   /** Put a stored agent back in its seat (resume). */
   restoreSeat(r: SeatRow) {
-    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0 };
+    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0, lastSeen: Date.now(), autopilot: null };
     this.agents[r.seat] = agent;
     const rs = this.remoteSeat(r.seat, agent);
     if (r.leftRound !== null) rs.left = true;
@@ -218,7 +232,7 @@ export class ServerMatch {
     const seat = j.seat ?? free[0];
     if (seat === undefined) throw new HttpError(409, "no free remote seat");
     const token = `st_${hex(24)}`;
-    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0 };
+    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0, lastSeen: Date.now(), autopilot: null };
     this.agents[seat] = agent;
     this.remoteSeat(seat, agent);
     this.server.tokens.set(agent.tokenHash, { match: this.id, seat });
@@ -246,9 +260,71 @@ export class ServerMatch {
     a.leftRound = rs.turn ? rs.turn.round : m.round + 1;
     a.leftAt = Date.now();
     rs.leave();
+    if (!a.autopilot) this.control({ seat, mode: "autopilot", ...this.runner!.position(), reason: "left the match", line: pickLine(LEFT_LINES, this.fighter(seat)) });
+    a.autopilot = "left the match";
     this.server.log(`match ${this.id}: ${a.name} left seat ${seat}; the house bot plays it from round ${a.leftRound}`);
     this.changed();
     return { seat, status: "running", houseFromRound: a.leftRound };
+  }
+
+  /** The fighter's name in the match (the agent's name before the start). */
+  fighter(seat: number): string {
+    return this.runner?.names[seat] ?? this.agents[seat]?.name ?? `seat ${seat}`;
+  }
+
+  /** Record, persist and stream a change of control. */
+  control(e: ControlEvent) {
+    const r = this.runner!;
+    r.recordControl(e);
+    this.store.insertControl(this.id, r.control.length - 1, e).catch((x) => this.server.log(`store: ${x}`));
+    this.changed();
+  }
+
+  /**
+   * The house bot takes this agent's fighter from now on (#22): a dropped
+   * connection, a closed session or a missed deadline. Stamped with where the
+   * viewers are (or `at`), streamed as a callout, saved in the record. Before
+   * the start the seat goes back to the queue instead. A missed mid-round
+   * check-in (#8/#9) will call this with phase "checkin" and its tick.
+   */
+  takeover(seat: number, reason: string, at?: Pick<ControlEvent, "round" | "phase" | "tick">) {
+    const a = this.agents[seat];
+    if (!a || a.leftAt !== null || a.autopilot) return;
+    if (this.status === "open") {
+      this.server.log(`match ${this.id}: ${a.name} dropped before the start (${reason}); the seat is free again`);
+      void this.server.freeSeat(this, seat);
+      return;
+    }
+    if (this.status !== "running" || !this.runner) return;
+    a.autopilot = reason;
+    this.remote[seat]?.setAutopilot(reason);
+    this.control({ seat, mode: "autopilot", ...(at ?? this.runner.position()), reason, line: pickLine(AUTOPILOT_LINES, this.fighter(seat)) });
+  }
+
+  /** Any request from a seat: it is present; an agent on autopilot gets its fighter back from the next round it can still plan. */
+  seen(seat: number) {
+    const a = this.agents[seat];
+    if (!a) return;
+    a.lastSeen = Date.now();
+    if (!a.autopilot || a.leftAt !== null || this.status !== "running" || !this.runner || this.runner.match.over) return;
+    a.autopilot = null;
+    this.remote[seat]?.setAutopilot(null);
+    this.control({ seat, mode: "agent", ...this.runner.position(), fromRound: this.runner.nextAskRound(), reason: "reconnected", line: pickLine(BACK_LINES, this.fighter(seat)) });
+  }
+
+  /** A seat's connection dropped mid-request: autopilot unless it sends something within the grace period. */
+  dropped(seat: number, reason = "connection lost") {
+    const since = Date.now();
+    const a = this.agents[seat];
+    if (!a) return;
+    setTimeout(() => {
+      if (a.lastSeen <= since && a.polls === 0) this.takeover(seat, reason);
+    }, this.server.opts.dropGraceMs).unref?.();
+  }
+
+  /** Agents still in control of their fighters. */
+  activeAgents(): number {
+    return this.agents.filter((a) => a && a.leftAt === null && !a.autopilot).length;
   }
 
   /** Build the seats (souls, providers) and the runner. */
@@ -266,7 +342,16 @@ export class ServerMatch {
       seats,
       ...(wishes.some(Boolean) ? { identityWishes: wishes } : {}),
       onEvent: (e) => this.onEvent(e),
-      onDecided: (round, ask) => this.store.insertRound({ matchId: this.id, round, decisions: ask.decisions, meta: ask.meta, prompts: ask.prompts, raw: ask.raw, finalHash: null }),
+      onDecided: async (round, ask) => {
+        await this.store.insertRound({ matchId: this.id, round, decisions: ask.decisions, meta: ask.meta, prompts: ask.prompts, raw: ask.raw, finalHash: null });
+        // a missed deadline hands the fighter to the house bot (it already played this round)
+        ask.meta.forEach((m, seat) => {
+          if (m.outcome === "fallback-timeout" && this.remote[seat]) this.takeover(seat, "missed the deadline", { round, phase: "plan", tick: null });
+        });
+      },
+      pace: this.server.opts.pace,
+      // nobody to wait for: no spectator and no agent in control
+      shouldPace: () => this.live.size > 0 || this.activeAgents() > 0,
       onPlayed: (round, hash) => this.store.setRoundHash(this.id, round, hash),
     });
     this.remote.forEach((rs, i) => rs?.bind(runner.match, i));
@@ -298,6 +383,7 @@ export class ServerMatch {
       this.runner = this.buildRunner();
       this.runner.start();
       for (const r of rounds) await this.runner.replayRound(r);
+      await this.restoreControl();
     } catch (e) {
       this.fail(e);
       return;
@@ -316,7 +402,20 @@ export class ServerMatch {
     this.runner = this.buildRunner();
     this.runner.start();
     for (const r of rounds) await this.runner.replayRound(r);
+    await this.restoreControl();
     this.runner.recordFile = recordPath ? recordPath.replace(/^\/records\//, "") : null;
+  }
+
+  /** After a restart: the control timeline and who is on autopilot (the last event per seat). */
+  private async restoreControl() {
+    const events = await this.store.listControl(this.id);
+    this.runner!.control.push(...events);
+    for (const e of events) {
+      const a = this.agents[e.seat];
+      if (!a) continue;
+      a.autopilot = e.mode === "autopilot" ? e.reason : null;
+      if (a.leftAt === null) this.remote[e.seat]?.setAutopilot(a.autopilot);
+    }
   }
 
   protected play() {
@@ -407,6 +506,7 @@ export class ServerMatch {
           kind: k === "remote" && !a && this.status !== "open" ? "house" : k,
           agent: a?.name ?? null,
           ...(a?.leftRound ? { houseFromRound: a.leftRound } : {}),
+          ...(a?.autopilot ? { autopilot: a.autopilot, ...(this.status === "over" ? { finishedOnAutopilot: true } : {}) } : {}),
           fighter: r?.names[i] ?? null,
           label: r?.labels[i] ?? null,
         };
@@ -473,7 +573,7 @@ export class MatchServer {
 
   constructor(opts: ServerOptions) {
     const { store, log, ...rest } = opts;
-    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", ...rest };
+    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", pace: "fast", dropGraceMs: 5000, ...rest };
     this.store = store ?? new SqliteStore(":memory:");
     this.log = log ?? (() => {});
   }
@@ -695,6 +795,7 @@ export class MatchServer {
         const w = Number(url.searchParams.get("wait") ?? "25");
         if (!Number.isFinite(w) || w < 0 || w > MAX_WAIT_S) throw new HttpError(400, `wait: 0-${MAX_WAIT_S} seconds`);
         if (agent.polls >= 2) throw new HttpError(429, "at most 2 long polls at once per seat");
+        match.seen(seat);
         agent.polls++;
         try {
           const until = Date.now() + w * 1000;
@@ -705,12 +806,15 @@ export class MatchServer {
           }
         } finally {
           agent.polls--;
+          // the client went away in the middle of the long poll (#22): autopilot unless it comes back quickly
+          if (req.signal.aborted) match.dropped(seat);
         }
       }
       case "plan": {
         allow("POST");
         const seat = this.seatFor(req, url, match);
         const body = await readJson(req, MAX_BODY);
+        match.seen(seat);
         const rs = match.remote[seat];
         if (!rs || match.agents[seat]?.leftAt) throw new HttpError(409, "you left this match");
         const res = await rs.submit(body);
@@ -738,6 +842,13 @@ export class MatchServer {
     if (match.full) queueMicrotask(() => void match.start());
     return r;
   }
+  /** A seat whose agent dropped before the start goes back to the queue. */
+  async freeSeat(match: ServerMatch, seat: number) {
+    if (match.status !== "open" || !match.agents[seat]) return;
+    match.leave(seat);
+    await this.store.deleteSeat(match.id, seat);
+  }
+
   protected async leave(match: ServerMatch, seat: number) {
     const r = match.leave(seat);
     if (r.status === "open") await this.store.deleteSeat(match.id, seat);

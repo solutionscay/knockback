@@ -159,6 +159,8 @@ export class RemoteSeat {
   readonly done = new Set<number>();
   /** the agent left: the house bot plays this seat from now on */
   left = false;
+  /** the house bot plays this seat until the agent comes back (#22): why */
+  autopilot: string | null = null;
   /** called when the turn appears or ends */
   onChange: () => void = () => {};
   /** a plan already accepted for this round (e.g. stored before a restart), returned at once */
@@ -182,6 +184,7 @@ export class RemoteSeat {
     const match = this.match;
     if (!match) return Promise.reject(new Error("seat not bound to a match"));
     if (this.left) return Promise.reject(new Error("the agent left the match"));
+    if (this.autopilot) return Promise.reject(new Error(`autopilot: ${this.autopilot}`));
     return this.stored(match.round + 1).then((raw) => (raw !== null ? raw : this.waitForPlan(match, prompt, signal)));
   }
 
@@ -221,6 +224,12 @@ export class RemoteSeat {
       );
       this.onChange();
     });
+  }
+
+  /** Autopilot on (a reason) or off (null). On: a turn still open ends now and the house bot plays it, and every later one until it is turned off. */
+  setAutopilot(reason: string | null) {
+    this.autopilot = reason;
+    if (reason) this.turn?.reject(new Error(`autopilot: ${reason}`));
   }
 
   /** The agent leaves: a pending turn ends now (the house bot plays it), and every later one too. */

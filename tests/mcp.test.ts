@@ -102,7 +102,12 @@ describe("MCP tools", () => {
     const m = [...api.matches.values()][0]!;
     expect(api.matches.size).toBe(1);
     const rounds = m.runner!.match.record.rounds;
-    for (const r of rounds) expect(r.meta!.map((x) => x.outcome)).toEqual(["ok", "ok", "fallback-timeout", "house"]);
+    for (const r of rounds) expect(r.meta!.map((x) => x.outcome).filter((_, i) => i !== 2)).toEqual(["ok", "ok", "house"]);
+    // the silent agent missed round 1's deadline: the house bot took its fighter (#22); later rounds are
+    // autopilot (decided at once) or, if it polled again in between, back and timed out again
+    expect(rounds[0]!.meta![2]!.outcome).toBe("fallback-timeout");
+    for (const r of rounds.slice(1)) expect(["fallback-timeout", "fallback-error"]).toContain(r.meta![2]!.outcome);
+    expect(m.runner!.control[0]).toMatchObject({ seat: 2, mode: "autopilot", round: 1, phase: "plan", reason: "missed the deadline" });
     expect(m.runner!.labels).toEqual(["remote/Alpha", "remote/Bravo", "remote/Charlie", "house"]);
     // rejected plans came back with a fix that names the rivals
     expect(ra.errors.length).toBe(rounds.length);

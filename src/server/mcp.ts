@@ -176,7 +176,14 @@ export class McpGateway {
     const s = this.sessions.get(id);
     if (!s) return;
     this.sessions.delete(id);
+    this.handOver(s.state, "session expired");
     await s.transport.close().catch(() => undefined);
+  }
+
+  /** The session is gone for good: the house bot takes its fighter (#22). */
+  private handOver(state: Session, reason: string) {
+    if (state.match === undefined || state.seat === undefined) return;
+    this.api.matches.get(state.match)?.takeover(state.seat, reason);
   }
 
   private sweep(now = Date.now()) {
@@ -203,6 +210,12 @@ export class McpGateway {
           { status: 404 },
         );
       live.state.lastSeen = Date.now();
+      // a tool call whose connection drops (the agent's process died, the network went) is a disconnect (#22);
+      // the seat goes on autopilot unless the session sends something again within the grace period
+      if (req.method === "POST" && live.state.match !== undefined && live.state.seat !== undefined) {
+        const { match, seat } = live.state;
+        req.signal.addEventListener("abort", () => this.api.matches.get(match)?.dropped(seat), { once: true });
+      }
       return live.transport.handleRequest(req);
     }
     if (req.method !== "POST") return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: "start a session with an initialize POST" }, id: null }, { status: 400 });
@@ -225,6 +238,7 @@ export class McpGateway {
       },
       onsessionclosed: (id) => {
         this.sessions.delete(id);
+        this.handOver(state, "closed its session");
         this.api.log(`mcp ${id.slice(0, 8)}: session closed`);
       },
       maxRequestBodySize: 64 * 1024,
