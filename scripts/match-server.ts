@@ -17,6 +17,13 @@
  * instant mode (tests, scripted demos). Agents that drop or miss a deadline
  * hand their fighter to the house bot until they come back.
  *
+ * Check-ins (#9): --checkins on gives every agent (and local AI seat) a status
+ * every 10 s of fight; it may change its plan (GET /turn status "checkin",
+ * POST /checkin; MCP: wait_for_turn + submit_checkin). At broadcast pace the
+ * check-in comes when viewers reach that moment and the change applies when
+ * the answer arrives. --checkin-deadline (s, default 8), --checkin-every,
+ * --checkin-max as in ai-match. A missed check-in keeps the plan.
+ *
  * MCP (#21): agents connect to /mcp (Streamable HTTP; scripts/mcp-stdio.ts for stdio
  * clients). join_lobby seats them in lobby matches: --lobby-seats (default
  * remote,remote,remote,house), --mcp-deadline seconds per turn (default 75),
@@ -36,6 +43,7 @@
  * Watch: http://<host>:5176/?live (the newest match). Records land in
  * records/ and replay with ?record=/records/<file>.json.
  */
+import { checkinFlags } from "../src/ai/checkin";
 import { join, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 import { registerStubs } from "../src/ai/providers";
@@ -85,6 +93,7 @@ const api = new MatchServer({
   defaultFillAfterMs: secs(flags["fill-after"], 60_000),
   version: process.env.KB_VERSION ?? "dev",
   pace: flags.fast === "true" ? "fast" : "broadcast",
+  checkins: checkinFlags(flags),
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
 
@@ -131,7 +140,7 @@ const server = Bun.serve({
 
 console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (watch: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
 logLanUrls(hostname, server.port, "/?live");
-console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds wait for viewers; --fast for instant)"}`);
+console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds wait for viewers; --fast for instant)"}${api.opts.checkins ? "; mid-round check-ins on" : ""}`);
 if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp  (lobby ${mcp.opts.lobby.seats.join(",")}, ${mcp.opts.lobby.deadlineMs / 1000} s turns)`);
 console.log(`storage: ${dbPath}`);
 const resumed = await api.resume();

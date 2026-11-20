@@ -12,7 +12,7 @@
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
-import type { DecisionMeta } from "../sim/match";
+import type { DecisionMeta, PlanUpdate } from "../sim/match";
 import type { Decision } from "../sim/voice";
 
 export type MatchStatus = "open" | "running" | "over" | "failed";
@@ -59,6 +59,8 @@ export interface RoundRow {
   raw: (string | null)[];
   /** set once the round has been played */
   finalHash: string | null;
+  /** the round's mid-round plan updates (#8/#9), set with the final hash; null before, or for rounds stored before the column */
+  planUpdates?: PlanUpdate[] | null;
 }
 
 export interface PlanRow {
@@ -97,7 +99,8 @@ export interface MatchStore {
   deleteSeat(matchId: string, seat: number): Promise<void>;
   listSeats(matchId: string): Promise<SeatRow[]>;
   insertRound(r: RoundRow): Promise<void>;
-  setRoundHash(matchId: string, round: number, finalHash: string): Promise<void>;
+  /** the round was played: its final hash and its mid-round plan updates (a resume replays them) */
+  setRoundHash(matchId: string, round: number, finalHash: string, planUpdates?: PlanUpdate[]): Promise<void>;
   listRounds(matchId: string): Promise<RoundRow[]>;
   insertPlan(p: PlanRow): Promise<void>;
   getPlan(matchId: string, round: number, seat: number): Promise<PlanRow | null>;
@@ -174,6 +177,8 @@ export const MIGRATIONS: string[] = [
    );`,
   // 3: the engine version that made each record; older rows count as 0
   `ALTER TABLE records ADD COLUMN engine INTEGER NOT NULL DEFAULT 0;`,
+  // 4 (#8/#9): the mid-round plan updates of each played round (JSON PlanUpdate[]), so a resume replays them
+  `ALTER TABLE rounds ADD COLUMN plan_updates TEXT;`,
 ];
 
 type Row = Record<string, unknown>;
@@ -276,8 +281,8 @@ export class SqliteStore implements MatchStore {
       .query("INSERT OR REPLACE INTO rounds (match_id, round, decisions, meta, prompts, raw, final_hash) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(r.matchId, r.round, j(r.decisions), j(r.meta), j(r.prompts), j(r.raw), r.finalHash);
   }
-  async setRoundHash(matchId: string, round: number, finalHash: string) {
-    this.db.query("UPDATE rounds SET final_hash = ? WHERE match_id = ? AND round = ?").run(finalHash, matchId, round);
+  async setRoundHash(matchId: string, round: number, finalHash: string, planUpdates: PlanUpdate[] = []) {
+    this.db.query("UPDATE rounds SET final_hash = ?, plan_updates = ? WHERE match_id = ? AND round = ?").run(finalHash, planUpdates.length ? j(planUpdates) : null, matchId, round);
   }
   async listRounds(matchId: string) {
     return (this.db.query("SELECT * FROM rounds WHERE match_id = ? ORDER BY round").all(matchId) as Row[]).map((r) => ({
@@ -288,6 +293,7 @@ export class SqliteStore implements MatchStore {
       prompts: p<string[]>(r.prompts),
       raw: p<(string | null)[]>(r.raw),
       finalHash: (r.final_hash as string | null) ?? null,
+      planUpdates: r.plan_updates ? p<PlanUpdate[]>(r.plan_updates) : null,
     }));
   }
   async insertPlan(pl: PlanRow) {

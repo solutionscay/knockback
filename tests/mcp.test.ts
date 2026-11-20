@@ -75,11 +75,11 @@ async function play(a: Awaited<ReturnType<typeof connect>>, name: string, opts: 
 }
 
 describe("MCP tools", () => {
-  test("six tools; the plan schema comes from the parser's constants", async () => {
+  test("seven tools; the plan schema comes from the parser's constants", async () => {
     const { gw } = setup();
     const a = await connect(gw);
     const { tools } = await a.client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["get_round_report", "join_lobby", "leave", "submit_plan", "wait_for_match", "wait_for_turn"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["get_round_report", "join_lobby", "leave", "submit_checkin", "submit_plan", "wait_for_match", "wait_for_turn"]);
     const submit = tools.find((t) => t.name === "submit_plan")! as any;
     const st = submit.inputSchema.properties.strategy.properties;
     expect(st.weapons.items.enum).toEqual([...WEAPON_LIST]);

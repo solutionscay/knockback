@@ -375,7 +375,8 @@ export class MatchRunner {
     const ctl = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<"late">((resolve) => {
-      timer = setTimeout(() => (ctl.abort(), resolve("late")), cfg.deadlineMs);
+      // settle as late before aborting, so the aborted ask's rejection doesn't count as an error
+      timer = setTimeout(() => (resolve("late"), ctl.abort()), cfg.deadlineMs);
     });
     let raw: string | null = null;
     const meta: CheckinMeta = { tick, fighter: seat, provider, ms: 0, outcome: "missed", promptChars: prompt.length };

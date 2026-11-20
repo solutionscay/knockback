@@ -8,10 +8,12 @@
  * engine sees exactly what a local provider would produce, and the record
  * replays with no network.
  */
+import { CHECKIN, parseCheckin, type CheckinStatus } from "../ai/checkin";
 import { parseAnswer, MAX_LINE, MAX_WHY } from "../ai/parse";
 import { lastPlanLines, ruleResultLine, whatHappenedLines, WEAPON_HELP } from "../ai/prompt";
 import type { Provider } from "../ai/providers";
 import type { Match } from "../sim/match";
+import type { Strategy } from "../sim/sim";
 import { MAX_RULE_LABEL, PICKUPS, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
 import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 
@@ -114,6 +116,42 @@ export interface Turn {
   reject: (e: Error) => void;
 }
 
+/** A mid-round check-in waiting for the agent's answer (#9). */
+export interface CheckinTurn {
+  round: number;
+  tick: number;
+  status: CheckinStatus;
+  prompt: string;
+  startedAt: number;
+  deadlineAt: number;
+  attempts: number;
+  resolve: (text: string) => void;
+  reject: (e: Error) => void;
+}
+
+/** The fields a check-in answer may carry (all optional but round and tick). */
+export const CHECKIN_KEYS = ["round", "tick", "keep", "weapons", "target", "stance", "retaliate", "rules", "why", "line", "answer"] as const;
+
+/** The check-in answer schema every check-in turn carries. */
+export function checkinSchema() {
+  return {
+    keep: { type: "boolean: true = keep the plan (the default when no plan field is sent)" },
+    target: { type: "string, optional", values: ["<a rival's name>", ...TARGET_CHOICES] },
+    stance: { type: "string, optional", values: RULE_STANCES },
+    weapons: { type: "array of 1-3 different weapons, optional", values: WEAPON_HELP },
+    retaliate: { type: "string, optional", values: RULE_RETALIATE },
+    rules: { type: `array of 0-${MAX_RULES} rules, optional: replaces your rules (same shape as in a round plan)` },
+    line: { type: `string, optional, at most ${CHECKIN.maxLine} characters: what your fighter shouts with the change` },
+    why: { type: `string, optional, at most ${MAX_WHY} characters` },
+    answer: { type: "string, alternative: a model's raw reply that contains the JSON" },
+    note: "only the fields you send change; the rest of your plan stays. The fight keeps going: the change applies when your answer arrives (fight time).",
+  };
+}
+
+export type CheckinResult =
+  | { ok: true; result: "keep" | "update"; changed: string[]; line?: string }
+  | { ok: false; status: number; error: string; problems?: string[] };
+
 export type SubmitResult =
   | { ok: true; plan: { weapons: string[]; target: string; stance: string; retaliate: string; rules: unknown[]; why?: string; line: string }; warnings: string[] }
   | { ok: false; status: number; error: string; problems?: string[] };
@@ -159,6 +197,8 @@ export class RemoteSeat {
   readonly done = new Set<number>();
   /** the agent left: the house bot plays this seat from now on */
   left = false;
+  /** a mid-round check-in waiting for an answer (#9) */
+  checkinTurn: CheckinTurn | null = null;
   /** the house bot plays this seat until the agent comes back (#22): why */
   autopilot: string | null = null;
   /** called when the turn appears or ends */
@@ -229,13 +269,85 @@ export class RemoteSeat {
   /** Autopilot on (a reason) or off (null). On: a turn still open ends now and the house bot plays it, and every later one until it is turned off. */
   setAutopilot(reason: string | null) {
     this.autopilot = reason;
-    if (reason) this.turn?.reject(new Error(`autopilot: ${reason}`));
+    if (reason) {
+      this.turn?.reject(new Error(`autopilot: ${reason}`));
+      this.checkinTurn?.reject(new Error(`autopilot: ${reason}`));
+    }
   }
 
   /** The agent leaves: a pending turn ends now (the house bot plays it), and every later one too. */
   leave() {
     this.left = true;
     this.turn?.reject(new Error("the agent left the match"));
+    this.checkinTurn?.reject(new Error("the agent left the match"));
+  }
+
+  /**
+   * A mid-round check-in (#9): publish the status and wait for the agent's
+   * answer (the runner's deadline aborts it). The answer is returned as JSON
+   * text, which the runner parses with the same parser as submitCheckin.
+   */
+  askCheckin(prompt: string, status: CheckinStatus, signal: AbortSignal, deadlineMs: number = CHECKIN.deadlineMs): Promise<string> {
+    if (!this.match) return Promise.reject(new Error("seat not bound to a match"));
+    if (this.left) return Promise.reject(new Error("the agent left the match"));
+    if (this.autopilot) return Promise.reject(new Error(`autopilot: ${this.autopilot}`));
+    return new Promise<string>((resolve, reject) => {
+      const now = Date.now();
+      const end = () => {
+        if (this.checkinTurn === t) this.checkinTurn = null;
+        this.onChange();
+      };
+      const t: CheckinTurn = {
+        round: status.round,
+        tick: status.tick,
+        status,
+        prompt,
+        startedAt: now,
+        deadlineAt: now + deadlineMs,
+        attempts: 0,
+        resolve: (text) => (end(), resolve(text)),
+        reject: (e) => (end(), reject(e)),
+      };
+      this.checkinTurn = t;
+      signal.addEventListener("abort", () => this.checkinTurn === t && t.reject(new Error("deadline")), { once: true });
+      this.onChange();
+    });
+  }
+
+  /**
+   * An agent's check-in answer: {round, tick, keep?} or plan fields to change
+   * (or {round, tick, answer}). Validated against the plan the fighter plays
+   * now; an invalid answer is rejected with the problems (retry until the
+   * deadline). The first valid answer ends the check-in.
+   */
+  submitCheckin(body: Record<string, unknown>, current: () => Strategy | null): CheckinResult {
+    const match = this.match;
+    const extra = Object.keys(body).filter((k) => !(CHECKIN_KEYS as readonly string[]).includes(k));
+    const problems: string[] = [];
+    if (extra.length) problems.push(`unknown field${extra.length > 1 ? "s" : ""}: ${extra.join(", ")} (allowed: ${CHECKIN_KEYS.join(", ")})`);
+    if (!Number.isInteger(body.round) || !Number.isInteger(body.tick)) problems.push("round and tick: integers (from the check-in turn)");
+    if (body.answer !== undefined && !isStr(body.answer, MAX_ANSWER)) problems.push(`answer: a string of at most ${MAX_ANSWER} characters`);
+    if (body.keep !== undefined && typeof body.keep !== "boolean") problems.push("keep: true or false");
+    if (body.line !== undefined && !isStr(body.line, 400)) problems.push("line: a string");
+    if (body.why !== undefined && !isStr(body.why, 400)) problems.push("why: a string");
+    if (JSON.stringify(body).length > MAX_ANSWER + 200) problems.push("the answer is too big");
+    if (problems.length) return { ok: false, status: 400, error: "malformed check-in answer", problems };
+    if (!match) return { ok: false, status: 409, error: "the match has not started" };
+    const t = this.checkinTurn;
+    if (!t) return { ok: false, status: 409, error: "no check-in is open now (it was answered, or its deadline passed); wait with GET /turn" };
+    if (t.round !== body.round || t.tick !== body.tick) return { ok: false, status: 409, error: `wrong check-in: the open one is round ${t.round}, tick ${t.tick}` };
+    if (++t.attempts > MAX_ATTEMPTS) return { ok: false, status: 429, error: `more than ${MAX_ATTEMPTS} invalid answers; your plan stays` };
+    const fields: Record<string, unknown> = Object.fromEntries(Object.entries(body).filter(([k]) => k !== "round" && k !== "tick"));
+    // no plan field and no answer: a keep (with its line, if any)
+    if (body.answer === undefined && fields.keep === undefined && !["weapons", "target", "stance", "retaliate", "rules"].some((k) => fields[k] !== undefined)) fields.keep = true;
+    const raw = body.answer !== undefined ? (body.answer as string) : JSON.stringify(fields);
+    const plan = current();
+    if (!plan) return { ok: false, status: 409, error: "your fighter is not fighting now" };
+    // the runner parses this same text against the same plan, so it gets exactly this result
+    const a = parseCheckin(raw, this.seat, match.names, plan);
+    if (a.kind === "invalid") return { ok: false, status: 422, error: "invalid check-in answer", problems: a.problems.map((x) => `bad value: ${x}`) };
+    t.resolve(raw);
+    return { ok: true, result: a.kind, changed: a.kind === "update" ? a.changed : [], ...(a.line ? { line: a.line } : {}) };
   }
 
   /**

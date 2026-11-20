@@ -6,8 +6,9 @@
  *   GET  /api/matches                 list
  *   GET  /api/matches/:id             status and seats
  *   POST /api/matches/:id/join        { name, persona, look?, seat? } -> { seat, token }
- *   GET  /api/matches/:id/turn        (seat token) long poll: ?wait=0-30 s -> open | turn | waiting | over
+ *   GET  /api/matches/:id/turn        (seat token) long poll: ?wait=0-30 s -> open | turn | checkin | waiting | over
  *   POST /api/matches/:id/plan        (seat token) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
+ *   POST /api/matches/:id/checkin     (seat token) mid-round check-in answer (#9): { round, tick, keep? | plan fields to change, line?, why? }
  *   POST /api/matches/:id/leave       (seat token) the house bot takes the seat
  *   GET  /api/matches/:id/report      plans and results so far (?round=n for one round)
  *   GET  /api/live?match=:id          spectator stream (SSE); without ?match: the newest match
@@ -36,7 +37,8 @@ import { errorResponse, HttpError, json, MAX_BODY, RateLimiter, readJson } from 
 import { LiveStream } from "./live";
 import { lobbyPage } from "./lobby";
 import { ENGINE_VERSION, recordEngine } from "../sim/engine-version";
-import { planSchema, RemoteSeat } from "./remote";
+import { checkinSchema, planSchema, RemoteSeat } from "./remote";
+import type { CheckinConfig } from "../ai/checkin";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
 import type { ControlEvent } from "../ai/runner";
 import { SqliteStore, type MatchRow, type MatchStore, type SeatRow } from "./store";
@@ -107,6 +109,11 @@ export interface ServerOptions {
   pace?: "fast" | "broadcast";
   /** a dropped connection becomes autopilot if the seat sends nothing for this long (default 5 s) */
   dropGraceMs?: number;
+  /**
+   * Mid-round check-ins (#9) for every match: agents (and local AI seats) get
+   * a status every ~10 s of fight and may change their plan. Default off.
+   */
+  checkins?: boolean | Partial<CheckinConfig>;
   log?: (s: string) => void;
 }
 
@@ -337,7 +344,8 @@ export class ServerMatch {
     const souls = this.souls();
     const seats: Seat[] = this.kinds.map((k, i) => {
       const rs = this.remote[i];
-      if (rs) return { providerName: "remote", provider: rs.provider, soul: souls[i]! };
+      // a check-in goes to the agent with the runner's check-in deadline
+      if (rs) return { providerName: "remote", provider: rs.provider, soul: souls[i]!, checkin: (prompt, st, signal) => rs.askCheckin(prompt, st, signal, runner.checkin?.deadlineMs) };
       if (k === "remote" || k === "house") return { providerName: "house", provider: null, soul: souls[i]! };
       return { providerName: k, provider: PROVIDERS[k]!, soul: souls[i]! };
     });
@@ -357,7 +365,10 @@ export class ServerMatch {
       pace: this.server.opts.pace,
       // nobody to wait for: no spectator and no agent in control
       shouldPace: () => this.live.size > 0 || this.activeAgents() > 0,
-      onPlayed: (round, hash) => this.store.setRoundHash(this.id, round, hash),
+      onPlayed: (round, hash, updates) => this.store.setRoundHash(this.id, round, hash, updates),
+      checkins: this.server.opts.checkins,
+      // a fighter on autopilot (or whose agent left) gets no check-in; the house bot's plan plays on
+      onAutopilot: (seat) => !!this.remote[seat] && (!!this.agents[seat]?.autopilot || this.agents[seat]?.leftAt != null),
     });
     this.remote.forEach((rs, i) => rs?.bind(runner.match, i));
     return runner;
@@ -480,6 +491,22 @@ export class ServerMatch {
     const m = this.runner!.match;
     if (this.status === "over") return { ...base, status: "over", winner: m.names[m.winner], wins: m.wins.slice(), youWon: m.winner === seat, record: this.runner!.recordFile ? `/records/${this.runner!.recordFile}` : null, report: `/api/matches/${this.id}/report` };
     if (this.agents[seat]?.leftAt) return { ...base, status: "left", message: `you left; the house bot plays this seat from round ${this.agents[seat]!.leftRound}` };
+    const c = this.remote[seat]?.checkinTurn;
+    if (c)
+      return {
+        ...base,
+        status: "checkin",
+        round: c.round,
+        tick: c.tick,
+        second: Math.round(c.tick / 60),
+        deadlineAt: new Date(c.deadlineAt).toISOString(),
+        msLeft: Math.max(0, c.deadlineAt - Date.now()),
+        attempts: c.attempts,
+        checkin: c.status,
+        prompt: c.prompt,
+        schema: checkinSchema(),
+        submit: `POST /api/matches/${this.id}/checkin with {"round":${c.round},"tick":${c.tick},"keep":true} or {"round":${c.round},"tick":${c.tick}, ...only the plan fields to change, "line":"..."}; no answer in time = keep the plan`,
+      };
     const t = this.remote[seat]?.turn;
     if (t)
       return {
@@ -581,7 +608,7 @@ export class MatchServer {
 
   constructor(opts: ServerOptions) {
     const { store, log, ...rest } = opts;
-    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", pace: "fast", dropGraceMs: 5000, ...rest };
+    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", pace: "fast", dropGraceMs: 5000, checkins: false, ...rest };
     this.store = store ?? new SqliteStore(":memory:");
     this.log = log ?? (() => {});
   }
@@ -759,7 +786,7 @@ export class MatchServer {
       // each record's engine version; old ones (another engine) show as a summary card in the viewer, not a replay
       return json({ engine: ENGINE_VERSION, records: (await this.store.listRecords(100)).map((r) => ({ ...r, old: r.engine !== ENGINE_VERSION })) });
     }
-    const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|leave|report))?$/.exec(path);
+    const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|checkin|leave|report))?$/.exec(path);
     if (!mm) throw new HttpError(404, `no such endpoint: ${method} ${path} (see GET /api)`);
     const match = await this.matchOr404(mm[1]!, ip);
     switch (mm[2]) {
@@ -811,7 +838,7 @@ export class MatchServer {
           const until = Date.now() + w * 1000;
           for (;;) {
             const t = match.turnFor(seat);
-            if (t.status === "turn" || t.status === "over" || t.status === "left" || Date.now() >= until || req.signal.aborted) return json(t);
+            if (t.status === "turn" || t.status === "checkin" || t.status === "over" || t.status === "left" || Date.now() >= until || req.signal.aborted) return json(t);
             await match.nextChange(until - Date.now(), req.signal);
           }
         } finally {
@@ -833,6 +860,20 @@ export class MatchServer {
           throw new HttpError(res.status, res.error, res.problems);
         }
         return json({ accepted: true, round: body.round, plan: res.plan, warnings: res.warnings });
+      }
+      case "checkin": {
+        allow("POST");
+        const seat = this.seatFor(req, url, match);
+        const body = await readJson(req, MAX_BODY);
+        match.seen(seat);
+        const rs = match.remote[seat];
+        if (!rs || match.agents[seat]?.leftAt) throw new HttpError(409, "you left this match");
+        const res = rs.submitCheckin(body, () => match.runner?.match.fight?.controllers[seat]?.strategy ?? null);
+        if (!res.ok) {
+          this.log(`match ${match.id}: seat ${seat} check-in rejected (${res.status}): ${res.error}${res.problems ? `: ${res.problems.join("; ")}` : ""}`);
+          throw new HttpError(res.status, res.error, res.problems);
+        }
+        return json({ accepted: true, round: body.round, tick: body.tick, result: res.result, changed: res.changed, ...(res.line ? { line: res.line } : {}) });
       }
     }
     throw new HttpError(404, "no such endpoint");
@@ -919,7 +960,8 @@ function apiIndex(open: boolean) {
       "GET /api/matches": "all matches",
       "GET /api/matches/:id": "status and seats",
       "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat? } -> { seat, token }",
-      "GET /api/matches/:id/turn?wait=25": "long poll -> { status: open | turn | waiting | left | over, ... }; a turn carries context, prompt and schema",
+      "GET /api/matches/:id/turn?wait=25": "long poll -> { status: open | turn | checkin | waiting | left | over, ... }; a turn carries context, prompt and schema; a checkin (mid-round, when the server runs check-ins) carries the fight status, a prompt and its schema",
+      "POST /api/matches/:id/checkin": "{ round, tick, keep: true } or { round, tick, ...plan fields to change (target, stance, weapons, retaliate, rules), line?, why? } -> { accepted, result: keep | update }; the change applies when the answer arrives (fight time)",
       "POST /api/matches/:id/plan": "{ round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer } -> { accepted, plan }",
       "POST /api/matches/:id/leave": "the house bot takes your seat (before the start: the seat is free again)",
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",

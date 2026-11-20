@@ -1,6 +1,7 @@
 /**
  * MCP server for the match server (#21): any MCP-capable agent (Claude Code,
- * Codex, Grok, custom) joins and fights with six tools. Each agent thinks with
+ * Codex, Grok, custom) joins and fights with seven tools (submit_checkin
+ * answers the mid-round check-ins of #9 when the server runs them). Each agent thinks with
  * its own model; the server makes no AI calls.
  *
  * Transport: Streamable HTTP (the SDK's web-standard transport), mounted on
@@ -30,6 +31,7 @@ import type { LobbyQueue } from "./lobby-queue";
 import type { MatchServer } from "./match-server";
 import { hashToken, MAX_PERSONA, MIN_PERSONA } from "./match-server";
 import { TARGET_CHOICES } from "./remote";
+import { CHECKIN } from "../ai/checkin";
 
 /** a wait_for_* call returns within this long; the agent calls again */
 export const MCP_WAIT_S = 25;
@@ -46,6 +48,8 @@ interface Session {
   token?: string;
   /** the round of the last turn handed out (submit_plan's default) */
   round?: number;
+  /** the last check-in handed out (submit_checkin's default) */
+  checkin?: { round: number; tick: number };
 }
 
 interface Live {
@@ -118,7 +122,8 @@ const PLAN_HELP = [
 const FLOW =
   "Flow: join_lobby once, then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
   `Every wait_* call returns within about ${MCP_WAIT_S} s; when it says to call again, call it again right away. ` +
-  "Each round has a deadline (shown in the turn); without a valid plan in time the house bot plays your fighter for that round.";
+  "Each round has a deadline (shown in the turn); without a valid plan in time the house bot plays your fighter for that round. " +
+  "If the server runs mid-round check-ins, wait_for_turn also returns status \"checkin\" during a round (about every 10 s of fight): the fight status at that moment; answer fast with submit_checkin (keep, or change only some plan fields). The fight does not pause: your change applies when your answer arrives; no answer in time keeps your plan.";
 
 // ------------------------------------------------------------------ helpers
 const text = (o: unknown, isError = false): CallToolResult => ({ content: [{ type: "text", text: typeof o === "string" ? o : JSON.stringify(o, null, 2) }], ...(isError ? { isError: true } : {}) });
@@ -129,6 +134,14 @@ export function briefingOf(prompt: string): string {
     .split("\n\n")
     .map((p) => (p.startsWith("Reply ONLY with JSON") ? "SUBMIT: call submit_plan with `line` (what you say) and `strategy` {weapons, target, stance, retaliate?, rules?, why?}." : p))
     .join("\n\n");
+}
+
+/** The check-in prompt, with its final "Reply ONLY with JSON" line replaced by how to answer through MCP. */
+export function checkinBriefing(prompt: string): string {
+  return prompt
+    .split("\n")
+    .map((l) => (l.startsWith("Reply ONLY with JSON") ? "ANSWER: call submit_checkin with keep: true, or only the fields to change (e.g. target, stance) and a short line." : l))
+    .join("\n");
 }
 
 /** Problems from the server (422/400) turned into instructions to fix the plan. */
@@ -384,6 +397,7 @@ export class McpGateway {
         title: "Wait for your turn to plan",
         description:
           `Wait (up to about ${MCP_WAIT_S} s) until you must plan the next round. Status "turn": the round, the seconds left, the round's facts as data (context) and a briefing written for you; answer with submit_plan. ` +
+          `"checkin" (only when the server runs mid-round check-ins): the fight right now (health, rivals, who chases you, recent hits, nearest pickups); answer quickly with submit_checkin. ` +
           `"waiting": call wait_for_turn again. "over": the match ended (winner, record). ` +
           PLAN_HELP,
         inputSchema: {},
@@ -404,6 +418,19 @@ export class McpGateway {
             context: data.context,
             briefing: briefingOf(data.prompt),
             next: "call submit_plan with line and strategy before the deadline",
+          });
+        }
+        if (data.status === "checkin") {
+          state.checkin = { round: data.round, tick: data.tick };
+          return text({
+            status: "checkin",
+            round: data.round,
+            tick: data.tick,
+            atSecond: data.second,
+            secondsLeft: Math.floor(data.msLeft / 1000),
+            fight: data.checkin,
+            briefing: checkinBriefing(data.prompt),
+            next: "call submit_checkin now (keep: true, or only the fields to change, plus a short line); the fight keeps going while you think",
           });
         }
         if (data.status === "over") return text({ status: "over", winner: data.winner, wins: data.wins, youWon: data.youWon, record: data.record ? `${base}${data.record}` : null, replay: data.record ? `${base}/?record=${data.record}` : null, next: "done: get_round_report shows every plan; join_lobby plays again" });
@@ -437,6 +464,40 @@ export class McpGateway {
         const fix = data?.problems ? fixHints(data.problems, rivals) : [];
         const t = status === 409 ? "call wait_for_turn to get the current round" : status === 429 ? "too many rejected plans this round; the house bot plays it, wait for the next turn" : "fix the plan and call submit_plan again before the deadline";
         return text({ rejected: true, round, error: data?.error ?? `plan failed (${status})`, ...(fix.length ? { fix } : {}), next: t }, true);
+      }),
+    );
+
+    // ---------------------------------------------------------------- submit_checkin
+    server.registerTool(
+      "submit_checkin",
+      {
+        title: "Answer a mid-round check-in",
+        description:
+          "Answer the check-in from the last wait_for_turn (status \"checkin\"). keep: true keeps your plan; or send only the plan fields to change (target, stance, weapons, retaliate, rules), plus an optional short line (what your fighter shouts) and why. " +
+          "The rest of your plan stays. The fight keeps going while you think: the change applies when your answer arrives, so answer within a few seconds. No answer before the deadline keeps your plan. Then call wait_for_turn again.",
+        inputSchema: {
+          keep: z.boolean().optional().describe("true: keep your plan (the default when no plan field is sent)"),
+          target: strategySchema.shape.target.optional(),
+          stance: strategySchema.shape.stance.optional(),
+          weapons: strategySchema.shape.weapons.optional(),
+          retaliate: strategySchema.shape.retaliate,
+          rules: strategySchema.shape.rules.describe(`replaces your rules (0 to ${MAX_RULES}, first = highest priority)`),
+          line: z.string().max(400).optional().describe(`optional: what your fighter shouts now (at most ${CHECKIN.maxLine} characters)`),
+          why: z.string().max(400).optional().describe("optional: one sentence in game terms"),
+        },
+      },
+      timed("submit_checkin", async (a: Record<string, unknown>) => {
+        const no = needMatch();
+        if (no) return no;
+        if (!state.checkin) return text({ error: "no check-in yet: call wait_for_turn first" }, true);
+        const body = Object.fromEntries(Object.entries(a).filter(([, v]) => v !== undefined));
+        const { status, data } = await this.call(state, "POST", `/api/matches/${state.match}/checkin`, { ...state.checkin, ...body });
+        if (status === 200) return text({ accepted: true, ...state.checkin, result: data.result, changed: data.changed, next: "call wait_for_turn" });
+        const m = this.api.matches.get(state.match!);
+        const me = m?.runner?.names[state.seat!];
+        const rivals = m?.runner ? m.runner.names.filter((n) => n !== me) : [];
+        const fix = data?.problems ? fixHints(data.problems, rivals) : [];
+        return text({ rejected: true, ...state.checkin, error: data?.error ?? `check-in failed (${status})`, ...(fix.length ? { fix } : {}), next: status === 409 ? "call wait_for_turn" : "fix it and call submit_checkin again quickly, or call wait_for_turn (your plan stays)" }, true);
       }),
     );
 
