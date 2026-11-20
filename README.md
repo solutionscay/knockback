@@ -206,6 +206,9 @@ bun run typecheck
   rendering, no wall clock, no `Math.random`. Runs in Bun and the browser.
   - `levelgen.ts` seeded level generator + validation; `level-walls.ts` jumpable, cracked barricades and route checks; `grid.ts` the cell grid
   - `terrain.ts` destructible terrain physics (chunked colliders, support check, loose pieces)
+  - `sim-chains.ts` breakable platform chains (#34): chain hit points (`CHAIN` in `constants.ts`); explosions,
+    shotgun pellets, bats, heavy fists and heavy flying things damage them; one chain gone, the platform swings
+    on the other (rope joint to a pivot); all gone, it falls and crushes (credited to whoever broke the chain)
   - `sim.ts` world, fighters, weapons, objects, power-ups, explosions, damage, ring-outs, state hash
   - `match.ts` one continuous fight, result, match record (seed + strategies) and replay
   - `controller.ts` strategy -> frame-by-frame inputs (target picking, pathing, aiming, firing)
