@@ -5,6 +5,7 @@ import type { Decision } from "../sim/voice";
 import { CALLOUT, CalloutManager, planChangeText, ruleTagText, targetText, type KoEvent, type RuleFiring } from "./callouts";
 import { esc } from "./game-hud";
 import { hex, portraitSvg } from "./portrait";
+import { modelBadgeHtml } from "./model-badge";
 
 export class GamePlans {
   /** plan thoughts and rule tags over the fight (#10, #11); ?thoughts=off hides them */
@@ -83,9 +84,10 @@ export class GamePlans {
     }
   }
 
-  startLineup(lineup: HTMLElement, shown: Fight, decisions: Decision[]) {
+  /** `labels`: who plays each seat, shown as a model badge on the chip */
+  startLineup(lineup: HTMLElement, shown: Fight, decisions: Decision[], labels: (string | null)[] = []) {
     lineup.innerHTML = shown.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.look, decisions[f.id]!.strategy.weapons[0] ?? "fist", "fight", "tiny")}<span class="nm">${esc(f.name)}<em class="plan"></em></span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.look, decisions[f.id]!.strategy.weapons[0] ?? "fist", "fight", "tiny")}<span class="nm"><span class="fn">${esc(f.name)}</span>${modelBadgeHtml(labels[f.id] ?? null, "sm")}<em class="plan"></em></span></div>`)
       .join("");
     lineup.className = "show";
   }

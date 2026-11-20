@@ -9,6 +9,7 @@ import type { Sim, Strategy } from "../sim/sim";
 import type { Decision } from "../sim/voice";
 import { bestRule, type KoEvent, type RuleFiring } from "./callouts";
 import { hex, portraitSvg } from "./portrait";
+import { modelBadgeHtml } from "./model-badge";
 import type { CamMode } from "./scene";
 
 const TALLY_KEY = "knockback.tally.v1";
@@ -90,7 +91,8 @@ export function pipsHtml(match: Match, size: "small" | "big"): string {
 }
 
 /** Short round recap: damage dealt/taken and who hurt each fighter most (from round stats). */
-export function recapHtml(match: Match, facts: RoundFacts, firings: RuleFiring[], kos: KoEvent[]): string {
+/** Short round recap: damage dealt/taken and who hurt each fighter most (from round stats); `labels`: who plays each seat. */
+export function recapHtml(match: Match, facts: RoundFacts, firings: RuleFiring[], kos: KoEvent[], labels: (string | null)[] = []): string {
   const st = facts.stats;
   const rows = match.identities.map((c, i) => {
     const dealt = st.damage[i]!.reduce((a, s, j) => a + (j === i ? 0 : s.damage), 0);
@@ -98,7 +100,7 @@ export function recapHtml(match: Match, facts: RoundFacts, firings: RuleFiring[]
     const worst = topDamager(st, i);
     const w = worst >= 0 ? st.damage[worst]![i]! : null;
     const hurt = w && w.damage >= 8 ? `${esc(match.identities[worst]!.name)} ${Math.round(w.damage)}${behindHitText(w, 1)}` : "";
-    return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
+    return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b>${modelBadgeHtml(labels[i] ?? null, "xs")}<span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
   }).join("");
   // best rule (#11): a rule firing followed within 5 s by a knockout by the same fighter
   const br = bestRule(firings, kos);
@@ -107,7 +109,8 @@ export function recapHtml(match: Match, facts: RoundFacts, firings: RuleFiring[]
   return `<div class="recap">${rows}${best}</div>`;
 }
 
-export function dialogueHtml(match: Match, decision: Decision, labels: string[] | null, b: Extract<Beat, { kind: "dialogue" }>): string {
+/** `label`: who plays this fighter ("claude/haiku", "house", "remote/Zapbit@grok-4.6"): shown as the model badge. */
+export function dialogueHtml(match: Match, decision: Decision, label: string | null, b: Extract<Beat, { kind: "dialogue" }>): string {
   const c = match.identities[b.fighter]!;
   const d = decision;
   const m = match.morale[b.fighter]!;
@@ -115,15 +118,15 @@ export function dialogueHtml(match: Match, decision: Decision, labels: string[] 
   const tgt = esc(s.target === "grudge" && s.grudge !== undefined ? `AFTER ${match.identities[s.grudge]!.name.toUpperCase()}` : `TARGET: ${String(s.target).toUpperCase()}`);
   const head = b.phase === "intro" ? "BEFORE ROUND 1" : `AFTER ROUND ${b.round - 1} · NEXT: ROUND ${b.round}`;
   const meta = match.record.rounds[b.round - 1]?.meta?.[b.fighter];
+  // the model badge is the headline (#model spotlight); how this plan was made is the small print next to it
+  const badge = modelBadgeHtml(label ?? meta?.provider ?? null, "lg");
   const who = meta
     ? meta.outcome === "ok"
-      ? `<span class="ai">${esc(meta.provider)} · ${formatSeconds(meta.ms)}</span>`
+      ? `<span class="ai">${formatSeconds(meta.ms)}</span>`
       : meta.outcome === "house"
-        ? `<span class="ai">house bot</span>`
-        : `<span class="ai bot">${esc(meta.provider)} · ${meta.outcome === "fallback-timeout" ? "timed out" : meta.outcome === "fallback-error" ? "error" : "bad answer"} · ${meta.aiLine ? "bot plan" : "bot line"}</span>`
-    : labels
-      ? `<span class="ai">${esc(labels[b.fighter]!)}</span>`
-      : "";
+        ? ""
+        : `<span class="ai bot">${meta.outcome === "fallback-timeout" ? "timed out" : meta.outcome === "fallback-error" ? "error" : "bad answer"} · ${meta.aiLine ? "bot plan" : "bot line"}</span>`
+    : "";
   const lastStats = b.phase === "between" ? match.facts[b.round - 2]?.stats.summary[b.fighter] : undefined;
   // rules (#11): last round's rules with their firing counts, then this round's rules; the AI's reason (#10)
   const lastRules = b.phase === "between" ? match.record.rounds[b.round - 2]?.strategies[b.fighter]?.rules : undefined;
@@ -136,7 +139,7 @@ export function dialogueHtml(match: Match, decision: Decision, labels: string[] 
       <div class="panel" style="--c:${hex(c.color)}">
         <div class="portrait">${portraitSvg(c, s.weapons[0] ?? "fist", m.state)}</div>
         <div class="body">
-          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span><span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
+          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${badge}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
           <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
@@ -147,7 +150,7 @@ export function dialogueHtml(match: Match, decision: Decision, labels: string[] 
       </div>`;
 }
 
-export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[], matchesPlayed: number, autopilot: boolean[] = []): string {
+export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[], matchesPlayed: number, autopilot: boolean[] = [], labels: (string | null)[] = []): string {
   const m = match;
   const w = match.identities[m.winner]!;
   const why = m.decidedBy() === "two-wins" ? `${m.wins[m.winner]} rounds to ${Math.max(...m.wins.filter((_, i) => i !== m.winner))}` : "won the deciding round";
@@ -162,12 +165,13 @@ export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[],
       const parts = [wins ? `${wins} ROUND${wins > 1 ? "S" : ""} +${wins * POINTS.win}` : "", kos ? `${kos} KO +${kos * POINTS.ko}` : ""].filter(Boolean).join(" · ");
       return `<div class="row${id === m.winner ? " champ" : ""}" style="--c:${hex(c.color)};--w:${(100 * tally.points[id]!) / best}%">
           <span class="rank">${rank + 1}</span><i></i><span class="name">${esc(c.name)}</span>
-          <span class="bar"><span></span></span><span class="pts">${tally.points[id]}</span>${gained ? `<em>+${gained}</em>` : `<em class="zero">+0</em>`}<span class="why">${parts}${autopilot[id] ? `${parts ? " · " : ""}<b class="autopilot">finished on autopilot</b>` : ""}</span></div>`;
+          <span class="bar"><span></span></span><span class="pts">${tally.points[id]}</span>${gained ? `<em>+${gained}</em>` : `<em class="zero">+0</em>`}<span class="mdl">${modelBadgeHtml(labels[id] ?? null, "sm")}</span><span class="why">${parts}${autopilot[id] ? `${parts ? " · " : ""}<b class="autopilot">finished on autopilot</b>` : ""}</span></div>`;
     })
     .join("");
   return `
       <div class="winner" style="--c:${hex(w.color)}">
         <div class="big">${esc(w.name.toUpperCase())} WINS</div>
+        <div class="model">${modelBadgeHtml(labels[m.winner] ?? null, "xl")}</div>
         <div class="why">${why} · ${m.round} rounds</div>
         ${pipsHtml(match, "big")}
       </div>

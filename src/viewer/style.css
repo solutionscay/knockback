@@ -84,7 +84,7 @@ body {
   width: 3.4vh;
   height: 4vh;
 }
-#lineup .chip span {
+#lineup .chip > span {
   color: var(--c);
 }
 
@@ -401,7 +401,7 @@ body {
   opacity: 0.5;
   font-size: 2.2vh;
 }
-#celebrate .row i {
+#celebrate .row > i {
   width: 2.4vh;
   height: 2.4vh;
   border-radius: 50%;
@@ -435,15 +435,15 @@ body {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-#celebrate .row em {
+#celebrate .row > em {
   font-style: normal;
   color: #ffde4a;
   font-size: 2.4vh;
 }
-#celebrate .row em.zero {
+#celebrate .row > em.zero {
   color: rgba(255, 255, 255, 0.3);
 }
-#celebrate.show .row em {
+#celebrate.show .row > em {
   animation: countpop 2.2s 1.2s both;
   animation-name: plus;
 }
@@ -851,16 +851,16 @@ body.capture #controls {
   align-items: center;
   color: #e8e4da;
 }
-#callout .rr i {
+#callout .rr > i {
   width: 1.4vh;
   height: 1.4vh;
   border-radius: 50%;
   background: var(--c);
 }
-#callout .rr b {
+#callout .rr > b {
   color: var(--c);
 }
-#callout .rr em {
+#callout .rr > em {
   font-style: normal;
   color: #ffb0b8;
 }
@@ -1011,6 +1011,8 @@ body.capture #controls {
 #lineup:not(.fight) {
   flex-wrap: wrap;
   justify-content: center;
+  /* absolutely placed at left: 50%: without this it shrinks to half the screen and wraps early (model badges) */
+  width: max-content;
   max-width: calc(100vw - 3.2vh);
 }
 #lineup.fight {
@@ -1061,4 +1063,88 @@ body.capture #controls {
   #lineup.fight .chip:nth-child(3) {
     grid-column: auto;
   }
+}
+
+/* ---------------------------------------------------------- model badges (model spotlight; the badge itself: model-badge.ts) */
+#dialogue .who .kb-mb {
+  align-self: center;
+}
+/* before the fight: name and badge side by side; in the fight: the badge on top, then name and plan (#10) */
+#lineup .chip .fn {
+  color: var(--c);
+}
+#lineup:not(.fight) .chip .nm {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.8vh;
+}
+#lineup:not(.fight) .chip .kb-mb {
+  --mb-fs: max(1.8vh, 12px);
+}
+#lineup.fight .chip {
+  /* two chips per side must stay clear of the round clock in the middle */
+  max-width: calc(50vw - 17vh);
+  min-width: 0;
+}
+#lineup.fight .chip .nm {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "b b" "f p";
+  column-gap: 0.7vh;
+  row-gap: 0.3vh;
+  min-width: 0;
+}
+#lineup.fight .chip .kb-mb {
+  grid-area: b;
+  justify-self: start;
+}
+#lineup.fight .chip .fn {
+  grid-area: f;
+  font-weight: 800;
+  font-size: 1.45vh;
+  align-self: center;
+}
+#lineup.fight .chip .plan {
+  grid-area: p;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#callout .rmodel {
+  display: block;
+  margin: 0.4vh 0 0.8vh;
+  font-size: 0;
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+}
+#callout .rr {
+  grid-template-columns: 1.6vh 9vh minmax(14vh, 24vh) 9vh 9vh 26vh;
+}
+#callout .rr .kb-mb {
+  justify-self: start;
+}
+#celebrate .winner .model {
+  margin: 1.2vh 0 0.4vh 0.4vw;
+}
+#celebrate .row {
+  grid-template-rows: auto auto auto;
+}
+#celebrate .row .mdl {
+  grid-column: 3 / 7;
+  line-height: 1;
+  margin-top: 0.4vh;
+}
+#intro .lvmodels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1vh 2vh;
+  margin-top: 1.2vh;
+}
+#intro .lvmodels > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8vh;
+  font-size: max(1.9vh, 13px);
+}
+#intro .lvmodels > span > b {
+  color: var(--c);
 }

@@ -2,6 +2,7 @@
  * The media side of bun run teaser: the audio track (the capture's sound cues on the output timeline, mixed by
  * the same offline mixer as scripts/sound-mix.ts), the encodes, the stills and the README.
  */
+import { modelBadgeTitle } from "../../src/viewer/model-badge";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateLevel } from "../../src/sim/levelgen";
@@ -138,9 +139,9 @@ export function writeReadme(dir: string, x: ReadmeInput) {
     "",
     "## Who played",
     "",
-    "| Bot | AI | Before round 1 |",
+    "| Bot | Model | Before round 1 |",
     "|---|---|---|",
-    ...s.names.map((n, i) => `| ${n}${i === s.winner ? " (winner)" : ""} | ${s.labels[i] ?? "house bot"} | "${(s.rounds[0]?.lines[i] ?? "").replace(/\|/g, "/")}" |`),
+    ...s.names.map((n, i) => `| ${n}${i === s.winner ? " (winner)" : ""} | ${modelBadgeTitle(s.labels[i] ?? "house")} | "${(s.rounds[0]?.lines[i] ?? "").replace(/\|/g, "/")}" |`),
     "",
     ...s.rounds.slice(1).flatMap((r, ri) => [`**Before round ${ri + 2}:**`, "", ...s.names.map((n, i) => `- ${n}: "${r.lines[i] ?? ""}"`), ""]),
     "## Scene list",

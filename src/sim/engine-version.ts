@@ -77,7 +77,7 @@ export function summarizeRecord(raw: unknown): RecordSummary | null {
     seed: Number(r.seed) >>> 0,
     engine: recordEngine(raw),
     names: [0, 1, 2, 3].map((i) => str((identities[i] as { name?: unknown })?.name, 24) || str((souls[i] as { name?: unknown })?.name, 24) || `Seat ${i + 1}`),
-    labels: [0, 1, 2, 3].map((i) => str(labels[i], 40) || str(meta[i]?.provider, 40) || null),
+    labels: [0, 1, 2, 3].map((i) => str(labels[i], 80) || str(meta[i]?.provider, 80) || null),
     colors: [0, 1, 2, 3].map((i) => color((identities[i] as { color?: unknown })?.color) ?? color((souls[i] as { color?: unknown })?.color)),
     winner: seat(r.winner),
     wins: [0, 1, 2, 3].map((i) => (typeof wins[i] === "number" ? Math.max(0, Math.min(9, Math.floor(wins[i] as number))) : 0)),

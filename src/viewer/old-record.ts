@@ -4,6 +4,7 @@
  * Built with textContent only (record text is untrusted); its styles live here so the card stays in its own file.
  */
 import { ENGINE_VERSION, type RecordSummary } from "../sim/engine-version";
+import { ensureModelBadgeCss, modelBadgeEl } from "./model-badge";
 
 const CSS = `
 #old-record { position: absolute; inset: 0; display: flex; padding: 3vh; z-index: 5; overflow: auto; }
@@ -17,7 +18,7 @@ const CSS = `
 #old-record .seat { border: 0.25vh solid var(--c); border-radius: 1.2vh; padding: 1vh 1.4vh; background: rgba(7, 8, 13, 0.6); }
 #old-record .seat.won { box-shadow: 0 0 0 0.3vh #ffd27a; }
 #old-record .nm { color: var(--c); font-size: max(2.2vh, 15px); }
-#old-record .lb { font-size: max(1.4vh, 11px); opacity: 0.7; }
+#old-record .lb { margin: 0.6vh 0 0.2vh; }
 #old-record .w { font-size: max(1.5vh, 11px); color: #ffd27a; margin-top: 0.4vh; }
 #old-record .round { margin: 1.4vh 0 0.6vh; font-size: max(1.5vh, 11px); letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.6; }
 #old-record .line { font-size: max(1.8vh, 13px); font-weight: 600; margin: 0.4vh 0; color: #e6e9f2; }
@@ -43,6 +44,7 @@ export function showOldRecord(s: RecordSummary, parent: HTMLElement = document.b
     st.textContent = CSS;
     document.head.appendChild(st);
   }
+  ensureModelBadgeCss();
   const root = el("div", "");
   root.id = "old-record";
   const card = el("div", "card");
@@ -57,7 +59,9 @@ export function showOldRecord(s: RecordSummary, parent: HTMLElement = document.b
     const d = el("div", `seat${i === s.winner ? " won" : ""}`);
     d.style.setProperty("--c", hex(s.colors[i] ?? null));
     d.append(el("div", "nm", name));
-    if (s.labels[i]) d.append(el("div", "lb", s.labels[i]!));
+    const lb = el("div", "lb");
+    lb.append(modelBadgeEl(s.labels[i] ?? "house", "sm"));
+    d.append(lb);
     d.append(el("div", "w", i === s.winner ? `WINNER · ${s.wins[i]} round${s.wins[i] === 1 ? "" : "s"}` : `${s.wins[i]} round${s.wins[i] === 1 ? "" : "s"}`));
     seats.append(d);
   });

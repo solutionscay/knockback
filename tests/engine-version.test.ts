@@ -87,6 +87,12 @@ function fakeDom() {
     children: El[] = [];
     vars: Record<string, string> = {};
     style = { setProperty: (k: string, v: string) => (this.vars[k] = v) };
+    dataset: Record<string, string> = {};
+    title = "";
+    attrs: Record<string, string> = {};
+    setAttribute(k: string, v: string) {
+      this.attrs[k] = v;
+    }
     parent: El | null = null;
     constructor(readonly tag: string) {}
     append(...xs: (El | { text: string })[]) {
@@ -124,8 +130,9 @@ describe("old record card (viewer)", () => {
     (globalThis as { document?: unknown }).document = doc;
     try {
       const rec = fresh(21);
-      const evil = asOld(rec);
+      const evil = asOld(rec) as ReturnType<typeof asOld> & { labels?: string[] };
       evil.rounds[0]!.lines[1] = "<img src=x onerror=alert(1)> snack";
+      evil.labels = ["claude/haiku", "codex/gpt-6-luna", "remote/Zap@<b>grok-4.6</b>", "house"];
       const s = summarizeRecord(evil)!;
       const card = showOldRecord(s) as unknown as { text(): string; all(): { className: string }[] };
       const text = card.text();
@@ -133,6 +140,12 @@ describe("old record card (viewer)", () => {
       expect(text).toContain("This replay can't be shown on the current physics.");
       for (const n of s.names) expect(text).toContain(n);
       expect(text).toContain(`WINNER`);
+      // model badges (model spotlight): big model names, the remote agent's own claim marked, as plain text
+      expect(text).toContain("CLAUDE HAIKU");
+      expect(text).toContain("GPT-6 LUNA (CODEX)");
+      expect(text).toContain("HOUSE BOT");
+      expect(text).toContain("<B>GROK 4.6</B>");
+      expect(text).toContain("SELF-REPORTED");
       expect(text).toContain("“<img src=x onerror=alert(1)> snack”"); // shown as text, never parsed as HTML
       expect(card.all().filter((e) => /^seat( won)?$/.test(e.className)).length).toBe(4);
       expect(card.all().filter((e) => e.className.includes("won")).length).toBe(1);

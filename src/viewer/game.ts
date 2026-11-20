@@ -21,6 +21,7 @@ import type { PlanUpdate } from "../sim/match";
 import { Scene, type CamMode } from "./scene";
 import { celebrateHtml, dialogueHtml, esc, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, renderDialogueLine, renderRoundClock, restart, saveCamera, saveTally, type Hud } from "./game-hud";
 import { GamePlans } from "./game-plans";
+import { ensureModelBadgeCss, modelBadgeHtml } from "./model-badge";
 import { AutopilotTrack, sanitizeControl, sanitizeOne, type ControlView } from "./autopilot";
 
 const SLOW_TIME = 1.6;
@@ -91,6 +92,7 @@ export class Game {
     private readonly hud: Hud,
   ) {
     this.scene = new Scene(app);
+    ensureModelBadgeCss();
     this.tally = loadTally();
     this.scene.camera.camMode = loadCamera();
     this.scene.camera.onFollowLost = () => this.setCamera({ kind: "auto" });
@@ -122,6 +124,11 @@ export class Game {
   resetTally() {
     this.tally = new Tally();
     saveTally(this.tally);
+  }
+
+  /** Who plays each seat (model badge): the match labels, else the first decision meta, else the house bot. */
+  seatLabels(): string[] {
+    return [0, 1, 2, 3].map((i) => this.labels?.[i] ?? this.match?.record.rounds.find((r) => r.meta?.[i])?.meta?.[i]?.provider ?? "house");
   }
 
   // ------------------------------------------------------------- dialogue controls
@@ -174,7 +181,7 @@ export class Game {
     this.decisions = this.match.prepareRound();
     this.showFight(this.match.fight!);
     this.resetHud();
-    this.plans.startLineup(this.hud.lineup, this.shown, this.decisions);
+    this.plans.startLineup(this.hud.lineup, this.shown, this.decisions, this.seatLabels());
     const order = introOrder(this.match.morale.map((m) => m.score));
     this.flow = new FlowRunner(
       [...openingBeats(order, this.decisions.map((d) => d.line)), ...roundBeats(1)],
@@ -222,7 +229,7 @@ export class Game {
     if (Array.isArray(checkinTicks) && !this.checkins.has(round))
       this.checkins.set(round, new Map(checkinTicks.filter((t): t is number => Number.isInteger(t) && t > 0 && t < 1e5).slice(0, 20).map((t) => [t, { leadTicks: 0, at: null }])));
     decisions = [0, 1, 2, 3].map((i) => sanitizeDecision(decisions?.[i], i));
-    meta = (Array.isArray(meta) ? meta : []).slice(0, 4).map((m) => ({ ...m, provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0 }));
+    meta = (Array.isArray(meta) ? meta : []).slice(0, 4).map((m) => ({ ...m, provider: String(m?.provider ?? "?").slice(0, 80), ms: Number(m?.ms) || 0 }));
     this.liveQueue.set(round, { decisions, meta });
     if (this.waitingRound === round) this.startLiveRound(round);
   }
@@ -283,7 +290,7 @@ export class Game {
     this.liveUpdates.delete(round);
     if (round === 1) {
       this.showFight(this.match.fight!);
-      this.plans.startLineup(this.hud.lineup, this.shown, this.decisions);
+      this.plans.startLineup(this.hud.lineup, this.shown, this.decisions, this.seatLabels());
       const order = introOrder(this.match.morale.map((m) => m.score));
       this.flow.append([...openingBeats(order, this.decisions.map((d) => d.line)).slice(1), ...roundBeats(1)]);
     } else {
@@ -310,7 +317,7 @@ export class Game {
     switch (b.kind) {
       case "level": {
         const lv = this.match.level;
-        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking: ${this.labels?.map((l, i) => `${esc(this.match.identities[i]!.name)} (${esc(l)})`).join(" · ") ?? ""}</div>` : "";
+        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking</div><div class="lvmodels">${this.seatLabels().map((l, i) => `<span style="--c:${hex(this.match.identities[i]!.color)}"><b>${esc(this.match.identities[i]!.name)}</b>${modelBadgeHtml(l, "md")}</span>`).join("")}</div>` : "";
         this.scene.camera.overview = true;
         h.intro.innerHTML = `
           <div class="levelcard">
@@ -331,7 +338,7 @@ export class Game {
         if (!this.videoMode) this.scene.camera.focus = { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
         this.scene.blam(b.fighter);
         h.lineup.querySelector(`[data-id="${b.fighter}"]`)?.classList.add("in");
-        h.dialogue.innerHTML = dialogueHtml(this.match, this.decisions[b.fighter]!, this.labels, b);
+        h.dialogue.innerHTML = dialogueHtml(this.match, this.decisions[b.fighter]!, this.seatLabels()[b.fighter]!, b);
         restart(h.dialogue, "show");
         h.dialogue.querySelector(".skip")?.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -372,8 +379,8 @@ export class Game {
         saveTally(this.tally);
         const w = this.match.identities[facts.winner]!;
         const decided = this.match.over;
-        h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span>${pipsHtml(this.match, "big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
-        h.callout.innerHTML += recapHtml(this.match, facts, this.plans.roundFirings, this.plans.roundKos);
+        h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span><span class="rmodel">${modelBadgeHtml(this.seatLabels()[facts.winner]!, "lg")}</span>${pipsHtml(this.match, "big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
+        h.callout.innerHTML += recapHtml(this.match, facts, this.plans.roundFirings, this.plans.roundKos, this.seatLabels());
         if (this.match.diverged >= 0) h.callout.innerHTML += `<span class="small diverged">REPLAY DIVERGED IN ROUND ${this.match.diverged} · THIS RECORD WAS MADE BY AN OLDER ENGINE</span>`;
         restart(h.callout, "show");
         if (decided) this.flow.append(closingBeats());
@@ -393,7 +400,7 @@ export class Game {
         const wid = this.match.winner;
         if (!this.videoMode) this.scene.camera.focus = { id: wid, offsetX: -0.24, heightM: 8 };
         this.scene.celebrateId = wid;
-        h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed, this.ap.on);
+        h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed, this.ap.on, this.seatLabels());
         restart(h.celebrate, "show");
         h.celebrate.querySelector<HTMLButtonElement>(".next")?.addEventListener("click", () => this.onNeedNewMatch?.());
         this.moments.push({ time: this.clock, kind: "celebrate", weight: 0 });
