@@ -9,7 +9,8 @@ import { damagePiece } from "./sim-terrain";
 export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: ExplosionKind, owner: number, depth: number, chainFrom: string | null) {
   sim.stats.explosions++;
   sim.events.push({ type: "explosion", tick: sim.tick, kind, x, y, radius: spec.radius, owner, depth, chainFrom });
-  const carved = sim.terrain.carve(x, y, spec.radius * 0.85, spec.terrainDamage);
+  const carveRadius = spec.radius * 1.12;
+  const carved = sim.terrain.carve(x, y, carveRadius, spec.terrainDamage);
   if (carved.length) {
     sim.stats.cellsDestroyed += carved.length;
     sim.events.push({ type: "carve", tick: sim.tick, cells: carved.slice(0, 60) });
@@ -47,7 +48,7 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
       continue;
     }
     if (e.kind === "chunk") {
-      damagePiece(sim, e, x, y, spec.radius * 0.85, spec.terrainDamage);
+      damagePiece(sim, e, x, y, carveRadius, spec.terrainDamage);
       if (e.dead) continue;
     } else if (e.kind !== "item" && e.kind !== "grenade") {
       // blocks only break near the center; further out they get shoved, so cover collapses

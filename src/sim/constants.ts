@@ -56,7 +56,7 @@ export const WEAPONS = {
     pelletDamage: 1.0,
     pelletKnock: 2.3,
     pelletBlockDamage: 5,
-    pelletTerrainDamage: 7,
+    pelletTerrainDamage: 11,
     pelletImpulse: 1.6,
   },
   /** Melee launch: the ring-out tool. */
@@ -68,8 +68,8 @@ export const WEAPONS = {
     knockback: 11.8,
     lift: 0.75,
     propImpulse: 9,
-    terrainRadius: 0.7,
-    terrainDamage: 40,
+    terrainRadius: 1.3,
+    terrainDamage: 75,
   },
   grenade: {
     cooldown: 130,
@@ -95,8 +95,8 @@ export const WEAPONS = {
     lift: 0.45,
     propImpulse: 3,
     /** a punch chips terrain a little: enough to dig out of a pocket, slowly */
-    terrainRadius: 0.4,
-    terrainDamage: 14,
+    terrainRadius: 0.65,
+    terrainDamage: 24,
   },
   /** Hook: yanks a fighter (or a prop) toward the shooter. */
   grapple: {
@@ -146,7 +146,7 @@ export const WEIGHT = { density: 7, ropeHp: 30 };
 /** Crumbling cells lose this many hit points per second while stood on. */
 export const CRUMBLE_DPS = 20;
 
-export const BLOCK = { size: 0.9, hp: 40, density: 1.4 };
+export const BLOCK = { size: 0.9, hp: 24, density: 1.4 };
 export const CRATE = { size: 0.8, hp: 14, density: 0.6, dropChance: 0.9 };
 export const ITEM = { size: 0.5, pickupRange: 1.1, healAmount: 35, reachBelow: 0.6 };
 

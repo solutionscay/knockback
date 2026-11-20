@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseAnswer, parseRules } from "../src/ai/parse";
 import { checkRule } from "../src/sim/rules";
-import { initPhysics, Match, MAX_RULES, replayMatch, type Rule } from "../src/sim";
+import { initPhysics, Match, MAX_RULES, ReplayDivergedError, replayMatch, type Rule } from "../src/sim";
 import { sanitizeRecord, sanitizeRules } from "../src/viewer/sanitize";
 
 setDefaultTimeout(120_000);
@@ -125,12 +125,12 @@ describe("stored rules and records (#5)", () => {
     expect(m.record.version).toBe(4);
     expect(m.record.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     expect(sanitizeRecord(JSON.parse(JSON.stringify(m.record)))!.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
-    // The saved version 2 record still replays and preserves its original identities.
+    // The older schema still preserves identities. Hash verification refuses the old physics.
     const rec = JSON.parse(readFileSync(`${import.meta.dir}/fixtures/record-v2-match-1001.json`, "utf8"));
     expect(rec.version).toBe(2);
-    expect(() => replayMatch(rec)).not.toThrow();
+    expect(() => replayMatch(rec)).toThrow(ReplayDivergedError);
     expect(sanitizeRecord(rec)).not.toBeNull();
-    expect(replayMatch(sanitizeRecord(rec)!).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
+    expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
     expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).identities.map((i) => i.color)).toEqual(rec.souls.map((s: { color: number }) => s.color));
     const v2made = new Match(11);
     v2made.playToEnd();

@@ -17,7 +17,7 @@ export const enum Mat {
 }
 
 /** Hit points per material. Bedrock never breaks. */
-export const MAT_HP: readonly number[] = [0, 36, 70, 20, 85, 55, 24, Infinity, 46];
+export const MAT_HP: readonly number[] = [0, 36, 70, 20, 85, 40, 24, Infinity, 32];
 /** Density of loose pieces per material. */
 export const MAT_DENSITY: readonly number[] = [0, 1.6, 2.4, 0.7, 3.2, 2.2, 0.8, 3, 1.9];
 
