@@ -34,6 +34,7 @@ import { parseSoul, type Soul } from "../sim/soul";
 import { exampleSouls } from "../sim/souls";
 import { errorResponse, HttpError, json, MAX_BODY, RateLimiter, readJson } from "./limits";
 import { LiveStream } from "./live";
+import { lobbyPage } from "./lobby";
 import { planSchema, RemoteSeat } from "./remote";
 import { SqliteStore, type MatchRow, type MatchStore, type SeatRow } from "./store";
 
@@ -559,6 +560,13 @@ export class MatchServer {
         }
   }
 
+  /** What /api/live shows without ?match: the newest match that has started (an open one has nothing to show yet), else the newest. */
+  private liveDefault(): ServerMatch | null {
+    let best: ServerMatch | null = null;
+    for (const m of this.matches.values()) if (m.status !== "open" && (!best || m.createdAt >= best.createdAt)) best = m;
+    return best ?? this.newest;
+  }
+
   /** Liveness and readiness for the container healthcheck: the process answers and the store can be read. */
   private async health(): Promise<Response> {
     const count = (st: string) => [...this.matches.values()].filter((m) => m.status === st).length;
@@ -602,6 +610,7 @@ export class MatchServer {
   /** Handle an /api request (null for other paths). `ip` keys the rate limits. */
   async handle(req: Request, ip = "local"): Promise<Response | null> {
     const url = new URL(req.url);
+    if (url.pathname === "/lobby" && req.method === "GET") return new Response(lobbyPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     if (!url.pathname.startsWith("/api/") && url.pathname !== "/api") return null;
     if (url.pathname === "/api/health") return this.health();
     try {
@@ -624,7 +633,7 @@ export class MatchServer {
     if (path === "/api/live") {
       allow("GET");
       const mid = url.searchParams.get("match");
-      const m = mid ? await this.matchOr404(mid, ip) : this.newest;
+      const m = mid ? await this.matchOr404(mid, ip) : this.liveDefault();
       if (!m) throw new HttpError(404, "no match yet");
       return m.live.response();
     }
@@ -793,7 +802,8 @@ function apiIndex(open: boolean) {
       "POST /api/matches/:id/plan": "{ round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer } -> { accepted, plan }",
       "POST /api/matches/:id/leave": "the house bot takes your seat (before the start: the seat is free again)",
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
-      "GET /api/live?match=:id": "spectator event stream (SSE)",
+      "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
+      "GET /lobby": "landing page: the live match, the match list, how to join",
       "GET /api/records": "index of saved records (path, seed, hashes, winner)",
     },
     limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },

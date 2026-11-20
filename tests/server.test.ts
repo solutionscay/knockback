@@ -149,6 +149,26 @@ describe("ops", () => {
     }
   });
 
+  test("GET /lobby is the landing page; /api/live without ?match prefers the newest started match", async () => {
+    const s = new MatchServer({ outDir: tmp(), defaultFillAfterMs: 300_000 });
+    const lobby = (await s.handle(new Request("http://kb.test/lobby")))!;
+    expect(lobby.headers.get("content-type")).toContain("text/html");
+    const html = await lobby.text();
+    expect(html).toContain('src="/?live"');
+    expect(html).toContain("/api/matches");
+    const played = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 3 });
+    await played.start(); // nobody joined: house bots
+    for (let i = 0; i < 400 && played.status !== "over"; i++) await Bun.sleep(25);
+    const open = await s.createMatch({ seats: ["remote", "remote", "house", "house"] }); // newer, but not started
+    const res = (await s.handle(new Request("http://kb.test/api/live")))!;
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    reader.cancel();
+    expect(first).toContain(`"seed":3`);
+    expect(open.status).toBe("open");
+    await open.start();
+  });
+
   test("the live stream sends an SSE comment while someone watches", async () => {
     const live = new LiveStream(64, 20);
     live.broadcast({ type: "match" });
