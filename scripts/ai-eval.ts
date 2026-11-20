@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 import { DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
 import { compareReports, computeReport, reportMarkdown, type EvalReport } from "../src/ai/eval";
 import { buildPrompt } from "../src/ai/prompt";
-import { registerStubs } from "../src/ai/providers";
+import { PROVIDERS, registerStubs } from "../src/ai/providers";
 import { playAiMatch, type PlayedMatch } from "../src/ai/run";
 import { initPhysics, Match } from "../src/sim";
 
@@ -69,7 +69,9 @@ const parseSeeds = (s: string): number[] => {
 const seeds = flags.seeds ? parseSeeds(flags.seeds) : Array.from({ length: Number(flags.matches ?? 3) }, (_, i) => 1001 + i);
 if (flags.matches && flags.seeds && Number(flags.matches) !== seeds.length) fail(`--matches ${flags.matches} and --seeds ${flags.seeds} disagree`);
 if (!seeds.length) fail("no matches to run");
-const deadline = flags.deadline ? Number(flags.deadline) * 1000 : DEFAULT_DEADLINE_MS;
+// --deadline overrides every provider; without it each provider uses its own (src/ai/providers.ts)
+const deadline = flags.deadline ? Number(flags.deadline) * 1000 : undefined;
+const deadlineText = deadline !== undefined ? `${deadline / 1000} s` : `per provider (${[...new Set(lineup.filter((p) => p !== "house"))].map((p) => `${p} ${(PROVIDERS[p]?.deadlineMs ?? DEFAULT_DEADLINE_MS) / 1000} s${PROVIDERS[p]?.hedgeAfterMs ? `, hedged at ${PROVIDERS[p]!.hedgeAfterMs! / 1000} s` : ""}`).join("; ")})`;
 const concurrency = Math.max(1, Math.min(4, Number(flags.concurrency ?? 1)));
 const tag = (flags.tag ?? "").replace(/[^\w.-]/g, "");
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -108,7 +110,7 @@ const sample = new Match(seeds[0]!, { souls });
 const firstChars = Math.round(souls.reduce((a, s, i) => a + buildPrompt(s, sample.contextFor(i), { level: sample.level, lastLines: null, lastHealth: null }).length, 0) / 4);
 // later rounds carry the last round's stats and lines: about 1.45x the first prompt (measured on real matches)
 const estChars = seeds.length * aiSeats * (firstChars + 1.45 * firstChars * 1.8);
-console.log(`KNOCKBACK AI EVAL  ${seeds.length} matches (seeds ${seeds[0]}${seeds.length > 1 ? `..${seeds[seeds.length - 1]}` : ""}), lineup ${lineup.join(",")}, deadline ${deadline / 1000} s, concurrency ${concurrency}`);
+console.log(`KNOCKBACK AI EVAL  ${seeds.length} matches (seeds ${seeds[0]}${seeds.length > 1 ? `..${seeds[seeds.length - 1]}` : ""}), lineup ${lineup.join(",")}, deadline ${deadlineText}, concurrency ${concurrency}`);
 console.log(`cost estimate: ${aiSeats} AI seats -> up to ${maxCalls} calls (2 or 3 rounds a match, about ${Math.round(seeds.length * 2.6 * aiSeats)} expected), ~${Math.round(estChars / 1000)}k prompt characters (~${Math.round(estChars / 4000)}k tokens)${realSeats ? ` to real providers (${realSeats} seats)` : " (stub/house only: free)"}`);
 if (realSeats && maxCalls > CONFIRM_CALLS && flags.yes !== "true") fail(`that is more than ${CONFIRM_CALLS} AI calls: add --yes to run it`);
 console.log(`output: ${outDir}\n`);
@@ -140,10 +142,10 @@ const totalS = (performance.now() - t0) / 1000;
 const played = results.filter((r): r is PlayedMatch => !!r);
 const report = computeReport(played.map((p) => p.eval));
 const compare = oldReport ? compareReports(oldReport, report) : undefined;
-writeFileSync(join(outDir, "report.json"), JSON.stringify({ ...report, run: { tag, lineup, deadlineS: deadline / 1000, concurrency, seconds: Math.round(totalS) } }, null, 2));
+writeFileSync(join(outDir, "report.json"), JSON.stringify({ ...report, run: { tag, lineup, deadline: deadlineText, concurrency, seconds: Math.round(totalS) } }, null, 2));
 writeFileSync(
   join(outDir, "report.md"),
-  reportMarkdown(report, { title: `AI eval${tag ? `: ${tag}` : ""}`, compare, meta: [`Lineup flag: ${lineup.join(",")}; deadline ${deadline / 1000} s; ran in ${totalS.toFixed(0)} s.`] }),
+  reportMarkdown(report, { title: `AI eval${tag ? `: ${tag}` : ""}`, compare, meta: [`Lineup flag: ${lineup.join(",")}; deadline ${deadlineText}; ran in ${totalS.toFixed(0)} s.`] }),
 );
 writeFileSync(join(outDir, "log.txt"), played.map((p) => p.log.join("\n")).join("\n\n") + "\n");
 console.log(`done in ${totalS.toFixed(1)} s: ${join(outDir, "report.md")}`);

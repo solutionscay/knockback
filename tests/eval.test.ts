@@ -117,7 +117,7 @@ describe("metric functions on fixed records", () => {
     m.rounds[1]!.decisions[0] = ai(S("rush", "nearest", ["bat"]), "bot line", 20000, "fallback-timeout");
     m.rounds[1]!.decisions[1] = ai(S("rush", "nearest", ["bat"]), "bot line", 300, "fallback-invalid", "codex/gpt-6-luna");
     const rel = computeReport([m]).reliability;
-    expect(rel["claude/haiku"]).toEqual({ calls: 3, ok: 2, timeouts: 1, errors: 0, invalid: 0, fallbacks: 1, ms: { median: 4000, p90: 20000, max: 20000 } });
+    expect(rel["claude/haiku"]).toEqual({ calls: 3, hedged: 0, ok: 2, timeouts: 1, errors: 0, invalid: 0, fallbacks: 1, ms: { median: 4000, p90: 20000, max: 20000 } });
     expect(rel["codex/gpt-6-luna"]!.invalid).toBe(1);
     expect(rel["codex/gpt-6-luna"]!.fallbacks).toBe(1);
     // fallbacks are not the AI's own plans: left out of variety and change

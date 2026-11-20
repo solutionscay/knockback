@@ -40,7 +40,7 @@ export function rescoreRecord(rec: MatchRecord, lineup: string[]): EvalMatch {
   return evalMatchFrom(match, lineup, housePlans);
 }
 
-export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], deadlineMs: number): Promise<PlayedMatch> {
+export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], deadlineMs?: number): Promise<PlayedMatch> {
   const t0 = performance.now();
   const match = new Match(seed, { souls });
   const names = match.names;

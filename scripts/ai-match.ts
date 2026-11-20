@@ -19,7 +19,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join, resolve } from "node:path";
 import { decideRound, DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
-import { registerStubs } from "../src/ai/providers";
+import { PROVIDERS, registerStubs } from "../src/ai/providers";
 import { initPhysics, Match } from "../src/sim";
 import index from "../index.html";
 
@@ -47,7 +47,9 @@ const souls = loaded.map((l) => l.soul);
 const lineup = parseLineup(flags.lineup, souls.map((s) => s.name));
 const seats = seatsFor(lineup, souls);
 const seed = flags.seed ? Number(flags.seed) >>> 0 : (Math.random() * 1e9) >>> 0;
-const deadline = flags.deadline ? Number(flags.deadline) * 1000 : DEFAULT_DEADLINE_MS;
+// --deadline overrides every provider; without it each provider uses its own (src/ai/providers.ts)
+const deadline = flags.deadline ? Number(flags.deadline) * 1000 : undefined;
+const deadlineText = deadline !== undefined ? `${deadline / 1000} s` : `per provider (${[...new Set(lineup.filter((p) => p !== "house"))].map((p) => `${p} ${(PROVIDERS[p]?.deadlineMs ?? DEFAULT_DEADLINE_MS) / 1000} s${PROVIDERS[p]?.hedgeAfterMs ? `, hedged at ${PROVIDERS[p]!.hedgeAfterMs! / 1000} s` : ""}`).join("; ")})`;
 const outDir = resolve(flags.out ?? "records");
 const headless = flags.headless === "true";
 const hostname = flags.host ?? "localhost";
@@ -114,7 +116,7 @@ if (!headless) {
 await initPhysics();
 const names = souls.map((s) => s.name);
 const labels = seats.map((s) => s.provider?.label ?? "house");
-console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadline / 1000} s`);
+console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}`);
 names.forEach((n, i) => console.log(`  ${n.padEnd(8)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}`));
 const t0 = performance.now();
 const match = new Match(seed, { souls });

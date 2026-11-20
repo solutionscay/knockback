@@ -129,6 +129,8 @@ export interface FactCheck {
 
 export interface ProviderReliability {
   calls: number;
+  /** calls where a second, hedged call was made (#14) */
+  hedged: number;
   ok: number;
   timeouts: number;
   errors: number;
@@ -404,13 +406,14 @@ export function whyOf(matches: EvalMatch[]): EvalReport["why"] {
 }
 
 export function reliabilityOf(matches: EvalMatch[]): Record<string, ProviderReliability> {
-  const acc: Record<string, { ms: number[]; ok: number; timeouts: number; errors: number; invalid: number; calls: number }> = {};
+  const acc: Record<string, { ms: number[]; ok: number; timeouts: number; errors: number; invalid: number; calls: number; hedged: number }> = {};
   for (const m of matches)
     for (const rd of m.rounds)
       rd.decisions.forEach((d, seat) => {
         if (isHouse(m.seats, seat)) return;
-        const a = (acc[d.meta.provider] ??= { ms: [], ok: 0, timeouts: 0, errors: 0, invalid: 0, calls: 0 });
+        const a = (acc[d.meta.provider] ??= { ms: [], ok: 0, timeouts: 0, errors: 0, invalid: 0, calls: 0, hedged: 0 });
         a.calls++;
+        if (d.meta.hedged) a.hedged++;
         a.ms.push(d.meta.ms);
         if (d.meta.outcome === "ok") a.ok++;
         else if (d.meta.outcome === "fallback-timeout") a.timeouts++;
@@ -419,7 +422,7 @@ export function reliabilityOf(matches: EvalMatch[]): Record<string, ProviderReli
       });
   const out: Record<string, ProviderReliability> = {};
   for (const [k, a] of Object.entries(acc))
-    out[k] = { calls: a.calls, ok: a.ok, timeouts: a.timeouts, errors: a.errors, invalid: a.invalid, fallbacks: a.timeouts + a.errors + a.invalid, ms: { median: quantile(a.ms, 0.5), p90: quantile(a.ms, 0.9), max: Math.max(0, ...a.ms) } };
+    out[k] = { calls: a.calls, hedged: a.hedged, ok: a.ok, timeouts: a.timeouts, errors: a.errors, invalid: a.invalid, fallbacks: a.timeouts + a.errors + a.invalid, ms: { median: quantile(a.ms, 0.5), p90: quantile(a.ms, 0.9), max: Math.max(0, ...a.ms) } };
   return out;
 }
 
@@ -597,8 +600,8 @@ export function reportMarkdown(rep: EvalReport, opts: { title?: string; compare?
   const rel = Object.entries(rep.reliability);
   if (!rel.length) L.push(`${NA}: no AI seats.`, "");
   else {
-    L.push("| Provider | Calls | OK | Timeouts | Errors | Invalid | Fallbacks | Median | p90 | Max |", "|---|---|---|---|---|---|---|---|---|---|");
-    for (const [k, r] of rel) L.push(`| ${k} | ${r.calls} | ${r.ok} | ${r.timeouts} | ${r.errors} | ${r.invalid} | ${r.fallbacks} | ${(r.ms.median / 1000).toFixed(1)} s | ${(r.ms.p90 / 1000).toFixed(1)} s | ${(r.ms.max / 1000).toFixed(1)} s |`);
+    L.push("| Provider | Calls | OK | Hedged | Timeouts | Errors | Invalid | Fallbacks | Median | p90 | Max |", "|---|---|---|---|---|---|---|---|---|---|---|");
+    for (const [k, r] of rel) L.push(`| ${k} | ${r.calls} | ${r.ok} | ${r.hedged ?? 0} | ${r.timeouts} | ${r.errors} | ${r.invalid} | ${r.fallbacks} | ${(r.ms.median / 1000).toFixed(1)} s | ${(r.ms.p90 / 1000).toFixed(1)} s | ${(r.ms.max / 1000).toFixed(1)} s |`);
     L.push("");
   }
 

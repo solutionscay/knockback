@@ -182,6 +182,23 @@ describe("deciding a round (stub providers)", () => {
     expect(m.fight!.sim.fighters[0]!.prefs.slice(0, 2)).toEqual(["rocket", "bat"]);
   });
 
+  test("per-provider deadlines and hedging (#14): a hanging first call is beaten by a hedged second one", async () => {
+    const m = new Match(4);
+    const t0 = performance.now();
+    const ask = await decideRound(m, seatsFor(["tail", "house", "house", "house"], souls())); // no override: per-provider deadlines
+    expect(ask.meta[0]!.outcome).toBe("ok");
+    expect(ask.meta[0]!.hedged).toBe(true);
+    expect(performance.now() - t0).toBeLessThan(2000); // hedged after 100 ms, answered 20 ms later
+    expect(ask.decisions[0]!.line).toContain("second try");
+    const { PROVIDERS } = await import("../src/ai/providers");
+    expect(PROVIDERS.codex!.deadlineMs).toBe(45_000);
+    expect(PROVIDERS.codex!.hedgeAfterMs).toBe(15_000);
+    expect(PROVIDERS.grok!.deadlineMs).toBe(30_000);
+    // an explicit deadline still overrides every provider
+    const ask2 = await decideRound(m, seatsFor(["slow", "house", "house", "house"], souls()), 300);
+    expect(ask2.meta[0]!.outcome).toBe("fallback-timeout");
+  });
+
   test("house seats need no provider", async () => {
     const m = new Match(4);
     const ask = await decideRound(m, seatsFor(["house", "house", "stub", "house"], souls()), 400);

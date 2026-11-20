@@ -12,7 +12,7 @@ import { houseBrain, type Decision } from "../sim/voice";
 import { checkFactsFromStats, checkLine } from "./factcheck";
 import { parseAnswer } from "./parse";
 import { buildPrompt } from "./prompt";
-import { PROVIDERS, type Provider } from "./providers";
+import { askHedged, PROVIDERS, type Provider } from "./providers";
 
 export const DEFAULT_LINEUP = ["claude", "codex", "grok", "claude"];
 export const DEFAULT_DEADLINE_MS = 20_000;
@@ -84,7 +84,11 @@ export interface RoundAsk {
 }
 
 /** Ask every seat for the next round of `match`, in parallel. */
-export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFAULT_DEADLINE_MS): Promise<RoundAsk> {
+/**
+ * `deadlineMs` overrides every provider's own deadline (the --deadline flag);
+ * without it each provider uses its `deadlineMs` (or DEFAULT_DEADLINE_MS).
+ */
+export async function decideRound(match: Match, seats: Seat[], deadlineMs?: number): Promise<RoundAsk> {
   const prevRound = match.record.rounds[match.record.rounds.length - 1];
   const lastLines = prevRound ? prevRound.lines : null;
   const lastHealth = match.facts.length ? match.facts[match.facts.length - 1]!.fighters.map((f) => f.hpEnd) : null;
@@ -93,22 +97,23 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
   const results = await Promise.all(
     seats.map(async (seat, me) => {
       const started = performance.now();
-      if (!seat.provider) return { raw: null, ms: 0, outcome: "house" as const, detail: undefined as string | undefined };
+      if (!seat.provider) return { raw: null, ms: 0, outcome: "house" as const, detail: undefined as string | undefined, hedged: false };
+      const limit = deadlineMs ?? seat.provider.deadlineMs ?? DEFAULT_DEADLINE_MS;
       const ctl = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<"timeout">((resolve) => {
         timer = setTimeout(() => {
           ctl.abort();
           resolve("timeout");
-        }, deadlineMs);
+        }, limit);
       });
       try {
-        const got = await Promise.race([seat.provider.ask(prompts[me]!, ctl.signal), timeout]);
+        const got = await Promise.race([askHedged(seat.provider, prompts[me]!, ctl.signal), timeout]);
         const ms = Math.round(performance.now() - started);
-        if (got === "timeout") return { raw: null, ms, outcome: "fallback-timeout" as const, detail: `no answer in ${deadlineMs / 1000} s` };
-        return { raw: got, ms, outcome: "ok" as const, detail: undefined };
+        if (got === "timeout") return { raw: null, ms, outcome: "fallback-timeout" as const, detail: `no answer in ${limit / 1000} s`, hedged: !!seat.provider.hedgeAfterMs && ms >= seat.provider.hedgeAfterMs };
+        return { raw: got.text, ms, outcome: "ok" as const, detail: undefined, hedged: got.hedged };
       } catch (e) {
-        return { raw: null, ms: Math.round(performance.now() - started), outcome: "fallback-error" as const, detail: e instanceof Error ? e.message : String(e) };
+        return { raw: null, ms: Math.round(performance.now() - started), outcome: "fallback-error" as const, detail: e instanceof Error ? e.message : String(e), hedged: false };
       } finally {
         clearTimeout(timer);
       }
@@ -130,7 +135,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
       // post-check (#4): an accusation the last round's facts don't support is logged, never rejected
       const lastStats = match.facts[match.facts.length - 1]?.stats;
       const warn = p.line && lastStats ? checkLine(p.line, me, match.names, checkFactsFromStats(lastStats)).mismatches.map((x) => `${x.claim}; facts: ${x.facts}`) : [];
-      const extra = { ...(p.why ? { why: p.why } : {}), ...(warn.length ? { factWarnings: warn } : {}), ...(p.ruleProblems ? { ruleProblems: p.ruleProblems } : {}) };
+      const extra = { ...(r.hedged ? { hedged: true } : {}), ...(p.why ? { why: p.why } : {}), ...(warn.length ? { factWarnings: warn } : {}), ...(p.ruleProblems ? { ruleProblems: p.ruleProblems } : {}) };
       if (p.strategy && p.line) {
         decisions.push({ line: p.line, strategy: { ...p.strategy, line: p.line } });
         meta.push({ provider: label, ms: r.ms, outcome: "ok", ...extra });
@@ -151,7 +156,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
     }
     const bot = houseBrain(ctxs[me]!);
     decisions.push(bot);
-    meta.push({ provider: label, ms: r.ms, outcome: r.outcome, detail: r.detail });
+    meta.push({ provider: label, ms: r.ms, outcome: r.outcome, detail: r.detail, ...(r.hedged ? { hedged: true } : {}) });
   });
   return { decisions, meta, prompts, raw: results.map((r) => r.raw) };
 }
