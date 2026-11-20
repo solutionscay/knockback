@@ -20,7 +20,8 @@ bun run teaser --seed 42 --fast                       # a quick 720p30 preview o
 | `--fps 30\|60` | Frame rate (default 60) |
 | `--fast` | A quick preview: 30 fps, 720p only, a fast x264 preset. An explicit `--fps` or `--sizes` wins over it. |
 | `--workers <n>` | Parallel capture pages (default 6; more doesn't help at 1080p, see Speed) |
-| `--keep-frames` | Keep the captured JPEGs in `<out>/.work/frames` |
+| `--work <dir>` | The scratch folder for frames, sound cues, the WAV and the encodes (default: the system temp dir). Keep it on a fast local disk; a `--work` inside `--out` falls back to the temp dir. |
+| `--keep-work` | Keep the scratch folder after the run (`--keep-frames` does the same) |
 
 ## What you get
 
@@ -31,7 +32,10 @@ bun run teaser --seed 42 --fast                       # a quick 720p30 preview o
 | `README.md` | Seed, arena, the AI per bot, every line, the scene list with times, the match in numbers, the audio mix, the time each step took |
 | `match.json` | The record the video was made from |
 | `timing.json` | The time each step took |
-| `.work/` | The plan, the sound cues, the audio WAV (and the frames with `--keep-frames`) |
+
+**Scratch stays local:** every run works in its own folder on the local disk, `knockback-teaser-<pid>-<time>` under the temp dir or `--work`. The frames, sound cues, WAV and encodes all live there. **Only the finished files are copied to `--out`.** Then the scratch folder is deleted, unless you pass `--keep-work`.
+
+So a slow or network `--out` costs one copy of the results. With the frames on the share, a 1080p encode had taken 552 s instead of about 170 s.
 
 ## The video rules (built in, no flags)
 
@@ -53,7 +57,8 @@ bun run teaser --seed 42 --fast                       # a quick 720p30 preview o
 3. **Scan:** a private viewer server (the real `index.html` bundle) and one browser page run the whole match without drawing. `__kb.timeline()` gives every beat's first frame and the sim tick at every frame. Then the planner builds the segments.
 4. **Capture:** N pages each take a contiguous chunk of the planned frames. A page fast-forwards to its chunk without drawing, then steps one frame at a time and saves a JPEG (CDP `Page.captureScreenshot`, `optimizeForSpeed`) for each planned frame. The game is deterministic, so every page plays the same match. Each page also keeps the sound cues from the frame after the previous chunk, so frames skipped between chunks keep their sounds.
 5. **Audio:** the cues go onto the output timeline, into the voice limiter, the compressor and the soft limiter, and out as a WAV.
-6. **Encode:** all sizes encode at once (x264 `medium`, or `veryfast` with `--fast`), then the stills, the README and the timing.
+6. **Encode:** all sizes encode at once in the local scratch (x264 `medium`, or `veryfast` with `--fast`), then the stills, the README and the timing.
+7. **Deliver:** the finished files are copied to `--out`, and the scratch folder is deleted.
 
 ## Speed
 
