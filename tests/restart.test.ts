@@ -28,7 +28,7 @@ interface Server {
 /** Start the CLI server and wait until it prints its port and its match. */
 async function startServer(dir: string): Promise<Server> {
   const proc = Bun.spawn(
-    ["bun", "scripts/match-server.ts", "--port", "0", "--out", dir, "--seats", "remote,remote,house,house", "--seed", String(SEED), "--deadline", "2", "--fill-after", "60"],
+    ["bun", "scripts/match-server.ts", "--port", "0", "--out", dir, "--seats", "remote,remote,house,house", "--seed", String(SEED), "--deadline", "2", "--fill-after", "60", "--fast"],
     { stdout: "pipe", stderr: "pipe" },
   );
   const out: string[] = [];

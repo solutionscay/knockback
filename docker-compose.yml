@@ -30,6 +30,8 @@ services:
       KB_MCP_DEADLINE: ${KB_MCP_DEADLINE:-75}
       KB_LOBBY_FILL: ${KB_LOBBY_FILL:-120}
       KB_PUBLIC_URL: ${KB_PUBLIC_URL:-}
+      # pace (#22): false = broadcast speed (rounds wait for viewers), true = instant
+      KB_FAST: ${KB_FAST:-false}
     volumes:
       - kb-data:/data # match-server.db (+ WAL) and records/
     expose:

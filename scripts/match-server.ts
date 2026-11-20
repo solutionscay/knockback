@@ -12,6 +12,11 @@
  *   bun run match-server --trust-proxy                # behind a reverse proxy (Caddy): client address from X-Forwarded-For,
  *                                                     # only when the request comes from --trusted-proxies (default: loopback and private addresses)
  *
+ * Pace (#22): matches run at broadcast speed (the server waits until each round
+ * has played out for viewers before asking for the next one); --fast keeps the
+ * instant mode (tests, scripted demos). Agents that drop or miss a deadline
+ * hand their fighter to the house bot until they come back.
+ *
  * MCP (#21): agents connect to /mcp (Streamable HTTP; scripts/mcp-stdio.ts for stdio
  * clients). join_lobby seats them in lobby matches: --lobby-seats (default
  * remote,remote,remote,house), --mcp-deadline seconds per turn (default 75),
@@ -79,6 +84,7 @@ const api = new MatchServer({
   defaultDeadlineMs: secs(flags.deadline, 20_000),
   defaultFillAfterMs: secs(flags["fill-after"], 60_000),
   version: process.env.KB_VERSION ?? "dev",
+  pace: flags.fast === "true" ? "fast" : "broadcast",
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
 
@@ -125,6 +131,7 @@ const server = Bun.serve({
 
 console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (watch: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
 logLanUrls(hostname, server.port, "/?live");
+console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds wait for viewers; --fast for instant)"}`);
 if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp  (lobby ${mcp.opts.lobby.seats.join(",")}, ${mcp.opts.lobby.deadlineMs / 1000} s turns)`);
 console.log(`storage: ${dbPath}`);
 const resumed = await api.resume();
