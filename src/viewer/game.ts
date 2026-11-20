@@ -69,27 +69,27 @@ export class Game {
   ) {
     this.scene = new Scene(app);
     this.tally = loadTally();
-    this.scene.camMode = loadCamera();
-    this.scene.onFollowLost = () => this.setCamera({ kind: "auto" });
+    this.scene.camera.camMode = loadCamera();
+    this.scene.camera.onFollowLost = () => this.setCamera({ kind: "auto" });
   }
 
   // ------------------------------------------------------------- persistence + camera
 
   /** View-only: changes what the camera frames, never the simulation. */
   setCamera(mode: CamMode) {
-    this.scene.camMode = mode;
+    this.scene.camera.camMode = mode;
     saveCamera(mode);
     this.renderCamBar();
   }
 
   toggleFollow(id: number) {
-    const m = this.scene.camMode;
+    const m = this.scene.camera.camMode;
     if (m.kind === "follow" && m.id === id) this.setCamera({ kind: "auto" });
     else this.setCamera({ kind: "follow", id });
   }
 
   renderCamBar() {
-    renderCamBar(this.hud.cam, this.scene.camMode, this.shown?.sim);
+    renderCamBar(this.hud.cam, this.scene.camera.camMode, this.shown?.sim);
   }
 
   resetTally() {
@@ -132,7 +132,7 @@ export class Game {
       const preview = new Match(seed, { souls: this.match.souls });
       preview.prepareRound();
       this.shown = preview.fight!;
-      this.scene.load(this.shown.sim, this.shown.controllers);
+      this.scene.load(this.shown.sim);
       this.resetHud();
       this.flow = new FlowRunner([{ kind: "level", duration: 2.4 }], (b) => this.enter(b));
       this.hud.cam.className = "show";
@@ -195,7 +195,7 @@ export class Game {
 
   private showFight(f: Fight) {
     this.shown = f;
-    this.scene.load(f.sim, f.controllers);
+    this.scene.load(f.sim);
     this.scene.morale = this.match.morale.map((m) => m.state);
     this.renderCamBar(); // everyone is back for the new round
   }
@@ -208,7 +208,7 @@ export class Game {
       case "level": {
         const lv = this.match.level;
         const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking: ${this.labels?.map((l, i) => `${esc(this.match.souls[i]!.name)} (${esc(l)})`).join(" · ") ?? ""}</div>` : "";
-        this.scene.overview = true;
+        this.scene.camera.overview = true;
         h.intro.innerHTML = `
           <div class="levelcard">
             <div class="kicker">ARENA ${lv.seed} · BEST OF 3</div>
@@ -221,11 +221,11 @@ export class Game {
       }
       case "dialogue": {
         if (this.shown !== this.match.fight) this.showFight(this.match.fight!); // fresh arena for the next round
-        this.scene.overview = false;
+        this.scene.camera.overview = false;
         h.intro.className = "";
         h.callout.className = "";
         h.clock.className = "";
-        this.scene.focus = { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
+        this.scene.camera.focus = { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
         this.scene.blam(b.fighter);
         h.lineup.querySelector(`[data-id="${b.fighter}"]`)?.classList.add("in");
         h.dialogue.innerHTML = dialogueHtml(this.match, this.decisions[b.fighter]!, this.labels, b);
@@ -237,8 +237,8 @@ export class Game {
         break;
       }
       case "countdown":
-        this.scene.focus = null;
-        this.scene.overview = false;
+        this.scene.camera.focus = null;
+        this.scene.camera.overview = false;
         h.intro.className = "";
         h.dialogue.className = "";
         h.callout.className = "";
@@ -289,7 +289,7 @@ export class Game {
       case "celebrate": {
         h.callout.className = "";
         const wid = this.match.winner;
-        this.scene.focus = { id: wid, offsetX: -0.24, heightM: 8 };
+        this.scene.camera.focus = { id: wid, offsetX: -0.24, heightM: 8 };
         this.scene.celebrateId = wid;
         h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed);
         restart(h.celebrate, "show");

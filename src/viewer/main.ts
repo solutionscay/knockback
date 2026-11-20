@@ -157,7 +157,7 @@ if (capture) {
       wins: game.match.wins.slice(),
       dialoguePhase: game.flow.beat.kind === "dialogue" ? (game.flow.beat as { phase: string }).phase : "",
       tally: game.tally.points.slice(),
-      camera: JSON.stringify(game.scene.camMode),
+      camera: JSON.stringify(game.scene.camera.camMode),
       alive: game.shown.sim.fighters.map((f) => f.alive),
       hp: game.shown.sim.fighters.map((f) => f.hp),
     }),
