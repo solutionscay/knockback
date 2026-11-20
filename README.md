@@ -42,6 +42,12 @@ seconds after the celebrate screen; `?hold` waits for the Next match button
 instead. `N` or the corner button starts a new match; "Reset scores" clears the
 session scoreboard.
 
+Sound (#12): every sound is generated in code (no audio files in the repo); it starts with the first click or
+key press (browser rule). The corner has a mute button and a volume slider, remembered per browser. A private
+sample pack can replace sounds by name (`/sounds/manifest.json`, served by `bun run dev` from the git- and
+docker-ignored `sounds/` folder, or `--sounds <dir>`). Capture-mode videos get their audio from a cue log
+(`__kb.drainSounds()` + `scripts/sound-mix.ts`). See [docs/sound.md](docs/sound.md).
+
 ## AI fighters
 
 ```sh
@@ -240,6 +246,8 @@ bun run typecheck
   - `nav.ts` surfaces + jump/drop links built from the grid (rebuilt as it is carved)
 - `src/flow/` - the match loop as data (beat sequence, runner) and scoring/tally. Pure, tested.
 - `src/viewer/` - PixiJS viewer (camera, juice, HUD) that draws each beat. Reads sim state, never writes it.
+  - `audio/` sound (#12): sfxr-style synthesis, the sound book (recipes as data), event mapping, voice limiting,
+    WebAudio engine with an optional sample pack, the offline mix for videos
 - `src/ai/runner.ts` - MatchRunner: one match with any mix of house, local AI and remote seats (used by ai-match and the match server)
 - `src/server/` - match server: HTTP API, remote seats, seat tokens, storage (SQLite) and resume, limits, live stream, MCP gateway (`mcp.ts`) and lobby queue
 - `scripts/` - dev server, batch stats, video recorder, ai-match, match-server, remote-agent
