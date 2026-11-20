@@ -88,7 +88,7 @@ describe("check-in answers", () => {
 
 describe("the status prompt", () => {
   test("built from the fight at the check-in tick, under 1,500 characters", () => {
-    const m = new Match(42);
+    const m = new Match(13); // a round that lasts past 10 s
     m.prepareRound();
     m.stepUntil(600);
     for (let me = 0; me < 4; me++) {
@@ -142,7 +142,7 @@ describe("the check-in loop (fast mode)", () => {
   });
 
   test("slow, junk and broken providers never stop the match and never change the plan", async () => {
-    const { rec } = await run(["slow", "junk", "broken", "house"], { maxPerRound: 2, deadlineMs: 300 }, 7, 300);
+    const { rec } = await run(["slow", "junk", "broken", "house"], { maxPerRound: 2, deadlineMs: 300 }, 13, 300);
     expect(rec.winner).toBeGreaterThanOrEqual(0);
     expect(rec.rounds.every((r) => !r.planUpdates)).toBe(true);
     const out = (f: number) => [...new Set(rec.rounds.flatMap((r) => (r.checkins ?? []).filter((c) => c.fighter === f).map((c) => c.outcome)))];

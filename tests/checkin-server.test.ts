@@ -75,7 +75,7 @@ describe("check-ins over HTTP", () => {
   test("a check-in turn carries the fight status; an answer becomes a plan update at check-in tick + latency; the record replays", async () => {
     const s = new MatchServer({ outDir: tmp(), checkins: CHECKINS });
     const call = http(s);
-    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 42, deadlineMs: 4000, fillAfterMs: 30_000 });
+    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 1, deadlineMs: 4000, fillAfterMs: 30_000 });
     const tok = (await call("POST", `/api/matches/${m.id}/join`, { name: "Answerer", persona: SOUL })).data.token;
     const seen = await agent(call, m, tok, "answer");
     await waitFor(() => m.status === "over");
@@ -99,7 +99,7 @@ describe("check-ins over HTTP", () => {
   test("a missed check-in keeps the plan and is not a disconnect", async () => {
     const s = new MatchServer({ outDir: tmp(), checkins: CHECKINS });
     const call = http(s);
-    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 42, deadlineMs: 4000, fillAfterMs: 30_000 });
+    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 1, deadlineMs: 4000, fillAfterMs: 30_000 });
     const tok = (await call("POST", `/api/matches/${m.id}/join`, { name: "Quiet", persona: SOUL })).data.token;
     const seen = await agent(call, m, tok, "silent");
     await waitFor(() => m.status === "over");
@@ -114,7 +114,7 @@ describe("check-ins over HTTP", () => {
   test("a connection dropped during a check-in: autopilot at that check-in's tick (phase checkin); no more check-ins; the record replays", async () => {
     const s = new MatchServer({ outDir: tmp(), checkins: CHECKINS, dropGraceMs: 100 });
     const call = http(s);
-    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 42, deadlineMs: 4000, fillAfterMs: 30_000 });
+    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 1, deadlineMs: 4000, fillAfterMs: 30_000 });
     const tok = (await call("POST", `/api/matches/${m.id}/join`, { name: "Dropper", persona: SOUL })).data.token;
     const seen = await agent(call, m, tok, "drop");
     await waitFor(() => m.status === "over");
@@ -133,7 +133,7 @@ describe("check-ins over HTTP", () => {
     const store = new SqliteStore(":memory:");
     const s = new MatchServer({ outDir: tmp(), checkins: CHECKINS, store });
     const call = http(s);
-    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 42, deadlineMs: 4000, fillAfterMs: 30_000 });
+    const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 1, deadlineMs: 4000, fillAfterMs: 30_000 });
     const tok = (await call("POST", `/api/matches/${m.id}/join`, { name: "Answerer", persona: SOUL })).data.token;
     await agent(call, m, tok, "answer");
     await waitFor(() => m.status === "over");
@@ -149,6 +149,9 @@ describe("check-ins over HTTP", () => {
 describe("check-ins over MCP", () => {
   test("wait_for_turn returns status checkin; submit_checkin changes the plan; keep keeps it", async () => {
     const api = new MatchServer({ outDir: tmp(), checkins: CHECKINS });
+    // the lobby's match with a fixed seed whose first round lasts past the first check-in
+    const create = api.createMatch.bind(api);
+    api.createMatch = (c = {}) => create({ ...c, seed: 1 });
     const gw = new McpGateway(api, { lobby: new LobbyQueue(api, { seats: ["remote", "house", "house", "house"], deadlineMs: 4000, fillAfterMs: 30_000 }), publicUrl: "http://kb.test" });
     const client = new Client({ name: "checkin-agent", version: "1" });
     await client.connect(new StreamableHTTPClientTransport(new URL("http://kb.test/mcp"), { fetch: (url, init) => gw.handle(new Request(url, init as RequestInit), "10.0.0.9") }));
