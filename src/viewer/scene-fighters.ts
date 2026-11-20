@@ -247,7 +247,11 @@ export class FighterViews {
         const bottom = p.y - FEET_Y;
         [dl, dr] = FOOT_X.map((lx) => {
           const top = groundTop(sim, p.x + lx * kx, bottom);
-          return top === null ? 0 : -(top - bottom) / ky; // local y grows downward
+          if (top === null) return 0;
+          // a foot steps up onto higher ground (up to 0.2 m, it tucks behind the torso), but drops at most 0.08 m: any
+          // lower and it would come loose from the body, so it dangles at the capsule's bottom instead
+          const d = top - bottom;
+          return d < -0.08 ? 0 : -Math.min(d, 0.2) / ky; // local y grows downward
         }) as [number, number];
       }
       const feetKey = `${!f.grounded && f.alive ? 1 : 0}|${dl.toFixed(3)}|${dr.toFixed(3)}`;
