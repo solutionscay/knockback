@@ -13,6 +13,7 @@
  * --seed <n> makes the random plans repeatable.
  * --leave-after <round> leaves the match when that round's turn comes (the house bot takes over).
  * --no-token: don't send the seat token (works only against a server started with --open).
+ * If the server restarts, the client keeps retrying with the same seat token and plays on.
  */
 import { readFileSync } from "node:fs";
 import { Rng } from "../src/sim/rng";
@@ -34,7 +35,20 @@ const persona = readFileSync(flags.soul ?? "souls/brawler.md", "utf8");
 const rng = new Rng(Number(flags.seed ?? Date.now()) >>> 0);
 const log = (s: string) => console.log(`[${name}] ${s}`);
 
+/** One request; while the server is down (a restart), retry every second for up to 2 minutes. */
 async function call(method: string, path: string, body?: unknown, key?: string): Promise<{ status: number; data: any }> {
+  for (let down = 0; ; down++) {
+    try {
+      return await request(method, path, body, key);
+    } catch (e) {
+      if (down >= 120) throw e;
+      if (down === 0) log(`server unreachable (${e instanceof Error ? e.message : e}); retrying`);
+      await Bun.sleep(1000);
+    }
+  }
+}
+
+async function request(method: string, path: string, body?: unknown, key?: string): Promise<{ status: number; data: any }> {
   const res = await fetch(server + path, {
     method,
     headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(key ? { authorization: `Bearer ${key}` } : {}) },
