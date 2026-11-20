@@ -15,6 +15,7 @@ import type { MoraleState } from "../sim/morale";
 import type { SimEvent, Strategy } from "../sim/sim";
 import { VoiceSession, type Decision } from "../sim/voice";
 import { hex, portraitSvg } from "./portrait";
+import { sanitizeDecision } from "./sanitize";
 import { Scene, type CamMode } from "./scene";
 
 const SLOW_TIME = 1.6;
@@ -225,6 +226,8 @@ export class Game {
 
   /** Live AI match: the server sends each round's decisions as soon as the fighters have answered. */
   pushDecisions(round: number, decisions: Decision[], meta: DecisionMeta[]) {
+    decisions = [0, 1, 2, 3].map((i) => sanitizeDecision(decisions?.[i], i));
+    meta = (Array.isArray(meta) ? meta : []).slice(0, 4).map((m) => ({ ...m, provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0 }));
     this.liveQueue.set(round, { decisions, meta });
     if (this.waitingRound === round) this.startLiveRound(round);
   }
@@ -377,7 +380,7 @@ export class Game {
     const d = this.decisions[b.fighter]!;
     const m = this.match.morale[b.fighter]!;
     const s = d.strategy;
-    const tgt = s.target === "grudge" && s.grudge !== undefined ? `AFTER ${CHARACTERS[s.grudge]!.name.toUpperCase()}` : `TARGET: ${s.target.toUpperCase()}`;
+    const tgt = esc(s.target === "grudge" && s.grudge !== undefined ? `AFTER ${CHARACTERS[s.grudge]!.name.toUpperCase()}` : `TARGET: ${String(s.target).toUpperCase()}`);
     const head = b.phase === "intro" ? "BEFORE ROUND 1" : `AFTER ROUND ${b.round - 1} · NEXT: ROUND ${b.round}`;
     const meta = this.match.record.rounds[b.round - 1]?.meta?.[b.fighter];
     const who = meta
@@ -398,7 +401,7 @@ export class Game {
           <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span><span class="title">${esc(c.title.toUpperCase())}</span><span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
-          <div class="plan"><span class="k">${head}</span><b>${STANCE[s.stance]}</b><b>${s.loadout[0].toUpperCase()} + ${s.loadout[1].toUpperCase()}</b><b>${tgt}</b><b>${rt}</b></div>
+          <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`${s.loadout[0]} + ${s.loadout[1]}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
         </div>
         <button type="button" class="skip" title="Skip the dialogue">SKIP ▸▸</button>
         <div class="hint">SPACE ▸</div>

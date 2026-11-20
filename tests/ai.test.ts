@@ -4,6 +4,7 @@ import { cleanLine, jsonObjects, MAX_LINE, parseAnswer } from "../src/ai/parse";
 import { buildPrompt } from "../src/ai/prompt";
 import { grokText, registerStubs } from "../src/ai/providers";
 import { Fight, initPhysics, Match, REFLEX, replayMatch, StatsCollector } from "../src/sim";
+import { sanitizeDecision, sanitizeRecord } from "../src/viewer/sanitize";
 
 setDefaultTimeout(240_000);
 beforeAll(async () => {
@@ -193,5 +194,24 @@ describe("the back-attack reflex", () => {
       fired += a.fight!.controllers.reduce((n, c) => n + c.reflexLog.length, 0);
     }
     expect(fired).toBeGreaterThan(0);
+  });
+});
+
+describe("untrusted records and streams", () => {
+  test("unknown values become the signature play; lines stay plain strings", () => {
+    const d = sanitizeDecision({ line: "<img src=x onerror=alert(1)>", strategy: { loadout: ["<b>", "bat"], stance: "<script>", target: "grudge", grudge: 9, retaliate: "x" } }, 0);
+    expect(d.strategy.loadout).toEqual(["bat", "grapple"]);
+    expect(d.strategy.stance).toBe("rush");
+    expect(d.strategy.grudge).toBeUndefined();
+    expect(d.strategy.retaliate).toBe("turn");
+    expect(d.line).toBe("<img src=x onerror=alert(1)>"); // shown via textContent, never as HTML
+    expect(sanitizeRecord({ seed: "x", rounds: [] })).toBeNull();
+  });
+
+  test("a sanitized real record still replays to the same hashes", () => {
+    const m = new Match(3);
+    m.playToEnd();
+    const r = replayMatch(sanitizeRecord(JSON.parse(JSON.stringify(m.record)))!);
+    expect(r.record.rounds.map((x) => x.fight.finalHash)).toEqual(m.record.rounds.map((x) => x.fight.finalHash));
   });
 });

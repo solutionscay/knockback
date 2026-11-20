@@ -1,6 +1,7 @@
 import { Application } from "pixi.js";
 import { initPhysics } from "../sim/sim";
 import { Game } from "./game";
+import { sanitizeRecord } from "./sanitize";
 
 declare global {
   interface Window {
@@ -80,7 +81,9 @@ window.addEventListener("keydown", (e) => {
 });
 
 const seedParam = params.get("seed");
-const recordUrl = params.get("record");
+// only same-origin saved records: /records/<file>.json
+const recordParam = params.get("record");
+const recordUrl = recordParam && /^\/records\/[\w.-]+\.json$/.test(recordParam) ? recordParam : null;
 let lastRecord: string | null = recordUrl;
 if (params.has("live")) {
   // Live AI match: the ai-match server streams each round's decisions.
@@ -93,10 +96,10 @@ if (params.has("live")) {
     const msg = JSON.parse(ev.data);
     if (msg.type === "match") {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
-      game.newMatch(msg.seed, { live: true, labels: msg.labels });
+      game.newMatch(Number(msg.seed) >>> 0, { live: true, labels: Array.isArray(msg.labels) ? msg.labels.slice(0, 4).map((l: unknown) => String(l).slice(0, 40)) : undefined });
     } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta);
     else if (msg.type === "done") {
-      lastRecord = msg.record;
+      lastRecord = typeof msg.record === "string" && /^\/records\/[\w.-]+\.json$/.test(msg.record) ? msg.record : null;
       seedEl.textContent += ` · replay: ?record=${msg.record}`;
     }
   };
@@ -104,9 +107,12 @@ if (params.has("live")) {
   // Replay a saved match exactly (every decision from the record).
   game.autoNext = null;
   game.onNeedNewMatch = () => location.reload();
-  const rec = await (await fetch(recordUrl)).json();
+  const raw = await (await fetch(recordUrl)).json();
+  const rec = sanitizeRecord(raw);
+  if (!rec) throw new Error("not a Knockback match record");
+  const labels = Array.isArray(raw.labels) ? raw.labels.slice(0, 4).map((l: unknown) => String(l).slice(0, 40)) : undefined;
   seedEl.textContent = `seed ${rec.seed} · replay`;
-  game.newMatch(rec.seed, { recorded: rec, labels: rec.labels });
+  game.newMatch(rec.seed, { recorded: rec, labels });
 } else start(seedParam !== null && seedParam !== "" ? Number(seedParam) >>> 0 : randomSeed());
 
 if (capture) {
@@ -120,8 +126,11 @@ if (capture) {
     },
     newMatch: (seed) => start(seed),
     loadRecord: async (url: string) => {
-      const rec = await (await fetch(url)).json();
-      game.newMatch(rec.seed, { recorded: rec, labels: rec.labels });
+      if (!/^\/records\/[\w.-]+\.json$/.test(url)) throw new Error("records must be /records/<file>.json");
+      const raw = await (await fetch(url)).json();
+      const rec = sanitizeRecord(raw);
+      if (!rec) throw new Error("not a Knockback match record");
+      game.newMatch(rec.seed, { recorded: rec, labels: Array.isArray(raw.labels) ? raw.labels.slice(0, 4).map((l: unknown) => String(l).slice(0, 40)) : undefined });
     },
     setCamera: (mode) => game.setCamera(mode),
     state: () => ({
