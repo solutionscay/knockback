@@ -13,3 +13,6 @@ evals/
 !deploy/.env.example
 backups/
 .previous-tag
+
+# private sample pack (#12): never committed, never shipped
+sounds/

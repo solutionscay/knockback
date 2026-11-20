@@ -16,3 +16,4 @@ tests
 !deploy/.env.example
 **/backups
 .DS_Store
+**/sounds

@@ -3,10 +3,11 @@
  *   bun run dev                      -> http://localhost:5173
  *   bun run dev --host 0.0.0.0       -> also reachable on the LAN
  *   bun run dev --port 8080
+ *   bun run dev --sounds ~/my-pack   -> the optional private sample pack at /sounds/ (default ./sounds, never committed)
  */
 import { join } from "node:path";
 import index from "../index.html";
-import { logLanUrls, serveRecord } from "./viewer-server";
+import { logLanUrls, serveRecord, serveSound } from "./viewer-server";
 
 const args = process.argv.slice(2);
 const opt = (name: string, def: string) => {
@@ -17,6 +18,7 @@ const opt = (name: string, def: string) => {
 };
 const hostname = opt("host", "localhost");
 const port = Number(opt("port", "5173"));
+const soundsDir = opt("sounds", join(process.cwd(), "sounds"));
 
 const server = Bun.serve({
   hostname,
@@ -26,7 +28,7 @@ const server = Bun.serve({
   async fetch(req) {
     // saved AI match records, for ?record=/records/<file>.json
     const url = new URL(req.url);
-    return (await serveRecord(url.pathname, join(process.cwd(), "records"))) ?? new Response("Not found", { status: 404 });
+    return (await serveRecord(url.pathname, join(process.cwd(), "records"))) ?? (await serveSound(url.pathname, soundsDir)) ?? new Response("Not found", { status: 404 });
   },
 });
 
