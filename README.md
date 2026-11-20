@@ -54,6 +54,35 @@ Records land in `records/` and replay exactly with `bun run dev` +
 `/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
 Providers live in `src/ai/providers.ts` (one entry each).
 
+## AI eval (measure before changing prompts or rules)
+
+```sh
+bun run ai-eval --matches 3 --lineup stub,stub,house,house        # free, about 1 s: stub AIs vs house bots
+bun run ai-eval --matches 3 --tag baseline                        # 3 real matches, default lineup
+bun run ai-eval --seeds 100-119 --concurrency 3 --yes             # 20 matches (more than 40 AI calls needs --yes)
+bun run ai-eval --matches 3 --compare evals/<old run>/report.json # print the change for each metric
+bun run ai-eval --rescore evals/<run>                             # recompute a run's report from its records (no AI calls)
+```
+
+Runs N AI matches with no viewer and writes one folder (default `evals/<time>-<tag>/`)
+with every record, the prompts with raw answers, a log, `report.json` and `report.md`:
+
+- **variety:** per field, distribution, entropy and share of the most common value;
+- **change:** plan changes between rounds, per field and per fighter;
+- **rules:** n/a until conditional plans exist;
+- **follows the stats:** did the AI target its killer, the round winner or its top damager, and did the killer's weapon enter its wish list, compared with house bots (house seats, or with no house seats, the house bot's plan in the AI's place);
+- **facts:** heuristic: lines like "X knocked me out" that the round facts don't support;
+- **reliability:** response times and fallbacks per provider;
+- **results:** AI seats against house seats.
+
+Souls rotate across seats every match. Flags: `--matches`, `--seeds a-b`, `--lineup`, `--souls`,
+`--deadline`, `--concurrency 1..4`, `--out`, `--tag`, `--compare`, `--yes`.
+
+**Cost:** each real AI seat makes one CLI call per round, that is 2 or 3 calls per seat per match.
+3 matches with the default lineup (4 AI seats) make up to 36 calls with about 160k prompt characters
+(about 40k tokens), and take about 1.5 minutes (the baseline run: 36 calls, 162k characters, 97 s).
+The script prints its estimate before it starts. Stub and house seats are free, and `--rescore` makes no calls.
+
 ## Other commands
 
 ```sh
