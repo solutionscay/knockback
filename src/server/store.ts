@@ -48,6 +48,8 @@ export interface SeatRow {
   leftAt: number | null;
   /** the first round the house bot plays for it (null: left before the start) */
   leftRound: number | null;
+  /** the model the agent reported at join (unverified), or null */
+  model?: string | null;
 }
 
 export interface RoundRow {
@@ -82,6 +84,8 @@ export interface RecordRow {
   createdAt: number;
   /** engine version that made the record (src/sim/engine-version.ts); rows from before the column are 0 */
   engine: number;
+  /** per-seat model stats for GET /api/models (src/stats/models.ts SeatEntry[] as JSON); null on rows from before it */
+  stats?: string | null;
 }
 
 export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner">>;
@@ -110,6 +114,8 @@ export interface MatchStore {
   insertRecord(r: RecordRow): Promise<void>;
   getRecord(matchId: string): Promise<RecordRow | null>;
   listRecords(limit?: number): Promise<RecordRow[]>;
+  /** fill in a record's model stats (rows saved before the column) */
+  setRecordStats(matchId: string, stats: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -179,6 +185,9 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE records ADD COLUMN engine INTEGER NOT NULL DEFAULT 0;`,
   // 4 (#8/#9): the mid-round plan updates of each played round (JSON PlanUpdate[]), so a resume replays them
   `ALTER TABLE rounds ADD COLUMN plan_updates TEXT;`,
+  // 5 (model spotlight): the model a remote agent reported at join; per-seat model stats of each record
+  `ALTER TABLE seats ADD COLUMN model TEXT;
+   ALTER TABLE records ADD COLUMN stats TEXT;`,
 ];
 
 type Row = Record<string, unknown>;
@@ -210,6 +219,7 @@ const seatOf = (r: Row): SeatRow => ({
   joinedAt: r.joined_at as number,
   leftAt: (r.left_at as number | null) ?? null,
   leftRound: (r.left_round as number | null) ?? null,
+  model: (r.model as string | null) ?? null,
 });
 
 const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round" };
@@ -264,8 +274,8 @@ export class SqliteStore implements MatchStore {
   }
   async insertSeat(s: SeatRow) {
     this.db
-      .query("INSERT INTO seats (match_id, seat, name, persona, look, token_hash, joined_at, left_at, left_round) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(s.matchId, s.seat, s.name, s.persona, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound);
+      .query("INSERT INTO seats (match_id, seat, name, persona, look, token_hash, joined_at, left_at, left_round, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(s.matchId, s.seat, s.name, s.persona, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound, s.model ?? null);
   }
   async updateSeat(matchId: string, seat: number, patch: SeatPatch) {
     this.patch("seats", "match_id = ? AND seat = ?", [matchId, seat], patch);
@@ -310,11 +320,14 @@ export class SqliteStore implements MatchStore {
     return (this.db.query("SELECT event FROM control WHERE match_id = ? ORDER BY idx").all(matchId) as Row[]).map((r) => p<ControlEvent>(r.event));
   }
   async insertRecord(r: RecordRow) {
-    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, engine) VALUES (?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.engine);
+    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, engine, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.engine, r.stats ?? null);
   }
   async getRecord(matchId: string) {
     const r = this.db.query("SELECT * FROM records WHERE match_id = ?").get(matchId) as Row | null;
     return r ? recordOf(r) : null;
+  }
+  async setRecordStats(matchId: string, stats: string) {
+    this.db.query("UPDATE records SET stats = ? WHERE match_id = ?").run(stats, matchId);
   }
   async listRecords(limit = 100) {
     return (this.db.query("SELECT * FROM records ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map(recordOf);
@@ -332,4 +345,5 @@ const recordOf = (r: Row): RecordRow => ({
   winner: r.winner as number,
   createdAt: r.created_at as number,
   engine: (r.engine as number | null) ?? 0,
+  stats: (r.stats as string | null) ?? null,
 });

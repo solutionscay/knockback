@@ -6,6 +6,8 @@
  * has started, it switches to that one. No build step: one HTML string, the
  * data comes from the JSON API; every value is put in with textContent.
  */
+import { BOARD_CSS, BOARD_JS } from "./models-page";
+
 export function lobbyPage(): string {
   return `<!doctype html>
 <html lang="en">
@@ -20,7 +22,7 @@ export function lobbyPage(): string {
   header { display: flex; align-items: baseline; gap: 1rem; padding: .8rem 1.2rem; border-bottom: 1px solid var(--line); }
   header h1 { margin: 0; font-size: 1.25rem; letter-spacing: .04em; }
   header .dim { color: var(--dim); }
-  main { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(320px, 1fr); gap: 1rem; padding: 1rem 1.2rem; }
+  main { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr); gap: 1rem; padding: 1rem 1.2rem; }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
   .stage { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
@@ -36,6 +38,19 @@ export function lobbyPage(): string {
   pre { margin: .4rem 0 0; padding: .6rem; background: #0b0d14; border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font-size: .78rem; line-height: 1.35; }
   .empty { color: var(--dim); }
   a.old { color: #ffb347; }
+  table.matches { table-layout: fixed; }
+  table.matches th:nth-child(1) { width: 21%; } table.matches th:nth-child(2) { width: 14%; } table.matches th:nth-child(3) { width: 45%; }
+  table.matches td:nth-child(4) { overflow-wrap: anywhere; }
+  table.matches td:nth-child(1) code { word-break: break-all; }
+  #models table.board { table-layout: fixed; }
+  #models table.board th:nth-child(1) { width: 7%; } #models table.board th:nth-child(2) { width: 49%; } #models table.board th:nth-child(3) { width: 14%; } #models table.board th:nth-child(4) { width: 17%; }
+  #models table.board td:nth-child(2) { overflow: hidden; }
+  .seatline .kb-mb { --mb-fs: 10px; }
+  .seatline { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin: .15rem 0; }
+  .seatline .fn { font-weight: 600; }
+  .seatline .ag { color: var(--dim); font-size: .75rem; }
+  #models .kb-mb { --mb-fs: 11px; }
+  ${BOARD_CSS}
 </style>
 </head>
 <body>
@@ -51,12 +66,17 @@ export function lobbyPage(): string {
       <div id="join" class="empty">no open match right now; a new one opens every few minutes.</div>
     </section>
     <section>
+      <h2>Which model is best <a href="/models" style="float:right;text-transform:none;letter-spacing:0">full leaderboard</a></h2>
+      <div id="models" class="empty">loading…</div>
+    </section>
+    <section>
       <h2>Matches</h2>
-      <table><thead><tr><th>match</th><th>status</th><th>seats</th><th>result</th></tr></thead><tbody id="list"><tr><td colspan="4" class="empty">loading…</td></tr></tbody></table>
+      <table class="matches"><thead><tr><th>match</th><th>status</th><th>seats</th><th>result</th></tr></thead><tbody id="list"><tr><td colspan="4" class="empty">loading…</td></tr></tbody></table>
     </section>
   </div>
 </main>
 <script>
+${BOARD_JS}
 const $ = (id) => document.getElementById(id);
 const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
 let shown = null;        // the match the embedded viewer is playing
@@ -78,7 +98,14 @@ function render(ms) {
     if (m.status === "open" && m.startsInSec !== undefined) st.append(el("div", "starts in " + m.startsInSec + " s", "empty"));
     if (m.status === "running") st.append(el("div", "round " + m.round, "empty"));
     const seats = el("td");
-    for (const s of m.seats) seats.append(el("div", (s.fighter ? s.fighter + " · " : "") + (s.agent ? "remote/" + s.agent : s.kind === "remote" ? "open seat" : "house bot")));
+    for (const s of m.seats) {
+      // the model badge: who plays this seat (self-reported for remote agents that said so at join)
+      const line = el("div", undefined, "seatline");
+      if (s.fighter) line.append(el("span", s.fighter, "fn"));
+      if (s.model) line.append(modelBadge(s.model, "xs")); else line.append(el("span", "open seat", "empty"));
+      if (s.agent) line.append(el("span", "agent " + s.agent, "ag"));
+      seats.append(line);
+    }
     const res = el("td");
     if (m.winner) res.append(el("div", m.winner + " wins " + (m.wins || []).join("-")));
     if (m.record) {
@@ -131,6 +158,11 @@ async function tick() {
 }
 tick();
 setInterval(tick, 3000);
+async function models() {
+  try { const d = await fetch("/api/models").then((r) => r.json()); const e = $("models"); e.className = ""; renderBoard(e, d, { compact: true }); } catch { /* next time */ }
+}
+models();
+setInterval(models, 30000);
 </script>
 </body>
 </html>`;

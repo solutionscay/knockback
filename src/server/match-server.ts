@@ -5,7 +5,8 @@
  *   POST /api/matches                 create: { seats?, seed?, deadlineSec?, fillAfterSec? }
  *   GET  /api/matches                 list
  *   GET  /api/matches/:id             status and seats
- *   POST /api/matches/:id/join        { name, persona, look?, seat? } -> { seat, token }
+ *   POST /api/matches/:id/join        { name, persona, look?, seat?, model? } -> { seat, token }
+ *   GET  /api/models                  the model leaderboard (from the record index)
  *   GET  /api/matches/:id/turn        (seat token) long poll: ?wait=0-30 s -> open | turn | checkin | waiting | over
  *   POST /api/matches/:id/plan        (seat token) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
  *   POST /api/matches/:id/checkin     (seat token) mid-round check-in answer (#9): { round, tick, keep? | plan fields to change, line?, why? }
@@ -26,6 +27,7 @@
  * open matches wait again, running matches replay their stored rounds
  * (deterministic) and play on; finished ones load on demand.
  */
+import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { DEFAULT_DEADLINE_MS, type Seat } from "../ai/decide";
 import { MatchRunner, type RunnerEvent, type StoredRound } from "../ai/runner";
@@ -42,6 +44,14 @@ import type { CheckinConfig } from "../ai/checkin";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
 import type { ControlEvent } from "../ai/runner";
 import { SqliteStore, type MatchRow, type MatchStore, type SeatRow } from "./store";
+import { dedupe, headToHead, leaderboard, MODEL_RE, modelOf, remoteLabel, seatEntries, type SeatEntry } from "../stats/models";
+import { modelsPage } from "./models-page";
+
+/** GET /api/models reads at most this many of the newest records */
+const MODELS_MAX_RECORDS = 5000;
+
+/** The model badge data of a seat label; null for an open seat. */
+const seatModel = (label: string | null) => (label === null ? null : modelOf(label));
 
 export const MAX_PERSONA = 8_000;
 export const MIN_PERSONA = 40;
@@ -51,7 +61,7 @@ export const SEATS_PER_IP = 8;
 export const MATCHES_PER_IP = 2;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 const LOOK_KEYS = ["name", "shape", "eyes", "mark", "minor", "color"] as const;
-const JOIN_KEYS = ["name", "persona", "look", "seat"];
+const JOIN_KEYS = ["name", "persona", "look", "seat", "model"];
 
 /** Who sits in a remote seat. */
 export interface SeatAgent {
@@ -59,6 +69,8 @@ export interface SeatAgent {
   persona: string;
   soulId: string;
   look: IdentityWish | null;
+  /** the model the agent says it runs (self-reported at join, unverified), or null */
+  model: string | null;
   /** sha256 (hex) of the seat token */
   tokenHash: string;
   joinedAt: number;
@@ -121,7 +133,7 @@ const hex = (bytes: number) => randomBytes(bytes).toString("hex");
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 /** Validate a join body: name, persona (a soul text), optional look wishes and seat. */
-export function checkJoin(body: Record<string, unknown>): { name: string; persona: string; look: IdentityWish | null; seat?: number; soulId: string; warnings: string[] } {
+export function checkJoin(body: Record<string, unknown>): { name: string; persona: string; look: IdentityWish | null; model: string | null; seat?: number; soulId: string; warnings: string[] } {
   const problems: string[] = [];
   const extra = Object.keys(body).filter((k) => !JOIN_KEYS.includes(k));
   if (extra.length) problems.push(`unknown fields: ${extra.join(", ")} (allowed: ${JOIN_KEYS.join(", ")})`);
@@ -132,11 +144,13 @@ export function checkJoin(body: Record<string, unknown>): { name: string; person
   const look = body.look === undefined ? null : (checkLook(body.look, problems) ?? null);
   const seat = body.seat;
   if (seat !== undefined && !(Number.isInteger(seat) && (seat as number) >= 0 && (seat as number) <= 3)) problems.push("seat: 0-3");
+  const model = typeof body.model === "string" ? body.model.trim() : body.model;
+  if (model !== undefined && model !== null && model !== "" && !(typeof model === "string" && MODEL_RE.test(model))) problems.push("model: the model you run, as you would name it (1-40 characters: letters, digits, space . _ : + ( ) / -), e.g. claude-opus-5-5");
   if (problems.length) throw new HttpError(400, "invalid join", problems);
   const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
   const parsed = parseSoul(persona as string, 0, soulId);
   if (parsed.errors.length) throw new HttpError(422, "invalid persona", parsed.errors);
-  return { name, persona: persona as string, look, soulId, warnings: parsed.warnings, ...(seat !== undefined ? { seat: seat as number } : {}) };
+  return { name, persona: persona as string, look, model: typeof model === "string" && model ? model : null, soulId, warnings: parsed.warnings, ...(seat !== undefined ? { seat: seat as number } : {}) };
 }
 
 export class ServerMatch {
@@ -219,7 +233,7 @@ export class ServerMatch {
   }
 
   remoteSeat(seat: number, agent: SeatAgent): RemoteSeat {
-    const rs = new RemoteSeat(agent.name, this.deadlineMs);
+    const rs = new RemoteSeat(agent.name, this.deadlineMs, agent.model);
     rs.onChange = () => this.changed();
     // accepted plans are stored before the turn ends, so a restart in mid-ask keeps them
     rs.onAccept = (round, raw) => this.store.insertPlan({ matchId: this.id, round, seat, raw, at: Date.now() });
@@ -230,7 +244,7 @@ export class ServerMatch {
 
   seatRow(seat: number): SeatRow {
     const a = this.agents[seat]!;
-    return { matchId: this.id, seat, name: a.name, persona: a.persona, look: a.look, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound };
+    return { matchId: this.id, seat, name: a.name, persona: a.persona, look: a.look, model: a.model, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound };
   }
 
   row(): MatchRow {
@@ -239,7 +253,7 @@ export class ServerMatch {
 
   /** Put a stored agent back in its seat (resume). */
   restoreSeat(r: SeatRow) {
-    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0, lastSeen: Date.now(), autopilot: null };
+    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, model: r.model ?? null, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0, lastSeen: Date.now(), autopilot: null };
     this.agents[r.seat] = agent;
     const rs = this.remoteSeat(r.seat, agent);
     if (r.leftRound !== null) rs.left = true;
@@ -254,11 +268,11 @@ export class ServerMatch {
     const seat = j.seat ?? free[0];
     if (seat === undefined) throw new HttpError(409, "no free remote seat");
     const token = `st_${hex(24)}`;
-    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0, lastSeen: Date.now(), autopilot: null };
+    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, model: j.model, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0, lastSeen: Date.now(), autopilot: null };
     this.agents[seat] = agent;
     this.remoteSeat(seat, agent);
     this.server.tokens.set(agent.tokenHash, { match: this.id, seat });
-    this.server.log(`match ${this.id}: ${agent.name} joined seat ${seat}`);
+    this.server.log(`match ${this.id}: ${agent.name} joined seat ${seat}${agent.model ? ` (says it runs ${agent.model})` : ""}`);
     this.changed();
     return { seat, token };
   }
@@ -459,7 +473,10 @@ export class ServerMatch {
     const file = r.save(this.server.opts.outDir, "remote");
     const m = r.match;
     this.recordEngine = recordEngine(m.record);
-    await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), engine: this.recordEngine });
+    // the per-seat model stats go into the record index too: GET /api/models reads them without opening files
+    const stats = JSON.stringify(seatEntries(r.savedRecord()));
+    await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), engine: this.recordEngine, stats });
+    this.server.modelsCache = null;
     await this.store.updateMatch(this.id, { status: "over", winner: m.winner, endedAt: Date.now() });
     this.status = "over";
     this.server.log(`match ${this.id}: ${r.names[m.winner]} wins ${m.wins.join("-")}; record ${r.recordFile}`);
@@ -555,6 +572,8 @@ export class ServerMatch {
           ...(a?.autopilot ? { autopilot: a.autopilot, ...(this.status === "over" ? { finishedOnAutopilot: true } : {}) } : {}),
           fighter: r?.names[i] ?? null,
           label: r?.labels[i] ?? null,
+          // who plays it, for the model badge: from the label once running, from the join before
+          model: seatModel(r?.labels[i] ?? (a ? remoteLabel(a.name, a.model) : k === "remote" ? null : k === "house" ? "house" : (PROVIDERS[k]?.label ?? k))),
         };
       }),
       round: r ? r.match.round : 0,
@@ -770,6 +789,7 @@ export class MatchServer {
   async handle(req: Request, ip = "local"): Promise<Response | null> {
     const url = new URL(req.url);
     if (url.pathname === "/lobby" && req.method === "GET") return new Response(lobbyPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
+    if (url.pathname === "/models" && req.method === "GET") return new Response(modelsPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     if (!url.pathname.startsWith("/api/") && url.pathname !== "/api") return null;
     if (url.pathname === "/api/health") return this.health();
     try {
@@ -779,6 +799,55 @@ export class MatchServer {
       if (e instanceof HttpError) return errorResponse(e);
       this.log(`error: ${e instanceof Error ? e.stack : String(e)}`);
       return json({ error: "internal error" }, 500);
+    }
+  }
+
+  /** GET /api/models: the leaderboard over the record index (cached until the next record) */
+  modelsCache: { min: number | undefined; at: number; body: unknown } | null = null;
+
+  /**
+   * The model leaderboard from the SQLite record index: each row's per-seat stats (saved with the record), or for
+   * rows from before that column, the record file read once (wins and fallbacks; no replay) and the row filled in.
+   * Matches with test providers are left out; copies of one match count once.
+   */
+  async models(min?: number) {
+    if (this.modelsCache && this.modelsCache.min === min && Date.now() - this.modelsCache.at < 60_000) return this.modelsCache.body;
+    const rows = await this.store.listRecords(MODELS_MAX_RECORDS);
+    const sets: SeatEntry[][] = [];
+    for (const row of rows) {
+      let es: SeatEntry[] | null = null;
+      if (row.stats) {
+        try {
+          es = JSON.parse(row.stats) as SeatEntry[];
+        } catch {
+          es = null;
+        }
+      }
+      if (!es) {
+        es = await this.entriesFromFile(row.path);
+        if (es) await this.store.setRecordStats(row.matchId, JSON.stringify(es)).catch(() => undefined);
+      }
+      if (es?.length && !es.some((e) => e.model?.test)) sets.push(es);
+    }
+    const { kept, dropped } = dedupe(sets);
+    const lb = leaderboard(kept, min !== undefined ? { minMatches: min } : {});
+    const h2h = headToHead(kept, lb.all.rows.map((r) => r.key));
+    const body = { ...lb, headToHead: h2h, duplicates: dropped, engine: ENGINE_VERSION, note: "match win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter match; models below the minimum are provisional; self-reported models are what remote agents said at join" };
+    this.modelsCache = { min, at: Date.now(), body };
+    return body;
+  }
+
+  /** A record file's seat entries (local records only: /records/<file>.json under outDir). */
+  private async entriesFromFile(path: string): Promise<SeatEntry[] | null> {
+    const m = /^\/records\/([\w.-]+\.json)$/.exec(path);
+    if (!m) return null;
+    try {
+      const f = Bun.file(join(this.opts.outDir, m[1]!));
+      if (!(await f.exists()) || f.size > 4_000_000) return null;
+      const es = seatEntries(await f.json());
+      return es.length ? es : null;
+    } catch {
+      return null;
     }
   }
 
@@ -803,6 +872,11 @@ export class MatchServer {
       this.createLimit.take(ip, "new matches");
       const b = await readJson(req, 2048);
       return json((await this.createMatch({ ...checkCreate(b), ip })).info(), 201);
+    }
+    if (path === "/api/models") {
+      allow("GET");
+      const min = Number(url.searchParams.get("min"));
+      return json(await this.models(Number.isInteger(min) && min >= 1 && min <= 1000 ? min : undefined));
     }
     if (path === "/api/records") {
       allow("GET");
@@ -982,14 +1056,16 @@ function apiIndex(open: boolean) {
       "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-300) } -> match',
       "GET /api/matches": "all matches",
       "GET /api/matches/:id": "status and seats",
-      "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat? } -> { seat, token }",
+      "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat?, model? (the model you run, e.g. claude-opus-5-5: shown on your fighter's card as self-reported) } -> { seat, token }",
       "GET /api/matches/:id/turn?wait=25": "long poll -> { status: open | turn | checkin | waiting | left | over, ... }; a turn carries context, prompt and schema; a checkin (mid-round, when the server runs check-ins) carries the fight status, a prompt and its schema",
       "POST /api/matches/:id/checkin": "{ round, tick, keep: true } or { round, tick, ...plan fields to change (target, stance, weapons, retaliate, rules), line?, why? } -> { accepted, result: keep | update }; the change applies when the answer arrives (fight time)",
       "POST /api/matches/:id/plan": "{ round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer } -> { accepted, plan }",
       "POST /api/matches/:id/leave": "the house bot takes your seat (before the start: the seat is free again)",
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
       "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
-      "GET /lobby": "landing page: the live match, the match list, how to join",
+      "GET /lobby": "landing page: the live match, the match list, the model leaderboard, how to join",
+      "GET /models": "the model leaderboard page: which model wins most",
+      "GET /api/models": "model leaderboard from the record index: per engine version and overall, match win rate with a 95% interval, round wins, knockouts, ring-outs, damage, survival, fallbacks, autopilot; head-to-head (?min=N sets the provisional cut, default 10)",
       "GET /api/records": "index of saved records (path, seed, hashes, winner, engine version; old = made by another engine, shown as a summary, not replayed)",
     },
     limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },

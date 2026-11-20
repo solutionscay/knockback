@@ -9,6 +9,7 @@
  * replays with no network.
  */
 import { CHECKIN, parseCheckin, type CheckinStatus } from "../ai/checkin";
+import { remoteLabel } from "../stats/models";
 import { parseAnswer, MAX_LINE, MAX_WHY } from "../ai/parse";
 import { lastPlanLines, ruleResultLine, whatHappenedLines, WEAPON_HELP } from "../ai/prompt";
 import type { Provider } from "../ai/providers";
@@ -211,8 +212,10 @@ export class RemoteSeat {
   constructor(
     readonly agentName: string,
     deadlineMs: number,
+    /** the model the agent reported at join (shown as reported, marked self-reported) */
+    model: string | null = null,
   ) {
-    this.provider = { label: `remote/${agentName}`, deadlineMs, ask: (prompt, signal) => this.ask(prompt, signal) };
+    this.provider = { label: remoteLabel(agentName, model), deadlineMs, ask: (prompt, signal) => this.ask(prompt, signal) };
   }
 
   bind(match: Match, seat: number) {

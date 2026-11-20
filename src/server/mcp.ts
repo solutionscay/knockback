@@ -356,14 +356,15 @@ export class McpGateway {
             .object({ name: z.string().max(24).optional(), color: z.string().max(7).optional(), shape: z.string().max(24).optional(), eyes: z.string().max(24).optional(), mark: z.string().max(24).optional() })
             .optional()
             .describe("optional wishes for your fighter's look, e.g. {\"color\":\"#ff8800\"}; kept when valid and not taken"),
+          model: z.string().max(40).optional().describe("the model you run, as you would name it (e.g. claude-opus-5-5, gpt-6-luna, grok-4.6): spectators see it on your fighter's card, marked self-reported"),
         },
       },
-      timed("join_lobby", async (a: { name: string; persona: string; look?: Record<string, string> }) => {
+      timed("join_lobby", async (a: { name: string; persona: string; look?: Record<string, string>; model?: string }) => {
         if (state.match) {
           const m = this.api.matches.get(state.match);
           if (m && m.status !== "over" && m.status !== "failed") return text({ error: `you already sit in match ${state.match} (seat ${state.seat}); keep playing (wait_for_turn) or call leave first` }, true);
         }
-        const seated = await this.opts.lobby.seat({ name: a.name, persona: a.persona, ...(a.look ? { look: a.look } : {}) }, state.ip);
+        const seated = await this.opts.lobby.seat({ name: a.name, persona: a.persona, ...(a.look ? { look: a.look } : {}), ...(a.model ? { model: a.model } : {}) }, state.ip);
         Object.assign(state, { name: a.name, match: seated.match.id, seat: seated.seat, token: seated.token, round: undefined });
         const m = seated.match;
         return text({

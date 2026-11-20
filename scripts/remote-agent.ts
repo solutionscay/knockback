@@ -9,6 +9,7 @@
  *   bun scripts/remote-agent.ts --mode cli --cmd "claude -p --model haiku --tools '' --no-session-persistence"
  *        (pipes the turn's prompt to the command on stdin and sends its reply as {"answer": ...})
  *
+ * --model <name> reports the model behind the agent (shown on its fighter's card, marked self-reported).
  * --match <id> joins that match; without it, the first open match.
  * --create remote,house,house,house creates a match first (seats over HTTP: remote or house) and joins it.
  * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).
@@ -131,7 +132,7 @@ for (let tries = 0; !matchId; tries++) {
     await Bun.sleep(1000);
   }
 }
-const join = await call("POST", `/api/matches/${matchId}/join`, { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.seat ? { seat: Number(flags.seat) } : {}) });
+const join = await call("POST", `/api/matches/${matchId}/join`, { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.seat ? { seat: Number(flags.seat) } : {}), ...(flags.model ? { model: flags.model } : {}) });
 if (join.status !== 201) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
 const seat: number = join.data.seat;
 // the seat token: sent on turn, plan and leave; in --open mode the seat number can stand in for it
