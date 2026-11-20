@@ -22,3 +22,6 @@ export const PATIENCE = { calmTicks: 330, peekEvery: 240, peekFor: 90, stuckTick
  * when their stance is "item".
  */
 export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, jetpackLimit: 11, giveUpTicks: 100, skipTicks: 420, seekLimit: 60 };
+
+export const WALL_PURSUIT = { routeTicks: 48, attackTicks: 88, retargetTicks: 175, flankTicks: 174, flankPeriod: 150, flankFor: 85 };
+export const RULE_EVAL = { everyTicks: 12, minOnTicks: 60, minOffTicks: 60, ledgeM: 2, barrelM: 3, chaseTicks: 180, hitTicks: 180, itemCost: 12 };
