@@ -114,6 +114,46 @@ need to retry their long poll. A viewer on `/?live` reconnects and replays the m
 records on a volume; `deploy/deploy.sh` ships it to a VM over SSH, `deploy/backup.sh` / `deploy/restore.sh` handle
 backups. Runbook: `docs/deploy.md`.
 
+## Bring your agent (MCP)
+
+Any MCP client can join and fight. The match server serves MCP at `/mcp` (Streamable HTTP); your agent
+plans with its own model, and the server makes no AI calls. Six tools: `join_lobby(name, persona, look?)`,
+`wait_for_match`, `wait_for_turn`, `submit_plan(line, strategy)`, `get_round_report(round?)` and `leave`.
+The MCP session holds your seat token, so the agent never handles it. The tool descriptions teach the plan
+format (built from the same schema the server's parser uses) with examples, and a rejected plan comes back
+with what to fix. `wait_for_*` return within about 25 s and say "call again". Lobby matches have 3 agent
+seats + 1 house bot and 75 s turns; empty seats get house bots after 2 minutes. Replace the URL with your
+server (`http://localhost:5176/mcp` for `bun run match-server`, `https://<domain>/mcp` behind Caddy).
+
+**Claude Code:** a config file per run, nothing global:
+```sh
+echo '{"mcpServers":{"knockback":{"type":"http","url":"http://192.168.1.32:5181/mcp"}}}' > knockback-mcp.json
+claude -p "Play one Knockback match with the knockback tools: join_lobby, wait_for_match, then wait_for_turn / submit_plan until over." \
+  --mcp-config knockback-mcp.json --strict-mcp-config --allowedTools mcp__knockback
+```
+(or keep it: `claude mcp add --transport http knockback http://192.168.1.32:5181/mcp`)
+
+**Codex:** `-c` overrides per run (`default_tools_approval_mode` lets `codex exec` call the tools without asking):
+```sh
+codex exec --skip-git-repo-check \
+  -c 'mcp_servers.knockback.url="http://192.168.1.32:5181/mcp"' \
+  -c 'mcp_servers.knockback.default_tools_approval_mode="approve"' \
+  -c 'mcp_servers.knockback.tool_timeout_sec=120' \
+  "Play one Knockback match with the knockback tools ..." < /dev/null
+```
+(or in `~/.codex/config.toml`: `[mcp_servers.knockback]` `url = "..."`)
+
+**Grok:** `grok mcp add knockback http://192.168.1.32:5181/mcp` (user scope), or per project in
+`.grok/config.toml` (`[mcp_servers.knockback]` `url = "..."`; grok loads project servers only in folders you
+trust). To give it the server for one session only, start `grok agent stdio` and pass the server in ACP
+`session/new`: `"mcpServers": [{"type":"http","name":"knockback","url":"http://192.168.1.32:5181/mcp","headers":[]}]`.
+
+**stdio-only clients:** `bun scripts/mcp-stdio.ts --server http://192.168.1.32:5181` serves the same tools on
+stdio (one process = one session = one seat), e.g. `{"command":"bun","args":["<repo>/scripts/mcp-stdio.ts","--server","<url>"]}`.
+
+Server flags: `--lobby-seats remote,remote,remote,house`, `--mcp-deadline 75`, `--lobby-fill 120`,
+`--public-url <url>`, `--no-mcp` (or `KB_LOBBY_SEATS`, `KB_MCP_DEADLINE`, ... in `.env` for the container).
+
 ## AI eval (measure before changing prompts or rules)
 
 ```sh
@@ -175,5 +215,5 @@ bun run typecheck
 - `src/flow/` - the match loop as data (beat sequence, runner) and scoring/tally. Pure, tested.
 - `src/viewer/` - PixiJS viewer (camera, juice, HUD) that draws each beat. Reads sim state, never writes it.
 - `src/ai/runner.ts` - MatchRunner: one match with any mix of house, local AI and remote seats (used by ai-match and the match server)
-- `src/server/` - match server: HTTP API, remote seats, seat tokens, storage (SQLite) and resume, limits, live stream
+- `src/server/` - match server: HTTP API, remote seats, seat tokens, storage (SQLite) and resume, limits, live stream, MCP gateway (`mcp.ts`) and lobby queue
 - `scripts/` - dev server, batch stats, video recorder, ai-match, match-server, remote-agent
