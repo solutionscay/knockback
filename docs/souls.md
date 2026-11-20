@@ -1,14 +1,14 @@
-# Souls: who a fighter is
+# Souls: how a fighter thinks and talks
 
 Knockback has no character classes. All four fighters have the same body, speed, health and aim, and start every round with only their **fists**. Weapons (rocket, shotgun, bat, grenade, grappling hook) and power-ups are picked up in the arena.
 
-A fighter's identity comes from its **soul file**: name, color, attitude, how it talks and what it values in a fight. Swap a soul and the fighter changes: a different name and color on screen, a different plan, different lines.
+A fighter's personality comes from its **soul file**: attitude, how it talks and what it values in a fight. Swap a soul and the fighter plays and talks differently. A soul has **no name and no look**: before each match every fighter gets a generated identity (name, head shape, eye style, mark and color) from the match seed. See "Identities" below.
 
 - **AI fighters** read the soul (its text, values and catchphrase) and choose their own strategy and lines before every round.
 - **House bots** (no AI attached) map the soul's fields to a strategy, or guess from keywords in its text when a field is missing. They speak the soul's own lines, falling back to template lines in the soul's voice.
-- **Records** store the souls that played, so a replay needs no soul files.
+- **Records** store the souls and the identities that played, so a replay needs no soul files.
 
-Four example souls ship in `souls/`: `brick.md`, `pike.md`, `squeaks.md` and `goldie.md`.
+Four example souls ship in `souls/`: `brawler.md`, `sniper.md`, `rat.md` and `vulture.md`. The file name is the soul's key (for `--lineup sniper=codex` and logs). It is never shown in the game.
 
 ## Format
 
@@ -20,9 +20,6 @@ A soul is a Markdown file with three parts:
 
 ```markdown
 ---
-name: Brick
-title: The Brawler
-color: #ff4f4f
 temperament: cocky
 voice: brash
 values: never backs down, holds grudges, loves a ring-out
@@ -31,17 +28,16 @@ stance: rush
 target: strongest
 retaliate: attacker
 catchphrase: Batter up.
-mark: headband
 ---
 
-# Brick "The Brawler" Ruckus
+# The brawler
 
 Loud, hot-headed, never admits a mistake. Short punchy bursts, boxing talk.
 Use the catchphrase sparingly: at most once a match.
 
 ## Lines
 
-- intro: Brick's here. Somebody call a doctor. Not for me.
+- intro: {me}'s here. Somebody call a doctor. Not for me.
 - kod [furious]: {killer}. You. Me. Next round. Bring a helmet.
 ```
 
@@ -49,9 +45,6 @@ Use the catchphrase sparingly: at most once a match.
 
 | Key | Values | Used for |
 |---|---|---|
-| `name` | up to 16 characters (required; otherwise taken from the first `# heading`) | everywhere; AIs can target fighters by name |
-| `title` | free text, up to 32 characters | the dialogue card |
-| `color` | `#rrggbb` | body, health bar and card color (default: the seat's color) |
 | `temperament` | `cocky`, `confident`, `calm`, `nervous` | starting morale (45, 25, 8, -15); how morale bends the house bot's plan |
 | `voice` | `brash`, `smug`, `nervous`, `sly`, `plain` | which template lines the house bot falls back on |
 | `values` | comma-separated phrases | shown to the AI ("what you value in a fight"); keywords feed the house bot |
@@ -60,9 +53,26 @@ Use the catchphrase sparingly: at most once a match.
 | `target` | `nearest`, `weakest`, `strongest`, `leader` | the house bot's target preference |
 | `retaliate` | `attacker`, `turn`, `ignore` | what the house bot does when hit from behind by someone it is not chasing |
 | `catchphrase` | free text, up to 80 characters | shown to the AI (to use sparingly); the house bot's last-resort line |
-| `mark` | `headband`, `antenna`, `ears`, `crown`, `none` | a cosmetic mark on the body and portrait |
 
-A bad value (an unknown stance or weapon, a color that is not `#rrggbb`) is an **error**, and `bun run ai-match` refuses to start with a message naming the file and the key. A missing key is filled in instead: from keywords in `values` and the body, otherwise from a default. The four names must be different.
+A bad value (an unknown stance or weapon) is an **error**, and `bun run ai-match` refuses to start with a message naming the file and the key. A missing key is filled in instead: from keywords in `values` and the body, otherwise from a default. The old identity keys (`name`, `title`, `color`, `mark`) are ignored with a warning. The four soul files must have different names.
+
+Write the body and lines without a name or a look: the fighter could be called anything and look like anything. Use `{me}` (or `{ME}` for capitals) where the fighter says its own name.
+
+## Identities (#17)
+
+Before each match, `assignIdentities(seed)` in `src/sim/identity.ts` gives each seat:
+
+| Field | Pool |
+|---|---|
+| `name` | a machine word ("Rivet") or two syllables ("Zap" + "ko"); at most 12 characters |
+| `shape` | 20 head shapes: Skiff's 8 Skipper bodies plus 12 new ones |
+| `eyes` | 12 resting eye styles on the dot visor |
+| `mark` | 18 marks and accessories (headband, antenna, crown, horns, cape, ...) |
+| `color` | a random saturated color, bright enough for every arena |
+
+In a match no two fighters share a shape or a mark, names do not start with the same three letters, and colors are at least 50° apart in hue. The identity uses its own random stream from the match seed, so it never moves the level, the plans or the lines, and it is not part of the sim's state hash. Records (version 4) store the identities; version 2 and 3 records keep their souls' old names and colors.
+
+A fighter may later choose its own identity (#19): pass `identityWishes` to `Match`. A valid wish that no earlier seat took is kept; the rest is generated.
 
 ### What the house bot reads from the text
 
@@ -98,7 +108,7 @@ Each line is `- context [morale states]: text`. The states are optional (`cocky`
 | `decider` | round 3 |
 | `state` | generic, by morale |
 
-**Placeholders:** `{killer}` `{victim}` `{winner}` `{grudge}` `{target}` `{weapon}` `{score}` `{round}`. A line whose placeholder has no value right now is skipped. Lines are not repeated within a session until the relevant ones run out. A soul with no lines of its own (or none for the moment) still talks, using template lines in its `voice` (`VOICE_LINES` in `src/sim/voice.ts`).
+**Placeholders:** `{me}` `{ME}` `{killer}` `{victim}` `{winner}` `{grudge}` `{target}` `{weapon}` `{score}` `{round}`. A line whose placeholder has no value right now is skipped. Lines are not repeated within a session until the relevant ones run out. A soul with no lines of its own (or none for the moment) still talks, using template lines in its `voice` (`VOICE_LINES` in `src/sim/voice.ts`).
 
 ## What a strategy is now
 

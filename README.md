@@ -4,10 +4,11 @@ Side-view 2D physics brawler prototype. A match is **best of 3 rounds** on a
 freshly generated, almost fully destructible level (themes: warehouse, rooftop,
 junkyard, construction), fought by four **equal** fighters: same body, speed and
 health, fists only at the start. Weapons and power-ups are collected in the arena.
-Who a fighter is comes from its **soul file** (`souls/*.md`: name, color, attitude,
-voice, what it values); swap a soul and the fighter changes. The four example souls
-are **Brick** the Brawler, **Pike** the Sniper, **Squeaks** the Rat and **Goldie**
-the Vulture. Format: `docs/souls.md`.
+How a fighter thinks comes from its **soul file** (`souls/*.md`: attitude, voice,
+what it values); swap a soul and the fighter plays differently. The four example
+souls are the brawler, the sniper, the rat and the vulture. Souls have no names or
+looks: every match gives each fighter a **generated identity** (name, head shape,
+eyes, mark, color) from the match seed. Format: `docs/souls.md`.
 
 1. **Level card**, then each fighter's **intro line** in an RPG dialogue frame.
 2. **3, 2, 1, FIGHT!** One continuous round; the safe zone pushes everyone together.
@@ -40,12 +41,12 @@ session scoreboard.
 ```sh
 bun run ai-match --host 0.0.0.0            # prints http://<lan-ip>:5175/?live ; open it on any machine
 bun run ai-match --lineup claude,codex,grok,claude --souls ./souls --seed 42 --deadline 20
-bun run ai-match --lineup pike=house       # mix AI and house bots
+bun run ai-match --lineup sniper=house     # mix AI and house bots (by soul file name or seat)
 bun run ai-match --headless                # no viewer, just the log
 ```
 
-Default lineup: Brick = claude (haiku), Pike = codex (gpt-6-luna, low effort),
-Squeaks = grok (grok-4.6, low effort), Goldie = claude (haiku). Each fighter has a
+Default lineup, by seat: claude (haiku), codex (gpt-6-luna, low effort),
+grok (grok-4.6, low effort), claude (haiku). Each fighter has a
 soul in `souls/` (`--souls <folder>` or `--souls a.md,b.md,c.md,d.md`; a bad soul
 stops the match with a message). Before each round all four are asked in parallel for
 `{ weapons (pickups to go for), target, stance, retaliate, line }`; a timeout (20 s), an error or junk

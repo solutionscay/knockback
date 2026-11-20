@@ -61,7 +61,7 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 
 **`label`:**
 - at most 40 characters, cleaned like a line;
-- without one, a label is made from the rule (for example, "Pike has rocket: go for them").
+- without one, a label is made from the rule (for example, "Zapko has rocket: go for them").
 
 ## Priorities and limits
 
