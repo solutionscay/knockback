@@ -44,6 +44,8 @@ export class Game {
   private readonly plans = new GamePlans();
   /** autopilot (#22): control changes from the server, shown when the match reaches them */
   private readonly ap = new AutopilotTrack();
+  /** spectator picks (#35): the crowd tally during the fight and the split on the win screen */
+  crowd: { update(beat: Beat["kind"]): void; celebrate(el: HTMLElement, winner: number): void } | null = null;
   private apUntil = 0;
   get callouts() {
     return this.plans.callouts;
@@ -415,6 +417,7 @@ export class Game {
         if (!this.videoMode) this.scene.camera.focus = { id: wid, offsetX: -0.24, heightM: 8 };
         this.scene.celebrateId = wid;
         h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed, this.ap.on, this.seatLabels());
+        this.crowd?.celebrate(h.celebrate, this.match.winner);
         restart(h.celebrate, "show");
         h.celebrate.querySelector<HTMLButtonElement>(".next")?.addEventListener("click", () => this.onNeedNewMatch?.());
         this.moments.push({ time: this.clock, kind: "celebrate", weight: 0 });
@@ -497,6 +500,7 @@ export class Game {
     }
     this.scene.autopilot = this.ap.on;
     this.plans.autopilot = this.ap.on;
+    this.crowd?.update(beat.kind);
     if (this.suddenUntil > 0 && (this.clock > this.suddenUntil || beat.kind !== "fight")) {
       this.suddenUntil = 0;
       if (this.hud.callout.classList.contains("sd")) this.hud.callout.className = "";

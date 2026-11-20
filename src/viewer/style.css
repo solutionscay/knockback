@@ -939,7 +939,7 @@ body.capture #controls {
 #autopilot-callout {
   position: absolute;
   left: 50%;
-  top: 12.5vh;
+  top: 16vh; /* under the clock and the crowd tally (#35) */
   transform: translate(-50%, -1vh);
   max-width: 70vw;
   padding: 1vh 2.4vh;
@@ -1154,4 +1154,324 @@ body.embed #seed,
 body.embed #reset,
 body.embed #new {
   display: none;
+}
+
+/* ---------------------------------------------------------- spectator picks (#35) */
+#picks-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 3vh;
+  transform: translateX(-50%);
+  width: min(96vw, 150vh);
+  padding: 1.6vh 1.8vh 1.2vh;
+  border-radius: 1.4vh;
+  background: #0b0d14e6;
+  box-shadow: 0 1vh 4vh #0008;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  transition: opacity 0.3s;
+}
+#picks-panel.show {
+  pointer-events: auto;
+}
+#picks-panel .ptitle {
+  text-align: center;
+  color: #aab2c8;
+  font-size: 2vh;
+  margin-bottom: 1.2vh;
+}
+#picks-panel .pcards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.2vh;
+}
+#picks-panel .pcard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vh;
+  padding: 1.2vh;
+  border-radius: 1vh;
+  background: radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--c) 28%, transparent), #10131c 62%);
+  border: 0.3vh solid transparent;
+}
+#picks-panel .pcard.mine {
+  border-color: var(--c);
+}
+#picks-panel .badge {
+  position: absolute;
+  top: 1vh;
+  left: 1vh;
+  padding: 0.3vh 0.8vh;
+  border-radius: 0.5vh;
+  background: var(--c);
+  color: #0b0d14;
+  font-size: 1.3vh;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+#picks-panel .pp {
+  height: 13vh;
+  display: flex;
+  justify-content: center;
+}
+#picks-panel .pp svg {
+  height: 100%;
+  width: auto;
+}
+#picks-panel .pn {
+  color: var(--c);
+  font-size: 3vh;
+  font-weight: 900;
+  line-height: 1;
+}
+#picks-panel .pl {
+  align-self: flex-start;
+  padding: 0.2vh 0.8vh;
+  border-radius: 0.5vh;
+  background: #1c2130;
+  color: #d5daea;
+  font-size: 1.4vh;
+  font-weight: 600;
+}
+#picks-panel .pq {
+  min-height: 4.4vh;
+  color: #e6e9f2;
+  font-size: 1.6vh;
+  line-height: 1.35;
+}
+#picks-panel button {
+  min-height: 5vh;
+  border: 0;
+  border-radius: 0.8vh;
+  background: #1c2130;
+  color: #e6e9f2;
+  font: 800 1.8vh system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+#picks-panel button:hover {
+  background: #262c3d;
+}
+#picks-panel .pcard.mine button {
+  background: var(--c);
+  color: #0b0d14;
+}
+#picks-panel .ppct {
+  position: absolute;
+  top: 1vh;
+  right: 1.2vh;
+  color: #aab2c8;
+  font-size: 1.6vh;
+  font-weight: 700;
+}
+#picks-panel .pbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 2vh;
+  align-items: center;
+  margin-top: 1.4vh;
+}
+#picks-panel .pseg,
+#crowd-tally .seg {
+  display: flex;
+  gap: 0.25vh;
+  height: 1.6vh;
+  border-radius: 0.4vh;
+  overflow: hidden;
+}
+#picks-panel .pseg i,
+#crowd-tally .seg i {
+  background: var(--c);
+  transition: flex 0.6s;
+}
+#picks-panel .pseg i.empty {
+  flex: 1;
+  background: #1c2130;
+}
+#picks-panel .plegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4vh 1.6vh;
+  margin-top: 0.7vh;
+  color: #e6e9f2;
+  font-size: 1.6vh;
+  font-weight: 600;
+}
+#picks-panel .plegend span i {
+  display: inline-block;
+  width: 1.1vh;
+  height: 1.1vh;
+  margin-right: 0.5vh;
+  border-radius: 0.2vh;
+  background: var(--c);
+}
+#picks-panel .plegend span.me {
+  text-decoration: underline;
+  text-underline-offset: 0.4vh;
+}
+#picks-panel .plegend em {
+  color: #8d95ab;
+  font-style: normal;
+}
+#picks-panel .pcount {
+  text-align: right;
+}
+#picks-panel .pcount b {
+  display: block;
+  color: #ffd23f;
+  font-size: 5vh;
+  font-weight: 900;
+  line-height: 1;
+}
+#picks-panel .pcount span {
+  color: #aab2c8;
+  font-size: 1.3vh;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+#picks-panel .pnote {
+  margin-top: 0.8vh;
+  color: #8d95ab;
+  font-size: 1.4vh;
+}
+@media (max-aspect-ratio: 1/1) {
+  #picks-panel .pcards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  #picks-panel .pp {
+    height: 9vh;
+  }
+}
+/* the crowd's tally, thin, under the clock during the fight */
+#crowd-tally {
+  position: absolute;
+  top: 10.2vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(38vw, 52vh);
+  padding: 0.6vh 1vh 0.8vh;
+  border-radius: 0.8vh;
+  background: #0b0d14c0;
+  font: 600 1.4vh system-ui, sans-serif;
+  color: #c9cfdf;
+  transition: opacity 0.4s;
+}
+#crowd-tally .tl {
+  display: flex;
+  gap: 0.6vh;
+  margin-bottom: 0.5vh;
+  white-space: nowrap;
+}
+#crowd-tally .tl span {
+  margin-left: auto;
+}
+#crowd-tally .seg {
+  height: 0.9vh;
+}
+#picks-flash {
+  position: absolute;
+  top: 40vh;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1vh 2.4vh;
+  border-radius: 1vh;
+  background: #0b0d14e0;
+  color: #e6e9f2;
+  font: 700 2.4vh system-ui, sans-serif;
+  transition: opacity 0.3s;
+}
+#picks-flash b {
+  color: #ffd23f;
+  letter-spacing: 0.12em;
+  margin-right: 1vh;
+}
+/* the win screen: how the crowd split */
+#celebrate .crowd {
+  position: absolute;
+  left: 4vw;
+  bottom: 6vh;
+  width: 40vw;
+  padding: 1.6vh 2vh;
+  border-radius: 1.2vh;
+  background: #0b0d14e0;
+  font-family: system-ui, sans-serif;
+  color: #e6e9f2;
+}
+#celebrate .crowd .ch {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 2vh;
+}
+#celebrate .crowd .ch span {
+  color: #8d95ab;
+  font-weight: 600;
+  font-size: 1.5vh;
+}
+#celebrate .crowd .called {
+  margin: 0.6vh 0 1vh;
+  font-size: 1.9vh;
+}
+#celebrate .crowd .called b {
+  font-size: 5vh;
+  font-weight: 900;
+  margin-right: 0.8vh;
+  color: #53f0a0;
+}
+#celebrate .crowd .crow {
+  display: grid;
+  grid-template-columns: 9vh 1fr 5vh;
+  gap: 1vh;
+  align-items: center;
+  margin: 0.5vh 0;
+  font-size: 1.7vh;
+  font-weight: 700;
+}
+#celebrate .crowd .cn {
+  color: var(--c);
+}
+#celebrate .crowd .cb {
+  position: relative;
+  height: 2.2vh;
+  border-radius: 0.4vh;
+  background: #1c2130;
+}
+#celebrate .crowd .cb span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--w);
+  border-radius: 0.4vh;
+  background: var(--c);
+}
+#celebrate .crowd .crow.won .cb {
+  outline: 0.25vh solid #fff;
+}
+#celebrate .crowd .cb em {
+  position: absolute;
+  right: 0.8vh;
+  top: 50%;
+  transform: translateY(-50%);
+  font-style: normal;
+  font-size: 1.2vh;
+  letter-spacing: 0.15em;
+}
+#celebrate .crowd .cp {
+  text-align: right;
+}
+#celebrate .crowd .you {
+  margin-top: 1.2vh;
+  padding: 1.2vh 1.6vh;
+  border-radius: 0.9vh;
+  background: #1c2130;
+}
+#celebrate .crowd .you.yes {
+  background: #53f0a0;
+  color: #0b0d14;
+}
+#celebrate .crowd .you b {
+  display: block;
+  font-size: 2.6vh;
+}
+#celebrate .crowd .you span {
+  font-size: 1.6vh;
 }

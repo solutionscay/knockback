@@ -1,3 +1,4 @@
+import { PickPanel } from "./picks";
 import { Application } from "pixi.js";
 import { checkRecordEngine, isOtherEngine, summarizeRecord } from "../sim/engine-version";
 import { showOldRecord } from "./old-record";
@@ -155,11 +156,17 @@ if (params.has("live")) {
   game.onNeedNewMatch = () => {
     if (lastRecord && !embedded) location.href = `/?record=${encodeURIComponent(lastRecord)}`; // embedded: the page picks what comes next
   };
+  // spectator picks (#35): the pick cards before the lock, the crowd tally, the split on the win screen
+  const picks = new PickPanel();
+  game.crowd = picks;
   const es = new EventSource(liveStreamUrl(params));
   es.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     bridge?.live(msg);
-    if (msg.type === "match") {
+    if (typeof msg.matchId === "string" && (msg.type === "match" || msg.type === "lineup")) void picks.setMatch(msg.matchId);
+    if (msg.type === "picks") picks.onPicks(msg);
+    else if (msg.type === "picksLocked") picks.onLocked(msg);
+    else if (msg.type === "match") {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
       const ruleset = sanitizeRuleset(msg.ruleset);
       if (!ruleset) return;
@@ -201,6 +208,10 @@ if (params.has("live")) {
     seedEl.textContent = `seed ${rec.seed} · replay`;
     game.newMatch(rec.seed, { recorded: rec, labels, control: raw.control });
     replayAgain = () => game.newMatch(rec.seed, { recorded: rec, labels, control: raw.control });
+    // the stored crowd split (#35), read-only; a record from a server without picks has none
+    const picks = new PickPanel();
+    game.crowd = picks;
+    void picks.setRecord(recordUrl);
   }
 } else start(seedParam !== null && seedParam !== "" ? Number(seedParam) >>> 0 : randomSeed());
 
