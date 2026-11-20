@@ -65,7 +65,8 @@ export function watchPage(root: HTMLElement, id: string) {
       if (e.kind === "line") round = e.round;
     }
     const done = !!stage.pos?.done;
-    $("#w-meta")!.textContent = `${done ? "Final" : info?.status === "open" ? "Waiting for players" : "Live"} · ${id}`;
+    // a finished match plays from round 1 here too (the stream keeps its history): say so
+    $("#w-meta")!.textContent = `${done ? "Final" : info?.status === "open" ? "Waiting for players" : info?.status === "over" ? "Match over · from the start" : "Live"} · ${id}`;
     mount($("#w-title"), theme ? html`<span class="arena" style="color:var(--yellow)">${theme[0]!.toUpperCase() + theme.slice(1)}</span> brawl` : html`&nbsp;`);
     $("#w-round")!.textContent = done ? "Final" : stage.pos ? `Round ${stage.pos.round} of 3` : info?.status === "open" ? `Starts in ${clock(info.startsInSec ?? 0)}` : "";
     mount($("#w-pips"), html`${ids.map((x, i) => html`<span style="${colorVars(x.color)}" title="${names[i]}: ${wins[i]} round${wins[i] === 1 ? "" : "s"}">${names[i]} <i class="${wins[i]! >= 1 ? "w" : ""}"></i><i class="${wins[i]! >= 2 ? "w" : ""}"></i></span>`)}`);
