@@ -342,10 +342,15 @@ export function groundTop(sim: Sim, x: number, bottom: number): number | null {
     break;
   }
   for (const e of sim.entities.values()) {
-    if (e.kind === "fighter" || e.dead) continue; // destroyed props leave sim.entities (sim-entities.ts)
+    // destroyed props leave sim.entities (sim-entities.ts); loose terrain chunks are not centered boxes, so they are left out
+    if (e.kind === "fighter" || e.kind === "chunk" || e.kind === "item" || e.kind === "grenade" || e.dead) continue;
+    // a box lying at any quarter turn (upside down, on its side) is still flat on top; a quarter turn swaps its extents
+    const rot = e.body.rotation(), quarter = Math.round(rot / (Math.PI / 2));
+    if (Math.abs(rot - quarter * (Math.PI / 2)) > 0.15) continue;
+    const [hw, hh] = quarter % 2 ? [e.hh, e.hw] : [e.hw, e.hh];
     const q = e.body.translation();
-    if (Math.abs(x - q.x) > e.hw || Math.abs(e.body.rotation()) > 0.15) continue;
-    take(q.y + e.hh);
+    if (Math.abs(x - q.x) > hw) continue;
+    take(q.y + hh);
   }
   return best;
 }
