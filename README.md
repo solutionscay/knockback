@@ -59,6 +59,15 @@ Providers live in `src/ai/providers.ts` (one entry each).
 bots get 0-2 rules from their soul (turn this off with `Match({ houseRules: false })` or
 `--house-rules off` in the batch scripts). Watch them fire with `?debug=rules` in the viewer. Schema: `docs/rules.md`.
 
+**Seeing the AI think (viewer):** during the fight, each fighter's chip in the top corners shows its plan
+(target · stance · first weapon; ⚑ = a rule is overriding it). Plan changes show as dotted thought bubbles
+and rule firings as tags in the fighter's color with a line to the subject: at most 2 on screen, none during
+knockout slow motion; `?thoughts=off` hides them for clean videos. The between-round card lists the rules with
+their firing counts and the AI's reason; the round recap names a best rule. Screenshots: `docs/screenshots/`.
+
+**Deadlines:** each provider has its own (`src/ai/providers.ts`): Claude 20 s, Codex 45 s with a second,
+hedged call if the first has not answered after 15 s, Grok 30 s. `--deadline <s>` overrides them all.
+
 ## AI eval (measure before changing prompts or rules)
 
 ```sh
