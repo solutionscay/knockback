@@ -17,13 +17,43 @@ import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
 import { houseBrain, type Decision } from "../sim/voice";
 import { decideRound, type RoundAsk, type Seat } from "./decide";
+import { playbackAt, roundPlayback, type RoundPlayback } from "../flow/pacing";
+import { DEFAULT_TIMING } from "../flow/beats";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
   | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string }
   | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[] }
   | { type: "round"; round: number; winner: number; seconds: number; reason: string; wins: number[]; kos: RoundFacts["stats"]["kos"]; summary: string[] }
-  | { type: "done"; record: string | null; winner: number; wins: number[] };
+  | { type: "done"; record: string | null; winner: number; wins: number[] }
+  | ({ type: "control" } & ControlEvent);
+
+/**
+ * Who controls a fighter, as it changes (#22): the house bot takes over a
+ * remote seat whose agent dropped or missed a deadline ("autopilot"), and the
+ * agent gets it back at a later round ("agent"). Saved in the record, so a
+ * replay shows the same callouts at the same moment.
+ *
+ * `round`/`phase`/`tick` say when it happened in the viewer's timeline: while
+ * a round's plans were asked ("plan", tick null), during a round's fight at a
+ * fight tick ("fight"), or at its round end ("roundEnd"). Agents only steer
+ * between rounds today, so a takeover changes plans from the next decision
+ * on; a missed mid-round check-in (#8/#9) will be phase "checkin" at its tick,
+ * with the house bot's plan update applied at that tick.
+ */
+export interface ControlEvent {
+  seat: number;
+  mode: "autopilot" | "agent";
+  round: number;
+  phase: "plan" | "fight" | "roundEnd" | "checkin";
+  tick: number | null;
+  /** why: "connection lost", "missed the deadline", "session closed", "reconnected" */
+  reason: string;
+  /** the callout spectators see */
+  line: string;
+  /** for "agent": the first round the agent plans again */
+  fromRound?: number;
+}
 
 export interface RunnerOptions {
   seed: number;
@@ -43,6 +73,16 @@ export interface RunnerOptions {
   onDecided?: (round: number, ask: RoundAsk) => Promise<void> | void;
   /** a round has been played */
   onPlayed?: (round: number, finalHash: string) => Promise<void> | void;
+  /**
+   * "broadcast" (#22): after a round is streamed, wait until viewers have seen
+   * it (src/flow/pacing.ts) before asking for the next one. "fast" (default):
+   * no waiting, as tests, batches, evals and ai-match need.
+   */
+  pace?: "fast" | "broadcast";
+  /** broadcast mode: return false to skip the wait (nobody to wait for) */
+  shouldPace?: () => boolean;
+  /** broadcast mode: scale the waits (tests only; default 1) */
+  paceScale?: number;
 }
 
 /** A stored round: what decideRound returned for it. */
@@ -68,6 +108,13 @@ export class MatchRunner {
   /** file name of the saved record, once saved */
   recordFile: string | null = null;
   private t0 = 0;
+  /** control changes (autopilot / agent back), in order; saved in the record */
+  readonly control: ControlEvent[] = [];
+  /** the round whose plans are being asked, while asking */
+  asking: number | null = null;
+  /** the round the viewers are watching: when its playback started and how long it runs */
+  playback: { round: number; startedAt: number; p: RoundPlayback; ticks: number } | null = null;
+  private startedAtMs = 0;
 
   constructor(readonly opts: RunnerOptions) {
     const souls: Soul[] = opts.seats.map((s) => s.soul);
@@ -94,6 +141,7 @@ export class MatchRunner {
   /** Announce the match (the viewer starts drawing the level and the intro). */
   start() {
     this.t0 = performance.now();
+    this.startedAtMs = Date.now();
     const m = this.match;
     this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme });
   }
@@ -108,10 +156,49 @@ export class MatchRunner {
     const names = this.names;
     const round = match.round + 1;
     const askStart = performance.now();
-    const ask = await decideRound(match, this.opts.seats, this.opts.deadlineMs);
+    this.asking = round;
+    let ask: RoundAsk;
+    try {
+      ask = await decideRound(match, this.opts.seats, this.opts.deadlineMs);
+    } finally {
+      this.asking = null;
+    }
     const askMs = Math.round(performance.now() - askStart);
     await this.opts.onDecided?.(round, ask);
-    return this.applyRound(round, ask, askMs);
+    const f = await this.applyRound(round, ask, askMs);
+    if (this.opts.pace === "broadcast") await this.waitForViewers();
+    return f;
+  }
+
+  /** Broadcast pace: sleep until the viewers have played the current round (or pacing is no longer wanted). */
+  private async waitForViewers() {
+    const pb = this.playback;
+    if (!pb) return;
+    const end = pb.startedAt + pb.p.total * 1000 * (this.opts.paceScale ?? 1);
+    while (Date.now() < end && (this.opts.shouldPace?.() ?? true)) await Bun.sleep(Math.min(250, end - Date.now()));
+  }
+
+  /** Where the viewers are now: the round being asked, or a moment in the round being played back. */
+  position(): { round: number; phase: ControlEvent["phase"]; tick: number | null } {
+    if (this.asking !== null) return { round: this.asking, phase: "plan", tick: null };
+    const pb = this.playback;
+    if (!pb) return { round: this.match.round + 1, phase: "plan", tick: null };
+    const at = playbackAt(pb.p, (Date.now() - pb.startedAt) / 1000, pb.ticks);
+    // after the round end the next thing viewers see is the next round's plans
+    if (at.phase === "roundEnd" && Date.now() >= pb.startedAt + pb.p.total * 1000 && !this.match.over) return { round: pb.round + 1, phase: "plan", tick: null };
+    return { round: pb.round, ...at };
+  }
+
+  /** The first round a seat can still be asked for: the next one, or the one after if this round's plans are being asked. */
+  nextAskRound(): number {
+    return this.asking !== null ? this.asking + 1 : this.match.round + 1;
+  }
+
+  /** Record and stream a change of control. */
+  recordControl(e: ControlEvent) {
+    this.control.push(e);
+    this.say(`  [${e.mode === "autopilot" ? "AUTOPILOT" : "BACK"}] ${this.names[e.seat]} (${e.reason}) round ${e.round} ${e.phase}${e.tick !== null ? ` tick ${e.tick}` : ""}: "${e.line}"`);
+    this.emit({ type: "control", ...e });
   }
 
   /**
@@ -142,6 +229,7 @@ export class MatchRunner {
     const match = this.match;
     const names = this.names;
     this.prompts.push({ round, prompts: ask.prompts, raw: ask.raw });
+    const decidedAt = Date.now();
     this.emit({ type: "decisions", round, decisions: ask.decisions, meta: ask.meta });
     this.say(replayed ? `ROUND ${round} plans (replayed from storage)` : `ROUND ${round} plans (${formatSeconds(askMs)} to decide)`);
     ask.decisions.forEach((d, i) => {
@@ -162,6 +250,15 @@ export class MatchRunner {
     if (reflexes.length) this.say(`     reflexes: ${reflexes.join("; ")}`);
     this.say("");
     this.emit({ type: "round", round, winner: f.winner, seconds: f.seconds, reason: f.reason, wins: match.wins.slice(), kos: f.stats.kos, summary: f.stats.summary.slice() });
+    const ticks = match.record.rounds[round - 1]!.fight.ticks;
+    const p = roundPlayback({ round, lines: ask.decisions.map((d) => d.line), fightTicks: ticks, kos: f.stats.kos.length, endsWithKo: f.reason !== "time-out" });
+    if (round === 1) {
+      // the level card started when the match was announced; only what's left of it is still ahead
+      const shown = Math.min(DEFAULT_TIMING.level, (decidedAt - this.startedAtMs) / 1000);
+      p.preFight -= shown;
+      p.total -= shown;
+    }
+    this.playback = { round, startedAt: decidedAt, p, ticks };
     if (!replayed) await this.opts.onPlayed?.(round, match.record.rounds[round - 1]!.fight.finalHash);
     return f;
   }
@@ -192,8 +289,8 @@ export class MatchRunner {
   }
 
   /** The record as saved: the match record plus labels, lineup and total time. */
-  savedRecord(): MatchRecord & { labels: string[]; lineup: string[]; totalMs: number } {
-    return { ...this.match.record, labels: this.labels, lineup: this.lineup, totalMs: Math.round(this.totalMs) };
+  savedRecord(): MatchRecord & { labels: string[]; lineup: string[]; totalMs: number; control?: ControlEvent[] } {
+    return { ...this.match.record, labels: this.labels, lineup: this.lineup, totalMs: Math.round(this.totalMs), ...(this.control.length ? { control: this.control.map((c) => ({ ...c })) } : {}) };
   }
 
   /**
