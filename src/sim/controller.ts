@@ -6,7 +6,7 @@
  */
 import { length2D } from "./dmath";
 import { REFLEX, WEAPONS } from "./constants";
-import { aimAndFire, inReach, sightTarget } from "./controller-aim";
+import { aimAndFire, inReach, railCanReach, sightTarget } from "./controller-aim";
 import { JetpackPilot } from "./controller-jetpack";
 import { ControllerNavigation } from "./controller-navigation";
 import { PATIENCE } from "./controller-tuning";
@@ -207,13 +207,17 @@ export class Controller {
   }
 
   /** The weapon for this situation, from the two carried. */
-  private chooseWeapon(sim: Sim, me: Fighter, target: Fighter, dist: number, los: boolean): Weapon {
+  private chooseWeapon(sim: Sim, me: Fighter, target: Fighter, sight: ReturnType<typeof sightTarget>): Weapon {
+    const { dist, los, dy0 } = sight;
     const has = (w: Weapon) => me.weapons.includes(w);
     const ready = (w: Weapon) => has(w) && me.cooldown[w] < 15;
     const mp = sim.pos(me);
     // an active use rule: that weapon, when it is carried and can reach
     const u = this.rules.use();
-    if (u && u !== "jetpack" && has(u) && inReach(u, dist, los)) return u;
+    const railLine = () => dist >= WEAPONS.railgun.minRange && railCanReach(sim, mp, sight);
+    if (u && u !== "jetpack" && has(u) && (u === "railgun" ? railLine() : inReach(u, dist, los))) return u;
+    if (ready("hammer") && me.grounded && Math.abs(dy0) < 1.2 && dist < WEAPONS.hammer.range) return "hammer";
+    if (ready("railgun") && railLine()) return "railgun";
     if (this.blocked(dist)) {
       // a wall between us: lob over it, or break through it
       if (has("grenade")) return "grenade";
@@ -228,6 +232,7 @@ export class Controller {
     if (ready("grapple") && los && dist > 3.5 && dist < 14 && (this.onLedge(sim, target, mp.x, mp.y) || has("bat") || has("shotgun"))) return "grapple";
     if (has("shotgun") && dist < 6.5) return "shotgun";
     if (has("grenade") && !los && dist > 2.5 && dist < 14) return "grenade";
+    if (ready("mine") && dist > 2.8 && dist <= WEAPONS.mine.range) return "mine";
     if (has("rocket") && dist >= 3) return "rocket";
     if (has("grenade") && dist > 2.5 && dist < 14) return "grenade";
     if (has("grapple") && dist > 3.5 && dist < 14) return "grapple";
@@ -295,10 +300,11 @@ export class Controller {
     }
     const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= WALL_PURSUIT.routeTicks, flank);
     const flying = this.jetpack.steer(sim, me, target, mp, mv, input, this.stanceNow(sim) === "rush", this.rules.use() === "jetpack");
-    if (!flying && wall && wallTicks >= WALL_PURSUIT.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
+    if (!me.railCharge && !flying && wall && wallTicks >= WALL_PURSUIT.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
 
     const sight = sightTarget(sim, me, aimTarget, mp);
     const { dx0, dy0, dist, los } = sight;
+    if (me.railCharge > 0) return aimAndFire(sim, me, mp, input, "railgun", sight, false, this.aimNoise);
     this.noLos = los ? 0 : this.noLos + 1;
     // a target with no path and no line of sight for long: pick someone else for a while
     const tSurf = target.surface;
@@ -314,9 +320,10 @@ export class Controller {
       const dir = this.navigation.dig.dir;
       const wall = sim.raycast(mp.x, mp.y + 0.1, dir, 0, 1.6, me.entity.collider);
       if (wall && (wall.terrain || (wall.entity && wall.entity.kind !== "fighter" && wall.entity.kind !== "item"))) {
-        const order: Weapon[] = ["bat", "shotgun", "fist", "grenade", "rocket"];
+        const order: Weapon[] = me.grounded ? ["hammer", "bat", "shotgun", "fist"] : ["bat", "shotgun", "fist"];
         const w = order.find((x) => x === "fist" || me.weapons.includes(x))!;
         input.weapon = w;
+        if (w === "hammer") input.jump = false;
         input.move = dir * 0.6;
         input.aimX = dir;
         input.aimY = w === "grenade" ? 0.35 : 0.04;
@@ -327,7 +334,10 @@ export class Controller {
     } else if (this.navigation.dig) this.navigation.dig = null;
     // breach: parked with a wall or floor between us and the target - go through it
     const breach = this.noLos > PATIENCE.breachAfter && Math.abs(mv.x) < 0.8;
-    if (!flying && !flank && (breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
+    const useNewWeapon = (me.weapons.includes("hammer") && me.grounded && dist < WEAPONS.hammer.range && Math.abs(dy0) < 1.2) ||
+      (me.weapons.includes("railgun") && me.cooldown.railgun < 15 && railCanReach(sim, mp, sight)) ||
+      (me.weapons.includes("mine") && me.cooldown.mine < 15 && dist > 2.8 && dist <= WEAPONS.mine.range);
+    if (!useNewWeapon && !flying && !flank && (breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
       const has = (w: Weapon) => me.weapons.includes(w);
       const w: Weapon = dist < 1.3 && !has("bat") && !has("shotgun") ? "fist" : has("bat") && dist < 2.8 ? "bat" : has("shotgun") && dist < 7 ? "shotgun" : has("rocket") && dist >= 2 ? "rocket" : has("grenade") ? "grenade" : has("bat") ? "bat" : "fist";
       input.weapon = w;
@@ -341,7 +351,7 @@ export class Controller {
     }
     const blocked = this.blocked(dist);
     if (sim.tick >= this.nextWeapon || !this.wanted || !me.weapons.includes(this.wanted)) {
-      this.wanted = this.chooseWeapon(sim, me, aimTarget, dist, los);
+      this.wanted = this.chooseWeapon(sim, me, aimTarget, sight);
       this.nextWeapon = sim.tick + 12;
     }
     return aimAndFire(sim, me, mp, input, this.wanted, sight, blocked, this.aimNoise);

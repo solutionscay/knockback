@@ -1,5 +1,6 @@
 import { length2D } from "./dmath";
-import { WEAPONS } from "./constants";
+import { GRAVITY, WEAPONS } from "./constants";
+import { traceRail } from "./rail-terrain";
 import type { Fighter, Input, Sim, Weapon } from "./sim";
 
 export function sightTarget(sim: Sim, me: Fighter, aimTarget: Fighter, mp: ReturnType<Sim["pos"]>) {
@@ -10,7 +11,17 @@ export function sightTarget(sim: Sim, me: Fighter, aimTarget: Fighter, mp: Retur
   const dist = length2D(dx0, dy0);
   const sight = dist > 0.1 ? sim.raycast(mp.x, mp.y + 0.25, dx0 / dist, (dy0 - 0.25) / dist, dist + 0.5, me.entity.collider) : null;
   const los = !!sight && sight.entity === aimTarget.entity;
-  return { atp, atv, dx0, dy0, dist, los };
+  return { atp, atv, dx0, dy0, dist, los, sight };
+}
+
+export function railCanReach(sim: Sim, p: ReturnType<Sim["pos"]>, target: ReturnType<typeof sightTarget>) {
+  const y = p.y + 0.25;
+  const dx = target.atp.x - p.x, dy = target.atp.y - y;
+  const distance = length2D(dx, dy);
+  if (distance < 0.1 || distance > WEAPONS.railgun.range) return false;
+  if (target.los) return true;
+  if (target.sight && !target.sight.terrain && target.sight.entity?.kind !== "fighter") return false;
+  return traceRail(sim.grid, p.x, y, dx / distance, dy / distance, distance) >= distance;
 }
 
 export function aimAndFire(
@@ -28,14 +39,14 @@ export function aimAndFire(
 
   let ax = dx0;
   let ay = dy0;
-  if (weapon === "rocket" || weapon === "grenade") {
-    const speed = weapon === "rocket" ? WEAPONS.rocket.speed : WEAPONS.grenade.speed;
-    const g = weapon === "rocket" ? WEAPONS.rocket.gravity : 20;
+  if (weapon === "rocket" || weapon === "grenade" || weapon === "mine") {
+    const speed = WEAPONS[weapon].speed;
+    const g = weapon === "grenade" ? GRAVITY : WEAPONS[weapon].gravity;
     const t = dist / speed;
     const lx = atp.x + atv.x * t * 0.6 - mp.x;
     const ly = atp.y + Math.max(-2, atv.y * t * 0.3) - (mp.y + 0.25);
     // over a wall: the high arc
-    const sol = ballisticAim(lx, ly, speed, g, blocked && weapon === "rocket");
+    const sol = ballisticAim(lx, ly - (weapon === "mine" ? 0.18 : 0), speed, g, blocked && weapon !== "grenade");
     ax = sol.x;
     ay = sol.y;
   } else {
@@ -47,6 +58,19 @@ export function aimAndFire(
 
   let canFire = (sim.weapon(me) === weapon || weapon === "fist") && me.swap === 0 && me.cooldown[weapon] === 0 && me.stun === 0;
   switch (weapon) {
+    case "mine":
+      canFire &&= dist > 2.4 && dist <= WEAPONS.mine.range;
+      break;
+    case "railgun":
+      canFire &&= (dist >= WEAPONS.railgun.minRange || me.railCharge > 0) && railCanReach(sim, mp, target);
+      break;
+    case "hammer":
+      canFire &&= me.grounded && Math.abs(dx0) < WEAPONS.hammer.range && Math.abs(dy0) < 1.4;
+      if (canFire) {
+        input.jump = false;
+        input.thrust = false;
+      }
+      break;
     case "shotgun":
       canFire &&= dist <= WEAPONS.shotgun.range - 0.6;
       break;
@@ -69,12 +93,13 @@ export function aimAndFire(
       canFire &&= dist <= WEAPONS.flamethrower.range - 0.3;
       break;
   }
-  if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && !(blocked && weapon === "shotgun")) {
+  if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && weapon !== "railgun" && weapon !== "hammer" && !(blocked && weapon === "shotgun")) {
     const hit = sim.raycast(mp.x, mp.y + 0.25, input.aimX, input.aimY, weapon === "shotgun" ? Math.min(dist, 6) : 2.2, me.entity.collider);
     if (hit && hit.terrain) canFire = false;
   }
   if (canFire) {
-    const n = aimNoise * sim.rng.gauss() * (weapon === "rocket" || weapon === "grenade" ? 1 : 0.5);
+    const n = weapon === "railgun" && me.railCharge + 1 < WEAPONS.railgun.chargeTicks ? 0 :
+      aimNoise * sim.rng.gauss() * (weapon === "rocket" || weapon === "grenade" ? 1 : weapon === "railgun" ? 0.25 : 0.5);
     const nx = input.aimX - input.aimY * n;
     const ny = input.aimY + input.aimX * n;
     const l = length2D(nx, ny);
@@ -88,6 +113,12 @@ export function aimAndFire(
 /** Can this weapon reach a target at this distance (rough ranges, for use rules)? */
 export function inReach(w: Weapon, dist: number, los: boolean): boolean {
   switch (w) {
+    case "mine":
+      return dist > 2.4 && dist <= WEAPONS.mine.range;
+    case "railgun":
+      return los && dist >= WEAPONS.railgun.minRange && dist <= WEAPONS.railgun.range;
+    case "hammer":
+      return dist <= WEAPONS.hammer.range;
     case "bat":
       return dist < 2.4;
     case "shotgun":

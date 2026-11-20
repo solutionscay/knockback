@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { DT, FIGHTER, FIGHTER_DENSITY, G, POWER, SWAP_TICKS, groups } from "./constants";
+import { DT, FIGHTER, FIGHTER_DENSITY, G, POWER, SWAP_TICKS, WEAPONS, groups } from "./constants";
 import type { Sim } from "./sim";
 import { ALL_WEAPONS, WEAPON_LIST, type Entity, type Fighter, type Input, type Look } from "./sim-types";
 import { clamp, length2D } from "./dmath";
@@ -53,7 +53,9 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     slot: 0,
     swap: 0,
     // nobody fires on the first frame
-    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20 },
+    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20, mine: 0, railgun: 0, hammer: 0 },
+    ammo: { mine: 0, railgun: 0, hammer: 0 },
+    railCharge: 0,
     stun: 0,
     jumpCd: 0,
     airJumped: false,
@@ -105,6 +107,7 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   const wasJetting = f.jetting;
   f.jetting = false;
   if (f.stun > 0) {
+    f.railCharge = 0;
     f.stun--;
     if (f.grounded) vx *= 0.9;
     body.setLinvel({ x: vx, y: vy }, true);
@@ -158,5 +161,12 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
       sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: inp.weapon });
     }
   }
-  if (inp.fire && f.swap === 0) fire(sim, f, jab ? "fist" : sim.weapon(f));
+  const weapon = jab ? "fist" : sim.weapon(f);
+  const firing = inp.fire && f.swap === 0;
+  if (weapon === "railgun" && firing && f.cooldown.railgun === 0 && f.ammo.railgun > 0) {
+    if (f.railCharge === 0) sim.events.push({ type: "railCharge", tick: sim.tick, fighter: f.id });
+    if (++f.railCharge < WEAPONS.railgun.chargeTicks) return;
+  }
+  f.railCharge = 0;
+  if (firing) fire(sim, f, weapon);
 }

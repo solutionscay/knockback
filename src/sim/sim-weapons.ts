@@ -1,16 +1,20 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { DT, G, WEAPONS, groups } from "./constants";
 import type { Sim } from "./sim";
-import { type Entity, type Fighter, type Rocket, type Weapon } from "./sim-types";
+import { type Entity, type Fighter, type Rocket, type Weapon, usesAmmo } from "./sim-types";
 import { length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { chipTerrain } from "./sim-terrain";
 import { CHAIN } from "./constants";
 import { shootChains, swingChains } from "./sim-chains";
 import { fireFlamethrower } from "./sim-fire";
+import { throwMine } from "./sim-mines";
+import { fireRailgun, slamHammer } from "./sim-impact-weapons";
 
 export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
   if (f.cooldown[weapon] > 0) return;
+  if (usesAmmo(weapon) && f.ammo[weapon] <= 0) return;
+  if (weapon === "hammer" && !f.grounded) return;
   const p = sim.pos(f);
   const ox = p.x;
   const oy = p.y + 0.25;
@@ -18,6 +22,18 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
   const dy = f.aimY;
   sim.events.push({ type: "fire", tick: sim.tick, fighter: f.id, weapon, x: ox, y: oy, dx, dy });
   switch (weapon) {
+    case "mine":
+      f.cooldown.mine = WEAPONS.mine.cooldown;
+      throwMine(sim, f, ox, oy, dx, dy);
+      break;
+    case "railgun":
+      f.cooldown.railgun = WEAPONS.railgun.cooldown;
+      fireRailgun(sim, f, ox, oy, dx, dy);
+      break;
+    case "hammer":
+      f.cooldown.hammer = WEAPONS.hammer.cooldown;
+      slamHammer(sim, f, ox, dx);
+      break;
     case "rocket": {
       f.cooldown.rocket = WEAPONS.rocket.cooldown;
       const muzzle = 0.95;
@@ -54,6 +70,10 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
       f.cooldown.flamethrower = WEAPONS.flamethrower.cooldown;
       fireFlamethrower(sim, f, ox, oy, dx, dy);
       break;
+  }
+  if (usesAmmo(weapon) && --f.ammo[weapon] === 0 && f.weapons[f.slot] === weapon) {
+    f.weapons[f.slot] = "fist";
+    sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: "fist" });
   }
 }
 

@@ -4,9 +4,14 @@ import type { PieceCell } from "./terrain";
 import { generateIdentities, type Look } from "./identity";
 
 /** "fist" is what everyone starts with; the rest are picked up in the arena. */
-export type Weapon = "rocket" | "shotgun" | "bat" | "grenade" | "grapple" | "flamethrower" | "fist";
-/** Weapons that exist as pickups. */
-export const WEAPON_LIST: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower"];
+const PICKUP_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer"] as const;
+export type Weapon = (typeof PICKUP_WEAPONS)[number] | "fist";
+export const WEAPON_LIST: readonly Weapon[] = PICKUP_WEAPONS;
+export const LIMITED_WEAPONS = ["mine", "railgun", "hammer"] as const;
+export type LimitedWeapon = (typeof LIMITED_WEAPONS)[number];
+export function usesAmmo(weapon: Weapon): weapon is LimitedWeapon {
+  return (LIMITED_WEAPONS as readonly Weapon[]).includes(weapon);
+}
 export const ALL_WEAPONS: readonly Weapon[] = [...WEAPON_LIST, "fist"];
 
 export function isPickupWeapon(value: unknown): value is Exclude<Weapon, "fist"> {
@@ -18,7 +23,7 @@ export type PowerUp = (typeof POWER_LIST)[number];
 export type ItemType = PowerUp | Weapon;
 export type Stance = "rush" | "distance" | "cover" | "item";
 export type EntityKind = PropKind | "fighter" | "chunk" | "item" | "grenade";
-export type ExplosionKind = "rocket" | "barrel" | "grenade" | "tnt" | "gas";
+export type ExplosionKind = "mine" | "rocket" | "barrel" | "grenade" | "tnt" | "gas";
 
 /** Who a fighter goes after. Resolved continuously during the fight. */
 export const TARGET_PREFERENCES = ["nearest", "weakest", "strongest", "leader", "rocket", "shotgun"] as const;
@@ -131,6 +136,7 @@ export interface Entity {
   burnBy?: number;
   // item
   itemType?: ItemType;
+  ammo?: number;
   // grenade
   owner?: number;
   ticksLeft?: number;
@@ -167,6 +173,8 @@ export interface Fighter {
   slot: 0 | 1;
   swap: number;
   cooldown: Record<Weapon, number>;
+  ammo: Record<LimitedWeapon, number>;
+  railCharge: number;
   stun: number;
   jumpCd: number;
   airJumped: boolean;
@@ -207,8 +215,24 @@ export interface Rocket {
   age: number;
 }
 
+export interface Mine {
+  id: number;
+  owner: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  born: number;
+  armedAt: number;
+  mount: { kind: "terrain"; cx: number; cy: number } | { kind: "entity"; id: number; x: number; y: number } | null;
+}
+
 export type SimEvent =
   | { type: "fire"; tick: number; fighter: number; weapon: Weapon; x: number; y: number; dx: number; dy: number }
+  | { type: "mineStick" | "mineArm"; tick: number; x: number; y: number; entity: number }
+  | { type: "railCharge"; tick: number; fighter: number }
+  | { type: "rail"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number }
+  | { type: "shockwave"; tick: number; fighter: number; x: number; y: number; paths: { x: number; y: number }[][] }
   | { type: "pellet"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: boolean }
   | { type: "swing"; tick: number; fighter: number; x: number; y: number; dx: number; dy: number; hit: boolean; weapon: "bat" | "fist" }
   | { type: "grapple"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number }

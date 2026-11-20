@@ -40,7 +40,8 @@ export function attackWall(sim: Sim, me: Fighter, p: Point, wall: Point, input: 
   if (distance < 0.05 || me.stun > 0) return false;
   const has = (w: Weapon) => me.weapons.includes(w);
   let weapon: Weapon;
-  if (distance < 1.6 && has("bat")) weapon = "bat";
+  if (distance < 1.7 && me.grounded && has("hammer") && me.cooldown.hammer < 15) weapon = "hammer";
+  else if (distance < 1.6 && has("bat")) weapon = "bat";
   else if (distance < WEAPONS.shotgun.range - 0.3 && has("shotgun")) weapon = "shotgun";
   else if (distance < 1.45) weapon = "fist";
   else if (distance >= WEAPONS.rocket.minRange + 0.5 && distance <= 10 && has("rocket")) weapon = "rocket";
@@ -51,7 +52,7 @@ export function attackWall(sim: Sim, me: Fighter, p: Point, wall: Point, input: 
   input.aimX = dx / distance;
   input.aimY = dy / distance;
   input.fire = (sim.weapon(me) === weapon || weapon === "fist") && me.swap === 0 && me.cooldown[weapon] === 0;
-  if (weapon === "bat" || weapon === "fist") {
+  if (weapon === "bat" || weapon === "fist" || weapon === "hammer") {
     // Keep contact with the wall instead of repeatedly jumping away from the impact point.
     input.jump = false;
     input.move = Math.abs(dx) < 0.35 ? 0 : Math.sign(dx) * 0.6;

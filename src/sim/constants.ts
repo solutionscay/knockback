@@ -37,6 +37,20 @@ export interface Blast {
 }
 
 export const WEAPONS = {
+  mine: {
+    ammo: 3, cooldown: 98, speed: 14, gravity: 20, throwLift: 0.6,
+    armTicks: 24, fuse: 165, proximity: 1.45, range: 9,
+    radius: 2.8, damage: 10, knockback: 12.5, blockDamage: 41, terrainDamage: 105,
+  },
+  railgun: {
+    ammo: 3, chargeTicks: 40, cooldown: 157, range: 27, minRange: 3,
+    terrainPenetration: 0.85, terrainDamage: 48, propDamage: 22,
+    damage: 13, knockback: 11.5, lift: 0.38,
+  },
+  hammer: {
+    ammo: 6, cooldown: 57, range: 4, damage: 8.5, knockback: 12, lift: 5,
+    groundStep: 0.55, feetReach: 0.85, terrainRadius: 1.5, terrainDamage: 98, propDamage: 30,
+  },
   rocket: {
     cooldown: 155,
     speed: 19,

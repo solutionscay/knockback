@@ -968,14 +968,14 @@
           }
         ],
         "checkpoints": [
-          "bbdd1860",
-          "61a809cd",
-          "defa8094"
+          "cf2f9164",
+          "75e0d217",
+          "0e3b783f"
         ],
-        "finalHash": "d31f0e22",
-        "ticks": 1884
+        "finalHash": "e6d80a7b",
+        "ticks": 1989
       },
-      "winner": 3,
+      "winner": 0,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1117,14 +1117,13 @@
           }
         ],
         "checkpoints": [
-          "1a9b3f51",
-          "401c9e79",
-          "8d083254"
+          "362f13a3",
+          "60d18ad4"
         ],
-        "finalHash": "bb05f1d0",
-        "ticks": 1877
+        "finalHash": "9b8cff16",
+        "ticks": 1451
       },
-      "winner": 2,
+      "winner": 1,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1268,13 +1267,13 @@
           }
         ],
         "checkpoints": [
-          "c3d30242",
-          "289e7ccc",
-          "1d36162a",
-          "361f5026"
+          "e596aaae",
+          "5bb004a4",
+          "05c85924",
+          "27e3c181"
         ],
-        "finalHash": "50a5d0af",
-        "ticks": 2892
+        "finalHash": "21203e46",
+        "ticks": 2538
       },
       "winner": 0,
       "meta": [
@@ -1307,10 +1306,10 @@
   ],
   "winner": 0,
   "wins": [
+    2,
     1,
     0,
-    1,
-    1
+    0
   ],
   "labels": [
     "claude",
@@ -1325,5 +1324,5 @@
     "claude"
   ],
   "totalMs": 56697,
-  "engine": 3
+  "engine": 4
 }

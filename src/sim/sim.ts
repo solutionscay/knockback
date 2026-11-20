@@ -22,7 +22,8 @@ import { addProp, dangers, updateObjects } from "./sim-objects";
 import { crumbleUnder, flushTerrain } from "./sim-terrain";
 import { buildChains, updateChains, type Chain } from "./sim-chains";
 import { updateFire, type CellFire } from "./sim-fire";
-import { ALL_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type Look, type Rocket, type SimEvent, type Weapon } from "./sim-types";
+import { ALL_WEAPONS, LIMITED_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type Look, type Mine, type Rocket, type SimEvent, type Weapon } from "./sim-types";
+import { updateMines } from "./sim-mines";
 import { updateRockets } from "./sim-weapons";
 import { SimZone, zoneHalfAt, zonePush } from "./sim-zone";
 import { Terrain } from "./terrain";
@@ -56,6 +57,7 @@ export class Sim {
     return this.entityStore.entities;
   }
   rockets: Rocket[] = [];
+  mines: Mine[] = [];
   /** platform chains (#34), grid scan order */
   readonly chains: Chain[];
   /** static anchor cell index -> its chain */
@@ -236,6 +238,7 @@ export class Sim {
       zonePush(this, f);
     }
     updateRockets(this);
+    updateMines(this);
     updateObjects(this);
     updateChains(this);
     updateFire(this);
@@ -345,6 +348,8 @@ export class Sim {
       num(f.burning);
       num(f.burnBy);
       num(f.fuel);
+      num(f.railCharge);
+      for (const weapon of LIMITED_WEAPONS) num(f.ammo[weapon]);
     }
     for (const r of this.rockets) {
       num(r.x);
@@ -352,8 +357,17 @@ export class Sim {
       num(r.vx);
       num(r.vy);
     }
+    for (const m of this.mines) {
+      for (const value of [m.id, m.owner, m.x, m.y, m.vx, m.vy, m.born, m.armedAt]) num(value);
+      if (m.mount?.kind === "terrain") {
+        num(1); num(m.mount.cx); num(m.mount.cy);
+      } else if (m.mount?.kind === "entity") {
+        num(2); num(m.mount.id); num(m.mount.x); num(m.mount.y);
+      } else num(0);
+    }
     for (const e of this.entities.values()) {
       num(e.id);
+      num(e.ammo ?? -1);
       num(e.hp);
       num(e.fuse ?? -1);
       num(e.thrust ?? -1);

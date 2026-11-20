@@ -71,6 +71,9 @@ export function dangers(sim: Sim): { x: number; y: number; r: number }[] {
       out.push({ x: t.x, y: t.y, r: e.kind === "tnt" ? TNT.radius + 0.8 : BARREL.radius });
     }
   }
+  for (const mine of sim.mines) {
+    if (mine.mount && mine.armedAt >= 0 && sim.tick >= mine.armedAt - 10) out.push({ x: mine.x, y: mine.y, r: WEAPONS.mine.radius });
+  }
   return out;
 }
 

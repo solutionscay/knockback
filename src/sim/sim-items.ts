@@ -1,7 +1,7 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { ARMORY, FIGHTER, FIGHTER_DENSITY, G, ITEM, POWER, SUPPLY, SWAP_TICKS, WEAPONS, groups } from "./constants";
 import type { Sim } from "./sim";
-import { isPickupWeapon, WEAPON_LIST, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
+import { isPickupWeapon, usesAmmo, WEAPON_LIST, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
 
@@ -64,7 +64,7 @@ export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
 /** Which weapon pickups a fighter wants, best first (from its strategy). */
 export function setPrefs(sim: Sim, id: number, prefs: readonly Weapon[]) {
   const f = sim.fighters[id]!;
-  const ok = prefs.filter((w, i) => WEAPON_LIST.includes(w) && prefs.indexOf(w) === i);
+  const ok = prefs.filter((w, i) => isPickupWeapon(w) && prefs.indexOf(w) === i);
   // anything not listed still beats fists, after the listed ones
   f.prefs = [...ok, ...WEAPON_LIST.filter((w) => !ok.includes(w))];
 }
@@ -161,6 +161,10 @@ export function dropWeapons(sim: Sim, f: Fighter, x: number, y: number) {
     if (w === "fist") continue;
     const e = sim.spawnItem(w, x + side * 0.3, y + 0.6, side * 2.2, 4);
     e.owner = f.id;
+    if (usesAmmo(w)) {
+      e.ammo = f.ammo[w];
+      f.ammo[w] = 0;
+    }
     side = -side;
   }
   f.weapons = ["fist", "fist"];
@@ -181,14 +185,14 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
       if (e.owner === f.id && sim.tick - e.born < ARMORY.pickupGraceTicks) continue;
       if (!sim.wantsWeapon(f, it)) continue;
     }
-    sim.applyItem(f, it);
+    applyItem(sim, f, it, e.ammo);
     sim.events.push({ type: "pickup", tick: sim.tick, fighter: f.id, item: e.itemType!, x: t.x, y: t.y });
     sim.entityStore.remove(e);
     return;
   }
 }
 
-export function applyItem(sim: Sim, f: Fighter, it: ItemType) {
+export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
   f.pickups.push(it);
   const on = (p: PowerUp) => sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power: p, on: true });
   switch (it) {
@@ -225,8 +229,14 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType) {
         const p = sim.pos(f);
         const d = sim.spawnItem(old, p.x - f.facing * 0.4, p.y + 0.4, -f.facing * 2.5, 3.5);
         d.owner = f.id;
+        if (usesAmmo(old)) {
+          d.ammo = f.ammo[old];
+          f.ammo[old] = 0;
+        }
       }
       f.weapons[other] = it;
+      if (usesAmmo(it)) f.ammo[it] = ammo ?? WEAPONS[it].ammo;
+      f.railCharge = 0;
       if (it === "flamethrower") f.fuel = WEAPONS.flamethrower.fuel; // a full tank
       f.slot = other;
       f.swap = SWAP_TICKS;
