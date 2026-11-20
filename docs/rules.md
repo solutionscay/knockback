@@ -86,4 +86,4 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 
 **Match records are version 4.** They store fighter identities and plans, including rules. Rules store seat numbers in `who` and the action's item in `doItem`. The reader also accepts the version 2 and 3 schemas.
 
-Each round's final state hash is checked. If a replay diverges, the headless verifier refuses it and the viewer shows a divergence warning. The wall generation and combat changes in #28 and #29 change the simulation hashes. Play records from before those changes with the commit that made them.
+Each round's final state hash is checked. If a replay diverges, the headless verifier refuses it and the viewer shows a divergence warning. The wall generation and combat changes in #28 and #29 and the breakable chains in #34 change the simulation hashes. Play records from before those changes with the commit that made them.

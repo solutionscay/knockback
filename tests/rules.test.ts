@@ -125,12 +125,18 @@ describe("stored rules and records (#5)", () => {
     expect(m.record.version).toBe(4);
     expect(m.record.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     expect(sanitizeRecord(JSON.parse(JSON.stringify(m.record)))!.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
-    // The older schema still preserves identities. Hash verification refuses the old physics.
+    // The older schema still loads, replays to its recorded hashes and preserves identities. The fixture's engine
+    // outputs (hashes, checkpoints, ticks, winners) are re-recorded whenever the physics changes (#28, #29, #34);
+    // its inputs (seed, souls, strategies, lines) stay as they were.
     const rec = JSON.parse(readFileSync(`${import.meta.dir}/fixtures/record-v2-match-1001.json`, "utf8"));
     expect(rec.version).toBe(2);
-    expect(() => replayMatch(rec)).toThrow(ReplayDivergedError);
+    expect(() => replayMatch(rec)).not.toThrow();
     expect(sanitizeRecord(rec)).not.toBeNull();
-    expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
+    expect(replayMatch(sanitizeRecord(rec)!).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
+    // a record whose hashes don't match this engine is refused
+    const stale = JSON.parse(JSON.stringify(rec));
+    stale.rounds[0].fight.finalHash = "00000000";
+    expect(() => replayMatch(stale)).toThrow(ReplayDivergedError);
     expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).identities.map((i) => i.color)).toEqual(rec.souls.map((s: { color: number }) => s.color));
     const v2made = new Match(11);
     v2made.playToEnd();

@@ -967,11 +967,16 @@
             "line": "Circle all you like, snacks. I'm waiting until one of you is ready to be carried off."
           }
         ],
-        "checkpoints": [],
-        "finalHash": "7862c3fe",
-        "ticks": 557
+        "checkpoints": [
+          "465f1b14",
+          "4a2b57ee",
+          "4f0386dd",
+          "b564eb31"
+        ],
+        "finalHash": "241edd2f",
+        "ticks": 2591
       },
-      "winner": 2,
+      "winner": 0,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1113,14 +1118,11 @@
           }
         ],
         "checkpoints": [
-          "99b7be06",
-          "3a5e1dc9",
-          "b025b743",
-          "b84991e7",
-          "63acf44d"
+          "854b8d93",
+          "2b195e4c"
         ],
-        "finalHash": "74ec1f91",
-        "ticks": 3476
+        "finalHash": "e5be3765",
+        "ticks": 1312
       },
       "winner": 0,
       "meta": [
@@ -1149,164 +1151,14 @@
           "why": "Weakest fighter is closest to a ring-out; bat finishes, grapple sets it up."
         }
       ]
-    },
-    {
-      "physicsSeed": 2241672303,
-      "phase": "between",
-      "strategies": [
-        {
-          "target": "grudge",
-          "grudge": 3,
-          "stance": "rush",
-          "weapons": [
-            "bat",
-            "shotgun",
-            "grapple"
-          ],
-          "retaliate": "turn",
-          "line": "Grenade to my face and a ring-out? Payback's rolling up the roof, slick!"
-        },
-        {
-          "target": "grudge",
-          "grudge": 3,
-          "stance": "distance",
-          "weapons": [
-            "rocket",
-            "grenade",
-            "bat"
-          ],
-          "retaliate": "attacker",
-          "line": "Goldie's 52-second pursuit was inelegant, darling; the wind will correct the record."
-        },
-        {
-          "target": "grudge",
-          "grudge": 1,
-          "stance": "item",
-          "weapons": [
-            "grenade",
-            "rocket",
-            "shotgun"
-          ],
-          "retaliate": "turn",
-          "line": "I hit myself with my OWN grenade. Again. Don't tell the fans."
-        },
-        {
-          "target": "weakest",
-          "stance": "cover",
-          "weapons": [
-            "bat",
-            "grapple",
-            "shotgun"
-          ],
-          "retaliate": "attacker",
-          "line": "Brick, still sore about that back? Keep whining, snack. My bat is waiting."
-        }
-      ],
-      "lines": [
-        "Grenade to my face and a ring-out? Payback's rolling up the roof, slick!",
-        "Goldie's 52-second pursuit was inelegant, darling; the wind will correct the record.",
-        "I hit myself with my OWN grenade. Again. Don't tell the fans.",
-        "Brick, still sore about that back? Keep whining, snack. My bat is waiting."
-      ],
-      "fight": {
-        "version": 4,
-        "seed": 2241672303,
-        "level": {
-          "theme": "rooftop",
-          "attempt": 0,
-          "width": 62
-        },
-        "strategies": [
-          {
-            "target": "grudge",
-            "grudge": 3,
-            "stance": "rush",
-            "weapons": [
-              "bat",
-              "shotgun",
-              "grapple"
-            ],
-            "retaliate": "turn",
-            "line": "Grenade to my face and a ring-out? Payback's rolling up the roof, slick!"
-          },
-          {
-            "target": "grudge",
-            "grudge": 3,
-            "stance": "distance",
-            "weapons": [
-              "rocket",
-              "grenade",
-              "bat"
-            ],
-            "retaliate": "attacker",
-            "line": "Goldie's 52-second pursuit was inelegant, darling; the wind will correct the record."
-          },
-          {
-            "target": "grudge",
-            "grudge": 1,
-            "stance": "item",
-            "weapons": [
-              "grenade",
-              "rocket",
-              "shotgun"
-            ],
-            "retaliate": "turn",
-            "line": "I hit myself with my OWN grenade. Again. Don't tell the fans."
-          },
-          {
-            "target": "weakest",
-            "stance": "cover",
-            "weapons": [
-              "bat",
-              "grapple",
-              "shotgun"
-            ],
-            "retaliate": "attacker",
-            "line": "Brick, still sore about that back? Keep whining, snack. My bat is waiting."
-          }
-        ],
-        "checkpoints": [
-          "9a42c5a0",
-          "5dfd7f5b"
-        ],
-        "finalHash": "7c44f9af",
-        "ticks": 1566
-      },
-      "winner": 3,
-      "meta": [
-        {
-          "provider": "claude/haiku",
-          "ms": 9456,
-          "outcome": "ok",
-          "why": "Goldie is the biggest threat and ringed me out; bat for ring-outs, grapple to pull them in."
-        },
-        {
-          "provider": "codex/gpt-6-luna",
-          "ms": 7342,
-          "outcome": "ok",
-          "why": "Goldie won and chased me; punish the leader while keeping room to fire."
-        },
-        {
-          "provider": "grok/grok-4.6",
-          "ms": 20528,
-          "outcome": "fallback-timeout",
-          "detail": "no answer in 20 s"
-        },
-        {
-          "provider": "claude/haiku",
-          "ms": 11332,
-          "outcome": "ok",
-          "why": "Bat is the best ring-out tool; grapple pulls the weakest in; cover kept since it won round 2."
-        }
-      ]
     }
   ],
-  "winner": 3,
+  "winner": 0,
   "wins": [
-    1,
+    2,
     0,
-    1,
-    1
+    0,
+    0
   ],
   "labels": [
     "claude",
