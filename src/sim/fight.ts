@@ -125,8 +125,11 @@ export class Fight {
     const evs = this.sim.events;
     if (evs.length === 0) return;
     for (const e of evs) {
+      // events that can change a rule trigger: re-evaluate rules on the next tick
+      if (e.type === "pickup" || e.type === "hit" || e.type === "ko") for (const c of this.controllers) c.rules.dirty = true;
       if (e.type === "ko") this.koLog.push({ fighter: e.fighter, by: e.by, cause: e.cause, weapon: e.weapon, tick: e.tick });
       else if (e.type === "pickup") this.stats.pickup(e.fighter, e.item, e.tick);
+      else if (e.type === "rule") this.stats.rule(e.fighter, e.rule, e.on, e.tick);
       else if (e.type === "hit") {
         if (e.source >= 0 && e.source !== e.target) {
           const a = this.sim.fighters[e.source]!;
@@ -188,6 +191,8 @@ export class Fight {
         this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause, tick: k.tick })),
         this.sim.fighters.map((f) => f.name),
         this.controllers.map((c) => c.reflexLog.map((x) => ({ ...x }))),
+        this.strategies.map((s) => s.rules?.length ?? 0),
+        this.sim.tick,
       ),
     };
   }

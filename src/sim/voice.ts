@@ -14,6 +14,7 @@ import type { Morale, MoraleState, RoundFacts } from "./morale";
 import type { Rng } from "./rng";
 import type { Strategy, Weapon } from "./sim";
 import type { LineTemplate, Soul, Voice } from "./soul";
+import type { Rule } from "./sim";
 
 export interface DecideContext {
   /** "intro" before round 1, "between" after a round */
@@ -35,6 +36,8 @@ export interface DecideContext {
   /** randomness for line choice (the house brain keeps strategy choice separate) */
   lineRng: Rng;
   strategyRng: Rng;
+  /** house bots add 0-2 plan rules from their soul (#6; on by default, off for A/B batches) */
+  houseRules?: boolean;
 }
 
 export interface Decision {
@@ -293,7 +296,26 @@ export function houseStrategy(ctx: DecideContext): Strategy {
       if (dealt >= 35 && (total === 0 || chased / total < 0.2)) retaliate = "attacker";
     }
   }
-  return { target, grudge, stance, weapons, retaliate, line: "" };
+  const rules = ctx.houseRules === false ? [] : houseRulesFor(soul);
+  return { target, grudge, stance, weapons, retaliate, ...(rules.length ? { rules } : {}), line: "" };
+}
+
+/**
+ * House-bot plan rules from a soul (#6): 0-2 rules, picked from its values,
+ * stance and favorite weapon, highest priority first. Keeps house bots and
+ * AIs on the same footing.
+ */
+export function houseRulesFor(soul: Soul): Rule[] {
+  const text = `${soul.values.join(" ")} ${soul.body}`.toLowerCase();
+  const has = (...ws: string[]) => ws.some((w) => text.includes(w));
+  const out: Rule[] = [];
+  if (soul.target === "weakest" || has("weakest", "finish off", "wounded")) out.push({ when: "health_below", who: "enemy", value: 30, do: "target", label: "finish the wounded" });
+  if (has("grudge", "never forgets", "revenge")) out.push({ when: "chasing_me", who: "enemy", do: "target", label: "turn on the chaser" });
+  if (soul.stance === "cover" || has("hides", "scared", "plays it safe")) out.push({ when: "my_health_below", value: 40, do: "seek", doItem: "health", label: "patch up" });
+  const fav = soul.weapons[0];
+  if (fav === "grapple" || fav === "bat") out.push({ when: "near_ledge", who: "enemy", do: "use", doItem: fav, label: fav === "grapple" ? "hook them off" : "bat them off" });
+  else if (fav === "rocket" || fav === "grenade") out.push({ when: "near_barrel", who: "enemy", do: "use", doItem: fav, label: "light the barrel" });
+  return out.slice(0, 2);
 }
 
 export const houseBrain: Brain = (ctx) => {

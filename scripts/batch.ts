@@ -10,9 +10,11 @@ import { Tally } from "../src/flow/score";
 await initPhysics();
 const SOULS = exampleSouls();
 const args = process.argv.slice(2);
+// --house-rules off: house bots without plan rules (#6 A/B)
+const houseRules = !(args.includes("--house-rules=off") || args[args.indexOf("--house-rules") + 1] === "off");
 const jsonIdx = args.indexOf("--json");
 const jsonOut = jsonIdx >= 0 ? args[jsonIdx + 1] : null;
-const pos = args.filter((a, i) => !a.startsWith("--") && (jsonIdx < 0 || i !== jsonIdx + 1));
+const pos = args.filter((a, i) => !a.startsWith("--") && (jsonIdx < 0 || i !== jsonIdx + 1) && args[i - 1] !== "--house-rules");
 const N = Number(pos[0] ?? 200);
 const start = Number(pos[1] ?? 1);
 
@@ -44,7 +46,7 @@ function run(noMoraleEffect: boolean): { rows: Row[]; ms: number; tally: Tally }
   for (let i = 0; i < N; i++) {
     const seed = start + i;
     const session = new VoiceSession();
-    const m = new Match(seed, { noMoraleEffect, session });
+    const m = new Match(seed, { noMoraleEffect, session, houseRules });
     let ringouts = 0;
     const humiliations: string[] = [];
     const seen = new Set<string>();

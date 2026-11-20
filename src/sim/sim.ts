@@ -264,7 +264,9 @@ export type SimEvent =
   | { type: "zap"; tick: number; fighter: number; x: number; y: number; dir: number }
   | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number }
   | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number }
-  | { type: "suddenDeath"; tick: number; quietTicks: number };
+  | { type: "suddenDeath"; tick: number; quietTicks: number }
+  /** a plan rule started or stopped (#6); subject = the fighter that made it true, or -1 */
+  | { type: "rule"; tick: number; fighter: number; rule: number; on: boolean; subject: number };
 
 /**
  * How a seat looks: name, color and a cosmetic mark, from its soul. Purely

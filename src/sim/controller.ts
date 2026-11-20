@@ -6,6 +6,7 @@
  */
 import { FIGHTER, REFLEX, WEAPONS } from "./constants";
 import type { Link, Surface } from "./nav";
+import { RuleEngine } from "./ruleeval";
 import { clamp, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
 
 export interface Goal {
@@ -38,7 +39,7 @@ export const AIM_NOISE = 0.07;
  */
 export const PATIENCE = { calmTicks: 330, peekEvery: 240, peekFor: 90, stuckTicks: 110, avoidTicks: 300, digTicks: 90, linkTicks: 100, unreachTicks: 180, skipTicks: 360, breachAfter: 90, breachRange: 12, pressAfter: 240, pressFlip: 180 };
 
-export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, giveUpTicks: 100, skipTicks: 420 };
+export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, giveUpTicks: 100, skipTicks: 420, seekLimit: 60 };
 
 const NO_FIRE: Input = { move: 0, jump: false, aimX: 1, aimY: 0, weapon: null, fire: false };
 
@@ -58,6 +59,12 @@ export class Controller {
   private noLos = 0;
   /** Effective target this tick. */
   targetId = -1;
+  /** tick the current target was chosen (chasing_me rules read it) */
+  targetSince = 0;
+  private sinceFor = -1;
+  /** plan rules of the current strategy (#6) */
+  rules = new RuleEngine([]);
+  private prefsKey = "";
   /** pickup being chased: give up on it if we stop getting closer (unreachable spots) */
   private chase: { id: number; best: number; since: number } | null = null;
   private skipItems = new Map<number, number>();
@@ -90,9 +97,15 @@ export class Controller {
     return (sim.suddenDeath >= 0 || sim.alive().length === 2) && sim.tick - this.lastDealt > PATIENCE.pressAfter;
   }
 
+  /** Did `src` hit me at or after tick `since`? (hit_me rules) */
+  hitBy(src: number, since: number): boolean {
+    return this.hitLog.some((h) => h.src === src && h.tick >= since);
+  }
+
   stanceNow(sim: Sim): Stance {
+    // engine guards first (stalemates), then an active stance rule, then the plan
     if (sim.suddenDeath >= 0 || sim.alive().length === 2) return "rush";
-    const s = this.strategy.stance;
+    const s = this.rules.stance() ?? this.strategy.stance;
     if (s !== "rush" && sim.tick - Math.max(this.lastDealt, this.lastTaken) > PATIENCE.calmTicks) return "rush";
     return s;
   }
@@ -116,7 +129,7 @@ export class Controller {
     if (this.reflex && this.reflex.attacker === src && tick < this.reflex.until) return;
     const n = log.filter((h) => h.src === src && h.behind).length;
     if (n < REFLEX.hits) return;
-    const rule = this.strategy.retaliate ?? "turn";
+    const rule = this.rules.retaliate() ?? this.strategy.retaliate ?? "turn";
     const mode = rule === "attacker" ? "switch" : rule === "turn" ? "fight" : "glance";
     const span = mode === "switch" ? REFLEX.switchTicks : mode === "fight" ? REFLEX.fightTicks : REFLEX.glanceTicks;
     this.reflex = { attacker: src, until: tick + span, mode };
@@ -137,14 +150,26 @@ export class Controller {
     this.nextEval = sim.tick;
     this.nextRetarget = sim.tick;
     sim.setPrefs(this.fighterId, s.weapons ?? []);
+    this.rules = new RuleEngine(s.rules ?? []);
+    this.prefsKey = "";
   }
 
   /** Pick a target from the preference; sticky for a second so it does not flicker. */
   private resolveTarget(sim: Sim, me: Fighter): Fighter | null {
     const cur = this.targetId >= 0 ? sim.fighters[this.targetId] : undefined;
     const skip = (o: Fighter) => (this.unreachable.get(o.id) ?? -1) > sim.tick;
-    // a knocked-out (or skipped) target is replaced at once, never waited on
-    if (cur && cur.alive && !cur.removed && cur.id !== me.id && sim.tick < this.nextRetarget && !skip(cur)) return cur;
+    const avoided = this.rules.avoided();
+    // an active target rule wins over the plan (not over the stalemate guards)
+    const tr = this.rules.targetRule();
+    if (tr && tr.kind === "target" && sim.suddenDeath < 0) {
+      const f = sim.fighters[tr.subject];
+      if (f && f.alive && !f.removed && f.id !== me.id) {
+        this.nextRetarget = sim.tick; // back to the plan as soon as the rule stops
+        return f;
+      }
+    }
+    // a knocked-out (or skipped, or avoided) target is replaced at once, never waited on
+    if (cur && cur.alive && !cur.removed && cur.id !== me.id && sim.tick < this.nextRetarget && !skip(cur) && !avoided.includes(cur.id)) return cur;
     this.nextRetarget = sim.tick + 60;
     const p = sim.pos(me);
     const foes = sim.fighters.filter((o) => o.alive && o.id !== me.id);
@@ -176,7 +201,7 @@ export class Controller {
       default:
         score = dist;
     }
-    const scored = (o: Fighter) => score(o) + (skip(o) && foes.length > 1 ? 60 : 0);
+    const scored = (o: Fighter) => score(o) + (skip(o) && foes.length > 1 ? 60 : 0) + (avoided.includes(o.id) && foes.length > 1 ? 1000 : 0);
     let best = foes[0]!;
     let bs = scored(best);
     for (const o of foes) {
@@ -210,13 +235,20 @@ export class Controller {
     {
       let best: Goal | null = null;
       let bc = Infinity;
+      // stalemate guards first: in sudden death, the duel or while pressing, no seek rule pulls a fighter away
+      const seeking = sim.suddenDeath >= 0 || sim.alive().length === 2 || this.pressing(sim) ? [] : this.rules.seeking();
       for (const it of sim.items()) {
         if ((this.skipItems.get(it.id) ?? -1) > sim.tick) continue;
         const type = it.itemType!;
+        const sought = seeking.indexOf(type);
         const isWeapon = type !== "health" && type !== "shield" && type !== "speed" && type !== "heavy" && type !== "damage" && type !== "jump";
         let limit: number;
         let extra = 0;
-        if (isWeapon) {
+        if (sought >= 0 && (!isWeapon || sim.wantsWeapon(me, type as Weapon))) {
+          // an active seek rule: go far for it, ahead of everything else
+          limit = PICKUP.seekLimit;
+          extra = -40 + sought * 5;
+        } else if (isWeapon) {
           if (!sim.wantsWeapon(me, type as Weapon)) continue;
           if (it.owner === me.id && sim.tick - it.born < 45) continue;
           const rank = me.prefs.indexOf(type as Weapon);
@@ -257,6 +289,14 @@ export class Controller {
       const flip = Math.floor(sim.tick / PATIENCE.pressFlip) % 2 === 0 ? 1 : -1;
       const gx = tp.x + flip * 2.2;
       return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - gx) + Math.abs(py + 0.9 - tp.y) * 0.7 + zonePenalty(px) + fragilePenalty(sid));
+    }
+
+    // an active avoid rule (the highest target/avoid rule): keep away from that fighter
+    const tr = this.rules.targetRule();
+    const av = tr && tr.kind === "avoid" && sim.suddenDeath < 0 && sim.alive().length > 2 ? sim.fighters[tr.subject] : undefined;
+    if (av && av.alive && !av.removed) {
+      const ap = sim.pos(av);
+      return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(Math.hypot(px - ap.x, py + 1 - ap.y) - 12) + zonePenalty(px) + fragilePenalty(sid));
     }
 
     if (stance === "rush") {
@@ -336,6 +376,9 @@ export class Controller {
     const has = (w: Weapon) => me.weapons.includes(w);
     const ready = (w: Weapon) => has(w) && me.cooldown[w] < 15;
     const mp = sim.pos(me);
+    // an active use rule: that weapon, when it is carried and can reach
+    const u = this.rules.use();
+    if (u && has(u) && inReach(u, dist, los)) return u;
     if (this.blocked(dist)) {
       // a wall between us: lob over it, or break through it
       if (has("grenade")) return "grenade";
@@ -363,6 +406,16 @@ export class Controller {
   think(sim: Sim): Input {
     const me = sim.fighters[this.fighterId]!;
     if (!me.alive) return NO_FIRE;
+    if (this.rules.any) {
+      this.rules.evaluate(sim, this, me);
+      // an active seek rule for a weapon puts it first in the wish list (so it gets picked up)
+      const seekW = this.rules.seeking().filter((x): x is Weapon => x === "rocket" || x === "shotgun" || x === "bat" || x === "grenade" || x === "grapple");
+      const key = seekW.join(">");
+      if (key !== this.prefsKey) {
+        this.prefsKey = key;
+        sim.setPrefs(this.fighterId, [...seekW, ...this.strategy.weapons]);
+      }
+    }
     let target = this.resolveTarget(sim, me);
     // the back-attack reflex overrides who we face (and, unless glancing, who we chase)
     let aimTarget = target as Fighter;
@@ -382,6 +435,10 @@ export class Controller {
     const mv = sim.vel(me);
     const input: Input = { move: 0, jump: false, aimX: me.aimX, aimY: me.aimY, weapon: null, fire: false };
     if (!target) return input;
+    if (target.id !== this.sinceFor) {
+      this.sinceFor = target.id;
+      this.targetSince = sim.tick;
+    }
     this.targetId = target.id;
     const tp = sim.pos(target);
     const tv = sim.vel(target);
@@ -598,6 +655,24 @@ export class Controller {
       input.fire = true;
     }
     return input;
+  }
+}
+
+/** Can this weapon reach a target at this distance (rough ranges, for use rules)? */
+export function inReach(w: Weapon, dist: number, los: boolean): boolean {
+  switch (w) {
+    case "bat":
+      return dist < 2.4;
+    case "shotgun":
+      return dist < WEAPONS.shotgun.range - 0.6;
+    case "rocket":
+      return dist >= WEAPONS.rocket.minRange && dist <= 34;
+    case "grenade":
+      return dist > 2.5 && dist < 14;
+    case "grapple":
+      return los && dist >= 3.5 && dist <= WEAPONS.grapple.range - 0.5;
+    default:
+      return dist < 1.5;
   }
 }
 

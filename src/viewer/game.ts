@@ -449,8 +449,21 @@ export class Game {
 
   // ------------------------------------------------------------- events
 
+  /** ?debug=rules: log every plan rule start/stop and float its label over the fighter (#6) */
+  debugRules = typeof location !== "undefined" && new URLSearchParams(location.search).get("debug") === "rules";
+
   private onEvent(e: SimEvent) {
     this.scene.onEvent(e);
+    if (e.type === "rule" && this.debugRules) {
+      const f = this.shown.sim.fighters[e.fighter]!;
+      const rule = this.match.decisions[e.fighter]?.strategy.rules?.[e.rule];
+      const who = e.subject >= 0 ? ` -> ${this.match.names[e.subject]}` : "";
+      console.info(`[rule] ${(e.tick / 60).toFixed(1)} s ${f.name} rule ${e.rule + 1} '${rule?.label ?? "?"}' ${e.on ? "ON" : "off"}${who}`);
+      if (e.on && !f.removed) {
+        const p = this.shown.sim.pos(f);
+        this.scene.float(`${rule?.label ?? "rule"}${who}`, p.x, p.y + 2.4, f.color, 0.7);
+      }
+    }
     if (e.type === "suddenDeath") {
       const h = this.hud;
       h.callout.innerHTML = `<span>SUDDEN DEATH</span><span class="small">NOBODY'S FIGHTING · THE ZONE IS CLOSING</span>`;

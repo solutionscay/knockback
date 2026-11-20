@@ -8,9 +8,12 @@
 import { exampleSouls, initPhysics, Match, WEAPON_LIST, type Weapon } from "../src/sim";
 
 await initPhysics();
-const N = Number(process.argv[2] ?? 200);
-const first = Number(process.argv[3] ?? 1);
+const pos = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--house-rules");
+const N = Number(pos[0] ?? 200);
+const first = Number(pos[1] ?? 1);
 const souls = exampleSouls();
+// --house-rules off: house bots without plan rules (#6 A/B)
+const houseRules = !process.argv.includes("--house-rules=off") && process.argv[process.argv.indexOf("--house-rules") + 1] !== "off";
 const seatRounds = [0, 0, 0, 0];
 const seatMatches = [0, 0, 0, 0];
 const soulRounds = [0, 0, 0, 0];
@@ -28,7 +31,7 @@ for (let k = 0; k < N; k++) {
   const seed = first + k;
   const rot = k % 4;
   const order = [0, 1, 2, 3].map((i) => (i + rot) % 4);
-  const m = new Match(seed, { souls: order.map((i) => souls[i]!) });
+  const m = new Match(seed, { souls: order.map((i) => souls[i]!), houseRules });
   while (!m.over) {
     m.prepareRound();
     const fw = [-1, -1, -1, -1];

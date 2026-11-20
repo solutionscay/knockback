@@ -29,6 +29,8 @@ export interface RoundStats {
   kos: { victim: number; by: number; weapon: string; cause: "ringout" | "hp"; tick?: number }[];
   /** average distance (m) to whoever the fighter was chasing, sampled; -1 if never sampled */
   targetDistance: number[];
+  /** plan rule firings (#6): rules[fighter][rule index] = times started and ticks active */
+  rules: { fires: number; activeTicks: number }[][];
   /** back-attack reflex firings per fighter */
   reflexes: { tick: number; attacker: number; mode: "glance" | "fight" | "switch" }[][];
   /** one plain line per fighter, second person */
@@ -50,6 +52,7 @@ export class StatsCollector {
   targetSeconds = [0, 1, 2, 3].map(() => [0, 0, 0, 0]);
   pickups: string[][] = [[], [], [], []];
   pickupTicks: { item: string; tick: number }[][] = [[], [], [], []];
+  private ruleAcc: { fires: number; activeTicks: number; since: number }[][] = [[], [], [], []];
   private distSum = [0, 0, 0, 0];
   private distN = [0, 0, 0, 0];
   private lastHitTick = [0, 1, 2, 3].map(() => [-1, -1, -1, -1]);
@@ -92,12 +95,38 @@ export class StatsCollector {
     }
   }
 
+  /** A rule event (#6). Rules still active when the round ends count until then. */
+  rule(fighter: number, rule: number, on: boolean, tick: number) {
+    const acc = this.ruleAcc[fighter]!;
+    while (acc.length <= rule) acc.push({ fires: 0, activeTicks: 0, since: -1 });
+    const r = acc[rule]!;
+    if (on) {
+      r.fires++;
+      r.since = tick;
+    } else if (r.since >= 0) {
+      r.activeTicks += tick - r.since;
+      r.since = -1;
+    }
+  }
+
   pickup(fighter: number, item: string, tick: number) {
     this.pickups[fighter]!.push(item);
     this.pickupTicks[fighter]!.push({ item, tick });
   }
 
-  finish(kos: RoundStats["kos"], names: string[] = ["Red", "Blue", "Green", "Gold"], reflexes: RoundStats["reflexes"] = [[], [], [], []]): RoundStats {
+  /**
+   * `ruleCounts[fighter]` = how many rules its plan had (so rules that never fired show up);
+   * `endTick` closes rules still active at the end of the round.
+   */
+  finish(kos: RoundStats["kos"], names: string[] = ["Red", "Blue", "Green", "Gold"], reflexes: RoundStats["reflexes"] = [[], [], [], []], ruleCounts: number[] = [0, 0, 0, 0], endTick = 0): RoundStats {
+    const rules = [0, 1, 2, 3].map((f) => {
+      const acc = this.ruleAcc[f]!;
+      return Array.from({ length: Math.max(ruleCounts[f] ?? 0, acc.length) }, (_, i) => {
+        const r = acc[i];
+        if (!r) return { fires: 0, activeTicks: 0 };
+        return { fires: r.fires, activeTicks: r.activeTicks + (r.since >= 0 ? Math.max(0, endTick - r.since) : 0) };
+      });
+    });
     const st: RoundStats = {
       damage: this.damage,
       nearSeconds: this.nearSeconds,
@@ -107,6 +136,7 @@ export class StatsCollector {
       kos,
       targetDistance: this.distN.map((n, i) => (n ? Math.round((this.distSum[i]! / n) * 10) / 10 : -1)),
       reflexes,
+      rules,
       summary: [],
     };
     st.summary = [0, 1, 2, 3].map((i) => summarize(st, i, names));

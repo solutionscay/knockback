@@ -13,3 +13,5 @@ export * from "./grid";
 export * from "./levelgen";
 export { Rng } from "./rng";
 export * from "./roundstats";
+export * from "./rules";
+export * from "./ruleeval";

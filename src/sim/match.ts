@@ -75,6 +75,8 @@ export interface MatchOptions {
   recorded?: MatchRecord;
   /** A/B switch: morale still tracked, but no behavior nudges */
   noMoraleEffect?: boolean;
+  /** house bots add plan rules from their souls (#6; default on) */
+  houseRules?: boolean;
 }
 
 export type MatchPhase = "planning" | "fighting" | "between" | "over";
@@ -160,6 +162,7 @@ export class Match {
       session: this.session,
       lineRng: this.lineRng,
       strategyRng: this.strategyRng,
+      houseRules: this.opts.houseRules ?? true,
     };
   }
 
