@@ -1,0 +1,39 @@
+# LAN / demo mode (#26): plain HTTP on one port, no certificates. Used by
+# docker-compose.lan.yml; the production Caddyfile is untouched.
+{
+	auto_https off
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 5m
+		}
+	}
+}
+
+:5180 {
+	# the bare root goes to the landing page; /?live, /?record=... stay the viewer
+	@bare {
+		path /
+		expression {query} == ""
+	}
+	redir @bare /lobby 302
+
+	@compressible not path /api/live*
+	encode @compressible zstd gzip
+
+	reverse_proxy server:5176 {
+		flush_interval -1
+		lb_try_duration 20s
+		lb_try_interval 250ms
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 45s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

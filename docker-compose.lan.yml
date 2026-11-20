@@ -1,0 +1,11 @@
+# LAN / demo override (#26): plain HTTP on KB_LAN_PORT (default 5180) instead of HTTPS on 80/443.
+#   docker compose -f docker-compose.yml -f docker-compose.lan.yml -p knockback-lan up -d --build
+# Then http://<lan-ip>:5180/ (landing page) and http://<lan-ip>:5180/?live.
+services:
+  caddy:
+    ports: !override
+      - "${KB_LAN_PORT:-5180}:5180"
+    volumes: !override
+      - ./deploy/Caddyfile.lan:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
