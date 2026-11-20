@@ -10,6 +10,12 @@ souls are the brawler, the sniper, the rat and the vulture. Souls have no names 
 looks: every match gives each fighter a **generated identity** (name, head shape,
 eyes, mark, color) from the match seed. Format: `docs/souls.md`.
 
+The fighters are drawn as Skipper-style bots (`src/viewer/bot.ts`): a head in
+one of 20 shapes with an LED dot visor whose faces show morale (cocky,
+confident, rattled, furious, desperate) and events (hit, stunned, knocked out,
+win), a small body, and one arm holding the weapon. The same drawing makes the
+dialogue-card portraits (as SVG).
+
 1. **Level card**, then each fighter's **intro line** in an RPG dialogue frame.
 2. **3, 2, 1, FIGHT!** One continuous round; the safe zone pushes everyone together.
 3. **Round result**, then **between-round dialogue**: each fighter reacts to what
