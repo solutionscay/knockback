@@ -1,3 +1,4 @@
+import { CLOSE_QUARTERS } from "../src/sim/ruleset";
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -364,9 +365,9 @@ describe("collectible weapons", () => {
     expect(dropped.length).toBe(1);
   });
 
-  test("weapons wait in the arena at the start, one near every spawn, and a knocked-out fighter drops his", () => {
+  test("Close Quarters stocks a weapon near every spawn, and a knocked-out fighter drops theirs", () => {
     for (const seed of [1, 2, 3, 4, 5]) {
-      const f = new Fight(seed);
+      const f = new Fight(seed, undefined, { ruleset: CLOSE_QUARTERS });
       const weapons = f.sim.items().filter((e) => isPickupWeapon(e.itemType));
       expect(weapons.length).toBeGreaterThanOrEqual(5);
       for (const fi of f.sim.fighters) {
