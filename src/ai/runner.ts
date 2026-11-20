@@ -15,8 +15,8 @@ import type { IdentityWish } from "../sim/identity";
 import { Match, type DecisionMeta, type MatchRecord } from "../sim/match";
 import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
-import type { Decision } from "../sim/voice";
-import { decideRound, type Seat } from "./decide";
+import { houseBrain, type Decision } from "../sim/voice";
+import { decideRound, type RoundAsk, type Seat } from "./decide";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
@@ -39,7 +39,17 @@ export interface RunnerOptions {
   onEvent?: (e: RunnerEvent) => void;
   /** called for every log line (default: nothing) */
   onLog?: (line: string) => void;
+  /** a round's decisions are in, before it is played (persist them here: the round can be replayed from them) */
+  onDecided?: (round: number, ask: RoundAsk) => Promise<void> | void;
+  /** a round has been played */
+  onPlayed?: (round: number, finalHash: string) => Promise<void> | void;
 }
+
+/** A stored round: what decideRound returned for it. */
+export type StoredRound = Pick<RoundAsk, "decisions" | "meta" | "prompts" | "raw"> & { finalHash?: string | null };
+
+/** Replaying stored rounds did not reproduce the match (a different engine, or a corrupt store). */
+export class ResumeError extends Error {}
 
 export interface RoundPrompts {
   round: number;
@@ -100,9 +110,40 @@ export class MatchRunner {
     const askStart = performance.now();
     const ask = await decideRound(match, this.opts.seats, this.opts.deadlineMs);
     const askMs = Math.round(performance.now() - askStart);
+    await this.opts.onDecided?.(round, ask);
+    return this.applyRound(round, ask, askMs);
+  }
+
+  /**
+   * Play a stored round again (resuming after a restart): the same decisions
+   * give the same fight. The house bot draws from the match's shared random
+   * streams when it plans, so its draws for that round are made again, in
+   * decideRound's order (every seat that did not answer "ok", by seat), and
+   * checked against the stored decisions; otherwise later rounds would
+   * differ. Throws ResumeError if the decisions or the final hash differ.
+   */
+  async replayRound(stored: StoredRound): Promise<RoundFacts> {
+    const match = this.match;
+    const round = match.round + 1;
+    const ctxs = this.opts.seats.map((_, me) => match.contextFor(me));
+    stored.meta.forEach((m, me) => {
+      if (m.outcome === "ok") return;
+      const bot = JSON.stringify(houseBrain(ctxs[me]!));
+      // fallback-invalid keeps the AI's usable half of the answer, so only the others must equal the bot exactly
+      if (m.outcome !== "fallback-invalid" && bot !== JSON.stringify(stored.decisions[me])) throw new ResumeError(`round ${round}, seat ${me}: the house bot's plan differs from the stored one`);
+    });
+    const f = await this.applyRound(round, { decisions: stored.decisions, meta: stored.meta, prompts: stored.prompts, raw: stored.raw }, 0, true);
+    const hash = match.record.rounds[round - 1]!.fight.finalHash;
+    if (stored.finalHash && stored.finalHash !== hash) throw new ResumeError(`round ${round} replayed to ${hash}, stored ${stored.finalHash}`);
+    return f;
+  }
+
+  private async applyRound(round: number, ask: RoundAsk, askMs: number, replayed = false): Promise<RoundFacts> {
+    const match = this.match;
+    const names = this.names;
     this.prompts.push({ round, prompts: ask.prompts, raw: ask.raw });
     this.emit({ type: "decisions", round, decisions: ask.decisions, meta: ask.meta });
-    this.say(`ROUND ${round} plans (${formatSeconds(askMs)} to decide)`);
+    this.say(replayed ? `ROUND ${round} plans (replayed from storage)` : `ROUND ${round} plans (${formatSeconds(askMs)} to decide)`);
     ask.decisions.forEach((d, i) => {
       const m = ask.meta[i]!;
       const tag = m.outcome === "ok" ? `${m.provider} ${formatSeconds(m.ms)}` : `${m.provider} ${formatSeconds(m.ms)} ${m.outcome.toUpperCase()}${m.detail ? ` (${m.detail})` : ""}`;
@@ -121,6 +162,7 @@ export class MatchRunner {
     if (reflexes.length) this.say(`     reflexes: ${reflexes.join("; ")}`);
     this.say("");
     this.emit({ type: "round", round, winner: f.winner, seconds: f.seconds, reason: f.reason, wins: match.wins.slice(), kos: f.stats.kos, summary: f.stats.summary.slice() });
+    if (!replayed) await this.opts.onPlayed?.(round, match.record.rounds[round - 1]!.fight.finalHash);
     return f;
   }
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seatsFor } from "../src/ai/decide";
 import { registerProvider, registerStubs } from "../src/ai/providers";
-import { MatchRunner, type RunnerEvent } from "../src/ai/runner";
+import { MatchRunner, ResumeError, type RunnerEvent, type StoredRound } from "../src/ai/runner";
 import { RateLimiter } from "../src/server/limits";
 import { MatchServer } from "../src/server/match-server";
 import { checkPlanShape } from "../src/server/remote";
@@ -50,6 +50,30 @@ describe("MatchRunner", () => {
     expect(hashes(replayMatch(r.savedRecord()).record)).toEqual(hashes(r.match.record));
     expect(r.log.some((l) => l.startsWith("MATCH: "))).toBe(true);
   });
+});
+
+describe("MatchRunner replay (resume)", () => {
+  // seeds where the house bot plans in every round (house seats and fallbacks), so its random draws matter
+  for (const seed of [3, 77, 2026]) {
+    test(`seed ${seed}: replaying stored rounds, then playing on, gives the uninterrupted match`, async () => {
+      const lineup = ["stub", "junk", "house", "broken"];
+      const stored: StoredRound[] = [];
+      const full = new MatchRunner({ seed, seats: seatsFor(lineup, exampleSouls()), onDecided: (_, ask) => void stored.push(JSON.parse(JSON.stringify(ask))) });
+      await full.run();
+      full.match.record.rounds.forEach((r, i) => (stored[i]!.finalHash = r.fight.finalHash));
+      for (let cut = 1; cut < stored.length; cut++) {
+        const resumed = new MatchRunner({ seed, seats: seatsFor(lineup, exampleSouls()) });
+        resumed.start();
+        for (const row of stored.slice(0, cut)) await resumed.replayRound(row);
+        await resumed.run();
+        expect(hashes(resumed.match.record)).toEqual(hashes(full.match.record));
+        expect(resumed.match.record.rounds.map((r) => r.lines)).toEqual(full.match.record.rounds.map((r) => r.lines));
+      }
+      // a stored hash that the engine doesn't reproduce stops the resume
+      const bad = new MatchRunner({ seed, seats: seatsFor(lineup, exampleSouls()) });
+      expect(bad.replayRound({ ...stored[0]!, finalHash: "deadbeef" })).rejects.toBeInstanceOf(ResumeError);
+    });
+  }
 });
 
 describe("plan shape", () => {
