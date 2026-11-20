@@ -1,85 +1,43 @@
-/** Big fighter portraits for intro cards and the celebrate screen (inline SVG, same look as in game). */
+/**
+ * Fighter portraits for dialogue cards, plan chips and the celebrate screen:
+ * the same bot as in the game (bot.ts), recorded to inline SVG (#18).
+ */
 import type { Identity } from "../sim/identity";
 import type { MoraleState } from "../sim/morale";
 import type { Weapon } from "../sim/sim";
+import { drawArm, drawBody, drawHand, drawVisor, faceFor, hash, WEAPON_SCALE, type FaceMood, type Lod } from "./bot";
+import { drawWeapon } from "./props";
+import { SvgPen } from "./svgPen";
 
-export type Mood = "fight" | "win" | MoraleState;
+export type Mood = "fight" | "win" | MoraleState | "hit" | "stun" | "ko";
 
 export const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
 
-function shade(color: number, k: number): string {
-  const r = Math.min(255, ((color >> 16) & 255) * k) | 0;
-  const g = Math.min(255, ((color >> 8) & 255) * k) | 0;
-  const b = Math.min(255, (color & 255) * k) | 0;
-  return `rgb(${r},${g},${b})`;
-}
+/** A whole bot with its weapon; the bust is the head only (for small HUD chips). */
+const VIEW_FULL = "-0.95 -1.32 2.15 2.3";
+const VIEW_HEAD = "-0.66 -1.16 1.32 1.2";
 
-/** The portrait of a fighter's generated identity (#17). */
-export function portraitSvg(id: Identity, weapon: Weapon, mood: Mood = "fight", _lod?: string): string {
-  const color = id.color;
-  const markKind = id.mark;
-  const c = hex(color);
-  const dark = shade(color, 0.45);
-  const mark =
-    markKind === "headband"
-      ? `<rect x="30" y="58" width="80" height="11" fill="#2a0d0d"/><path d="M110 60 l22 -8 l-4 12 z" fill="#2a0d0d"/>`
-      : markKind === "antenna"
-        ? `<rect x="64" y="6" width="7" height="22" rx="3" fill="${dark}"/><circle cx="67.5" cy="6" r="6" fill="${c}" stroke="${dark}" stroke-width="3"/>`
-        : markKind === "crown"
-          ? `<path d="M46 26 L52 6 L62 22 L70 2 L78 22 L88 6 L94 26 Z" fill="#fff1a6" stroke="#b08a1e" stroke-width="2"/>`
-          : markKind === "ears"
-            ? `<path d="M40 30 q-14 -18 -6 -26 q8 6 14 22z M100 30 q14 -18 6 -26 q-8 6 -14 22z" fill="${c}" stroke="${dark}" stroke-width="4"/>`
-            : "";
-  const gun =
-    weapon === "bat"
-      ? `<g transform="translate(66 104) rotate(-40)"><path d="M0 -5 L96 -12 L104 -6 L104 6 L96 12 L0 5 Z" fill="#d8a868" stroke="#6b4a2c" stroke-width="3"/><rect x="-6" y="-6" width="26" height="12" fill="#2a2d35"/></g>`
-      : weapon === "grapple"
-        ? `<g transform="translate(64 110) rotate(-6)"><rect x="-8" y="-9" width="62" height="18" rx="5" fill="#3a3f4a" stroke="#15171d" stroke-width="3"/><path d="M54 0 L76 -14 M54 0 L80 0 M54 0 L76 14" stroke="#c8ccd6" stroke-width="5" stroke-linecap="round"/></g>`
-        : weapon === "shotgun"
-      ? `<g transform="translate(70 110) rotate(-8)"><rect x="0" y="-7" width="92" height="14" rx="4" fill="#2a2d35"/><rect x="26" y="-9" width="30" height="20" fill="#6b4a2c"/><rect x="-14" y="-6" width="24" height="20" fill="#6b4a2c"/></g>`
-      : weapon === "fist"
-        ? `<g transform="translate(104 112)"><rect x="-6" y="-20" width="40" height="38" rx="16" fill="${c}" stroke="#15171d" stroke-width="4"/><rect x="-16" y="-12" width="14" height="22" fill="#eee" stroke="#15171d" stroke-width="3"/></g>`
-      : weapon === "grenade"
-        ? `<g transform="translate(108 112)"><circle r="17" fill="#4b5a2a" stroke="#1d2410" stroke-width="4"/><rect x="-5" y="-26" width="10" height="10" fill="#888"/></g>`
-        : `<g transform="translate(60 108) rotate(-10)"><rect x="-12" y="-14" width="96" height="28" rx="7" fill="#3b4150" stroke="#15171d" stroke-width="4"/><rect x="70" y="-16" width="15" height="32" fill="${c}"/><rect x="12" y="10" width="9" height="16" fill="#15171d"/></g>`;
-  // expression by mood (placeholder art: eye, brow, mouth, extras)
-  let eye = `<circle cx="84" cy="56" r="15" fill="#fff"/><circle cx="90" cy="57" r="7.5" fill="#101018"/>`;
-  let mouth = "";
-  let extra = "";
-  switch (mood) {
-    case "win":
-      eye = `<path d="M74 56 q10 -12 20 0" fill="none" stroke="#101018" stroke-width="6" stroke-linecap="round"/>`;
-      mouth = `<path d="M72 78 q14 14 28 0 z" fill="#101018"/>`;
-      break;
-    case "cocky":
-      // half-lidded, smirking
-      eye = `<circle cx="84" cy="57" r="14" fill="#fff"/><circle cx="90" cy="60" r="7" fill="#101018"/><path d="M69 52 L99 49 L99 42 L69 42 Z" fill="${c}"/><path d="M69 52 L99 49" stroke="#101018" stroke-width="4" stroke-linecap="round"/>`;
-      mouth = `<path d="M76 82 q14 4 24 -6" fill="none" stroke="#101018" stroke-width="5" stroke-linecap="round"/>`;
-      break;
-    case "confident":
-      mouth = `<path d="M76 80 q12 8 22 0" fill="none" stroke="#101018" stroke-width="5" stroke-linecap="round"/>`;
-      break;
-    case "rattled":
-      eye = `<circle cx="84" cy="56" r="15" fill="#fff"/><circle cx="84" cy="57" r="4.5" fill="#101018"/>`;
-      mouth = `<path d="M74 84 l6 -4 l6 4 l6 -4 l6 4" fill="none" stroke="#101018" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
-      extra = `<path d="M112 34 q6 10 0 14 q-6 -4 0 -14 z" fill="#9fe0ff" stroke="#3a8fb0" stroke-width="2"/><path d="M50 40 q5 8 0 11 q-5 -3 0 -11 z" fill="#9fe0ff" stroke="#3a8fb0" stroke-width="2"/>`;
-      break;
-    case "furious":
-      eye = `<circle cx="84" cy="58" r="14" fill="#fff"/><circle cx="88" cy="60" r="7.5" fill="#101018"/><path d="M66 40 L102 52" stroke="#101018" stroke-width="7" stroke-linecap="round"/>`;
-      mouth = `<path d="M74 86 q12 -10 24 0" fill="none" stroke="#101018" stroke-width="5" stroke-linecap="round"/>`;
-      extra = `<g fill="#ffffff" opacity=".7"><circle cx="40" cy="14" r="6"/><circle cx="32" cy="4" r="4"/><circle cx="108" cy="12" r="6"/><circle cx="116" cy="3" r="4"/></g><ellipse cx="62" cy="72" rx="9" ry="5" fill="#ff2a2a" opacity=".45"/>`;
-      break;
-    case "desperate":
-      eye = `<circle cx="84" cy="56" r="18" fill="#fff"/><circle cx="84" cy="58" r="9" fill="#101018"/><circle cx="80" cy="54" r="3" fill="#fff"/>`;
-      mouth = `<ellipse cx="86" cy="84" rx="7" ry="9" fill="#101018"/>`;
-      extra = `<path d="M112 34 q6 10 0 14 q-6 -4 0 -14 z" fill="#9fe0ff" stroke="#3a8fb0" stroke-width="2"/>`;
-      break;
+/**
+ * The portrait of a fighter's identity. `lod` "tiny" is for small chips: the
+ * head only, square dots. `t` picks the moment (blink, spinner, KO frame).
+ */
+export function portraitSvg(id: Identity, weapon: Weapon, mood: Mood = "fight", lod: Lod = "full", t = 0.3): string {
+  const pen = new SvgPen();
+  const face: FaceMood = mood === "fight" ? "confident" : mood;
+  const bust = lod === "tiny";
+  drawBody(pen, id, { t, aiming: true });
+  drawVisor(pen, id, faceFor(face, t, hash(id.name), id.eyes, { lookX: bust ? 0 : 1, koT: 1.2 }), lod);
+  if (!bust && mood !== "ko") {
+    const a = weapon === "bat" ? -0.55 : -0.25;
+    drawArm(pen, id, 0, -0.05, a);
+    pen.save();
+    pen.translate(0, -0.05);
+    pen.rotate(a);
+    pen.scale(WEAPON_SCALE);
+    drawWeapon(pen, weapon, id.color);
+    if (weapon !== "fist") drawHand(pen, id);
+    pen.restore();
   }
-  return `<svg viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <ellipse cx="72" cy="182" rx="46" ry="6" fill="rgba(0,0,0,.35)"/>
-  <rect x="30" y="20" width="84" height="158" rx="42" fill="${c}" stroke="${dark}" stroke-width="6"/>
-  <rect x="40" y="34" width="22" height="84" rx="11" fill="#fff" opacity=".22"/>
-  <rect x="28" y="168" width="34" height="14" rx="7" fill="${dark}"/><rect x="80" y="168" width="34" height="14" rx="7" fill="${dark}"/>
-  ${mark}${eye}${mouth}${extra}${gun}
-</svg>`;
+  const shadow = bust ? "" : `<ellipse cx="0" cy="0.86" rx="0.5" ry="0.06" fill="rgba(0,0,0,.4)"/>`;
+  return `<svg viewBox="${bust ? VIEW_HEAD : VIEW_FULL}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${shadow}${pen.toSvg()}</svg>`;
 }

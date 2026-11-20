@@ -3,14 +3,27 @@ import { FIGHTER } from "../sim/constants";
 import type { Fighter, Sim } from "../sim/sim";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
-import { POWER_COLOR, shade } from "./palette";
+import { drawArm, drawBody, drawHand, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, hash, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
+import { POWER_COLOR } from "./palette";
+import { pixiPen } from "./pixiPen";
 import { drawWeapon } from "./props";
 import type { XformAt } from "./scene";
 
 interface FighterView {
   f: Fighter;
   root: Container;
+  /** torso, feet, head and marks (redrawn only when bodyKey changes) */
+  body: Graphics;
+  bodyKey: string;
+  /** the LED visor (redrawn only when faceKey changes) */
   face: Graphics;
+  faceKey: string;
+  arm: Graphics;
+  /** the identity's hash: its blink rhythm */
+  h: number;
+  /** the "> <" face after a hit */
+  hitT: number;
+  lastFlash: number;
   gun: Graphics;
   flash: Graphics;
   aura: Graphics;
@@ -45,33 +58,20 @@ export class FighterViews {
   }
 
   private makeFighter(f: Fighter): FighterView {
+    // a Skipper-style bot drawn from the fighter's generated identity (#18): body, visor, arm, weapon
     const root = new Container();
     const body = new Graphics();
     const face = new Graphics();
+    const arm = new Graphics();
     const gun = new Graphics();
     const flash = new Graphics();
     const aura = new Graphics();
     const over = new Graphics();
-    const r = FIGHTER.radius;
-    const hh = FIGHTER.halfHeight + FIGHTER.radius;
-    body.roundRect(-r, -hh, r * 2, hh * 2, r).fill(f.color).stroke({ width: 0.07, color: shade(f.color, 0.45) });
-    body.roundRect(-r * 0.55, -hh * 0.82, r * 0.5, hh * 0.9, r * 0.25).fill({ color: 0xffffff, alpha: 0.22 });
-    // feet
-    body.roundRect(-r * 0.85, hh - 0.12, r * 0.7, 0.16, 0.08).fill(shade(f.color, 0.4));
-    body.roundRect(r * 0.15, hh - 0.12, r * 0.7, 0.16, 0.08).fill(shade(f.color, 0.4));
-    // personality marks
-    if (f.look.mark === "headband") body.rect(-r, -hh * 0.62, r * 2, 0.12).fill(0x2a0d0d);
-    if (f.look.mark === "antenna") body.roundRect(-r * 0.2, -hh - 0.12, 0.08, 0.2, 0.04).fill(shade(f.color, 0.45));
-    if (f.look.mark === "ears") {
-      body.poly([-r * 0.9, -hh + 0.1, -r * 1.25, -hh - 0.32, -r * 0.35, -hh - 0.02]).fill(f.color).stroke({ width: 0.05, color: shade(f.color, 0.45) });
-      body.poly([r * 0.9, -hh + 0.1, r * 1.25, -hh - 0.32, r * 0.35, -hh - 0.02]).fill(f.color).stroke({ width: 0.05, color: shade(f.color, 0.45) });
-    }
-    if (f.look.mark === "crown") body.poly([-0.22, -hh + 0.04, -0.15, -hh - 0.18, -0.05, -hh + 0.0, 0.05, -hh - 0.2, 0.13, -hh + 0.0, 0.22, -hh - 0.16, 0.26, -hh + 0.06]).fill(0xfff1a6);
-    flash.roundRect(-r, -hh, r * 2, hh * 2, r).fill(0xffffff);
+    drawSilhouette(pixiPen(flash), f.look);
     flash.alpha = 0;
-    root.addChild(aura, body, gun, face, flash, over);
+    root.addChild(aura, body, face, arm, gun, flash, over);
     this.layer.addChild(root);
-    return { f, root, face, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
+    return { f, root, body, bodyKey: "", face, faceKey: "", arm, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
   }
 
   private drawGun(v: FighterView, kind: string) {
@@ -79,6 +79,7 @@ export class FighterViews {
     v.gunKind = kind;
     v.gun.clear();
     drawWeapon(v.gun, kind, v.f.color);
+    if (kind !== "fist") drawHand(v.gun, v.f.look); // the fist's glove is the hand
   }
 
   get(id: number) {
@@ -138,44 +139,43 @@ export class FighterViews {
       v.root.scale.set(v.sx * (f.facing < 0 ? -1 : 1), v.sy);
       if (this.celebrateId === f.id) v.root.scale.x = Math.abs(v.root.scale.x) * (Math.sin(time * 1.3) > 0 ? 1 : -1);
       v.root.alpha = f.alive ? 1 : Math.max(0, 1 - (sim.tick - f.koTick) / 120);
-      // face
-      const face = v.face;
-      face.clear();
+      // the bot: body (feet tuck in the air, marks flap), then the LED face
       const aimLocalX = f.aimX * f.facing;
       const aimLocalY = -f.aimY;
-      const mood = this.morale[f.id] ?? "confident";
-      const eyeR = mood === "desperate" ? 0.2 : 0.17;
-      face.circle(0.14, -0.48, eyeR).fill(0xffffff);
-      if (f.alive) {
-        const pr = mood === "rattled" ? 0.055 : mood === "desperate" ? 0.1 : 0.085;
-        const jitter = mood === "rattled" || mood === "desperate" ? (Math.random() - 0.5) * 0.03 : 0;
-        face.circle(0.14 + aimLocalX * 0.07 + jitter, -0.48 + aimLocalY * 0.07, pr).fill(0x101018);
-        // morale on the face (placeholder art)
-        if (mood === "cocky") {
-          face.rect(-0.05, -0.68, 0.4, 0.17).fill(f.color);
-          face.moveTo(-0.04, -0.51).lineTo(0.34, -0.54).stroke({ width: 0.05, color: 0x101018, cap: "round" });
-          face.moveTo(0.02, -0.22).quadraticCurveTo(0.16, -0.2, 0.28, -0.3).stroke({ width: 0.045, color: 0x101018, cap: "round" });
-        } else if (mood === "furious") {
-          face.moveTo(-0.06, -0.72).lineTo(0.34, -0.6).stroke({ width: 0.07, color: 0x101018, cap: "round" });
-          face.moveTo(0.04, -0.2).quadraticCurveTo(0.16, -0.3, 0.28, -0.2).stroke({ width: 0.045, color: 0x101018, cap: "round" });
-          if (Math.random() < 0.08) fx.add({ x: p.x + (Math.random() - 0.5) * 0.4, y: p.y + 0.95, vy: 1.5, kind: "smoke", life: 0.6, size: 0.08, size1: 0.25, color: 0xffffff, alpha: 0.6, back: false });
-        } else if (mood === "rattled" || mood === "desperate") {
-          face.poly([-0.36, -0.8, -0.3, -0.66, -0.42, -0.66]).fill({ color: 0x9fe0ff, alpha: 0.9 });
-          face.circle(-0.36, -0.66, 0.06).fill({ color: 0x9fe0ff, alpha: 0.9 });
-          if (mood === "desperate") face.ellipse(0.17, -0.24, 0.06, 0.08).fill(0x101018);
-          else face.moveTo(0.02, -0.24).lineTo(0.08, -0.28).lineTo(0.14, -0.24).lineTo(0.2, -0.28).lineTo(0.26, -0.24).stroke({ width: 0.035, color: 0x101018 });
-        } else {
-          face.moveTo(0.04, -0.27).quadraticCurveTo(0.16, -0.2, 0.28, -0.27).stroke({ width: 0.04, color: 0x101018, cap: "round" });
-        }
-        if (f.stun > 0) {
-          face.clear();
-          face.moveTo(0.05, -0.57).lineTo(0.23, -0.39).moveTo(0.23, -0.57).lineTo(0.05, -0.39).stroke({ width: 0.06, color: 0x101018 });
-        }
-      } else {
-        face.moveTo(0.05, -0.57).lineTo(0.23, -0.39).moveTo(0.23, -0.57).lineTo(0.05, -0.39).stroke({ width: 0.06, color: 0x101018 });
+      const weapon = sim.weapon(f);
+      const aiming = f.alive && weapon !== "fist" && weapon !== "bat";
+      const bodyKey = `${!f.grounded && f.alive ? 1 : 0}${flapStep(f.look, time)}${f.look.mark === "antenna" && aiming ? 1 : 0}`;
+      if (bodyKey !== v.bodyKey) {
+        v.bodyKey = bodyKey;
+        v.body.clear();
+        drawBody(pixiPen(v.body), f.look, { t: time, air: !f.grounded && f.alive, aiming });
       }
+      if (v.flashT > v.lastFlash) v.hitT = 0.42;
+      v.lastFlash = v.flashT;
+      v.hitT = Math.max(0, v.hitT - dt);
+      const mood: FaceMood = !f.alive
+        ? "ko"
+        : v.hitT > 0.35
+          ? "white"
+          : v.hitT > 0
+            ? "hit"
+            : f.stun > 0
+              ? "stun"
+              : this.celebrateId === f.id
+                ? "win"
+                : ((this.morale[f.id] ?? "confident") as FaceMood);
+      const look = { lookX: aimLocalX > 0.3 ? 1 : aimLocalX < -0.3 ? -1 : 0, lookY: aimLocalY < -0.5 ? -1 : aimLocalY > 0.5 ? 1 : 0, koT: (sim.tick - f.koTick) / 60 };
+      const lod = lodFor(s);
+      const faceNow = faceFor(mood, time, v.h, f.look.eyes, look);
+      const key = faceKey(faceNow, lod);
+      if (key !== v.faceKey) {
+        v.faceKey = key;
+        v.face.clear();
+        drawVisor(pixiPen(v.face), f.look, faceNow, lod);
+      }
+      if (mood === "furious" && Math.random() < 0.08) fx.add({ x: p.x + (Math.random() - 0.5) * 0.4, y: p.y + 0.95, vy: 1.5, kind: "smoke", life: 0.6, size: 0.08, size1: 0.25, color: 0xffffff, alpha: 0.6, back: false });
       // gun
-      this.drawGun(v, sim.weapon(f));
+      this.drawGun(v, weapon);
       v.gun.visible = f.alive;
       v.gun.position.set(-v.recoil * 0.5 * 1, -0.05);
       v.gun.rotation = Math.atan2(aimLocalY, aimLocalX);
@@ -185,7 +185,11 @@ export class FighterViews {
         v.gun.rotation += -1.3 + 2.6 * (v.swingT / 0.2);
       }
       v.swapT = Math.max(0, v.swapT - dt);
-      v.gun.scale.set(1 + v.swapT * 2.2);
+      v.gun.scale.set(WEAPON_SCALE * (1 + v.swapT * 2.2));
+      // the front arm reaches from the shoulder to the grip
+      v.arm.clear();
+      v.arm.visible = f.alive;
+      if (f.alive) drawArm(pixiPen(v.arm), f.look, v.gun.position.x, v.gun.position.y, v.gun.rotation);
       v.gun.tint = 0xffffff;
       v.gun.alpha = v.swapT > 0.14 ? 0.5 : 1;
       // power-up visuals, readable on the fighter
