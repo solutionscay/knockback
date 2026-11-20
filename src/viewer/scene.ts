@@ -113,6 +113,17 @@ export class Scene {
     this.fighters.celebrateId = id;
   }
 
+  /** a dot face changed mood (sound) */
+  set onMood(cb: ((id: number, mood: string, x: number, y: number) => void) | null) {
+    this.fighters.onMood = cb;
+  }
+
+  /** the camera as the sound mix hears it: center, pixels per meter, screen size */
+  listener() {
+    const f = this.lastFrame;
+    return f ? { cx: f.cx, cy: f.cy, s: f.s, w: this.W, h: this.H } : null;
+  }
+
   load(sim: Sim) {
     this.calloutViews.clear();
     this.sim = sim;

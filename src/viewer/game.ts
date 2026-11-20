@@ -4,6 +4,7 @@
  *   -> between-round lines]... -> celebrate + tally -> next match
  * The flow is data; this file only decides how each beat looks.
  */
+import type { SoundDirector } from "./audio/director";
 import type { Application } from "pixi.js";
 import { betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
 import { Tally } from "../flow/score";
@@ -66,6 +67,8 @@ export class Game {
   live = false;
   private liveQueue = new Map<number, { decisions: Decision[]; meta: DecisionMeta[] }>();
   private waitingRound = 0;
+  /** sound (#12): set by main.ts; reads what the viewer shows, never the sim's state */
+  sound: SoundDirector | null = null;
 
   constructor(
     app: Application,
@@ -75,6 +78,10 @@ export class Game {
     this.tally = loadTally();
     this.scene.camera.camMode = loadCamera();
     this.scene.camera.onFollowLost = () => this.setCamera({ kind: "auto" });
+    this.scene.onMood = (id, mood, x, y) => {
+      const who = this.match?.identities[id];
+      if (who && this.shown) this.sound?.mood(id, mood, x, y, who, this.shown.sim.tick, this.clock);
+    };
   }
 
   // ------------------------------------------------------------- persistence + camera
@@ -218,6 +225,7 @@ export class Game {
 
   private showFight(f: Fight) {
     this.shown = f;
+    this.sound?.reset();
     this.scene.load(f.sim);
     this.scene.morale = this.match.morale.map((m) => m.state);
     this.renderCamBar(); // everyone is back for the new round
@@ -227,6 +235,7 @@ export class Game {
 
   private enter(b: Beat) {
     const h = this.hud;
+    this.sound?.beat(b as { kind: string; value?: number }, this.clock);
     switch (b.kind) {
       case "level": {
         const lv = this.match.level;
@@ -331,6 +340,7 @@ export class Game {
 
   private onEvent(e: SimEvent) {
     this.scene.onEvent(e);
+    if (this.shown) this.sound?.event(e, this.shown.sim, this.clock);
     this.plans.onEvent(e, this.match, this.clock);
     if (e.type === "rule" && this.debugRules) {
       const f = this.shown.sim.fighters[e.fighter]!;
@@ -409,6 +419,7 @@ export class Game {
         this.scene.capturePrev();
         if (mode === "fight" && !this.shown.over) {
           this.shown.step();
+          this.sound?.tick(this.shown.sim, this.clock);
           this.plans.applyUpdates(this.match, this.shown, this.decisions, this.clock);
           const { bigHit } = this.scene.afterTick();
           if (bigHit >= 14) {
@@ -425,7 +436,11 @@ export class Game {
     this.scene.setCallouts(this.plans.update(this.clock, beat.kind !== "fight" || this.slow > 0), this.clock);
     if (beat.kind === "go" || beat.kind === "fight") this.plans.renderChips(this.hud.lineup, this.match, this.shown, this.decisions);
 
-    if (beat.kind === "dialogue") renderDialogueLine(this.hud.dialogue, this.decisions[beat.fighter]!.line, this.flow.t, beat.duration);
+    if (beat.kind === "dialogue") {
+      const line = this.decisions[beat.fighter]!.line;
+      const typed = renderDialogueLine(this.hud.dialogue, line, this.flow.t, beat.duration);
+      this.sound?.dialogue(beat.fighter, this.match.identities[beat.fighter]!, line, typed, this.clock);
+    }
     if (beat.kind === "go" || beat.kind === "fight") renderRoundClock(this.hud.clock, this.match, this.shown.sim.tick);
     if (this.flow.done && this.match.over && this.autoNext !== null) {
       this.idleAfter += dt;
@@ -442,5 +457,6 @@ export class Game {
     const alpha = mode === "frozen" ? 1 : Math.min(1, this.acc / DT);
     const fxDt = mode === "frozen" ? dt : simDt;
     this.scene.render(dt, alpha, fxDt);
+    this.sound?.listen(this.scene.listener());
   }
 }

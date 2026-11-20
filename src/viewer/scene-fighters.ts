@@ -19,6 +19,8 @@ interface FighterView {
   /** the LED visor (redrawn only when faceKey changes) */
   face: Graphics;
   faceKey: string;
+  /** the mood shown last frame (sound: a robot beep when it changes) */
+  mood: string;
   arm: Graphics;
   /** the feet, in their own layer: each foot stands on the ground under it */
   feet: Graphics;
@@ -55,6 +57,8 @@ export class FighterViews {
   /** fighters on autopilot (#22): the sleepy "..." face instead of their mood */
   autopilot: boolean[] = [];
   celebrateId = -1;
+  /** a dot face changed mood (sound): fighter, mood, where */
+  onMood: ((id: number, mood: FaceMood, x: number, y: number) => void) | null = null;
 
   clear() {
     for (const v of this.fighters) {
@@ -82,7 +86,7 @@ export class FighterViews {
     flash.alpha = 0;
     root.addChild(aura, feet, body, face, arm, gun, flash, over);
     this.layer.addChild(root);
-    return { f, root, body, bodyKey: "", face, faceKey: "", arm, feet, feetKey: "", soles: null, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
+    return { f, root, body, bodyKey: "", face, faceKey: "", mood: "", arm, feet, feetKey: "", soles: null, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
   }
 
   private drawGun(v: FighterView, kind: string) {
@@ -213,6 +217,10 @@ export class FighterViews {
                   : ((this.morale[f.id] ?? "confident") as FaceMood);
       const look = { lookX: aimLocalX > 0.3 ? 1 : aimLocalX < -0.3 ? -1 : 0, lookY: aimLocalY < -0.5 ? -1 : aimLocalY > 0.5 ? 1 : 0, koT: (sim.tick - f.koTick) / 60 };
       const lod = lodFor(s);
+      if (mood !== v.mood) {
+        if (v.mood) this.onMood?.(f.id, mood, p.x, p.y);
+        v.mood = mood;
+      }
       const faceNow = faceFor(mood, time, v.h, f.look.eyes, look);
       const key = faceKey(faceNow, lod);
       if (key !== v.faceKey) {

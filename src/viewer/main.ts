@@ -2,6 +2,9 @@ import { Application } from "pixi.js";
 import { checkRecordEngine, isOtherEngine, summarizeRecord } from "../sim/engine-version";
 import { showOldRecord } from "./old-record";
 import { initPhysics } from "../sim/sim";
+import { SoundDirector } from "./audio/director";
+import { AudioEngine, type LoggedCue } from "./audio/engine";
+import { mountSoundControls } from "./audio/ui";
 import { Game } from "./game";
 import { sanitizeIdentities, sanitizeRecord, sanitizeSouls } from "./sanitize";
 
@@ -15,6 +18,8 @@ declare global {
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
       state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string; tick: number; view: { cx: number; cy: number; s: number; shx: number; shy: number } | null; soles: ([number, number] | null)[]; items: { type: string; x: number; y: number }[]; fighters: { x: number; y: number; grounded: boolean; alive: boolean }[] };
       drainMoments: () => { time: number; kind: string; weight: number }[];
+      /** sound (#12): the cues since the last call, with game time, pan and gain (scripts/sound-mix.ts renders them) */
+      drainSounds: () => LoggedCue[];
       /** callouts over the fight (#10, #11): on screen now, the most ever at once, all shown so far */
       callouts: () => { visible: { kind: string; fighter: number; text: string }[]; peak: number; shown: { kind: string; fighter: number; text: string }[] };
       /** the HUD plan chip lines (plain text) */
@@ -61,6 +66,14 @@ document.getElementById("hud")!.addEventListener("click", (e) => {
   if (t.dataset.cam) game.setCamera({ kind: t.dataset.cam === "all" ? "all" : "auto" });
   else if (t.dataset.follow) game.toggleFollow(Number(t.dataset.follow));
 });
+// Sound (#12): generated sounds, silent until the first click or key press. A private sample pack may replace
+// them: ?sounds=<manifest url> (default /sounds/manifest.json; ?sounds=off to never look for one).
+const soundParam = params.get("sounds");
+const manifestUrl = soundParam === "off" ? null : soundParam && (/^\/[\w./-]+\.json$/.test(soundParam) || /^https:\/\/[\w.-]+(:\d+)?\/[\w./-]+\.json$/.test(soundParam)) ? soundParam : "/sounds/manifest.json";
+const audio = new AudioEngine({ capture, manifestUrl });
+game.sound = new SoundDirector(audio);
+audio.unlockOn(window);
+mountSoundControls(audio, document.getElementById("controls"));
 // After the celebrate beat the next match starts by itself; ?hold waits for the button.
 game.autoNext = params.has("hold") || capture ? null : 6;
 
@@ -199,6 +212,10 @@ if (capture) {
       return { width: m.width, height: m.height, alpha: btoa(s) };
     },
     planChips: () => [...document.querySelectorAll<HTMLElement>("#lineup .chip .plan")].map((e) => e.textContent ?? ""),
+    drainSounds() {
+      const out = audio.log!.splice(0);
+      return out;
+    },
     drainMoments() {
       const m = game.moments;
       game.moments = [];

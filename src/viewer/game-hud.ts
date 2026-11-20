@@ -185,10 +185,12 @@ export function restart(el: HTMLElement, cls: string) {
   el.className = cls;
 }
 
-export function renderDialogueLine(el: HTMLElement, line: string, elapsed: number, duration: number) {
+/** Type the line out over time; returns how many characters show (sound: dialogue blips). */
+export function renderDialogueLine(el: HTMLElement, line: string, elapsed: number, duration: number): number {
   const typed = el.querySelector<HTMLElement>(".typed");
   const n = Math.floor(line.length * Math.min(1, Math.max(0, (elapsed - 0.2) / Math.min(1.6, duration * 0.5))));
   if (typed && typed.textContent!.length !== n) typed.textContent = line.slice(0, n);
+  return n;
 }
 
 export function renderRoundClock(el: HTMLElement, match: Match, tick: number) {
