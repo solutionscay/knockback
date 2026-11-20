@@ -20,6 +20,7 @@ import { applyItem, checkPickups, items, randomPower, setPrefs, spawnItem, stock
 import { addFighter, applyInput, checkGrounded } from "./sim-movement";
 import { addProp, dangers, updateObjects } from "./sim-objects";
 import { crumbleUnder, flushTerrain } from "./sim-terrain";
+import { buildChains, updateChains, type Chain } from "./sim-chains";
 import { ALL_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type Look, type Rocket, type SimEvent, type Weapon } from "./sim-types";
 import { updateRockets } from "./sim-weapons";
 import { SimZone, zoneHalfAt, zonePush } from "./sim-zone";
@@ -54,6 +55,10 @@ export class Sim {
     return this.entityStore.entities;
   }
   rockets: Rocket[] = [];
+  /** platform chains (#34), grid scan order */
+  readonly chains: Chain[];
+  /** static anchor cell index -> its chain */
+  readonly chainByCell = new Map<number, Chain>();
   events: SimEvent[] = [];
   zone: { center: number; half: number; startHalf: number };
   /** Sandbox switch (tests): when false the zone neither shrinks nor pushes. */
@@ -82,6 +87,9 @@ export class Sim {
     cellsDetached: 0,
     piecesFallen: 0,
     platformsFallen: 0,
+    chainsBroken: 0,
+    platformsSwung: 0,
+    platformsDropped: 0,
   };
 
   constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS) {
@@ -92,6 +100,8 @@ export class Sim {
     this.world.timestep = DT;
     this.entityStore = new EntityStore(this.world);
     this.terrain = new Terrain(this.world, this.grid);
+    this.chains = buildChains(this);
+    for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
     this.nav = NavGraph.fromGrid(this.grid);
     this.navVersion = this.terrain.version;
     this.initialCells = this.grid.countSolid() - this.grid.countMat(Mat.Bedrock);
@@ -216,6 +226,7 @@ export class Sim {
     }
     updateRockets(this);
     updateObjects(this);
+    updateChains(this);
     flushTerrain(this);
 
     const pre: { x: number; y: number }[] = this.fighters.map((f) => (f.removed ? { x: 0, y: 0 } : this.vel(f)));
@@ -330,6 +341,10 @@ export class Sim {
       num(e.fuse ?? -1);
       num(e.thrust ?? -1);
       if (e.cells) for (const c of e.cells) num(c.hp);
+    }
+    for (const ch of this.chains) {
+      num(ch.hp);
+      num(ch.piece);
     }
     for (const s of this.rng.state()) num(s);
     return h.toString(16).padStart(8, "0");

@@ -20,6 +20,8 @@ export interface PieceCell {
   ly: number;
   mat: number;
   hp: number;
+  /** chain id (#34) when a chain holds the piece by this cell */
+  chain?: number;
 }
 
 export class Terrain {
@@ -136,48 +138,58 @@ export class Terrain {
   }
 
   /**
-   * Find solid cells no longer connected (4-neighbor) to bedrock or an anchor
-   * cell, remove them from the grid, and return them grouped into connected
-   * components (each becomes a loose piece).
+   * Find solid cells that lost their support, remove them from the grid, and
+   * return them grouped into connected (4-neighbor) components, each of which
+   * becomes a loose piece. Held up: cells connected to bedrock, and groups
+   * hanging from two or more anchor cells (chains, #34). A group with one
+   * anchor comes loose too: the caller hangs it from that chain, so it swings.
    */
-  detachUnsupported(): { cx: number; cy: number; mat: number; hp: number }[][] {
+  detachUnsupported(): { cx: number; cy: number; mat: number; hp: number; anchor: boolean }[][] {
     if (!this.supportDirty) return [];
     this.supportDirty = false;
     const g = this.grid;
     const n = g.cols * g.rows;
     const seen = new Uint8Array(n);
     const stack: number[] = [];
+    const neighbors = (i: number, visit: (k: number) => void) => {
+      const cx = i % g.cols;
+      const cy = (i - cx) / g.cols;
+      if (cx > 0) visit(i - 1);
+      if (cx < g.cols - 1) visit(i + 1);
+      if (cy > 0) visit(i - g.cols);
+      if (cy < g.rows - 1) visit(i + g.cols);
+    };
     for (let i = 0; i < n; i++) {
-      if (g.mat[i] === Mat.Empty) continue;
-      if (g.mat[i] === Mat.Bedrock || g.flags[i]! & F_ANCHOR) {
+      if (g.mat[i] === Mat.Bedrock) {
         seen[i] = 1;
         stack.push(i);
       }
     }
-    while (stack.length) {
-      const i = stack.pop()!;
-      const cx = i % g.cols;
-      const cy = (i - cx) / g.cols;
-      if (cx > 0 && !seen[i - 1] && g.mat[i - 1] !== Mat.Empty) (seen[i - 1] = 1), stack.push(i - 1);
-      if (cx < g.cols - 1 && !seen[i + 1] && g.mat[i + 1] !== Mat.Empty) (seen[i + 1] = 1), stack.push(i + 1);
-      if (cy > 0 && !seen[i - g.cols] && g.mat[i - g.cols] !== Mat.Empty) (seen[i - g.cols] = 1), stack.push(i - g.cols);
-      if (cy < g.rows - 1 && !seen[i + g.cols] && g.mat[i + g.cols] !== Mat.Empty) (seen[i + g.cols] = 1), stack.push(i + g.cols);
-    }
-    const groupsOut: { cx: number; cy: number; mat: number; hp: number }[][] = [];
+    const push = (k: number) => {
+      if (!seen[k] && g.mat[k] !== Mat.Empty) {
+        seen[k] = 1;
+        stack.push(k);
+      }
+    };
+    while (stack.length) neighbors(stack.pop()!, push);
+    const groupsOut: { cx: number; cy: number; mat: number; hp: number; anchor: boolean }[][] = [];
     for (let i = 0; i < n; i++) {
       if (seen[i] || g.mat[i] === Mat.Empty) continue;
-      // flood this loose component
-      const comp: { cx: number; cy: number; mat: number; hp: number }[] = [];
+      // flood this component off the ground
+      const comp: { cx: number; cy: number; mat: number; hp: number; anchor: boolean }[] = [];
+      let anchors = 0;
       seen[i] = 1;
       stack.push(i);
       while (stack.length) {
         const j = stack.pop()!;
         const cx = j % g.cols;
         const cy = (j - cx) / g.cols;
-        comp.push({ cx, cy, mat: g.mat[j]!, hp: g.hp[j]! });
-        const nb = [cx > 0 ? j - 1 : -1, cx < g.cols - 1 ? j + 1 : -1, cy > 0 ? j - g.cols : -1, cy < g.rows - 1 ? j + g.cols : -1];
-        for (const k of nb) if (k >= 0 && !seen[k] && g.mat[k] !== Mat.Empty) (seen[k] = 1), stack.push(k);
+        const anchor = (g.flags[j]! & F_ANCHOR) !== 0;
+        if (anchor) anchors++;
+        comp.push({ cx, cy, mat: g.mat[j]!, hp: g.hp[j]!, anchor });
+        neighbors(j, push);
       }
+      if (anchors >= 2) continue; // still hangs from two chains: stays static
       comp.sort((a, b) => a.cy - b.cy || a.cx - b.cx);
       for (const c of comp) {
         g.clear(c.cx, c.cy);

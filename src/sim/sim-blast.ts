@@ -5,6 +5,7 @@ import { type Entity, type ExplosionKind } from "./sim-types";
 import { clamp, length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { damagePiece } from "./sim-terrain";
+import { blastChains } from "./sim-chains";
 
 export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: ExplosionKind, owner: number, depth: number, chainFrom: string | null) {
   sim.stats.explosions++;
@@ -15,6 +16,7 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
     sim.stats.cellsDestroyed += carved.length;
     sim.events.push({ type: "carve", tick: sim.tick, cells: carved.slice(0, 60) });
   }
+  blastChains(sim, x, y, spec.radius, spec.blockDamage, owner, kind);
   const found: Entity[] = [];
   const seen = new Set<number>();
   sim.world.intersectionsWithShape({ x, y }, 0, new RAPIER.Ball(spec.radius), (c) => {

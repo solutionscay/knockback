@@ -115,9 +115,10 @@ describe("cover is not standing still", () => {
         if (e.type === "fire" && e.weapon !== "fist") fires[e.fighter]!++;
       };
       while (!f.step()) {
-        for (const fi of f.sim.fighters) if (fi.alive && fi.weapons.some((w) => w !== "fist")) armed[fi.id]!++;
+        for (const fi of f.sim.fighters) if (fi.alive && fi.weapons.some((w) => w === "shotgun" || w === "rocket")) armed[fi.id]!++;
       }
-      // judged: fighters who held a real weapon for at least 10 s (an unarmed one has nothing to shoot)
+      // judged: fighters who held a weapon from their plan for at least 10 s (an unarmed one has nothing to
+      // shoot; one holding only an unplanned weapon, like a stray grapple, may keep using its fists)
       for (const fi of f.sim.fighters) {
         if (armed[fi.id]! >= 10 * 60) {
           checked++;

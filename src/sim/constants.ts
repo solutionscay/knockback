@@ -143,6 +143,24 @@ export const CRUSH = { minSpeed: 5, minMass: 4, perUnit: 1.4, max: 30 };
 export const GLASS = { hp: 1, shatterSpeed: 8 };
 export const PAD = { launch: 17.5, cooldown: 20, density: 6 };
 export const WEIGHT = { density: 7, ropeHp: 30 };
+/**
+ * Platform chains (#34, sim-chains.ts). hp: hit points per chain. length: the
+ * physical chain from the anchor up to its fixed pivot (how far a platform
+ * swings). Damage: explosions blockDamage * (1 - distance / radius); a pellet
+ * pelletBlockDamage; bat batDamage; fists only with the heavy power-up;
+ * heavy flying things (mass, speed) like CRUSH.
+ */
+export const CHAIN = {
+  hp: 40,
+  length: 6,
+  reachAbove: 40,
+  hitRadius: 0.15,
+  batDamage: 20,
+  heavyFistDamage: 6,
+  heavyMinMass: 4,
+  heavyMinSpeed: 6,
+  heavyPerUnit: 1.2,
+};
 /** Crumbling cells lose this many hit points per second while stood on. */
 export const CRUMBLE_DPS = 20;
 

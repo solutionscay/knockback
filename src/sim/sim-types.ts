@@ -230,6 +230,12 @@ export type SimEvent =
   | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number }
   | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number }
   | { type: "suddenDeath"; tick: number; quietTicks: number }
+  /** a platform chain snapped (#34); by = who damaged it last, or -1 */
+  | { type: "chainBreak"; tick: number; chain: number; x: number; y: number; cause: string; by: number }
+  /** a platform lost a chain and now hangs from its last one */
+  | { type: "platformSwing"; tick: number; entity: number; chain: number; x: number; y: number }
+  /** a platform lost its last chain and falls */
+  | { type: "platformFall"; tick: number; entity: number; x: number; y: number; by: number }
   /** a plan rule started or stopped (#6); subject = the fighter that made it true, or -1 */
   | { type: "rule"; tick: number; fighter: number; rule: number; on: boolean; subject: number };
 

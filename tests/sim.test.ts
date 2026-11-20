@@ -19,6 +19,8 @@ import {
   type Input,
 } from "../src/sim";
 import { idle, place, sandbox, stepN } from "./helpers";
+import { chainAttach as chainAttachOf } from "../src/sim/sim-chains";
+import { pieceCellWorld } from "../src/sim/terrain";
 
 setDefaultTimeout(180_000);
 
@@ -170,28 +172,43 @@ describe("destructible level", () => {
     expect(sim.stats.cellsDestroyed).toBeGreaterThan(50);
   });
 
-  test("a platform falls when both anchors are destroyed, and breaks further when hit", () => {
+  test("a platform swings when one anchor is destroyed, falls when both are, and breaks further when hit", () => {
     const sim = sandbox();
     const g = sim.grid;
     const py = g.cy(4) - 1;
     const pin = { radius: 0.6, damage: 0, knockback: 0, blockDamage: 0, terrainDamage: 500 };
     sim.explode(-5.75, 3.75, pin, "rocket", 0, 0, null);
     const evs1 = stepN(sim, 2);
-    expect(evs1.some((e) => e.type === "detach")).toBe(false);
-    expect(g.solid(g.cx(-3), py)).toBe(true);
-    sim.explode(-0.25, 3.75, pin, "rocket", 0, 0, null);
-    const evs2 = stepN(sim, 2);
-    expect(evs2.some((e) => e.type === "detach")).toBe(true);
+    // one anchor gone: the platform comes loose and hangs from its other chain (#34)
+    expect(evs1.some((e) => e.type === "chainBreak")).toBe(true);
+    expect(evs1.some((e) => e.type === "platformSwing")).toBe(true);
     expect(g.solid(g.cx(-3), py)).toBe(false);
     const piece = [...sim.entities.values()].find((e) => e.kind === "chunk")!;
     expect(piece.cells!.length).toBeGreaterThanOrEqual(6);
-    const y0 = piece.body.translation().y;
     stepN(sim, 30);
-    expect(piece.body.translation().y).toBeLessThan(y0 - 1);
+    expect(piece.dead).toBe(false);
+    const pin2 = sim.chains[1]!;
+    expect(pin2.broken).toBe(false);
+    expect(pin2.piece).toBe(piece.id);
+    // the held end stays up on its chain (the free end swings down to the ground: the platform is 6 m long, 4 m up)
+    const a = chainAttachOf(sim, pin2);
+    expect(a.y).toBeGreaterThan(3);
+    expect(Math.hypot(a.x - pin2.px, a.y - pin2.py)).toBeLessThan(6.05);
+    // the anchor cell it hangs by is destroyed: the last chain goes and it falls
+    sim.explode(a.x, a.y - 0.25, pin, "rocket", 0, 0, null);
+    const evs2 = stepN(sim, 2);
+    expect(evs2.some((e) => e.type === "chainBreak")).toBe(true);
+    expect(pin2.broken).toBe(true);
+    const rest = [...sim.entities.values()].filter((e) => e.kind === "chunk");
+    const top = () => Math.max(...rest.flatMap((e) => e.cells!.map((c) => pieceCellWorld(e.body.translation(), e.body.rotation(), c).y)));
+    const y0 = top();
+    stepN(sim, 40);
+    expect(top()).toBeLessThan(y0 - 1);
+    const piece2 = rest.sort((x, y) => y.cells!.length - x.cells!.length)[0]!;
     expect(sim.stats.platformsFallen).toBe(1);
-    const t = piece.body.translation();
-    const n0 = piece.cells!.length;
-    sim.explode(t.x + piece.hw, t.y + 0.25, { radius: 1.2, damage: 0, knockback: 2, blockDamage: 0, terrainDamage: 400 }, "rocket", 0, 0, null);
+    const t = piece2.body.translation();
+    const n0 = rest.reduce((a, c) => a + c.cells!.length, 0);
+    sim.explode(t.x + piece2.hw, t.y + 0.25, { radius: 1.2, damage: 0, knockback: 2, blockDamage: 0, terrainDamage: 400 }, "rocket", 0, 0, null);
     const cellsLeft = [...sim.entities.values()].filter((e) => e.kind === "chunk").reduce((a, c) => a + c.cells!.length, 0);
     expect(cellsLeft).toBeLessThan(n0);
   });

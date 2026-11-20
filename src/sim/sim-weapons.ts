@@ -5,6 +5,8 @@ import { type Entity, type Fighter, type Rocket, type Weapon } from "./sim-types
 import { length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { chipTerrain } from "./sim-terrain";
+import { CHAIN } from "./constants";
+import { shootChains, swingChains } from "./sim-chains";
 
 export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
   if (f.cooldown[weapon] > 0) return;
@@ -66,8 +68,10 @@ function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
     const hx = ox + rx * dist;
     const hy = oy + ry * dist;
     sim.events.push({ type: "pellet", tick: sim.tick, fighter: f.id, x0: ox, y0: oy, x1: hx, y1: hy, hit: !!hit });
-    if (!hit) continue;
     const fall = 1 - 0.45 * (dist / W.range);
+    // pellets go through chains, chipping them (#34)
+    shootChains(sim, ox, oy, hx, hy, W.pelletBlockDamage * fall, f.id, "shotgun");
+    if (!hit) continue;
     if (hit.terrain) {
       chipTerrain(sim, hx, hy, rx, ry, W.pelletTerrainDamage * fall);
       continue;
@@ -122,6 +126,9 @@ function swingMelee(sim: Sim, f: Fighter, weapon: "bat" | "fist", ox: number, oy
       hitAny = true;
     }
   }
+  // bats, and fists with the heavy power-up, hit chains (#34)
+  const chainDamage = weapon === "bat" ? CHAIN.batDamage : f.power.heavy > 0 ? CHAIN.heavyFistDamage : 0;
+  if (chainDamage > 0 && swingChains(sim, cx, cy, spec.radius, chainDamage, f.id, weapon)) hitAny = true;
   // The swing also damages static terrain just past its hit center.
   const smashed = sim.terrain.carve(cx + dx * tuning.terrainOffset, cy + dy * tuning.terrainOffset, spec.terrainRadius, spec.terrainDamage);
   if (smashed.length) {

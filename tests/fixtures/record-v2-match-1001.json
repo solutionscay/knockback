@@ -967,17 +967,11 @@
             "line": "Circle all you like, snacks. I'm waiting until one of you is ready to be carried off."
           }
         ],
-        "checkpoints": [
-          "069e9df9",
-          "ca0cf60e",
-          "06b339f5",
-          "09d87d0e",
-          "07eabf0e"
-        ],
-        "finalHash": "8a870003",
-        "ticks": 3148
+        "checkpoints": [],
+        "finalHash": "7862c3fe",
+        "ticks": 557
       },
-      "winner": 1,
+      "winner": 2,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1119,16 +1113,16 @@
           }
         ],
         "checkpoints": [
-          "ebc3522f",
-          "87e7f96e",
-          "2ecb6e1f",
-          "d8daf2f0",
-          "350ab7d1"
+          "99b7be06",
+          "3a5e1dc9",
+          "b025b743",
+          "b84991e7",
+          "63acf44d"
         ],
-        "finalHash": "d27c96d8",
-        "ticks": 3218
+        "finalHash": "74ec1f91",
+        "ticks": 3476
       },
-      "winner": 3,
+      "winner": 0,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1272,14 +1266,13 @@
           }
         ],
         "checkpoints": [
-          "d4d178e0",
-          "c721835c",
-          "183a8f6c"
+          "9a42c5a0",
+          "5dfd7f5b"
         ],
-        "finalHash": "b2d95f50",
-        "ticks": 2356
+        "finalHash": "7c44f9af",
+        "ticks": 1566
       },
-      "winner": 1,
+      "winner": 3,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1308,11 +1301,11 @@
       ]
     }
   ],
-  "winner": 1,
+  "winner": 3,
   "wins": [
+    1,
     0,
-    2,
-    0,
+    1,
     1
   ],
   "labels": [

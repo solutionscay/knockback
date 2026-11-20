@@ -5,6 +5,7 @@ import { type Entity, type Fighter } from "./sim-types";
 import { clamp } from "./dmath";
 import { CELL, Mat } from "./grid";
 import { buildPieceColliders, components, pieceCellWorld, type PieceCell } from "./terrain";
+import { chainAtCell, hangPiece } from "./sim-chains";
 
 export function crumbleUnder(sim: Sim, f: Fighter, x: number) {
   const g = sim.grid;
@@ -44,13 +45,33 @@ export function flushTerrain(sim: Sim) {
       minCx = Math.min(minCx, c.cx);
       minCy = Math.min(minCy, c.cy);
     }
-    const cells: PieceCell[] = comp.map((c) => ({ lx: c.cx - minCx, ly: c.cy - minCy, mat: c.mat, hp: c.hp }));
+    // a group with one anchor left hangs from that chain (#34)
+    let hanger = -1;
+    let snappedBy: number | null = null; // its last chain snapped this tick: who broke it
+    const cells: PieceCell[] = comp.map((c) => {
+      const cell: PieceCell = { lx: c.cx - minCx, ly: c.cy - minCy, mat: c.mat, hp: c.hp };
+      const ch = chainAtCell(sim, c.cx, c.cy);
+      if (ch && c.anchor && !ch.broken) {
+        cell.chain = ch.id;
+        hanger = ch.id;
+      } else if (ch?.broken && ch.brokenTick === sim.tick) snappedBy = ch.lastHitBy;
+      return cell;
+    });
     const e = makePiece(sim, cells, sim.grid.wx(minCx), sim.grid.wy(minCy), 0, { x: 0, y: 0 }, 0);
     sim.stats.cellsDetached += cells.length;
     sim.stats.piecesFallen++;
     if (cells.length >= 4) sim.stats.platformsFallen++;
     const t = e.body.translation();
     sim.events.push({ type: "detach", tick: sim.tick, entity: e.id, cells: cells.length, x: t.x + e.hw, y: t.y + e.hh });
+    if (hanger >= 0) {
+      sim.stats.platformsSwung++;
+      sim.events.push({ type: "platformSwing", tick: sim.tick, entity: e.id, chain: hanger, x: t.x + e.hw, y: t.y + e.hh });
+    } else if (snappedBy !== null) {
+      // it falls, and what it crushes is credited to whoever broke the chain
+      e.triggeredBy = snappedBy;
+      sim.stats.platformsDropped++;
+      sim.events.push({ type: "platformFall", tick: sim.tick, entity: e.id, x: t.x + e.hw, y: t.y + e.hh, by: e.triggeredBy });
+    }
   }
 }
 
@@ -80,6 +101,7 @@ function makePiece(sim: Sim, cells: PieceCell[], x: number, y: number, angle: nu
     cells,
   };
   sim.entityStore.register(e);
+  hangPiece(sim, e);
   return e;
 }
 
@@ -109,6 +131,7 @@ export function damagePiece(sim: Sim, e: Entity, x: number, y: number, r: number
   sim.entityStore.remove(e);
   if (left.length === 0) return;
   for (const comp of components(left)) {
-    makePiece(sim, comp, t.x, t.y, a, v, w);
+    const p = makePiece(sim, comp, t.x, t.y, a, v, w);
+    if (e.triggeredBy !== undefined) p.triggeredBy = e.triggeredBy;
   }
 }
