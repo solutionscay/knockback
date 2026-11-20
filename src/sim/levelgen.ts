@@ -4,13 +4,14 @@
  * that changes the shapes, materials and prop mix.
  *
  * Layout: ground masses separated by pits and void edges, steps, overhangs,
- * bridges, towers with ledges, and many floating platforms (hung from anchor
+ * bridges, jumpable walls, and many floating platforms (hung from anchor
  * cells). Every cell except the bottom bedrock rows can be destroyed.
  *
  * If a candidate fails validation the generator retries with the next attempt
  * number (also deterministic).
  */
 import { CELL, F_ANCHOR, F_BRIDGE, Grid, Mat } from "./grid";
+import { hasWallRoute, placeWalls, wallCorridor, WALL_CLEARANCE, type Wall } from "./level-walls";
 import { NavGraph, type Surface } from "./nav";
 import { Rng } from "./rng";
 
@@ -58,6 +59,7 @@ export interface LevelDef {
   zoneCenter: number;
   platforms: number;
   towers: number;
+  walls?: Wall[];
   bridges: number;
 }
 
@@ -261,48 +263,12 @@ function buildCandidate(seed: number, attempt: number): LevelDef {
     }
   }
 
-  // ------------------------------------------------------------ towers + ledges
   const groundAt = (x: number) => {
     const cx = Math.max(0, Math.min(grid.cols - 1, cxOf(x)));
     return top[cx] === -Infinity ? 0 : top[cx]!;
   };
   let platforms = 0;
   const clear = (cx0: number, cy0: number, cx1: number, cy1: number) => grid.emptyRect(cx0 - 2, cy0 - 4, cx1 + 2, cy1 + 4);
-  const towers: { cx0: number; cx1: number }[] = [];
-  const nT = rng.int(T.towers[0], T.towers[1]);
-  for (let i = 0; i < nT * 6 && towers.length < nT; i++) {
-    const x = q(rng.range(left + 3, right - 3));
-    if (pits.some((p) => x > p.x0 - 2 && x < p.x1 + 2)) continue;
-    const w = rng.int(2, 3);
-    const cx0 = cxOf(x);
-    const cx1 = cx0 + w - 1;
-    if (towers.some((t) => cx0 < t.cx1 + 12 && cx1 > t.cx0 - 12)) continue;
-    let gy = -Infinity;
-    for (let cx = cx0; cx <= cx1; cx++) gy = Math.max(gy, top[cx]!);
-    if (gy === -Infinity) continue;
-    const h = Math.min(MAX_TOP - gy, q(rng.range(5, 10)));
-    const cyB = cyOf(gy);
-    const cyT = cyOf(gy + h) - 1;
-    if (!grid.emptyRect(cx0, cyB, cx1, cyT)) continue;
-    for (let cx = cx0; cx <= cx1; cx++) for (let cy = cyB; cy <= cyT; cy++) grid.set(cx, cy, T.tower);
-    towers.push({ cx0, cx1 });
-    // ledges sticking out
-    let ly = gy + q(rng.range(2.5, 3.5));
-    while (ly < gy + h - 0.5) {
-      for (const dir of rng.chance(0.4) ? [-1, 1] : [rng.chance(0.5) ? -1 : 1]) {
-        const len = rng.int(4, 9);
-        const cy = cyOf(ly) - 1;
-        const a = dir < 0 ? cx0 - len : cx1 + 1;
-        const b = dir < 0 ? cx0 - 1 : cx1 + len;
-        if (a < 1 || b >= grid.cols - 1) continue;
-        if (!grid.emptyRect(Math.min(a, b) - (dir < 0 ? 2 : 0), cy - 4, Math.max(a, b) + (dir > 0 ? 2 : 0), cy + 4)) continue;
-        const m = rng.chance(T.crumble) ? Mat.Crumble : rng.pick(T.platform);
-        for (let cx = a; cx <= b; cx++) grid.set(cx, cy, m);
-        platforms++;
-      }
-      ly += q(rng.range(2.5, 3.5));
-    }
-  }
 
   // ------------------------------------------------------------ floating platforms
   const target = rng.int(T.platforms[0], T.platforms[1]);
@@ -328,6 +294,8 @@ function buildCandidate(seed: number, attempt: number): LevelDef {
     grid.flags[grid.idx(cx1, cyTop)]! |= F_ANCHOR;
     platforms++;
   }
+
+  const walls = placeWalls(grid, top, rng.int(T.towers[0], T.towers[1]), T.tower, rng);
 
   // ------------------------------------------------------------ spawns + props
   const nav = NavGraph.fromGrid(grid);
@@ -370,7 +338,10 @@ function buildCandidate(seed: number, attempt: number): LevelDef {
       if (sp.s.fragile && kind !== "crate" && kind !== "barrel") continue;
       const x0 = sp.x - halfW - 0.15;
       const x1 = sp.x + halfW + 0.15;
-      if (!free(sp.s, x0, x1) || !headroom(x0, x1, sp.s.y, hh * 2 * rows + 0.2)) continue;
+      const height = hh * 2 * rows + 0.2;
+      if (walls.some((wall) => wallCorridor(wall, x0, x1, sp.s.y, height))) continue;
+      const approach = kind === "block" ? 0.75 : 0;
+      if (!free(sp.s, x0 - approach, x1 + approach) || !headroom(x0 - approach, x1 + approach, sp.s.y, kind === "block" ? WALL_CLEARANCE : height)) continue;
       occupied.push({ s: sp.s.id, x0: x0 - 0.3, x1: x1 + 0.3 });
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) props.push({ kind, x: sp.x + (c - (cols - 1) / 2) * hw * 2, y: sp.s.y + r * hh * 2 });
       placed++;
@@ -379,7 +350,7 @@ function buildCandidate(seed: number, attempt: number): LevelDef {
   };
   // cover first: block walls and pyramids-ish stacks on the ground
   const nCover = rng.int(3, 5);
-  for (let i = 0; i < nCover; i++) place("block", 1, { ground: i < 3, cols: rng.int(1, 2), rows: rng.int(2, 3) });
+  for (let i = 0; i < nCover; i++) place("block", 1, { ground: i < 3, cols: rng.int(1, 2), rows: rng.int(1, 2) });
   for (const [k, r] of Object.entries(T.props) as [PropKind, [number, number]][]) {
     if (k === "weight") continue;
     const n = rng.int(r[0], r[1]);
@@ -424,7 +395,8 @@ function buildCandidate(seed: number, attempt: number): LevelDef {
     pits,
     zoneCenter,
     platforms,
-    towers: towers.length,
+    towers: walls.length,
+    walls,
     bridges,
   };
 }
@@ -450,6 +422,7 @@ export function validateLevel(lv: LevelDef): Validation {
     const xs = lv.spawns.map((s) => s.x);
     if (Math.max(...xs) - Math.min(...xs) > 24) reasons.push("spawns too spread");
   }
+  for (const wall of lv.walls ?? []) if (!hasWallRoute(g, nav, wall)) reasons.push(`wall at ${wall.x0} has no route`);
   const cover = lv.props.filter((p) => p.kind === "block").length;
   if (cover < 6) reasons.push(`cover ${cover}`);
   if (lv.props.length < 18) reasons.push(`props ${lv.props.length}`);

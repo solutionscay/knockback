@@ -46,6 +46,16 @@ describe("level generator", () => {
     }
   });
 
+  test("generated walls have open approaches and links across the cap", () => {
+    const lv = generateLevel(1);
+    const wall = lv.walls![0]!;
+    expect(wall.top - wall.y).toBeLessThanOrEqual(2);
+    expect(validateLevel(lv).ok).toBe(true);
+    const blocked = lv.grid.clone();
+    blocked.set(blocked.cx(wall.x0 - 0.25), blocked.cy(wall.y), Mat.Concrete);
+    expect(validateLevel({ ...lv, grid: blocked }).reasons).toContain(`wall at ${wall.x0} has no route`);
+  });
+
   test("levels fit the camera and have many platforms, cover and props", () => {
     for (let seed = 1; seed <= 80; seed++) {
       const lv = generateLevel(seed);
