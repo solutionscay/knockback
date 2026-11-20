@@ -30,6 +30,11 @@ import { planSchema, RemoteSeat } from "./remote";
 export const MAX_PERSONA = 8_000;
 export const MIN_PERSONA = 40;
 export const MAX_WAIT_S = 30;
+/** per address: registered agents, and open or running matches created over HTTP */
+export const AGENTS_PER_IP = 20;
+export const MATCHES_PER_IP = 2;
+/** an agent with no seat in an open or running match is dropped after this long without a request */
+export const AGENT_IDLE_MS = 30 * 60_000;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 const LOOK_KEYS = ["name", "shape", "eyes", "mark", "minor", "color"] as const;
 
@@ -41,6 +46,10 @@ export interface Agent {
   soulId: string;
   look?: IdentityWish;
   createdAt: number;
+  /** last authenticated request (idle agents without a live seat are pruned) */
+  lastSeen: number;
+  /** registering address (per-address cap) */
+  ip: string;
   /** long polls in flight */
   polls: number;
 }
@@ -53,6 +62,8 @@ export interface CreateMatch {
   seed?: number;
   deadlineMs?: number;
   fillAfterMs?: number;
+  /** creating address (per-address cap on open matches; absent for CLI matches) */
+  ip?: string;
 }
 
 export interface ServerOptions {
@@ -89,6 +100,8 @@ export class ServerMatch {
     readonly deadlineMs: number,
     fillAfterMs: number,
     private server: MatchServer,
+    /** the address that created it over HTTP (none for CLI matches) */
+    readonly creator?: string,
   ) {
     this.remote = kinds.map(() => null);
     this.startsAt = this.createdAt + fillAfterMs;
@@ -309,7 +322,7 @@ export class MatchServer {
   }
 
   // ------------------------------------------------------------ agents
-  register(body: Record<string, unknown>): { agent: Agent; warnings: string[] } {
+  register(body: Record<string, unknown>, ip = "local"): { agent: Agent; warnings: string[] } {
     const problems: string[] = [];
     const extra = Object.keys(body).filter((k) => !["name", "persona", "look"].includes(k));
     if (extra.length) problems.push(`unknown fields: ${extra.join(", ")} (allowed: name, persona, look)`);
@@ -322,8 +335,11 @@ export class MatchServer {
     const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
     const parsed = parseSoul(persona as string, 0, soulId);
     if (parsed.errors.length) throw new HttpError(422, "invalid persona", parsed.errors);
+    this.pruneAgents();
+    if ([...this.agents.values()].filter((a) => a.ip === ip).length >= AGENTS_PER_IP) throw new HttpError(429, `at most ${AGENTS_PER_IP} agents per address; idle ones expire after ${AGENT_IDLE_MS / 60_000} min`);
     if (this.agents.size >= this.opts.maxAgents) throw new HttpError(503, "agent limit reached; try later");
-    const agent: Agent = { id: `a_${id(6)}`, key: `kb_${id(24)}`, name, persona: persona as string, soulId, ...(look ? { look } : {}), createdAt: Date.now(), polls: 0 };
+    const now = Date.now();
+    const agent: Agent = { id: `a_${id(6)}`, key: `kb_${id(24)}`, name, persona: persona as string, soulId, ...(look ? { look } : {}), createdAt: now, lastSeen: now, ip, polls: 0 };
     this.agents.set(agent.id, agent);
     this.byKey.set(agent.key, agent);
     this.log(`agent ${agent.id} registered: ${name}`);
@@ -335,7 +351,19 @@ export class MatchServer {
     const agent = m ? this.byKey.get(m[1]!) : undefined;
     if (!agent) throw new HttpError(401, "missing or unknown agent key: send Authorization: Bearer <key> from POST /api/agents");
     this.agentLimit.take(agent.id);
+    agent.lastSeen = Date.now();
     return agent;
+  }
+
+  /** Drop agents idle for AGENT_IDLE_MS that hold no seat in an open or running match. */
+  pruneAgents(now = Date.now()) {
+    const seated = new Set<string>();
+    for (const m of this.matches.values()) if (m.status === "open" || m.status === "running") for (const a of m.agents) if (a) seated.add(a.id);
+    for (const [aid, a] of this.agents)
+      if (!seated.has(aid) && a.polls === 0 && now - a.lastSeen > AGENT_IDLE_MS) {
+        this.agents.delete(aid);
+        this.byKey.delete(a.key);
+      }
   }
 
   // ------------------------------------------------------------ matches
@@ -346,8 +374,10 @@ export class MatchServer {
     for (const k of kinds) if (k !== "remote" && k !== "house" && !PROVIDERS[k]) throw new HttpError(400, `seats: unknown seat kind "${k}" (remote, house${Object.keys(PROVIDERS).length ? `, ${Object.keys(PROVIDERS).join(", ")}` : ""})`);
     const active = [...this.matches.values()].filter((m) => m.status === "open" || m.status === "running").length;
     if (active >= this.opts.maxMatches) throw new HttpError(503, `${active} matches are open or running (at most ${this.opts.maxMatches}); try later`);
+    if (c.ip !== undefined && [...this.matches.values()].filter((m) => m.creator === c.ip && (m.status === "open" || m.status === "running")).length >= MATCHES_PER_IP)
+      throw new HttpError(429, `at most ${MATCHES_PER_IP} open or running matches per address`);
     const seed = c.seed !== undefined ? c.seed >>> 0 : randomBytes(4).readUInt32LE(0);
-    const m = new ServerMatch(`m_${id(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this);
+    const m = new ServerMatch(`m_${id(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this, c.ip);
     this.matches.set(m.id, m);
     this.newest = m;
     this.log(`match ${m.id} created: seed ${seed}, seats ${kinds.join(",")}, deadline ${m.deadlineMs / 1000} s, starts in ${(m.startsAt - m.createdAt) / 1000} s at the latest`);
@@ -394,7 +424,7 @@ export class MatchServer {
     if (path === "/api/agents") {
       allow("POST");
       this.registerLimit.take(ip, "registrations");
-      const { agent, warnings } = this.register(await readJson(req, MAX_BODY));
+      const { agent, warnings } = this.register(await readJson(req, MAX_BODY), ip);
       return json({ id: agent.id, key: agent.key, name: agent.name, soul: agent.soulId, ...(agent.look ? { look: agent.look } : {}), warnings }, 201);
     }
     if (path === "/api/matches") {
@@ -402,7 +432,7 @@ export class MatchServer {
       allow("POST");
       this.createLimit.take(ip, "new matches");
       const b = await readJson(req, 2048);
-      return json(this.createMatch(checkCreate(b)).info(), 201);
+      return json(this.createMatch({ ...checkCreate(b), ip }).info(), 201);
     }
     const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|report))?$/.exec(path);
     if (!mm) throw new HttpError(404, `no such endpoint: ${method} ${path} (see GET /api)`);
@@ -497,7 +527,7 @@ function checkCreate(b: Record<string, unknown>): CreateMatch {
     else c.deadlineMs = Math.round(b.deadlineSec * 1000);
   }
   if (b.fillAfterSec !== undefined) {
-    if (typeof b.fillAfterSec !== "number" || b.fillAfterSec < 0 || b.fillAfterSec > 600) problems.push("fillAfterSec: 0-600");
+    if (typeof b.fillAfterSec !== "number" || b.fillAfterSec < 0 || b.fillAfterSec > 300) problems.push("fillAfterSec: 0-300");
     else c.fillAfterMs = Math.round(b.fillAfterSec * 1000);
   }
   if (problems.length) throw new HttpError(400, "invalid match", problems);
@@ -510,7 +540,7 @@ function apiIndex() {
     auth: "Authorization: Bearer <key> (from POST /api/agents) for join, turn and plan",
     endpoints: {
       "POST /api/agents": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color } } -> { id, key }",
-      "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-600) } -> match',
+      "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-300) } -> match',
       "GET /api/matches": "all matches",
       "GET /api/matches/:id": "status and seats",
       "POST /api/matches/:id/join": "{ seat? } -> { seat }",

@@ -95,7 +95,7 @@ describe("match server API", () => {
     expect((await call("POST", "/api/matches", { deadlineSec: 999 })).data.problems.join()).toContain("deadlineSec");
     expect((await call("GET", "/api/matches/m_nope")).status).toBe(404);
     expect((await call("GET", "/api/nope")).status).toBe(404);
-    const m = await call("POST", "/api/matches", { fillAfterSec: 600 });
+    const m = await call("POST", "/api/matches", { fillAfterSec: 300 });
     expect((await call("POST", `/api/matches/${m.data.id}/join`, {}, "kb_wrong")).status).toBe(401);
     const a = await call("POST", "/api/agents", { name: "Agent 1", persona: SOUL, look: { color: "#ff8800" } });
     expect(a.status).toBe(201);
@@ -113,6 +113,21 @@ describe("match server API", () => {
     for (let i = 0; i < 15; i++) codes.push((await call("POST", "/api/agents", { name: `A${i}`, persona: SOUL })).status);
     expect(codes.slice(0, 10).every((c) => c === 201)).toBe(true);
     expect(codes.at(-1)).toBe(429);
+  });
+
+  test("per-address caps: agents (idle ones expire) and open matches", async () => {
+    const s = new MatchServer({ outDir: tmp() });
+    for (let i = 0; i < 20; i++) s.register({ name: `A${i}`, persona: SOUL }, "5.5.5.5");
+    expect(() => s.register({ name: "A21", persona: SOUL }, "5.5.5.5")).toThrow(/per address/);
+    s.register({ name: "Other", persona: SOUL }, "6.6.6.6");
+    for (const a of s.agents.values()) a.lastSeen -= 31 * 60_000;
+    s.register({ name: "A21", persona: SOUL }, "5.5.5.5"); // the idle ones were pruned
+    expect(s.agents.size).toBe(1);
+    const call = client(s, "7.7.7.7");
+    expect((await call("POST", "/api/matches", { fillAfterSec: 300 })).status).toBe(201);
+    expect((await call("POST", "/api/matches", { fillAfterSec: 300 })).status).toBe(201);
+    expect((await call("POST", "/api/matches", { fillAfterSec: 300 })).status).toBe(429);
+    for (const m of s.matches.values()) m.start();
   });
 
   test("a full match: 2 agents plan, 1 never answers, 1 house bot; plans are validated; the record replays", async () => {
