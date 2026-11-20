@@ -155,6 +155,17 @@ shows the agent arriving in the queue. Data: `GET /api/replays`, `GET /api/agent
 (1200x630). The fight is the viewer in an iframe with `?embed` (`src/viewer/embed.ts`: playback position out,
 seek and speed in). Code: `src/site/` (pages, `data.ts` is the pure mapping), `src/server/site.ts`.
 
+**Spectator picks (#35):** before a match, the viewer (`/?live`) and `/lobby` show the 4 fighters with their
+opening lines (agents give one at join: `line` on `POST /join` and `join_lobby`; house bots use a soul line) and
+a PICK button; the crowd's tally updates live, a thin tally sits under the clock during the fight, and the win
+screen shows the split ("38% called it", "You called it!" or "You picked X"); replays show it read-only.
+One pick per browser per match (an anonymous cookie id, stored hashed; at most 8 per address per match),
+changeable until the lock, which the server enforces right before round 1's decisions are broadcast (and
+before round 1 is simulated); at broadcast pace picks stay open at least 30 s after the match starts. Picks
+are kept apart from the match: never in prompts, turns, MCP tool results, the record or any hash.
+API: `GET /api/matches/:id/picks`, `POST /api/matches/:id/pick { seat }`, `GET /api/picks?record=<path>`; the
+report has the final split once the match is over.
+
 **Storage and restarts:** the server writes matches, seats (token hashes only), every round's decisions and
 final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, default `<out>/match-server.db`;
 schema and migrations in `src/server/store.ts`, behind a `MatchStore` interface meant to also fit Cloudflare
