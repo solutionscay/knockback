@@ -42,10 +42,12 @@ for (const [w, h] of sizes) {
         await adv(1.6); // the line types out
         await shot(`card-${dialogues}`);
       }
-      if (s.beat === "roundEnd" && !got.has(`round${s.round}`)) {
-        got.add(`round${s.round}`);
+      if (s.beat === "roundEnd") {
+        // the next round may already be prepared during the round end, so count the round ends instead
+        const n = [...got].filter((g) => g.startsWith("round")).length + 1;
+        got.add(`round${n}`);
         await adv(1.4);
-        await shot(`round-end-${got.size}`);
+        await shot(`round${n}-end`);
       }
       if (s.beat === "celebrate") {
         await adv(3.2); // the scoreboard slides in and the bars grow
