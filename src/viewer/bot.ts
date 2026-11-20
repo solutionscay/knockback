@@ -109,6 +109,45 @@ export const HEADS: Record<Shape, Head> = {
   egg: { d: "M16 4c6 0 11 9 11 15a11 8.5 0 0 1-22 0C5 13 10 4 16 4z", eye: 17.5, top: 4, tw: 5.5, hw: 12.5 },
 };
 
+/**
+ * The drawn top edge of each head (its path plus the 3-unit round stroke), in
+ * grid y, at grid columns x = 0..32; null where the head is not. Generated
+ * from HEADS by rasterizing each path (the feet-contact task's
+ * tools/head-profiles.ts); regenerate it when a head path changes. A bot
+ * standing on another bot stands on this edge.
+ */
+export const HEAD_TOPS: Record<Shape, (number | null)[]> = {
+  squircle: [null, null, null, null, 10.5, 7.88, 6.5, 5.56, 4.94, 4.5, 4.19, 3.94, 3.75, 3.63, 3.56, 3.5, 3.5, 3.5, 3.56, 3.63, 3.75, 3.94, 4.19, 4.5, 5, 5.63, 6.56, 8, 10.75, null, null, null, null],
+  dome: [null, null, null, null, 12.44, 10, 8.44, 7.31, 6.38, 5.63, 5, 4.5, 4.19, 3.88, 3.69, 3.56, 3.5, 3.56, 3.69, 3.88, 4.19, 4.56, 5.06, 5.69, 6.44, 7.38, 8.56, 10.13, 12.63, null, null, null, null],
+  bun: [null, null, null, null, 15.75, 12.13, 9.94, 8.5, 7.56, 6.94, 6.63, 6.5, 6.63, 7, 7.56, 8.19, 8.5, 8.13, 7.5, 6.94, 6.63, 6.5, 6.63, 7, 7.63, 8.63, 10.06, 12.31, 16.13, null, null, null, null],
+  hex: [null, null, null, null, null, 9.88, 9.25, 8.63, 8.06, 7.44, 6.81, 6.25, 5.63, 5.06, 4.44, 3.81, 3.5, 3.88, 4.5, 5.06, 5.69, 6.25, 6.88, 7.5, 8.06, 8.69, 9.25, 9.94, null, null, null, null, null],
+  lemon: [null, null, 14.44, 12.75, 11.5, 10.5, 9.69, 9.06, 8.5, 8, 7.63, 7.31, 7.06, 6.88, 6.75, 6.63, 6.63, 6.63, 6.75, 6.88, 7.06, 7.31, 7.63, 8.06, 8.5, 9.06, 9.75, 10.56, 11.56, 12.88, 14.63, null, null],
+  shield: [null, null, null, null, null, 4.88, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.94, null, null, null, null, null],
+  keystone: [null, null, null, null, 5.88, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.94, null, null, null, null],
+  pebble: [null, null, null, null, 18.94, 15.44, 11.94, 8.44, 5.88, 5.44, 5.25, 5.06, 4.88, 4.69, 4.44, 4.25, 4.06, 3.88, 3.69, 3.5, 3.94, 4.88, 5.81, 6.75, 7.69, 8.63, 9.56, 10.5, 11.44, null, null, null, null],
+  tv: [null, null, null, null, 6.88, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.5, 6.94, null, null, null, null],
+  pill: [null, null, null, null, null, null, 9.75, 7.56, 6.19, 5.19, 4.38, 3.75, 3.31, 2.94, 2.69, 2.56, 2.5, 2.56, 2.69, 2.94, 3.31, 3.81, 4.44, 5.19, 6.25, 7.69, 9.94, null, null, null, null, null, null],
+  barrel: [null, null, null, null, null, 10.94, 7.06, 4.88, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.94, 7.31, 11.31, null, null, null, null, null],
+  onion: [null, null, null, null, 14.44, 12.06, 10.5, 9.25, 8.25, 7.31, 6.44, 5.63, 4.75, 3.94, 3, 1.88, 1.5, 1.94, 3.06, 4, 4.81, 5.63, 6.5, 7.38, 8.25, 9.31, 10.56, 12.13, 14.63, null, null, null, null],
+  bell: [null, null, null, 24.13, 22.06, 20.31, 18.38, 11.06, 8.25, 6.69, 5.63, 4.81, 4.31, 3.94, 3.69, 3.56, 3.5, 3.56, 3.69, 3.94, 4.31, 4.88, 5.69, 6.75, 8.38, 11.31, 18.5, 20.44, 22.19, 24.31, null, null, null],
+  octagon: [null, null, null, null, 9.88, 8.88, 7.88, 6.88, 5.88, 4.88, 3.88, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.94, 4.94, 5.94, 6.94, 7.94, 8.94, 9.94, null, null, null, null],
+  gem: [null, null, null, 11.75, 10.38, 9, 7.56, 6.19, 4.88, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.88, 6.25, 7.69, 9.06, 10.44, 11.88, null, null, null],
+  cloud: [null, null, 18.19, 16.69, 15.75, 13.94, 11.25, 9.94, 9.13, 8.5, 8.06, 7.81, 7.13, 6.5, 6.06, 5.81, 5.69, 5.69, 5.81, 6.06, 6.5, 7.13, 8.06, 8.44, 8.75, 9.19, 9.88, 10.88, 12.5, 15.69, 16.38, 17.38, 19.25],
+  bucket: [null, null, null, null, 24.06, 18.81, 13.56, 8.31, 4.88, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.94, 8.63, 13.88, 19.13, 24.38, null, null, null, null],
+  acorn: [null, null, 10.25, 8.56, 7.5, 6.75, 6.13, 5.63, 5.25, 4.88, 4.63, 4.44, 4.25, 4.13, 4.06, 4, 4, 4, 4.06, 4.13, 4.25, 4.44, 4.69, 4.94, 5.25, 5.69, 6.19, 6.81, 7.56, 8.69, 10.44, null, null],
+  mushroom: [null, null, 12.5, 10.25, 8.81, 7.69, 6.81, 6.06, 5.5, 5, 4.56, 4.25, 3.94, 3.75, 3.63, 3.56, 3.5, 3.56, 3.63, 3.75, 4, 4.25, 4.63, 5, 5.5, 6.13, 6.88, 7.75, 8.88, 10.38, 12.75, null, null],
+  egg: [null, null, null, null, 15.06, 12.13, 10.06, 8.38, 7, 5.88, 4.94, 4.19, 3.56, 3.06, 2.75, 2.56, 2.5, 2.56, 2.75, 3.13, 3.63, 4.25, 5, 5.94, 7.06, 8.5, 10.19, 12.25, 15.31, null, null, null, null],
+};
+
+/** The drawn top of a head at grid column u (0..32, fractional), or null off the head. */
+export function headTopAt(shape: Shape, u: number): number | null {
+  const col = HEAD_TOPS[shape] ?? HEAD_TOPS.squircle;
+  const i = Math.floor(u), f = u - i;
+  const a = col[i], b = col[i + 1];
+  if (a == null || b == null) return null;
+  return a + (b - a) * f;
+}
+
 // ------------------------------------------------------------------ faces
 
 /** A lit cell: column, row, optional color and alpha. */
@@ -300,21 +339,33 @@ export interface BotState {
 
 /** The bottom of the feet: the capsule's bottom (0.84 m below its center), where the sim's body touches the ground. */
 export const FEET_Y = 0.84;
+/** How far (screen pixels) a standing bot's feet sink into the surface, so foot and ground always overlap. */
+export const FEET_OVERLAP_PX = 1.75;
 /** Where the feet sit across the body (local x of each foot's middle, facing right). */
 export const FOOT_X: readonly [number, number] = [-0.205, 0.205];
 
 /**
  * The two feet. `dl` / `dr` move the left / right foot down (or up, if
  * negative) in local meters, so each foot can stand on the ground under it
- * (a step edge, a slope of cells). The feet are 0.16 m tall and overlap the
+ * (a step edge, a slope of cells); `xl` / `xr` slide a foot sideways (onto a
+ * ledge); `al` / `ar` tilt a foot about the middle of its sole (a slope). The feet are 0.16 m tall and overlap the
  * torso's rounded bottom, so no gap shows between body and feet.
  */
-export function drawFeet(pen: ShapePen, look: Identity, s: { air?: boolean; dl?: number; dr?: number } = {}) {
+export function drawFeet(pen: Pen, look: Identity, s: { air?: boolean; dl?: number; dr?: number; xl?: number; xr?: number; al?: number; ar?: number } = {}) {
   const air = s.air ? 1 : 0;
   const fy = FEET_Y - 0.16 - air * 0.07;
-  pen.roundRect(-0.34 - air * 0.03, fy + (s.dl ?? 0), 0.27, 0.16, 0.07);
-  pen.roundRect(0.07 + air * 0.03, fy + air * 0.03 + (s.dr ?? 0), 0.27, 0.16, 0.07);
-  pen.fill(colors(look).feet);
+  const color = colors(look).feet;
+  // each foot turns about the middle of its sole (al / ar, radians), so it can lie flat on a slope
+  const foot = (x: number, y: number, a: number) => {
+    pen.save();
+    pen.translate(x + 0.135, y + 0.16);
+    if (a) pen.rotate(a);
+    pen.roundRect(-0.135, -0.16, 0.27, 0.16, 0.07);
+    pen.fill(color);
+    pen.restore();
+  };
+  foot(-0.34 - air * 0.03 + (s.xl ?? 0), fy + (s.dl ?? 0), s.al ?? 0);
+  foot(0.07 + air * 0.03 + (s.xr ?? 0), fy + air * 0.03 + (s.dr ?? 0), s.ar ?? 0);
 }
 
 /** Marks that move in steps (their layer is redrawn when the step changes). */
