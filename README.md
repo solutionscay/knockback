@@ -110,6 +110,10 @@ hashes as if the server had never stopped (`tests/restart.test.ts` kills it with
 need to retry their long poll. A viewer on `/?live` reconnects and replays the match from round 1.
 `GET /api/records` lists the saved records with their hashes.
 
+**Container deploy:** `docker compose up -d --build` runs the server behind Caddy (HTTPS) with the database and
+records on a volume; `deploy/deploy.sh` ships it to a VM over SSH, `deploy/backup.sh` / `deploy/restore.sh` handle
+backups. Runbook: `docs/deploy.md`.
+
 ## AI eval (measure before changing prompts or rules)
 
 ```sh
