@@ -6,22 +6,22 @@
  */
 import type { Application } from "pixi.js";
 import { betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
-import { POINTS, Tally, type FightScore } from "../flow/score";
+import { Tally, type FightScore } from "../flow/score";
 import type { Soul } from "../sim/soul";
-import { bestRule, CALLOUT, CalloutManager, planChangeText, ruleTagText, targetText, type KoEvent, type RuleFiring } from "./callouts";
 import { DT, FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import type { Fight } from "../sim/fight";
 import { Match, ROUNDS_TO_WIN, type DecisionMeta, type MatchRecord } from "../sim/match";
-import type { MoraleState } from "../sim/morale";
-import type { SimEvent, Strategy } from "../sim/sim";
+import type { SimEvent } from "../sim/sim";
 import { VoiceSession, type Decision } from "../sim/voice";
-import { hex, portraitSvg } from "./portrait";
+import { hex } from "./portrait";
 import { sanitizeDecision } from "./sanitize";
 import { Scene, type CamMode } from "./scene";
+import { celebrateHtml, dialogueHtml, esc, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, restart, saveCamera, saveTally, type Hud } from "./game-hud";
+import { GamePlans } from "./game-plans";
 
 const SLOW_TIME = 1.6;
-const TALLY_KEY = "knockback.tally.v1";
-const CAM_KEY = "knockback.camera.v1";
+
+export type { Hud } from "./game-hud";
 
 export interface Moment {
   time: number;
@@ -29,41 +29,16 @@ export interface Moment {
   weight: number;
 }
 
-export interface Hud {
-  clock: HTMLElement;
-  intro: HTMLElement;
-  lineup: HTMLElement;
-  count: HTMLElement;
-  callout: HTMLElement;
-  celebrate: HTMLElement;
-  cam: HTMLElement;
-  dialogue: HTMLElement;
-}
-
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-const STANCE: Record<Strategy["stance"], string> = { rush: "RUSH", distance: "KEEP DISTANCE", cover: "TAKE COVER", item: "GRAB ITEMS" };
-const MOOD_LABEL: Record<MoraleState, string> = { cocky: "COCKY", confident: "CONFIDENT", rattled: "RATTLED", furious: "FURIOUS", desperate: "DESPERATE" };
-const MOOD_COLOR: Record<MoraleState, string> = { cocky: "#ffd84a", confident: "#7dffa0", rattled: "#9fe0ff", furious: "#ff5a6a", desperate: "#d59bff" };
-
 export class Game {
   match!: Match;
   /** the round currently shown (lags match.fight during a round result) */
   shown!: Fight;
   readonly scene: Scene;
   flow!: FlowRunner;
-  /** plan thoughts and rule tags over the fight (#10, #11); ?thoughts=off hides them */
-  callouts = new CalloutManager(typeof location === "undefined" || new URLSearchParams(location.search).get("thoughts") !== "off");
-  /** round-start plan-change thoughts, shown one by one */
-  private pendingThoughts: { at: number; fighter: number; text: string }[] = [];
-  private roundFirings: RuleFiring[] = [];
-  private ruleTagAt = new Map<number, number>();
-  private lastRuleTag = -1e9;
-  private roundKos: KoEvent[] = [];
-  /** each fighter's base plan now (the round's decision, then any plan updates) */
-  private planNow: (Strategy | null)[] = [null, null, null, null];
-  private nextUpdate = 0;
-  private planKeys: string[] = [];
+  private readonly plans = new GamePlans();
+  get callouts() {
+    return this.plans.callouts;
+  }
   /** hide the SUDDEN DEATH callout at this clock time */
   private suddenUntil = 0;
   tally: Tally;
@@ -93,49 +68,17 @@ export class Game {
     private readonly hud: Hud,
   ) {
     this.scene = new Scene(app);
-    this.tally = this.loadTally();
-    this.scene.camMode = this.loadCamera();
+    this.tally = loadTally();
+    this.scene.camMode = loadCamera();
     this.scene.onFollowLost = () => this.setCamera({ kind: "auto" });
   }
 
   // ------------------------------------------------------------- persistence + camera
 
-  private loadTally(): Tally {
-    try {
-      return Tally.from(JSON.parse(sessionStorage.getItem(TALLY_KEY) ?? "null"));
-    } catch {
-      return new Tally();
-    }
-  }
-
-  private saveTally() {
-    try {
-      sessionStorage.setItem(TALLY_KEY, JSON.stringify(this.tally));
-    } catch {
-      /* private mode etc: the tally still lives for this page */
-    }
-  }
-
-  private loadCamera(): CamMode {
-    try {
-      const v = JSON.parse(sessionStorage.getItem(CAM_KEY) ?? "null");
-      if (v?.kind === "auto") return { kind: "auto" };
-      if (v?.kind === "follow" && Number.isInteger(v.id) && v.id >= 0 && v.id < 4) return { kind: "follow", id: v.id };
-    } catch {
-      /* ignore */
-    }
-    // default: everyone on screen (the operator's preference for watching)
-    return { kind: "all" };
-  }
-
   /** View-only: changes what the camera frames, never the simulation. */
   setCamera(mode: CamMode) {
     this.scene.camMode = mode;
-    try {
-      sessionStorage.setItem(CAM_KEY, JSON.stringify(mode));
-    } catch {
-      /* private mode: still works for this page */
-    }
+    saveCamera(mode);
     this.renderCamBar();
   }
 
@@ -146,23 +89,12 @@ export class Game {
   }
 
   renderCamBar() {
-    const m = this.scene.camMode;
-    const sim = this.shown?.sim;
-    const chips = (sim?.fighters ?? [])
-      .map((f) => {
-        const on = m.kind === "follow" && m.id === f.id;
-        return `<button type="button" class="f${on ? " on" : ""}${f.alive ? "" : " out"}" data-follow="${f.id}" style="--c:${hex(f.color)}" title="Follow ${esc(f.name)} (${f.id + 1})"><i></i>${esc(f.name)}</button>`;
-      })
-      .join("");
-    this.hud.cam.innerHTML = `<span class="lbl">CAMERA</span>
-      <button type="button" data-cam="auto" class="${m.kind === "auto" ? "on" : ""}" title="Auto: frame the action (A)">Auto</button>
-      <button type="button" data-cam="all" class="${m.kind === "all" ? "on" : ""}" title="View all fighters (V)">View all</button>
-      <span class="sep"></span>${chips}`;
+    renderCamBar(this.hud.cam, this.scene.camMode, this.shown?.sim);
   }
 
   resetTally() {
     this.tally = new Tally();
-    this.saveTally();
+    saveTally(this.tally);
   }
 
   // ------------------------------------------------------------- dialogue controls
@@ -210,7 +142,7 @@ export class Game {
     this.decisions = this.match.prepareRound();
     this.showFight(this.match.fight!);
     this.resetHud();
-    this.startLineup();
+    this.plans.startLineup(this.hud.lineup, this.shown, this.decisions);
     const order = introOrder(this.match.morale.map((m) => m.score));
     this.flow = new FlowRunner(
       [...openingBeats(order, this.decisions.map((d) => d.line)), ...roundBeats(1)],
@@ -232,51 +164,8 @@ export class Game {
     }
   }
 
-  /** Mid-round plan updates in the record (#10; stub until #8/#9): a thought and the chip, at their tick. */
-  private applyPlanUpdates() {
-    const ups = this.match.record.rounds[this.match.round - 1]?.planUpdates;
-    if (!ups) return;
-    const tick = this.shown.sim.tick;
-    while (this.nextUpdate < ups.length && ups[this.nextUpdate]!.tick <= tick) {
-      const u = ups[this.nextUpdate++]!;
-      const prev = this.planNow[u.fighter] ?? this.decisions[u.fighter]!.strategy;
-      // a callout for every update that changes something, or that comes with a line
-      const text = planChangeText(prev, u.strategy, this.match.names) ?? (u.line ? "→ keeps the plan" : null);
-      if (text) this.callouts.add({ kind: "thought", fighter: u.fighter, text, ...(u.line ? { line: u.line } : {}), at: this.clock });
-      this.planNow[u.fighter] = u.strategy;
-    }
-  }
-
-  /** One line under each HUD chip: target, stance, first weapon; ⚑ marks a rule override (#10, #11). */
   planLine(i: number): string {
-    const f = this.shown.sim.fighters[i]!;
-    if (!f.alive) return `<span class="out">OUT</span>`;
-    const base = this.planNow[i] ?? this.decisions[i]!.strategy;
-    const ctl = this.shown.controllers[i]!;
-    const tr = ctl.rules.targetRule();
-    const rs = ctl.rules.stance();
-    const names = this.match.names;
-    const tgt = tr ? `<b class="rule">⚑ ${tr.kind === "avoid" ? "avoid " : "→ "}${esc(names[tr.subject] ?? "?")}</b>` : `<b>→ ${esc(targetText(base, names))}</b>`;
-    const stance = rs ? `<span class="rule">⚑ ${esc(rs)}</span>` : esc(base.stance);
-    const w = base.weapons[0] === "grapple" ? "hook" : (base.weapons[0] ?? "fists");
-    return `${tgt}<i>·</i>${stance}<i>·</i>${esc(w)}`;
-  }
-
-  private renderPlanChips() {
-    for (let i = 0; i < 4; i++) {
-      const html = this.planLine(i);
-      if (this.planKeys[i] === html) continue;
-      this.planKeys[i] = html;
-      const el = this.hud.lineup.querySelector<HTMLElement>(`[data-id="${i}"] .plan`);
-      if (el) el.innerHTML = html;
-    }
-  }
-
-  private startLineup() {
-    this.hud.lineup.innerHTML = this.shown.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.mark, this.decisions[f.id]!.strategy.weapons[0] ?? "fist")}<span class="nm">${esc(f.name)}<em class="plan"></em></span></div>`)
-      .join("");
-    this.hud.lineup.className = "show";
+    return this.plans.planLine(i, this.match, this.shown, this.decisions);
   }
 
   /** Live AI match: the server sends each round's decisions as soon as the fighters have answered. */
@@ -293,7 +182,7 @@ export class Game {
     this.decisions = this.match.prepareRound(got.decisions, got.meta);
     if (round === 1) {
       this.showFight(this.match.fight!);
-      this.startLineup();
+      this.plans.startLineup(this.hud.lineup, this.shown, this.decisions);
       const order = introOrder(this.match.morale.map((m) => m.score));
       this.flow.append([...openingBeats(order, this.decisions.map((d) => d.line)).slice(1), ...roundBeats(1)]);
     } else {
@@ -339,7 +228,7 @@ export class Game {
         this.scene.focus = { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
         this.scene.blam(b.fighter);
         h.lineup.querySelector(`[data-id="${b.fighter}"]`)?.classList.add("in");
-        h.dialogue.innerHTML = this.dialogueHtml(b);
+        h.dialogue.innerHTML = dialogueHtml(this.match, this.decisions[b.fighter]!, this.labels, b);
         restart(h.dialogue, "show");
         h.dialogue.querySelector(".skip")?.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -362,23 +251,7 @@ export class Game {
         restart(h.count, "show go");
         // the lineup chips stay up during the fight as compact plan chips (#10)
         h.lineup.className = "show fight";
-        this.planKeys = [];
-        this.callouts.clear();
-        this.roundFirings = [];
-        this.roundKos = [];
-        this.ruleTagAt.clear();
-        this.nextUpdate = 0;
-        this.planNow = this.decisions.map((d) => d.strategy);
-        // plan changes since last round: one thought per fighter, staggered
-        this.pendingThoughts = [];
-        const prev = this.match.record.rounds[this.match.round - 2]?.strategies;
-        if (prev) {
-          let k = 0;
-          this.decisions.forEach((d, i) => {
-            const t = planChangeText(prev[i]!, d.strategy, this.match.names);
-            if (t) this.pendingThoughts.push({ at: this.clock + 0.9 + 1.4 * k++, fighter: i, text: t });
-          });
-        }
+        this.plans.startRound(this.match, this.decisions, this.clock);
         this.scene.addShake(0.6);
         this.acc = 0;
         break;
@@ -394,11 +267,11 @@ export class Game {
         const scores = this.tally.add(res);
         this.matchScores.push(scores);
         for (const s of scores) this.matchPoints[s.fighter]! += s.total;
-        this.saveTally();
+        saveTally(this.tally);
         const w = this.match.souls[facts.winner]!;
         const decided = this.match.over;
-        h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span>${this.pipsHtml("big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
-        h.callout.innerHTML += this.recapHtml(facts);
+        h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span>${pipsHtml(this.match, "big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
+        h.callout.innerHTML += recapHtml(this.match, facts, this.plans.roundFirings, this.plans.roundKos);
         if (this.match.diverged >= 0) h.callout.innerHTML += `<span class="small diverged">REPLAY DIVERGED IN ROUND ${this.match.diverged} · THIS RECORD WAS MADE BY AN OLDER ENGINE</span>`;
         restart(h.callout, "show");
         if (decided) this.flow.append(closingBeats());
@@ -418,7 +291,7 @@ export class Game {
         const wid = this.match.winner;
         this.scene.focus = { id: wid, offsetX: -0.24, heightM: 8 };
         this.scene.celebrateId = wid;
-        h.celebrate.innerHTML = this.celebrateHtml();
+        h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed);
         restart(h.celebrate, "show");
         h.celebrate.querySelector<HTMLButtonElement>(".next")?.addEventListener("click", () => this.onNeedNewMatch?.());
         this.moments.push({ time: this.clock, kind: "celebrate", weight: 0 });
@@ -427,109 +300,7 @@ export class Game {
     }
   }
 
-  private pipsHtml(size: "small" | "big"): string {
-    const pips = this.match.souls.map((c, i) => {
-      const w = this.match.wins[i]!;
-      const dots = Array.from({ length: ROUNDS_TO_WIN }, (_, k) => `<b class="${k < w ? "on" : ""}"></b>`).join("");
-      return `<span class="pip" style="--c:${hex(c.color)}"><i></i>${size === "big" ? esc(c.name) : ""}${dots}</span>`;
-    }).join("");
-    return `<span class="pips pips-${size}">${pips}</span>`;
-  }
-
-  /** Short round recap: damage dealt/taken and who hurt each fighter most (from round stats). */
-  private recapHtml(facts: import("../sim/morale").RoundFacts): string {
-    const st = facts.stats;
-    const rows = this.match.souls.map((c, i) => {
-      const dealt = st.damage[i]!.reduce((a, s, j) => a + (j === i ? 0 : s.damage), 0);
-      const took = st.damage.reduce((a, row, j) => a + (j === i ? 0 : row[i]!.damage), 0);
-      let worst = -1;
-      for (let a = 0; a < 4; a++) if (a !== i && st.damage[a]![i]!.damage > (worst >= 0 ? st.damage[worst]![i]!.damage : 0)) worst = a;
-      const w = worst >= 0 ? st.damage[worst]![i]! : null;
-      const hurt = w && w.damage >= 8 ? `${esc(this.match.souls[worst]!.name)} ${Math.round(w.damage)}${w.hits > 1 && w.fromBehind === w.hits ? " from behind" : w.fromBehind >= 2 ? ` (${w.fromBehind} from behind)` : ""}` : "";
-      return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
-    }).join("");
-    // best rule (#11): a rule firing followed within 5 s by a knockout by the same fighter
-    const br = bestRule(this.roundFirings, this.roundKos);
-    const brRule = br ? this.match.record.rounds[facts.round - 1]?.strategies[br.fighter]?.rules?.[br.rule] : undefined;
-    const best = br && brRule ? `<div class="best" style="--c:${hex(this.match.souls[br.fighter]!.color)}">BEST RULE · <b>${esc(this.match.names[br.fighter]!)}</b> '${esc(brRule.label)}' → knocked out ${esc(this.match.names[br.victim]!)}</div>` : "";
-    return `<div class="recap">${rows}${best}</div>`;
-  }
-
-  private dialogueHtml(b: Extract<Beat, { kind: "dialogue" }>): string {
-    const c = this.match.souls[b.fighter]!;
-    const d = this.decisions[b.fighter]!;
-    const m = this.match.morale[b.fighter]!;
-    const s = d.strategy;
-    const tgt = esc(s.target === "grudge" && s.grudge !== undefined ? `AFTER ${this.match.souls[s.grudge]!.name.toUpperCase()}` : `TARGET: ${String(s.target).toUpperCase()}`);
-    const head = b.phase === "intro" ? "BEFORE ROUND 1" : `AFTER ROUND ${b.round - 1} · NEXT: ROUND ${b.round}`;
-    const meta = this.match.record.rounds[b.round - 1]?.meta?.[b.fighter];
-    const who = meta
-      ? meta.outcome === "ok"
-        ? `<span class="ai">${esc(meta.provider)} · ${(meta.ms / 1000).toFixed(1)} s</span>`
-        : meta.outcome === "house"
-          ? `<span class="ai">house bot</span>`
-          : `<span class="ai bot">${esc(meta.provider)} · ${meta.outcome === "fallback-timeout" ? "timed out" : meta.outcome === "fallback-error" ? "error" : "bad answer"} · ${meta.aiLine ? "bot plan" : "bot line"}</span>`
-      : this.labels
-        ? `<span class="ai">${esc(this.labels[b.fighter]!)}</span>`
-        : "";
-    const lastStats = b.phase === "between" ? this.match.facts[b.round - 2]?.stats.summary[b.fighter] : undefined;
-    // rules (#11): last round's rules with their firing counts, then this round's rules; the AI's reason (#10)
-    const lastRules = b.phase === "between" ? this.match.record.rounds[b.round - 2]?.strategies[b.fighter]?.rules : undefined;
-    const lastFired = b.phase === "between" ? this.match.facts[b.round - 2]?.stats.rules?.[b.fighter] : undefined;
-    const counts = lastRules?.length ? `<div class="rules"><span class="k">LAST ROUND'S RULES</span>${lastRules.map((r, i) => `<span>${esc(r.label)} <b>×${lastFired?.[i]?.fires ?? 0}</b></span>`).join("")}</div>` : "";
-    const nextRules = s.rules?.length ? `<div class="rules next"><span class="k">RULES</span>${s.rules.map((r) => `<span>${esc(r.label)}</span>`).join("")}</div>` : "";
-    const why = meta?.why ? `<div class="why">${esc(meta.why)}</div>` : "";
-    const rt = s.retaliate === "attacker" ? "TURN ON ATTACKERS" : s.retaliate === "ignore" ? "IGNORE BACKSTABS" : "FIGHT BACK";
-    return `
-      <div class="panel" style="--c:${hex(c.color)}">
-        <div class="portrait">${portraitSvg(c.color, c.mark, s.weapons[0] ?? "fist", m.state)}</div>
-        <div class="body">
-          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${c.title ? `<span class="title">${esc(c.title.toUpperCase())}</span>` : ""}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
-          ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
-          <div class="line"><span class="typed"></span><span class="caret"></span></div>
-          <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
-          ${nextRules}${counts}${why}
-        </div>
-        <button type="button" class="skip" title="Skip the dialogue">SKIP ▸▸</button>
-        <div class="hint">SPACE ▸</div>
-      </div>`;
-  }
-
-  private celebrateHtml(): string {
-    const m = this.match;
-    const w = this.match.souls[m.winner]!;
-    const why = m.decidedBy() === "two-wins" ? `${m.wins[m.winner]} rounds to ${Math.max(...m.wins.filter((_, i) => i !== m.winner))}` : "won the deciding round";
-    const best = Math.max(1, ...this.tally.points);
-    const rows = this.tally
-      .ranking()
-      .map((id, rank) => {
-        const c = this.match.souls[id]!;
-        const gained = this.matchPoints[id]!;
-        const wins = m.wins[id]!;
-        const kos = m.kos[id]!;
-        const parts = [wins ? `${wins} ROUND${wins > 1 ? "S" : ""} +${wins * POINTS.win}` : "", kos ? `${kos} KO +${kos * POINTS.ko}` : ""].filter(Boolean).join(" · ");
-        return `<div class="row${id === m.winner ? " champ" : ""}" style="--c:${hex(c.color)};--w:${(100 * this.tally.points[id]!) / best}%">
-          <span class="rank">${rank + 1}</span><i></i><span class="name">${esc(c.name)}</span>
-          <span class="bar"><span></span></span><span class="pts">${this.tally.points[id]}</span>${gained ? `<em>+${gained}</em>` : `<em class="zero">+0</em>`}<span class="why">${parts}</span></div>`;
-      })
-      .join("");
-    return `
-      <div class="winner" style="--c:${hex(w.color)}">
-        <div class="big">${esc(w.name.toUpperCase())} WINS</div>
-        <div class="why">${why} · ${m.round} rounds</div>
-        ${this.pipsHtml("big")}
-      </div>
-      <div class="board">
-        <div class="head">SCOREBOARD <span>${this.matchCount()} · round win ${POINTS.win} · knockout ${POINTS.ko}</span></div>
-        ${rows}
-        <button class="next" type="button">NEXT MATCH <span class="auto"></span></button>
-      </div>`;
-  }
-
   private matchesPlayed = 0;
-  private matchCount(): string {
-    return `${this.matchesPlayed + 1} match${this.matchesPlayed === 0 ? "" : "es"} this session`;
-  }
 
   // ------------------------------------------------------------- events
 
@@ -538,18 +309,7 @@ export class Game {
 
   private onEvent(e: SimEvent) {
     this.scene.onEvent(e);
-    if (e.type === "rule" && e.on) {
-      const rule = this.match.decisions[e.fighter]?.strategy.rules?.[e.rule];
-      // few callouts: the same rule of the same fighter tags again only after CALLOUT.ruleRepeatSeconds
-      const key = e.fighter * 8 + e.rule;
-      if (this.clock - (this.ruleTagAt.get(key) ?? -1e9) >= CALLOUT.ruleRepeatSeconds && this.clock - this.lastRuleTag >= CALLOUT.ruleGapSeconds) {
-        this.ruleTagAt.set(key, this.clock);
-        this.lastRuleTag = this.clock;
-        this.callouts.add({ kind: "rule", fighter: e.fighter, text: ruleTagText(rule), subject: e.subject, at: this.clock });
-      }
-      this.roundFirings.push({ tick: e.tick, fighter: e.fighter, rule: e.rule, subject: e.subject, ...(rule ? { action: rule.do } : {}) });
-    }
-    if (e.type === "ko") this.roundKos.push({ tick: e.tick, by: e.by, victim: e.fighter });
+    this.plans.onEvent(e, this.match, this.clock);
     if (e.type === "rule" && this.debugRules) {
       const f = this.shown.sim.fighters[e.fighter]!;
       const rule = this.match.decisions[e.fighter]?.strategy.rules?.[e.rule];
@@ -618,7 +378,7 @@ export class Game {
         this.scene.capturePrev();
         if (mode === "fight" && !this.shown.over) {
           this.shown.step();
-          this.applyPlanUpdates();
+          this.plans.applyUpdates(this.match, this.shown, this.decisions, this.clock);
           const { bigHit } = this.scene.afterTick();
           if (bigHit >= 14) {
             this.hitPause = Math.max(this.hitPause, 0.045 + Math.min(0.08, (bigHit - 14) * 0.006));
@@ -631,14 +391,8 @@ export class Game {
         }
       }
     }
-
-    // callouts over the fight: nothing during knockout slow motion or outside the fight beat
-    while (this.pendingThoughts.length && this.pendingThoughts[0]!.at <= this.clock) {
-      const t = this.pendingThoughts.shift()!;
-      this.callouts.add({ kind: "thought", fighter: t.fighter, text: t.text, at: this.clock });
-    }
-    this.scene.setCallouts(this.callouts.update(this.clock, beat.kind !== "fight" || this.slow > 0), this.clock);
-    if (beat.kind === "go" || beat.kind === "fight") this.renderPlanChips();
+    this.scene.setCallouts(this.plans.update(this.clock, beat.kind !== "fight" || this.slow > 0), this.clock);
+    if (beat.kind === "go" || beat.kind === "fight") this.plans.renderChips(this.hud.lineup, this.match, this.shown, this.decisions);
 
     // per-frame HUD bits driven by beat progress (so capture stays in sync)
     if (beat.kind === "dialogue") {
@@ -649,7 +403,7 @@ export class Game {
     }
     if (beat.kind === "go" || beat.kind === "fight") {
       const left = Math.max(0, (FIGHT_TICKS - this.shown.sim.tick) / TICK_RATE);
-      const txt = `<span class="r">ROUND ${this.match.round}</span>${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${this.pipsHtml("small")}`;
+      const txt = `<span class="r">ROUND ${this.match.round}</span>${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${pipsHtml(this.match, "small")}`;
       if (this.hud.clock.innerHTML !== txt) this.hud.clock.innerHTML = txt;
       this.hud.clock.className = left < 10 ? "show low" : "show";
     }
@@ -669,11 +423,4 @@ export class Game {
     const fxDt = mode === "frozen" ? dt : simDt;
     this.scene.render(dt, alpha, fxDt);
   }
-}
-
-/** Re-trigger CSS entrance animations. */
-function restart(el: HTMLElement, cls: string) {
-  el.className = "";
-  void el.offsetWidth;
-  el.className = cls;
 }
