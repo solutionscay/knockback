@@ -80,7 +80,11 @@ export class PropViews {
       v.g.position.set(p.x, -p.y);
       v.g.rotation = -p.a;
       if (e.kind === "barrel" && e.fuse !== undefined) v.g.scale.set(1 + 0.12 * Math.sin(time * 60));
-      if (e.kind === "item") v.g.position.y += Math.sin(time * 4) * 0.04;
+      if (e.kind === "item") {
+        // a pickup stays upright (its badge is round) and bobs gently, so it stands apart from crates and barrels
+        v.g.rotation = 0;
+        v.g.position.y += Math.sin(time * 3.2 + e.id) * 0.07;
+      }
       if (e.kind === "pad") {
         v.squash = Math.max(0, v.squash - dt * 5);
         v.g.scale.set(1 + v.squash * 0.2, 1 - v.squash * 0.45);

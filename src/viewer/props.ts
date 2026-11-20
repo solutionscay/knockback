@@ -56,36 +56,142 @@ export function drawWeapon(g: ShapePen, kind: string, color: number, scale = 1) 
   }
 }
 
-/** Icon for a power-up or weapon item, centered at 0,0, ~0.5 m. */
-function itemIcon(g: Graphics, it: string) {
-  switch (it) {
-    case "health":
-      g.rect(-0.07, -0.18, 0.14, 0.36).fill(0xe23b3b);
-      g.rect(-0.18, -0.07, 0.36, 0.14).fill(0xe23b3b);
+const INK = 0x15171d;
+/** Weapon icons are drawn in a ±0.4 m box, then scaled by this to fill the badge. */
+const WK = 1.18;
+/** The pickup badge: drawn bigger than the 0.5 m physics box so the icon reads in View all at 720p (the body is unchanged). */
+export const PICKUP_R = 0.56;
+
+/** Points (x0, y0, x1, y1, ...) turned by a radians about 0,0 (y-down, so a < 0 turns up to the right). */
+function turn(pts: number[], a: number): number[] {
+  const c = Math.cos(a) * WK;
+  const s = Math.sin(a) * WK;
+  const out: number[] = [];
+  for (let i = 0; i < pts.length; i += 2) out.push(pts[i]! * c - pts[i + 1]! * s, pts[i]! * s + pts[i + 1]! * c);
+  return out;
+}
+
+/** A box from x0..x1, -hh..hh, as a turned polygon. */
+function bar(x0: number, x1: number, hh: number, a: number): number[] {
+  return turn([x0, -hh, x1, -hh, x1, hh, x0, hh], a);
+}
+
+/** A line drawn twice, ink under color: an outlined stroke like the bots' limbs. */
+function inkLine(g: Graphics, raw: number[], width: number, color: number) {
+  const pts = turn(raw, 0);
+  for (const [w, c] of [
+    [width + 0.08, INK],
+    [width, color],
+  ] as const) {
+    g.moveTo(pts[0]!, pts[1]!);
+    for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i]!, pts[i + 1]!);
+    g.stroke({ width: w, color: c, cap: "round", join: "round" });
+  }
+}
+
+const OUT = { width: 0.06, color: INK, join: "round" as const };
+
+/**
+ * Weapon pickup icon, about 0.8 m across, centered at 0,0 (y-down). Each weapon has its own silhouette:
+ * rocket = fat tube and red warhead, shotgun = long thin barrel and stock, bat = steep tapered club,
+ * grenade = round body with a lever, grapple = three-pronged hook on a rope.
+ */
+export function drawPickupWeapon(g: Graphics, kind: string) {
+  switch (kind) {
+    case "rocket": {
+      const a = -0.6;
+      g.poly(bar(-0.4, 0.2, 0.13, a)).fill(0x3b4150).stroke(OUT);
+      g.poly(turn([0.2, -0.13, 0.43, 0, 0.2, 0.13], a)).fill(0xe2402e).stroke(OUT);
+      g.poly(turn([-0.4, -0.13, -0.47, -0.24, -0.27, -0.13], a)).fill(0xffb347).stroke(OUT);
+      g.poly(turn([-0.4, 0.13, -0.47, 0.24, -0.27, 0.13], a)).fill(0xffb347).stroke(OUT);
+      g.poly(bar(-0.05, 0.03, 0.13, a)).fill(0xffb347);
       break;
-    case "shield":
-      g.circle(0, 0, 0.17).stroke({ width: 0.06, color: 0x2a8fb0 });
-      g.circle(-0.05, -0.06, 0.04).fill(0xffffff);
+    }
+    case "shotgun": {
+      const a = -0.45;
+      g.poly(turn([-0.46, 0.02, -0.12, -0.05, -0.08, 0.06, -0.42, 0.17], a)).fill(0x8a5a32).stroke(OUT);
+      g.poly(bar(-0.12, 0.46, 0.07, a)).fill(0x2a2d35).stroke(OUT);
+      g.poly(bar(0.06, 0.24, 0.1, a)).fill(0x8a5a32).stroke(OUT);
       break;
-    case "speed":
-      g.poly([0.04, -0.2, -0.12, 0.03, 0.0, 0.03, -0.05, 0.2, 0.13, -0.04, 0.01, -0.04]).fill(0x9a6a00);
+    }
+    case "bat": {
+      const a = -0.95;
+      g.poly(turn([-0.44, -0.04, 0.3, -0.11, 0.42, -0.08, 0.44, 0, 0.42, 0.08, 0.3, 0.11, -0.44, 0.04], a)).fill(0xe0b070).stroke(OUT);
+      g.poly(bar(-0.46, -0.24, 0.055, a)).fill(0x2a2d35).stroke(OUT);
+      g.poly(bar(0.2, 0.25, 0.1, a)).fill(0xd23a2a);
       break;
-    case "heavy":
-      g.poly([-0.17, 0.16, 0.17, 0.16, 0.11, -0.04, -0.11, -0.04]).fill(0x3a3e48);
-      g.circle(0, -0.1, 0.07).stroke({ width: 0.045, color: 0x3a3e48 });
+    }
+    case "grenade": {
+      const k = WK;
+      g.poly(turn([-0.07, -0.37, 0.07, -0.37, 0.07, -0.23, -0.07, -0.23], 0)).fill(0x9aa0aa).stroke(OUT);
+      g.poly(turn([0.05, -0.33, 0.28, -0.24, 0.24, -0.16, 0.04, -0.25], 0)).fill(0x9aa0aa).stroke(OUT);
+      g.circle(-0.13 * k, -0.33 * k, 0.08 * k).stroke({ width: 0.12, color: INK });
+      g.circle(-0.13 * k, -0.33 * k, 0.08 * k).stroke({ width: 0.05, color: 0xffd23a });
+      g.circle(0, 0.05 * k, 0.27 * k).fill(0x5d7030).stroke(OUT);
+      g.moveTo(-0.26 * k, 0.05 * k).lineTo(0.26 * k, 0.05 * k).moveTo(0, -0.22 * k).lineTo(0, 0.32 * k).stroke({ width: 0.045, color: 0x34401a });
+      g.circle(-0.09 * k, -0.04 * k, 0.05 * k).fill({ color: 0xffffff, alpha: 0.6 });
       break;
-    case "damage":
-      g.poly([-0.16, 0.12, -0.02, -0.15, 0.04, -0.15, -0.1, 0.12]).fill(0x8a0a18);
-      g.poly([0.0, 0.12, 0.14, -0.15, 0.2, -0.15, 0.06, 0.12]).fill(0x8a0a18);
-      break;
-    case "jump":
-      g.poly([0, -0.2, 0.16, 0, 0.06, 0, 0.06, 0.18, -0.06, 0.18, -0.06, 0, -0.16, 0]).fill(0x5a6a8a);
+    }
+    case "grapple":
+      // rope, shaft, then three prongs
+      inkLine(g, [-0.36, 0.36, -0.2, 0.28, -0.1, 0.32, 0, 0.2], 0.05, 0xd8c08a);
+      inkLine(g, [0, 0.2, 0, -0.38], 0.08, 0xc8ccd6);
+      inkLine(g, [0, 0.12, -0.25, 0.02, -0.33, -0.2], 0.08, 0xc8ccd6);
+      inkLine(g, [0, 0.12, 0.25, 0.02, 0.33, -0.2], 0.08, 0xc8ccd6);
+      inkLine(g, [-0.12, -0.24, 0.12, -0.24], 0.07, 0xc8ccd6);
       break;
     default:
-      // a weapon
-      drawWeapon(g, it, 0xffb347, 0.36);
+      drawWeapon(g, kind, 0xffb347, 0.6);
       break;
   }
+}
+
+/** Power-up icon, about 0.7 m across, centered at 0,0. */
+function powerIcon(g: Graphics, it: string) {
+  const k = 1.75;
+  const P = (pts: number[]) => pts.map((v) => v * k);
+  switch (it) {
+    case "health":
+      g.poly(P([-0.07, -0.18, 0.07, -0.18, 0.07, -0.07, 0.18, -0.07, 0.18, 0.07, 0.07, 0.07, 0.07, 0.18, -0.07, 0.18, -0.07, 0.07, -0.18, 0.07, -0.18, -0.07, -0.07, -0.07])).fill(0xe23b3b).stroke(OUT);
+      break;
+    case "shield":
+      g.poly(P([0, -0.2, 0.17, -0.13, 0.15, 0.05, 0, 0.2, -0.15, 0.05, -0.17, -0.13])).fill(0x2a8fb0).stroke(OUT);
+      g.poly(P([0, -0.13, 0.1, -0.09, 0.09, 0.03, 0, 0.12])).fill({ color: 0xffffff, alpha: 0.55 });
+      break;
+    case "speed":
+      g.poly(P([0.04, -0.2, -0.12, 0.03, 0.0, 0.03, -0.05, 0.2, 0.13, -0.04, 0.01, -0.04])).fill(0xf0b400).stroke(OUT);
+      break;
+    case "heavy":
+      g.circle(0, -0.1 * k, 0.07 * k).stroke({ width: 0.14, color: INK });
+      g.circle(0, -0.1 * k, 0.07 * k).stroke({ width: 0.06, color: 0x8a8a96 });
+      g.poly(P([-0.17, 0.16, 0.17, 0.16, 0.11, -0.04, -0.11, -0.04])).fill(0x3a3e48).stroke(OUT);
+      break;
+    case "damage":
+      g.poly(P([-0.16, 0.12, -0.02, -0.15, 0.04, -0.15, -0.1, 0.12])).fill(0xc8102a).stroke(OUT);
+      g.poly(P([0.0, 0.12, 0.14, -0.15, 0.2, -0.15, 0.06, 0.12])).fill(0xc8102a).stroke(OUT);
+      break;
+    case "jump":
+      g.poly(P([0, -0.2, 0.16, 0, 0.06, 0, 0.06, 0.18, -0.06, 0.18, -0.06, 0, -0.16, 0])).fill(0x5a6a8a).stroke(OUT);
+      break;
+  }
+}
+
+/**
+ * A pickup: a soft glow, a round badge (crates and barrels are square, so the circle reads as "pickup"), and the icon.
+ * Weapons get a cream badge with a thick amber rim and a pulsing ring; power-ups a badge tinted their color.
+ */
+export function drawPickup(g: Graphics, it: string, time: number) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 5);
+  const power = it in POWER_COLOR;
+  const col = power ? POWER_COLOR[it]! : 0xffb347;
+  const r = PICKUP_R;
+  g.circle(0, 0, r + 0.16 + pulse * 0.08).fill({ color: col, alpha: 0.14 + pulse * 0.12 });
+  if (!power) g.circle(0, 0, r + 0.12 + pulse * 0.1).stroke({ width: 0.06, color: 0xffd27a, alpha: 0.35 + pulse * 0.4 });
+  g.circle(0, 0, r + 0.03).fill(INK);
+  g.circle(0, 0, r - 0.04).fill(power ? col : 0xfff3d6).stroke({ width: 0.08, color: power ? shade(col, 0.75) : 0xffa21f });
+  if (power) g.circle(0, 0, r - 0.13).fill({ color: 0xffffff, alpha: 0.55 });
+  if (power) powerIcon(g, it);
+  else drawPickupWeapon(g, it);
 }
 
 /** Draw a prop/item/grenade into g (local frame, centered). Returns true if it needs redrawing every frame. */
@@ -167,18 +273,9 @@ export function drawProp(g: Graphics, e: Entity, time: number): boolean {
       g.rect(-0.22, -0.05, 0.44, 0.22).fill(0xe8c44a);
       g.rect(-0.03, 0.0, 0.06, 0.12).fill(0x15171d);
       return false;
-    case "item": {
-      const pulse = 0.5 + 0.5 * Math.sin(time * 6);
-      const it = e.itemType ?? "health";
-      const power = it in POWER_COLOR;
-      const col = power ? POWER_COLOR[it]! : 0xffb347;
-      g.circle(0, 0, 0.55 + pulse * 0.12).fill({ color: col, alpha: 0.16 + pulse * 0.12 });
-      // weapons are what everyone is fighting over: a bright beacon ring
-      if (!power) g.circle(0, 0, 0.7 + pulse * 0.2).stroke({ width: 0.07, color: 0xffd27a, alpha: 0.5 + pulse * 0.4 });
-      g.roundRect(-w, -h, w * 2, h * 2, 0.1).fill(power ? 0xf4f4f4 : 0x2a2d35).stroke({ width: 0.05, color: shade(col, 0.7) });
-      itemIcon(g, it);
+    case "item":
+      drawPickup(g, e.itemType ?? "health", time);
       return true;
-    }
     case "grenade": {
       const blink = Math.floor(time * ((e.ticksLeft ?? 60) < 40 ? 16 : 6)) % 2 === 0;
       g.circle(0, 0, w).fill(0x4b5a2a).stroke({ width: 0.04, color: 0x1d2410 });
