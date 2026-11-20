@@ -32,6 +32,24 @@ seconds after the celebrate screen; `?hold` waits for the Next match button
 instead. `N` or the corner button starts a new match; "Reset scores" clears the
 session scoreboard.
 
+## AI fighters
+
+```sh
+bun run ai-match --host 0.0.0.0            # prints http://<lan-ip>:5175/?live ; open it on any machine
+bun run ai-match --lineup claude,codex,grok,claude --souls ./souls --seed 42 --deadline 20
+bun run ai-match --lineup pike=house       # mix AI and house bots
+bun run ai-match --headless                # no viewer, just the log
+```
+
+Default lineup: Brick = claude (haiku), Pike = codex (gpt-6-luna, low effort),
+Squeaks = grok (grok-4.6, low effort), Goldie = claude (haiku). Each fighter has a
+soul in `souls/`. Before each round all four are asked in parallel for
+`{ loadout, target, stance, retaliate, line }`; a timeout (20 s), an error or junk
+falls back to the house bot for that fighter. The fights stay engine-driven.
+Records land in `records/` and replay exactly with `bun run dev` +
+`/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
+Providers live in `src/ai/providers.ts` (one entry each).
+
 ## Other commands
 
 ```sh
