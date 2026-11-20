@@ -169,8 +169,8 @@ export function ruleExamplesFor(seed: number, round: number, me: number): string
 export function rulesSection(examples: string[]): string {
   return [
     "RULES (optional, at most 4, first = highest priority): conditions the engine checks during the round; a rule acts while its trigger holds (at least 1 s). A rule that never fires does nothing.",
-    "when: holds(who,item) | my_health_below(value 10-90) | health_below(who,value) | near_ledge(who) | near_barrel(who) | on_streak(who,value 1-3 knockouts) | chasing_me(who, 3 s+) | hit_me(who, last 3 s) | item_near(item, close) | alone_with (last two)",
-    "who: anyone | enemy | target | a name. do: target (go for that fighter) | avoid (keep away) | seek(item) | use(item: a weapon) | stance(stance) | retaliate(retaliate). target/avoid need a trigger about a fighter; after holds or item_near name the action's item as do_item.",
+    'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two)',
+    'who: anyone | enemy | target | a name. do (+ its key): target (go for that fighter) | avoid (keep away) | seek item | use item (a weapon) | stance "stance": rush/distance/cover/item | retaliate "retaliate": attacker/turn/ignore. target/avoid need a trigger about a fighter; after holds or item_near give the action\'s item as "do_item".',
     `Examples: ${examples.join(" ")}`,
   ].join("\n");
 }

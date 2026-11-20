@@ -115,8 +115,16 @@ export function parseRules(raw: unknown, me: number, names: string[]): { rules: 
       if (di) r.doItem = di;
       else if (src !== undefined) return void problems.push(`${tag}: unknown item ${JSON.stringify(src)}`);
     }
-    if (r.do === "stance" && typeof x.stance === "string") r.stance = x.stance.toLowerCase().trim() as Stance;
-    if (r.do === "retaliate" && typeof x.retaliate === "string") r.retaliate = x.retaliate.toLowerCase().trim() as Retaliate;
+    // lenient: a stance or retaliate value given under another key ("do":"retaliate","item":"attacker")
+    const valueOf = (key: unknown, allowed: readonly string[]) => [key, x.item, x.value, x.do_item].map((v) => (typeof v === "string" ? v.toLowerCase().trim() : "")).find((v) => allowed.includes(v));
+    if (r.do === "stance") {
+      const v = typeof x.stance === "string" ? x.stance.toLowerCase().trim() : valueOf(undefined, ["rush", "distance", "cover", "item"]);
+      if (v) r.stance = v as Stance;
+    }
+    if (r.do === "retaliate") {
+      const v = typeof x.retaliate === "string" ? x.retaliate.toLowerCase().trim() : valueOf(undefined, ["attacker", "turn", "ignore"]);
+      if (v) r.retaliate = v as Retaliate;
+    }
     const cl = cleanLine(x.label);
     const rule: Rule = { ...r, label: cl ? (cl.length > MAX_RULE_LABEL ? cl.slice(0, MAX_RULE_LABEL).trim() : cl) : autoLabel(r, names) };
     const bad = checkRule(rule, me);

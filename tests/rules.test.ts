@@ -83,6 +83,8 @@ describe("rule parsing (#5)", () => {
     expect(dup.rules.length).toBe(1);
     expect(dup.problems[0]).toMatch(/duplicate/);
     expect(parseRules("nope", 0, NAMES).problems[0]).toMatch(/expected a list/);
+    // lenient: the retaliate value given under "item" (seen in real answers) is understood
+    expect(one({ when: "hit_me", who: "enemy", do: "retaliate", item: "attacker" }).rules[0]).toMatchObject({ do: "retaliate", retaliate: "attacker" });
   });
 
   test("more than 4 rules are cut to 4; names resolve to seat numbers; labels are cleaned", () => {
