@@ -61,15 +61,16 @@ export class Scene {
    * Capture-mode check (feet contact; view only): the alpha of one group of
    * layers exactly as drawn this frame, full screen, one byte per pixel.
    * "surface" = terrain cells, platforms and props; "feet" = only the bots'
-   * feet. Everything is restored afterwards.
+   * feet; "bodies" = the bots without their feet, except fighter `except`
+   * (to check a bot standing on another). Everything is restored afterwards.
    */
-  maskAlpha(kind: "surface" | "feet"): { width: number; height: number; alpha: Uint8Array } {
+  maskAlpha(kind: "surface" | "feet" | "bodies", except = -1): { width: number; height: number; alpha: Uint8Array } {
     const keep: Container[] = kind === "surface" ? [this.terrainLayer, this.props.layer] : [this.fighters.layer];
     const stageSaved = this.app.stage.children.map((c) => [c, c.visible] as const);
     const worldSaved = this.world.children.map((c) => [c, c.visible] as const);
     for (const c of this.app.stage.children) c.visible = c === this.world;
     for (const c of this.world.children) c.visible = keep.includes(c);
-    const restoreFeet = kind === "feet" ? this.fighters.feetOnly() : () => {};
+    const restoreFeet = kind === "feet" ? this.fighters.feetOnly() : kind === "bodies" ? this.fighters.bodiesOnly(except) : () => {};
     const { pixels, width, height } = this.app.renderer.extract.pixels({ target: this.app.stage, frame: new Rectangle(0, 0, this.W, this.H), antialias: true });
     restoreFeet();
     for (const [c, v] of worldSaved) c.visible = v;
@@ -77,6 +78,11 @@ export class Scene {
     const alpha = new Uint8Array(width * height);
     for (let i = 0; i < alpha.length; i++) alpha[i] = pixels[i * 4 + 3]!;
     return { width, height, alpha };
+  }
+
+  /** The standing feet of each fighter, world x of each sole's middle (capture-mode check). */
+  soles() {
+    return this.fighters.soles();
   }
 
   get W() {

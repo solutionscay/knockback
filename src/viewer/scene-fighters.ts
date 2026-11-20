@@ -1,10 +1,10 @@
 import { Container, Graphics } from "pixi.js";
 import { FIGHTER } from "../sim/constants";
-import type { Fighter, Sim } from "../sim/sim";
+import type { Entity, Fighter, Sim } from "../sim/sim";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
 import { CELL } from "../sim/grid";
-import { drawArm, drawBody, drawFeet, drawHand, FEET_Y, FOOT_X, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, hash, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
+import { drawArm, drawBody, drawFeet, drawHand, FEET_OVERLAP_PX, FEET_Y, FOOT_X, headTopAt, K, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, hash, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
 import { POWER_COLOR } from "./palette";
 import { pixiPen } from "./pixiPen";
 import { drawWeapon } from "./props";
@@ -23,8 +23,8 @@ interface FighterView {
   /** the feet, in their own layer: each foot stands on the ground under it */
   feet: Graphics;
   feetKey: string;
-  /** a soft contact shadow on the ground while standing */
-  shadow: Graphics;
+  /** where each standing foot's sole is (world x of its middle), for the capture-mode check; null while not standing */
+  soles: [number, number] | null;
   /** the identity's hash: its blink rhythm */
   h: number;
   /** the "> <" face after a hit */
@@ -57,7 +57,6 @@ export class FighterViews {
   clear() {
     for (const v of this.fighters) {
       v.root.destroy({ children: true });
-      v.shadow.destroy();
     }
     this.fighters = [];
   }
@@ -73,7 +72,6 @@ export class FighterViews {
     const face = new Graphics();
     const arm = new Graphics();
     const feet = new Graphics();
-    const shadow = new Graphics();
     const gun = new Graphics();
     const flash = new Graphics();
     const aura = new Graphics();
@@ -81,8 +79,8 @@ export class FighterViews {
     drawSilhouette(pixiPen(flash), f.look);
     flash.alpha = 0;
     root.addChild(aura, feet, body, face, arm, gun, flash, over);
-    this.layer.addChild(shadow, root);
-    return { f, root, body, bodyKey: "", face, faceKey: "", arm, feet, feetKey: "", shadow, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
+    this.layer.addChild(root);
+    return { f, root, body, bodyKey: "", face, faceKey: "", arm, feet, feetKey: "", soles: null, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
   }
 
   private drawGun(v: FighterView, kind: string) {
@@ -93,11 +91,11 @@ export class FighterViews {
     if (kind !== "fist") drawHand(v.gun, v.f.look); // the fist's glove is the hand
   }
 
-  /** For the capture-mode feet check: show only the feet (no body, no shadow); returns a function that restores everything. */
+  /** For the capture-mode feet check: show only the feet (no body, no weapon); returns a function that restores everything. */
   feetOnly(): () => void {
     const saved: [{ visible: boolean }, boolean][] = [];
     for (const v of this.fighters) {
-      for (const c of [...v.root.children, v.shadow]) {
+      for (const c of v.root.children) {
         saved.push([c, c.visible]);
         c.visible = c === v.feet;
       }
@@ -105,6 +103,25 @@ export class FighterViews {
     return () => {
       for (const [c, vis] of saved) c.visible = vis;
     };
+  }
+
+  /** For the capture-mode feet check: show the other bots' bodies (no feet), hide fighter `except`; returns a restore function. */
+  bodiesOnly(except: number): () => void {
+    const saved: [{ visible: boolean }, boolean][] = [];
+    for (const v of this.fighters) {
+      saved.push([v.root, v.root.visible]);
+      if (v.f.id === except) v.root.visible = false;
+      saved.push([v.feet, v.feet.visible]);
+      v.feet.visible = false;
+    }
+    return () => {
+      for (const [c, vis] of saved) c.visible = vis;
+    };
+  }
+
+  /** Each fighter's standing soles (world x), or null (capture-mode check). */
+  soles(): ([number, number] | null)[] {
+    return this.fighters.map((v) => v.soles);
   }
 
   get(id: number) {
@@ -132,6 +149,7 @@ export class FighterViews {
       v.recoil = Math.max(0, v.recoil - dt * 2.5);
       v.wingT = Math.max(0, v.wingT - dt);
       if (f.stun > 0 && !f.grounded && f.alive) v.spin += f.facing * -dt * Math.min(18, speed * 0.9);
+      else if (f.alive && f.grounded) v.spin = 0; // a bot that touches down lands upright (a leftover tumble would tip a foot off the ground)
       else if (f.alive) v.spin *= Math.max(0, 1 - dt * 14);
       if (Math.abs(v.spin) < 0.01 && f.alive) v.spin = 0;
       const rot = f.alive ? v.spin : -p.a;
@@ -250,32 +268,74 @@ export class FighterViews {
       }
       v.root.scale.x *= pw.heavy > 0 ? 1.12 : 1;
       v.root.scale.y *= pw.heavy > 0 ? 1.1 : 1;
-      // feet on the ground (view only): while standing, squash, stretch and the heavy scale grow from the feet, not
-      // from the capsule's middle, and each foot is set on the ground under it (a step edge, stairs of cells)
-      const standing = f.alive && f.grounded && Math.abs(rot) < 0.05 && this.celebrateId !== f.id;
+      // feet on the ground (view only). While a bot stands:
+      // - it is drawn on the surface it stands on, not at the interpolated capsule position (which lags up to a tick
+      //   behind on landing), and squash, stretch and the heavy scale grow from its feet;
+      // - each foot stands on the ground under it (a step edge, a tilted crate); a foot over air or a lower step slides
+      //   in toward the body until it is over the ledge;
+      // - the feet sink FEET_OVERLAP_PX screen pixels into the surface, so no background pixel shows between foot and
+      //   ground at any zoom.
+      // (a bot thrown upward, e.g. kicked by a tumbling crate, is not standing even while the sim's ground check still
+      // touches something under it: it keeps its airborne feet)
+      const standing = f.alive && f.grounded && vel.y < 1.5 && Math.abs(rot) < 0.05 && this.celebrateId !== f.id;
       const ky = v.root.scale.y;
-      if (standing) v.root.position.y = -p.y + FEET_Y * (1 - ky);
-      let dl = 0, dr = 0;
+      let dl = 0, dr = 0, xl = 0, xr = 0, al = 0, ar = 0;
+      v.soles = null;
       if (standing) {
         const kx = v.root.scale.x;
-        const bottom = p.y - FEET_Y;
-        [dl, dr] = FOOT_X.map((lx) => {
-          const top = groundTop(sim, p.x + lx * kx, bottom);
-          if (top === null) return 0;
-          // a foot steps up onto higher ground (up to 0.2 m, it tucks behind the torso), but drops at most 0.08 m: any
-          // lower and it would come loose from the body, so it dangles at the capsule's bottom instead
-          const d = top - bottom;
-          return d < -0.08 ? 0 : -Math.min(d, 0.2) / ky; // local y grows downward
-        }) as [number, number];
+        // the sim's current position, where the capsule really touches the ground (the interpolated one lags on landing)
+        const now = f.entity.body.translation();
+        const pose = (e: Entity) => xform(e, alpha); // props and other bots as drawn this frame
+        let base = now.y - FEET_Y; // the capsule's bottom
+        // standing on another bot: its drawn head can be up to ~0.3 m lower than its capsule's top, so the bot comes down onto it
+        const under = [FOOT_X[0], 0, FOOT_X[1]].map((lx) => groundTop(sim, now.x + lx * kx, base, pose, f.id)).filter((t): t is number => t !== null);
+        if (under.length && Math.max(...under) < base - 0.02 && Math.max(...under) >= base - 0.35) base = Math.max(...under);
+        v.root.position.set(now.x, -(base + FEET_Y) + FEET_Y * (1 - ky));
+        // on another bot's head the feet sink 2 px more: its squash and heavy scale move its drawn head by up to ~2 px
+        const onBot = [FOOT_X[0], 0, FOOT_X[1]].some((lx) => {
+          const h = groundTop(sim, now.x + lx * kx, base, pose, f.id, () => null);
+          const any = groundTop(sim, now.x + lx * kx, base, pose, f.id);
+          return any !== null && (h === null || any > h + 0.01);
+        });
+        const sink = (FEET_OVERLAP_PX + (onBot ? 2 : 0)) / s; // meters
+        const top = (lx: number) => groundTop(sim, now.x + lx * kx, base, pose, f.id);
+        // the sole's middle stays close to the body (drops at most 0.08 m, steps up at most 0.2 m); its ends need ground
+        // under them too (checked at +-0.09 m, a margin past the sole's flat middle), and the foot tilts to lie along it
+        // (up to 1.1 rad: a tilted crate, a steep corner)
+        const near = (t: number | null) => t !== null && t - base >= -0.08 && t - base <= 0.2;
+        const underEnd = (t: number | null) => t !== null && t - base >= -0.3 && t - base <= 0.35;
+        const feet = FOOT_X.map((lx0) => {
+          // slide in (toward the middle and on past the other foot), then a little outward, until it stands
+          const tries = [...Array.from({ length: 29 }, (_, k) => -k * 0.02), 0.02, 0.04, 0.06, 0.08, 0.1, 0.12];
+          for (const step of tries) {
+            const lx = lx0 + Math.sign(lx0) * step;
+            const [t0, tm, t1] = [top(lx - 0.09), top(lx), top(lx + 0.09)];
+            if (!underEnd(t0) || !near(tm) || !underEnd(t1)) continue;
+            const rise = (t1! - t0!) / 0.18; // world rise per meter along x
+            const slope = Math.atan2(rise * Math.sign(kx), 1); // -> local angle (y down, x mirrored)
+            if (Math.abs(slope) > 1.1) continue;
+            // the sole's line never sits above the ground across its middle: at a peak (a crate's corner) it sinks in
+            // a little instead of bridging over the falling side
+            const xs = [-0.06, -0.03, 0, 0.03, 0.06];
+            const ts = xs.map((dx) => top(lx + dx));
+            if (ts.some((t) => t === null)) continue;
+            const mid = Math.min(...ts.map((t, i) => t! - rise * xs[i]! * Math.sign(kx)));
+            if (!near(mid)) continue;
+            return { dx: lx - lx0, d: Math.min(mid - base, 0.2), a: -slope };
+          }
+          return { dx: 0, d: 0, a: 0 }; // nothing to stand on (another fighter, a ledge too narrow): at the capsule's bottom
+        });
+        [xl, xr] = feet.map((q) => q.dx) as [number, number];
+        v.soles = [now.x + (FOOT_X[0] + xl) * kx, now.x + (FOOT_X[1] + xr) * kx];
+        [dl, dr] = feet.map((q) => (sink - q.d) / ky) as [number, number]; // local y grows downward
+        [al, ar] = feet.map((q) => q.a) as [number, number];
       }
-      const feetKey = `${!f.grounded && f.alive ? 1 : 0}|${dl.toFixed(3)}|${dr.toFixed(3)}`;
+      const feetKey = `${!f.grounded && f.alive ? 1 : 0}|${dl.toFixed(3)}|${dr.toFixed(3)}|${xl.toFixed(2)}|${xr.toFixed(2)}|${al.toFixed(2)}|${ar.toFixed(2)}`;
       if (feetKey !== v.feetKey) {
         v.feetKey = feetKey;
         v.feet.clear();
-        drawFeet(pixiPen(v.feet), f.look, { air: !f.grounded && f.alive, dl, dr });
+        drawFeet(pixiPen(v.feet), f.look, { air: !f.grounded && f.alive, dl, dr, xl, xr, al, ar });
       }
-      v.shadow.clear();
-      if (standing) v.shadow.ellipse(p.x, -(p.y - FEET_Y) + 0.02, 0.44 * Math.abs(v.root.scale.x), 0.075).fill({ color: 0x000000, alpha: 0.3 });
       // hit flash
       v.flashT = Math.max(0, v.flashT - dt);
       v.flash.alpha = v.flashT > 0 ? 0.85 : f.outsideZone && Math.floor(time * 8) % 2 === 0 ? 0.25 : 0;
@@ -341,16 +401,36 @@ export class FighterViews {
   }
 }
 
+const physicsPose = (e: Entity) => {
+  const q = e.body.translation();
+  return { x: q.x, y: q.y, a: e.body.rotation() };
+};
+
+/** The top edge of a convex polygon (world points, y up) at x, or null when x is outside it. */
+function polyTopAt(x: number, pts: readonly (readonly [number, number])[]): number | null {
+  let best: number | null = null;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i]!, [bx, by] = pts[(i + 1) % pts.length]!;
+    if (x < Math.min(ax, bx) || x > Math.max(ax, bx)) continue;
+    const y = bx === ax ? Math.max(ay, by) : ay + ((by - ay) * (x - ax)) / (bx - ax);
+    if (best === null || y > best) best = y;
+  }
+  return best;
+}
+
 /**
  * The top of the ground under a foot at world x, near the capsule's bottom
- * (within 0.3 m up or down): a terrain cell or an upright prop (crate, steel,
- * barrel...), whichever is higher. Null when there is none (a foot over a
- * gap): then the foot stays at the capsule's bottom. Reads the sim only.
+ * (within 0.3 m up or down): a terrain cell, a prop at any angle (its box),
+ * a cell of a loose terrain chunk, or another bot's head (not `self`),
+ * whichever is highest. Null when there
+ * is none (a foot over a gap). `pose` gives where a prop is drawn (the
+ * scene's interpolated transform); by default its physics pose. Reads the
+ * sim only (no physics queries).
  */
-export function groundTop(sim: Sim, x: number, bottom: number): number | null {
+export function groundTop(sim: Sim, x: number, bottom: number, pose: (e: Entity) => { x: number; y: number; a: number } = physicsPose, self = -1, heads?: (x: number) => number | null): number | null {
   let best: number | null = null;
-  const take = (top: number) => {
-    if (Math.abs(top - bottom) <= 0.3 && (best === null || top > best)) best = top;
+  const take = (top: number | null) => {
+    if (top !== null && Math.abs(top - bottom) <= 0.3 && (best === null || top > best)) best = top;
   };
   const grid = sim.grid;
   const cx = grid.cx(x);
@@ -359,16 +439,34 @@ export function groundTop(sim: Sim, x: number, bottom: number): number | null {
     take(grid.wy(cy) + CELL);
     break;
   }
+  // another bot's head: its drawn top (head shapes sit lower or higher in the 32-unit grid; grid y 3.5 is the capsule top).
+  // The scene passes `heads`, which reads the other bots' drawn transforms; without it, their physics poses are used.
+  if (heads) take(heads(x));
+  else for (const g of sim.fighters) {
+    if (g.id === self || !g.alive || g.removed) continue;
+    // a standing bot is drawn at its current position, others where the scene interpolates them
+    const q = g.grounded ? { ...g.entity.body.translation(), a: 0 } : pose(g.entity);
+    if (Math.abs(q.a) > 0.15) continue;
+    const u = 16 + (x - q.x) / (K * g.facing); // the head's grid column under x (the bot is mirrored when facing left)
+    const yg = headTopAt(g.look.shape, u);
+    if (yg !== null) take(q.y + FEET_Y + (3.5 - yg) * K); // grid y 3.5 is the capsule's top
+  }
   for (const e of sim.entities.values()) {
-    // destroyed props leave sim.entities (sim-entities.ts); loose terrain chunks are not centered boxes, so they are left out
-    if (e.kind === "fighter" || e.kind === "chunk" || e.kind === "item" || e.kind === "grenade" || e.dead) continue;
-    // a box lying at any quarter turn (upside down, on its side) is still flat on top; a quarter turn swaps its extents
-    const rot = e.body.rotation(), quarter = Math.round(rot / (Math.PI / 2));
-    if (Math.abs(rot - quarter * (Math.PI / 2)) > 0.15) continue;
-    const [hw, hh] = quarter % 2 ? [e.hh, e.hw] : [e.hw, e.hh];
-    const q = e.body.translation();
-    if (Math.abs(x - q.x) > hw) continue;
-    take(q.y + hh);
+    if (e.kind === "fighter" || e.kind === "item" || e.kind === "grenade" || e.dead) continue; // destroyed props leave sim.entities
+    const q = pose(e), a = q.a, c = Math.cos(a), s = Math.sin(a);
+    const world = (lx: number, ly: number) => [q.x + lx * c - ly * s, q.y + lx * s + ly * c] as const;
+    if (e.kind === "chunk" && e.cells) {
+      // a loose piece: its body sits at the piece's bottom-left corner, cells at (lx, ly) * CELL, y up
+      if (Math.abs(x - q.x) > Math.hypot(e.hw * 2, e.hh * 2) + CELL) continue;
+      for (const cell of e.cells) {
+        if (cell.hp <= 0) continue;
+        const x0 = cell.lx * CELL, y0 = cell.ly * CELL;
+        take(polyTopAt(x, [world(x0, y0), world(x0 + CELL, y0), world(x0 + CELL, y0 + CELL), world(x0, y0 + CELL)]));
+      }
+      continue;
+    }
+    if (Math.abs(x - q.x) > Math.hypot(e.hw, e.hh)) continue;
+    take(polyTopAt(x, [world(-e.hw, -e.hh), world(e.hw, -e.hh), world(e.hw, e.hh), world(-e.hw, e.hh)]));
   }
   return best;
 }

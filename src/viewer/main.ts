@@ -11,14 +11,14 @@ declare global {
       newMatch: (seed: number) => void;
       loadRecord: (url: string) => Promise<void>;
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
-      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string; tick: number; view: { cx: number; cy: number; s: number; shx: number; shy: number } | null; fighters: { x: number; y: number; grounded: boolean; alive: boolean }[] };
+      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string; tick: number; view: { cx: number; cy: number; s: number; shx: number; shy: number } | null; soles: ([number, number] | null)[]; fighters: { x: number; y: number; grounded: boolean; alive: boolean }[] };
       drainMoments: () => { time: number; kind: string; weight: number }[];
       /** callouts over the fight (#10, #11): on screen now, the most ever at once, all shown so far */
       callouts: () => { visible: { kind: string; fighter: number; text: string }[]; peak: number; shown: { kind: string; fighter: number; text: string }[] };
       /** the HUD plan chip lines (plain text) */
       planChips: () => string[];
       /** the feet-contact check: one layer group's alpha as drawn this frame (base64, one byte per pixel) */
-      mask: (kind: "surface" | "feet") => { width: number; height: number; alpha: string };
+      mask: (kind: "surface" | "feet" | "bodies", except?: number) => { width: number; height: number; alpha: string };
     };
   }
 }
@@ -171,6 +171,7 @@ if (capture) {
       // for screenshot scripts: the shown fight's tick and where each fighter is (world meters, y up)
       tick: game.shown.sim.tick,
       view: game.scene.lastFrame,
+      soles: game.scene.soles(),
       fighters: game.shown.sim.fighters.map((f) => (f.removed ? { x: 0, y: -99, grounded: false, alive: false } : { x: f.entity.body.translation().x, y: f.entity.body.translation().y, grounded: f.grounded, alive: f.alive })), // a removed fighter has no body any more
     }),
     callouts: () => ({
@@ -179,8 +180,8 @@ if (capture) {
       shown: game.callouts.shownLog.map((c) => ({ kind: c.kind, fighter: c.fighter, text: c.text })),
     }),
     // the feet-contact check: one layer group's alpha as drawn this frame (base64, one byte per pixel)
-    mask: (kind: "surface" | "feet") => {
-      const m = game.scene.maskAlpha(kind);
+    mask: (kind: "surface" | "feet" | "bodies", except?: number) => {
+      const m = game.scene.maskAlpha(kind, except);
       let s = "";
       for (let i = 0; i < m.alpha.length; i += 0x8000) s += String.fromCharCode(...m.alpha.subarray(i, i + 0x8000));
       return { width: m.width, height: m.height, alpha: btoa(s) };
