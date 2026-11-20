@@ -10,6 +10,8 @@
  *        (pipes the turn's prompt to the command on stdin and sends its reply as {"answer": ...})
  *
  * --match <id> joins that match; without it, the first open match.
+ * --create remote,house,house,house creates a match first (seats over HTTP: remote or house) and joins it.
+ * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).
  * --seed <n> makes the random plans repeatable.
  * --leave-after <round> leaves the match when that round's turn comes (the house bot takes over).
  * --no-token: don't send the seat token (works only against a server started with --open).
@@ -50,6 +52,7 @@ async function call(method: string, path: string, body?: unknown, key?: string):
 
 async function request(method: string, path: string, body?: unknown, key?: string): Promise<{ status: number; data: any }> {
   const res = await fetch(server + path, {
+    ...(flags.insecure === "true" ? { tls: { rejectUnauthorized: false } } : {}),
     method,
     headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(key ? { authorization: `Bearer ${key}` } : {}) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -101,6 +104,12 @@ async function cliAnswer(prompt: string, msLeft: number): Promise<string> {
 
 // ------------------------------------------------------------ join, play
 let matchId = flags.match;
+if (!matchId && flags.create) {
+  const c = await call("POST", "/api/matches", { seats: flags.create.split(","), ...(flags.deadline ? { deadlineSec: Number(flags.deadline) } : {}), fillAfterSec: 30 });
+  if (c.status !== 201) throw new Error(`create failed: ${c.status} ${JSON.stringify(c.data)}`);
+  matchId = c.data.id as string;
+  log(`created match ${matchId} (seed ${c.data.seed}): ${flags.create}`);
+}
 for (let tries = 0; !matchId; tries++) {
   const list = await call("GET", "/api/matches");
   matchId = list.data.matches.find((m: any) => m.status === "open" && m.seats.some((s: any) => s.kind === "remote" && !s.agent))?.id;

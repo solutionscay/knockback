@@ -4,11 +4,35 @@
  */
 const enc = new TextEncoder();
 
+const PING = enc.encode(": ping\n\n");
+
 export class LiveStream {
   private history: Uint8Array[] = [];
   private clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
-  /** cap on concurrent spectators of one stream */
-  constructor(readonly maxClients = 64) {}
+  private pinger: ReturnType<typeof setInterval> | undefined;
+  /**
+   * `maxClients`: cap on concurrent spectators of one stream. `pingMs`: an SSE
+   * comment is sent this often while someone watches, so proxies and NATs
+   * don't drop a quiet stream (EventSource ignores comments).
+   */
+  constructor(
+    readonly maxClients = 64,
+    readonly pingMs = 15_000,
+  ) {}
+
+  private ping() {
+    for (const c of this.clients) {
+      try {
+        c.enqueue(PING);
+      } catch {
+        this.clients.delete(c);
+      }
+    }
+    if (!this.clients.size) {
+      clearInterval(this.pinger);
+      this.pinger = undefined;
+    }
+  }
 
   get size(): number {
     return this.clients.size;
@@ -35,6 +59,7 @@ export class LiveStream {
         ctl = c;
         for (const h of this.history) c.enqueue(h);
         this.clients.add(c);
+        if (!this.pinger && this.pingMs > 0) this.pinger = setInterval(() => this.ping(), this.pingMs);
       },
       cancel: () => {
         this.clients.delete(ctl);
@@ -52,5 +77,7 @@ export class LiveStream {
       }
     }
     this.clients.clear();
+    clearInterval(this.pinger);
+    this.pinger = undefined;
   }
 }

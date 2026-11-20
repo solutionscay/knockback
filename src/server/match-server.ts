@@ -89,6 +89,8 @@ export interface ServerOptions {
   defaultFillAfterMs?: number;
   /** persistence (default: in-memory SQLite, i.e. nothing survives a restart) */
   store?: MatchStore;
+  /** shown by GET /api/health (e.g. the image's git revision) */
+  version?: string;
   log?: (s: string) => void;
 }
 
@@ -470,7 +472,7 @@ export class MatchServer {
 
   constructor(opts: ServerOptions) {
     const { store, log, ...rest } = opts;
-    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, ...rest };
+    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", ...rest };
     this.store = store ?? new SqliteStore(":memory:");
     this.log = log ?? (() => {});
   }
@@ -557,6 +559,18 @@ export class MatchServer {
         }
   }
 
+  /** Liveness and readiness for the container healthcheck: the process answers and the store can be read. */
+  private async health(): Promise<Response> {
+    const count = (st: string) => [...this.matches.values()].filter((m) => m.status === st).length;
+    const base = { version: this.opts.version, uptimeSec: Math.round(process.uptime()), matches: { open: count("open"), running: count("running") } };
+    try {
+      await this.store.listMatches(["running"]);
+      return json({ ok: true, ...base, store: "ok" });
+    } catch (e) {
+      return json({ ok: false, ...base, store: e instanceof Error ? e.message : String(e) }, 503);
+    }
+  }
+
   /** A match in memory, or a finished one loaded from storage (deduplicated and rate limited: it replays the physics). */
   private async matchOr404(mid: string, ip = "local"): Promise<ServerMatch> {
     const m = this.matches.get(mid);
@@ -588,6 +602,7 @@ export class MatchServer {
   async handle(req: Request, ip = "local"): Promise<Response | null> {
     const url = new URL(req.url);
     if (!url.pathname.startsWith("/api/") && url.pathname !== "/api") return null;
+    if (url.pathname === "/api/health") return this.health();
     try {
       this.ipLimit.take(ip);
       return await this.route(req, url, ip);

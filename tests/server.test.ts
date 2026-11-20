@@ -6,6 +6,7 @@ import { seatsFor } from "../src/ai/decide";
 import { registerProvider, registerStubs } from "../src/ai/providers";
 import { MatchRunner, ResumeError, type RunnerEvent, type StoredRound } from "../src/ai/runner";
 import { RateLimiter } from "../src/server/limits";
+import { LiveStream } from "../src/server/live";
 import { MatchServer } from "../src/server/match-server";
 import { checkPlanShape } from "../src/server/remote";
 import { SqliteStore } from "../src/server/store";
@@ -118,6 +119,29 @@ async function playSeat(call: Call, mid: string, token: string | undefined, answ
     else expect((await call("POST", `/api/matches/${mid}/plan?${q}`, { round: t.round, ...body }, token)).status).toBe(200);
   }
 }
+
+describe("ops", () => {
+  test("GET /api/health: ok with the version and match counts, without rate limiting; 503 when the store fails", async () => {
+    const s = new MatchServer({ outDir: tmp(), version: "abc123" });
+    for (let i = 0; i < 80; i++) await s.handle(new Request("http://kb.test/api/health"), "1.1.1.1"); // more than the per-address burst
+    const res = (await s.handle(new Request("http://kb.test/api/health"), "1.1.1.1"))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, version: "abc123", matches: { open: 0, running: 0 }, store: "ok" });
+    await s.store.close();
+    expect((await s.handle(new Request("http://kb.test/api/health")))!.status).toBe(503);
+  });
+
+  test("the live stream sends an SSE comment while someone watches", async () => {
+    const live = new LiveStream(64, 20);
+    live.broadcast({ type: "match" });
+    const reader = live.response().body!.getReader();
+    let text = "";
+    while (!text.includes(": ping")) text += new TextDecoder().decode((await reader.read()).value);
+    expect(text.startsWith('data: {"type":"match"}')).toBe(true);
+    reader.cancel();
+    live.close();
+  });
+});
 
 describe("match server API", () => {
   test("rejects bad input with clear errors", async () => {
