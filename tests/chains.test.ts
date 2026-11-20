@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { CHAIN, initPhysics, Match, type Input } from "../src/sim";
+import { CHAIN, initPhysics, Match, Sim, type Input } from "../src/sim";
 import { chainAttach } from "../src/sim/sim-chains";
 import { damagePiece } from "../src/sim/sim-terrain";
 import { ChainView } from "../src/viewer/chains";
@@ -190,5 +190,27 @@ describe("breakable chains (#34)", () => {
     expect(s.tilePosition.y).toBe(0); // links start at the fixed end
     lay(2, 2, 2, 2);
     expect(s.visible).toBe(false);
+  });
+
+  test("generated levels with walls: the support check loosens nothing at the start, and walls are not anchors", () => {
+    let walls = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const sim = new Sim(seed);
+      const g = sim.grid;
+      expect(sim.chains.length % 2).toBe(0); // two chains per floating platform
+      sim.terrain.supportDirty = true;
+      stepN(sim, 1);
+      expect(sim.stats.piecesFallen).toBe(0);
+      for (const ch of sim.chains) expect(g.solid(ch.cx, ch.cy)).toBe(true);
+      for (const w of sim.level.walls ?? []) {
+        walls++;
+        for (let cx = g.cx(w.x0); cx < g.cx(w.x1); cx++)
+          for (let cy = g.cy(w.y); cy < g.cy(w.top); cy++) {
+            expect(g.solid(cx, cy)).toBe(true);
+            expect(sim.chainByCell.has(g.idx(cx, cy))).toBe(false);
+          }
+      }
+    }
+    expect(walls).toBeGreaterThan(10);
   });
 });
