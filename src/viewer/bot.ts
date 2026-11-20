@@ -112,9 +112,10 @@ export const HEADS: Record<Shape, Head> = {
 /**
  * The drawn top edge of each head (its path plus the 3-unit round stroke), in
  * grid y, at grid columns x = 0..32; null where the head is not. Generated
- * from HEADS by rasterizing each path (the feet-contact task's
- * tools/head-profiles.ts); regenerate it when a head path changes. A bot
- * standing on another bot stands on this edge.
+ * from HEADS by rasterizing each path; the sampling utility is not included
+ * in this repository. Keep the samples in sync with head path changes and
+ * verify contact with tests/feet-chains.test.ts. A bot standing on another
+ * bot stands on this edge.
  */
 export const HEAD_TOPS: Record<Shape, (number | null)[]> = {
   squircle: [null, null, null, null, 10.5, 7.88, 6.5, 5.56, 4.94, 4.5, 4.19, 3.94, 3.75, 3.63, 3.56, 3.5, 3.5, 3.5, 3.56, 3.63, 3.75, 3.94, 4.19, 4.5, 5, 5.63, 6.56, 8, 10.75, null, null, null, null],

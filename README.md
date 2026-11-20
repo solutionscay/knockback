@@ -251,8 +251,9 @@ bun run typecheck
   - `sim-chains.ts` breakable platform chains (#34): chain hit points (`CHAIN` in `constants.ts`); explosions,
     shotgun pellets, bats, heavy fists and heavy flying things damage them; one chain gone, the platform swings
     on the other (rope joint to a pivot); all gone, it falls and crushes (credited to whoever broke the chain)
-  - `sim.ts` world, fighters, weapons, objects, power-ups, explosions, damage, ring-outs, state hash
-  - `match.ts` one continuous fight, result, match record (seed + strategies) and replay
+  - `sim.ts` world, deterministic stepping and state hash; delegates combat, movement, items, objects, terrain, fire and chains to the `sim-*` modules
+  - `fight.ts` one round: controllers, physics, result, fight record and replay
+  - `match.ts` best-of-3 round orchestration, morale, identities, decisions, match record and replay
   - `engine-version.ts` `ENGINE_VERSION` (bump it when the sim hashes change), the record check and a record
     summary that needs no simulation
   - `controller.ts` strategy -> frame-by-frame inputs (target picking, pathing, aiming, firing)
