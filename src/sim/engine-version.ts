@@ -11,7 +11,7 @@
  *
  * The field is not part of any hash: it lives in the record, not in the sim state.
  */
-export const ENGINE_VERSION = 1;
+export const ENGINE_VERSION = 2;
 
 /** The engine version a record says made it; 0 when the field is missing or not a whole number. */
 export function recordEngine(rec: unknown): number {
