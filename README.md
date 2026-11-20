@@ -1,19 +1,21 @@
 # Knockback (working name)
 
-Side-view 2D physics brawler prototype. Every match is on a freshly generated,
-almost fully destructible level (themes: warehouse, rooftop, junkyard,
-construction). The whole loop:
+Side-view 2D physics brawler prototype. A match is **best of 3 rounds** on a
+freshly generated, almost fully destructible level (themes: warehouse, rooftop,
+junkyard, construction), fought by four characters with swagger: **Brick** the
+Brawler, **Pike** the Sniper, **Squeaks** the Rat and **Goldie** the Vulture
+(see `docs/characters.md`).
 
-0. **Level card**: the generated arena, seen whole.
-1. **Intros**: each of the 4 fighters slams in with its strategy line
-   (its one set of orders for the match: target preference, stance and a
-   two-weapon loadout from rocket, shotgun, bat, grenade, grappling hook).
-2. **3, 2, 1, FIGHT!**
-3. **Chaos**: one continuous physics brawl (45-90 s); the shrinking safe zone
-   pushes everyone together and toward the pit.
-4. **End**: last fighter standing, or most health at the 90 s time-out.
-5. **Celebrate**: the winner celebrates; points (win 3, knockout 1) go onto a
-   running scoreboard for the session. Next match.
+1. **Level card**, then each fighter's **intro line** in an RPG dialogue frame.
+2. **3, 2, 1, FIGHT!** One continuous round; the safe zone pushes everyone together.
+3. **Round result**, then **between-round dialogue**: each fighter reacts to what
+   happened (morale: cocky, confident, rattled, furious, desperate) and picks a
+   strategy for the next round. Level and health reset; morale carries over.
+4. First to 2 round wins takes the match; round 3 is winner-takes-all.
+5. **Celebrate** + session scoreboard (round win 3, knockout 1). Next match.
+
+The lines and strategies come from one function per fighter
+(`src/sim/voice.ts`, `Brain`), the slot where AI agents plug in.
 
 ## Run
 
