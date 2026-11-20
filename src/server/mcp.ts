@@ -26,7 +26,8 @@ import { MAX_LINE, MAX_WHY } from "../ai/parse";
 import { RULE_EXAMPLES, WEAPON_HELP } from "../ai/prompt";
 import { MAX_RULE_LABEL, PICKUPS, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
 import { MAX_RULES, RULE_DO, RULE_WHEN, WEAPON_LIST } from "../sim/sim-types";
-import { RateLimiter } from "./limits";
+import { HttpError, RateLimiter } from "./limits";
+import { McpAdmission } from "./mcp-admission";
 import type { LobbyQueue } from "./lobby-queue";
 import type { MatchServer } from "./match-server";
 import { hashToken, MAX_PERSONA, MIN_PERSONA } from "./match-server";
@@ -63,6 +64,10 @@ export interface McpOptions {
   /** public base URL for links in tool results (e.g. https://kb.example.com); default: from the request */
   publicUrl?: string;
   maxSessions?: number;
+  /** Concurrent HTTP requests, including open SSE responses. */
+  maxInFlight?: number;
+  maxInFlightPerIp?: number;
+  maxInFlightPerSession?: number;
   /** sessions idle this long are closed (default 30 min) */
   idleMs?: number;
 }
@@ -166,6 +171,10 @@ export function fixHints(problems: string[], rivals: string[]): string[] {
 export class McpGateway {
   readonly sessions = new Map<string, Live>();
   readonly initLimit = new RateLimiter(10, 1 / 6);
+  readonly requestLimit = new RateLimiter(60, 10);
+  readonly sessionLimit = new RateLimiter(30, 5);
+  private readonly admission: McpAdmission;
+  private initializing = 0;
   private sweeper: ReturnType<typeof setInterval>;
   readonly maxSessions: number;
   readonly idleMs: number;
@@ -174,6 +183,7 @@ export class McpGateway {
     readonly api: MatchServer,
     readonly opts: McpOptions,
   ) {
+    this.admission = new McpAdmission(opts.maxInFlight, opts.maxInFlightPerIp, opts.maxInFlightPerSession);
     this.maxSessions = opts.maxSessions ?? 200;
     this.idleMs = opts.idleMs ?? 30 * 60_000;
     this.sweeper = setInterval(() => this.sweep(), 60_000);
@@ -215,6 +225,18 @@ export class McpGateway {
         return new Response("bad origin", { status: 400 });
       }
     }
+    try {
+      this.requestLimit.take(ip, "MCP requests");
+      const sid = req.headers.get("mcp-session-id");
+      if (sid && this.sessions.has(sid)) this.sessionLimit.take(sid, "MCP session requests");
+      return await this.admission.run(req, ip, () => this.route(req, ip));
+    } catch (e) {
+      if (!(e instanceof HttpError)) throw e;
+      return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: e.message }, id: null }, { status: e.status, headers: e.headers });
+    }
+  }
+
+  private async route(req: Request, ip: string): Promise<Response> {
     const sid = req.headers.get("mcp-session-id");
     if (sid) {
       const live = this.sessions.get(sid);
@@ -239,9 +261,18 @@ export class McpGateway {
     } catch (e) {
       return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: (e as Error).message }, id: null }, { status: 429 });
     }
-    if (this.sessions.size >= this.maxSessions) this.sweep();
-    if (this.sessions.size >= this.maxSessions) return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: "too many MCP sessions; try later" }, id: null }, { status: 503 });
+    if (this.sessions.size + this.initializing >= this.maxSessions) this.sweep();
+    if (this.sessions.size + this.initializing >= this.maxSessions) return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: "too many MCP sessions; try later" }, id: null }, { status: 503 });
 
+    this.initializing++;
+    try {
+      return await this.initialize(req, ip);
+    } finally {
+      this.initializing--;
+    }
+  }
+
+  private async initialize(req: Request, ip: string): Promise<Response> {
     const state: Session = { id: "", ip, createdAt: Date.now(), lastSeen: Date.now() };
     const server = this.buildServer(state, req);
     const transport = new WebStandardStreamableHTTPServerTransport({

@@ -10,7 +10,7 @@
  * validation, rate limits and seat tokens as any HTTP agent.
  */
 import { HttpError } from "./limits";
-import type { MatchServer, ServerMatch } from "./match-server";
+import { checkJoin, type MatchServer, type ServerMatch } from "./match-server";
 
 export interface LobbyOptions {
   /** seat kinds of a new lobby match (default: 3 remote seats + 1 house bot) */
@@ -68,6 +68,7 @@ export class LobbyQueue {
   }
 
   private async seatNow(body: Record<string, unknown>, ip: string): Promise<Seated> {
+    checkJoin(body); // reject invalid input before creating a match
     for (const m of this.open()) {
       if (!m.kinds.some((k, i) => k === "remote" && !m.agents[i])) continue;
       const r = await this.join(m, body, ip);
@@ -79,9 +80,14 @@ export class LobbyQueue {
     const m = await this.api.createMatch({ seats: this.seats, deadlineMs: this.deadlineMs, fillAfterMs: this.fillAfterMs });
     this.ids.push(m.id);
     this.api.log(`lobby: new match ${m.id} (${this.seats.join(",")}, deadline ${this.deadlineMs / 1000} s, fills after ${this.fillAfterMs / 1000} s)`);
-    const r = await this.join(m, body, ip);
-    if (!r) throw new HttpError(503, "could not take a seat in the new lobby match; try again");
-    return { ...r, match: m, created: true };
+    try {
+      const r = await this.join(m, body, ip);
+      if (!r) throw new HttpError(503, "could not take a seat in the new lobby match; try again");
+      return { ...r, match: m, created: true };
+    } catch (e) {
+      await m.cancelEmpty();
+      throw e;
+    }
   }
 
   /** POST /api/matches/:id/join in-process; null when the seat went away meanwhile (409). */

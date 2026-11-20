@@ -176,6 +176,18 @@ export class ServerMatch {
     else this.timer = setTimeout(() => void this.start(), wait);
   }
 
+  /** Retire an empty lobby match after seating failed, including its fill timer. */
+  async cancelEmpty() {
+    if (this.status !== "open" || this.agents.some(Boolean)) return;
+    clearTimeout(this.timer);
+    this.status = "failed";
+    this.error = "lobby join failed";
+    this.server.forgetEmpty(this);
+    this.live.close();
+    this.changed();
+    await this.store.updateMatch(this.id, { status: "failed", error: this.error, endedAt: Date.now() });
+  }
+
   /** Wake every long poll on this match. */
   changed() {
     const ws = [...this.waiters];
@@ -682,6 +694,16 @@ export class MatchServer {
     return m;
   }
 
+  /** Remove a failed empty lobby allocation without changing the default live match. */
+  forgetEmpty(match: ServerMatch) {
+    if (match.status !== "failed" || match.agents.some(Boolean) || this.matches.get(match.id) !== match) return;
+    this.matches.delete(match.id);
+    if (this.newest === match) {
+      this.newest = null;
+      for (const m of this.matches.values()) if (!this.newest || m.createdAt >= this.newest.createdAt) this.newest = m;
+    }
+  }
+
   protected add(m: ServerMatch) {
     this.matches.set(m.id, m);
     if (!this.newest || m.createdAt >= this.newest.createdAt) this.newest = m;
@@ -689,6 +711,7 @@ export class MatchServer {
     if (this.matches.size > 200)
       for (const [k, old] of this.matches)
         if (old.status === "over" || old.status === "failed") {
+          old.live.close();
           this.matches.delete(k);
           for (const a of old.agents) if (a) this.tokens.delete(a.tokenHash);
           if (this.matches.size <= 150) break;
