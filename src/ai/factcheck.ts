@@ -1,9 +1,9 @@
 /**
  * Heuristic fact check of an AI line against the round it talks about (#4).
  * Not a judge: it only looks at lines that name a rival together with a
- * claim, and pins each claim on the rival named closest before it ("Goldie
+ * claim, and pins each claim on the rival named closest before it ("Zapko
  * shot me") or, with none before, closest after it ("you knocked me out,
- * Goldie"). Used by the harness (facts metric) and by decideRound (a warning
+ * Zapko"). Used by the harness (facts metric) and by decideRound (a warning
  * in the decision meta; the line is never rejected).
  */
 
@@ -24,7 +24,7 @@ export const CLAIMS: { kind: ClaimKind; re: RegExp }[] = [
   { kind: "knockout", re: /\b(knock(?:ed)? me (?:out|off)|took me out|finished me|ko'?d me|killed me|r[au]ng me out|threw me off|sent me (?:flying|off))\b/i },
   { kind: "back", re: /\b(in the back|from behind|back-?(?:shot|stab|hook)s?|my back|behind my back|sneak(?:ed|ing)? up on me)\b/i },
   { kind: "hit", re: /\b((?:shot|hit|blasted|hooked|batted|smacked|whacked|nailed|bonked|grenaded|rocketed|peppered|pelted|stung) (?:me|my)|owes? me)\b/i },
-  // only a possessive ("Brick's bat") claims who used a weapon; "grab that bat" is a wish, not an accusation
+  // only a possessive ("Rivet's bat") claims who used a weapon; "grab that bat" is a wish, not an accusation
   { kind: "weapon", re: /(?:'s|’s) (hook|grapple|bat|rockets?|shotgun|grenades?)\b/i },
 ];
 
@@ -53,7 +53,7 @@ export function checkLine(line: string, me: number, names: string[], f: CheckFac
   const out: Mismatch[] = [];
   for (const c of claims) {
     if (c.kind === "weapon" && !f.weapons) continue;
-    // a possessive ("Pike's rocket") belongs to the name right before it; otherwise the nearest name before, else after
+    // a possessive ("Zapko's rocket") belongs to the name right before it; otherwise the nearest name before, else after
     const before = mentions.filter((x) => x.at < c.at).sort((a, b) => b.at - a.at)[0];
     const after = mentions.filter((x) => x.at > c.at).sort((a, b) => a.at - b.at)[0];
     const who = (before ?? after)!.who;

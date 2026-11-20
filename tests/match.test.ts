@@ -173,7 +173,7 @@ describe("dialogue and the decision slot", () => {
     phase: last ? "between" : "intro",
     round: last ? last.round + 1 : 1,
     me,
-    names: SOULS.map((c) => c.name),
+    names: ["Brick", "Pike", "Squeaks", "Goldie"],
     souls: SOULS,
     wins: last ? [0, 0, 0, 0].map((_, i) => (i === last.winner ? 1 : 0)) : [0, 0, 0, 0],
     morale: initialMorale(BASE),
@@ -228,7 +228,7 @@ describe("dialogue and the decision slot", () => {
     expect(calls.length).toBe(4);
     expect(calls[0]!.phase).toBe("intro");
     expect(m.fight!.sim.fighters.every((f) => f.prefs[0] === "grenade" && f.prefs[1] === "bat" && f.weapons[0] === "fist")).toBe(true);
-    expect(m.record.rounds[0]!.lines[2]).toBe("round 1 from Squeaks");
+    expect(m.record.rounds[0]!.lines[2]).toBe(`round 1 from ${m.names[2]}`);
     while (!m.step()) {
       /* round */
     }

@@ -63,34 +63,38 @@ describe("parsing AI answers", () => {
 });
 
 describe("souls", () => {
-  test("the four example souls parse cleanly and carry identity, attitude, voice and values", () => {
+  test("the four example souls parse cleanly and carry attitude, voice and values (no name, no look)", () => {
     const loaded = loadSouls("souls");
-    expect(loaded.map((l) => l.soul.name)).toEqual(NAMES);
+    expect(loaded.map((l) => l.soul.id)).toEqual(["brawler", "sniper", "rat", "vulture"]);
     for (const l of loaded) {
       const p = parseSoul(readFileSync(l.file, "utf8"));
       expect(p.errors).toEqual([]);
+      expect(p.warnings).toEqual([]);
       expect(l.soul.values.length).toBeGreaterThan(1);
       expect(l.soul.lines.length).toBeGreaterThan(20);
       expect(l.soul.body).toMatch(/sparingly/);
     }
-    expect(exampleSouls().map((s) => s.name)).toEqual(NAMES); // bundled copies match the files
+    expect(exampleSouls().map((s) => s.id)).toEqual(loaded.map((l) => l.soul.id)); // bundled copies match the files
     expect(exampleSouls()).toEqual(loaded.map((l) => l.soul));
   });
 
   test("validation: bad values are errors, missing values are filled from the text", () => {
     const bad = parseSoul("---\nname: Zap\nstance: hover\ncolor: blue\nweapons: laser, bat\n---\nA fighter.");
     expect(bad.errors.join(" | ")).toContain("stance");
-    expect(bad.errors.join(" | ")).toContain("color");
     expect(bad.errors.join(" | ")).toContain("laser");
+    // a soul has no name or look any more: those keys are ignored with a warning (#17)
+    expect(bad.warnings.join(" | ")).toContain("name: ignored");
+    expect(bad.warnings.join(" | ")).toContain("color: ignored");
+    expect(bad.soul).not.toHaveProperty("name");
+    expect(bad.soul).not.toHaveProperty("color");
     const guessed = parseSoul("# Nibs\n\nNibs is nervous and hides behind cover. Goes for the weakest. Holds a grudge forever. Loves grenades.", 2);
     expect(guessed.errors).toEqual([]);
-    expect(guessed.soul.name).toBe("Nibs");
     expect(guessed.soul.stance).toBe("cover");
     expect(guessed.soul.target).toBe("weakest");
     expect(guessed.soul.retaliate).toBe("attacker");
     expect(guessed.soul.temperament).toBe("nervous");
     expect(guessed.soul.weapons).toEqual(["grenade"]);
-    expect(parseSoul("just some text").errors).toContain("name is missing");
+    expect(parseSoul("just some text").errors).toEqual([]);
   });
 
   test("loadSouls refuses invalid or duplicate souls with a clear message", () => {
@@ -99,8 +103,8 @@ describe("souls", () => {
     expect(() => loadSouls(dir)).toThrow(/need 4/);
     writeFileSync(`${dir}/d.md`, "---\nname: d\nstance: fly\n---\nbody");
     expect(() => loadSouls(dir)).toThrow(/d\.md: stance/);
-    writeFileSync(`${dir}/d.md`, "---\nname: a\n---\nbody");
-    expect(() => loadSouls(dir)).toThrow(/different/);
+    writeFileSync(`${dir}/d.md`, "---\nstance: rush\n---\nbody");
+    expect(() => loadSouls([0, 0, 1, 2].map((i) => `${dir}/${"abd"[i]}.md`).join(","))).toThrow(/different/);
   });
 
   test("house bots map soul fields to strategies; swap a soul and the fighter changes", () => {
@@ -109,7 +113,7 @@ describe("souls", () => {
       phase: "intro",
       round: 1,
       me,
-      names: soulsArr.map((s) => s.name),
+      names: ["A", "B", "C", "D"],
       souls: soulsArr,
       wins: [0, 0, 0, 0],
       morale: initialMorale(soulsArr.map((s) => TEMPERAMENT_MORALE[s.temperament])),
@@ -126,13 +130,15 @@ describe("souls", () => {
     const pike = houseStrategy(ctx(ss, 1));
     expect(pike.stance).toBe("distance");
     expect(pike.weapons[0]).toBe("rocket");
-    // seat 0 gets Pike's soul: seat 0 now plays like Pike, talks like Pike, has Pike's name and color
+    // seat 0 gets the sniper's soul: seat 0 now plays and talks like the sniper; its name and look still come from the match seed (#17)
     const swapped = [ss[1]!, ss[0]!, ss[2]!, ss[3]!];
     expect(houseStrategy(ctx(swapped, 0))).toEqual({ ...pike, grudge: undefined });
     const m = new Match(7, { souls: swapped });
     m.prepareRound();
-    expect(m.fight!.sim.fighters[0]!.name).toBe("Pike");
-    expect(m.fight!.sim.fighters[0]!.color).toBe(ss[1]!.color);
+    const plainMatch = new Match(7, { souls: ss });
+    expect(m.identities).toEqual(plainMatch.identities);
+    expect(m.fight!.sim.fighters[0]!.name).toBe(plainMatch.identities[0]!.name);
+    expect(m.fight!.sim.fighters[0]!.color).toBe(plainMatch.identities[0]!.color);
     expect(ss[1]!.lines.map((l) => l[2])).toContain(m.record.rounds[0]!.lines[0]);
     // a soul with no lines of its own still talks, in its voice
     const plain = parseSoul("---\nname: Nobody\nvoice: sly\n---\nQuiet type.", 3).soul;
@@ -148,7 +154,7 @@ describe("the prompt", () => {
     m.playRound();
     const ctx = m.contextFor(1);
     const p = buildPrompt(souls()[1]!, ctx, { level: m.level, lastLines: m.record.rounds[0]!.lines, lastHealth: m.facts[0]!.fighters.map((f) => f.hpEnd), myLines: [m.record.rounds[0]!.lines[1]!] });
-    expect(p).toContain("You are Pike");
+    expect(p).toContain(`You are ${m.names[1]}, one of four`);
     expect(p).toContain("Geometry, darling");
     expect(p).toContain("sparingly");
     expect(p).toContain("best of 3");
@@ -176,7 +182,7 @@ describe("deciding a round (stub providers)", () => {
     expect(ms).toBeLessThan(1500); // the slow one is cut off at the deadline
     expect(ask.meta.map((x) => x.outcome)).toEqual(["ok", "fallback-invalid", "fallback-timeout", "fallback-error"]);
     expect(ask.decisions[0]!.strategy.weapons).toEqual(["rocket", "bat"]);
-    expect(ask.decisions[0]!.line).toBe("Brick is coming for you.");
+    expect(ask.decisions[0]!.line).toBe(`${m.names[0]} is coming for you.`);
     for (const d of ask.decisions.slice(1)) expect(d.line.length).toBeGreaterThan(5); // bot lines
     m.prepareRound(ask.decisions, ask.meta);
     expect(m.fight!.sim.fighters[0]!.prefs.slice(0, 2)).toEqual(["rocket", "bat"]);
@@ -397,17 +403,20 @@ describe("collectible weapons", () => {
     expect(firsts[Math.floor(firsts.length / 2)]!).toBeLessThan(4); // median under 4 s
   });
 
-  test("a record carries its souls: replay needs no soul files and reproduces names, lines and hashes", () => {
+  test("a record carries its souls and identities: replay needs no soul files and reproduces names, lines and hashes", () => {
     const custom = [...exampleSouls()];
-    custom[2] = parseSoul("---\nname: Vex\ncolor: #aa55ff\nvoice: smug\nstance: distance\nweapons: rocket, grenade\n---\nCold and patient.", 2).soul;
+    custom[2] = parseSoul("---\nvoice: smug\nstance: distance\nweapons: rocket, grenade\n---\nCold and patient.", 2, "cold").soul;
     const m = new Match(31, { souls: custom });
     m.playToEnd();
     const rec = JSON.parse(JSON.stringify(m.record));
-    expect(rec.souls[2].name).toBe("Vex");
+    expect(rec.version).toBe(4);
+    expect(rec.souls[2].id).toBe("cold");
+    expect(rec.identities).toEqual(m.identities);
     const r = replayMatch(rec);
-    expect(r.names).toEqual(["Brick", "Pike", "Vex", "Goldie"]);
+    expect(r.names).toEqual(m.names);
+    expect(r.identities).toEqual(m.identities);
     expect(r.record.rounds.map((x) => x.fight.finalHash)).toEqual(m.record.rounds.map((x) => x.fight.finalHash));
     expect(r.record.rounds.map((x) => x.lines)).toEqual(m.record.rounds.map((x) => x.lines));
-    expect(sanitizeRecord(rec)!.souls[2]!.color).toBe(0xaa55ff);
+    expect(sanitizeRecord(rec)!.identities).toEqual(m.identities);
   });
 });

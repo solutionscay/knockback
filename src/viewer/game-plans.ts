@@ -82,7 +82,7 @@ export class GamePlans {
 
   startLineup(lineup: HTMLElement, shown: Fight, decisions: Decision[]) {
     lineup.innerHTML = shown.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.mark, decisions[f.id]!.strategy.weapons[0] ?? "fist")}<span class="nm">${esc(f.name)}<em class="plan"></em></span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.look, decisions[f.id]!.strategy.weapons[0] ?? "fist", "fight", "tiny")}<span class="nm">${esc(f.name)}<em class="plan"></em></span></div>`)
       .join("");
     lineup.className = "show";
   }

@@ -1,7 +1,7 @@
 import { Application } from "pixi.js";
 import { initPhysics } from "../sim/sim";
 import { Game } from "./game";
-import { sanitizeRecord, sanitizeSouls } from "./sanitize";
+import { sanitizeIdentities, sanitizeRecord, sanitizeSouls } from "./sanitize";
 
 declare global {
   interface Window {
@@ -108,7 +108,7 @@ if (params.has("live")) {
     const msg = JSON.parse(ev.data);
     if (msg.type === "match") {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
-      game.newMatch(Number(msg.seed) >>> 0, { live: true, souls: sanitizeSouls(msg.souls), labels: viewerLabels(msg.labels) });
+      game.newMatch(Number(msg.seed) >>> 0, { live: true, souls: sanitizeSouls(msg.souls), identities: sanitizeIdentities(msg.identities), labels: viewerLabels(msg.labels) });
     } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta);
     else if (msg.type === "done") {
       lastRecord = isRecordUrl(msg.record) ? msg.record : null;

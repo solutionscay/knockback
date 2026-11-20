@@ -3,8 +3,8 @@
  *
  *   bun run ai-match                       # http://localhost:5175/?live
  *   bun run ai-match --host 0.0.0.0        # also on the LAN (prints the URL)
- *   bun run ai-match --lineup claude,codex,grok,claude   (fighter order: Brick, Pike, Squeaks, Goldie)
- *   bun run ai-match --lineup pike=house --souls ./souls --seed 42 --deadline 20
+ *   bun run ai-match --lineup claude,codex,grok,claude   (by seat; souls: brawler, sniper, rat, vulture)
+ *   bun run ai-match --lineup sniper=house --souls ./souls --seed 42 --deadline 20
  *   bun run ai-match --headless            # no server: just play and print the log
  *
  * Before each round all four fighters are asked in parallel; the engine plays
@@ -45,7 +45,7 @@ const loaded = (() => {
 })();
 for (const l of loaded) for (const w of l.warnings) console.warn(`soul ${l.file}: ${w}`);
 const souls = loaded.map((l) => l.soul);
-const lineup = parseLineup(flags.lineup, souls.map((s) => s.name));
+const lineup = parseLineup(flags.lineup, souls.map((s) => s.id));
 const seats = seatsFor(lineup, souls);
 const seed = flags.seed ? Number(flags.seed) >>> 0 : (Math.random() * 1e9) >>> 0;
 // --deadline overrides every provider; without it each provider uses its own (src/ai/providers.ts)
@@ -110,13 +110,13 @@ if (!headless) {
 
 // ------------------------------------------------------------ the match
 await initPhysics();
-const names = souls.map((s) => s.name);
 const labels = seats.map((s) => s.provider?.label ?? "house");
-console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}`);
-names.forEach((n, i) => console.log(`  ${n.padEnd(8)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}`));
 const t0 = performance.now();
 const match = new Match(seed, { souls });
-broadcast({ type: "match", seed, labels, names, souls: match.souls, theme: match.level.theme });
+const names = match.names;
+console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}`);
+match.identities.forEach((id, i) => console.log(`  ${id.name.padEnd(12)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}  (${id.shape} head, ${id.eyes} eyes, ${id.mark}, #${id.color.toString(16).padStart(6, "0")})`));
+broadcast({ type: "match", seed, labels, names, souls: match.souls, identities: match.identities, theme: match.level.theme });
 console.log(`  level: ${match.level.theme}, ${match.level.width} m, ${match.level.platforms} platforms\n`);
 const log: string[] = [];
 const say = (s: string) => {

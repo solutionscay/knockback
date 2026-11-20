@@ -81,7 +81,7 @@ export function renderCamBar(el: HTMLElement, m: CamMode, sim?: Sim) {
 }
 
 export function pipsHtml(match: Match, size: "small" | "big"): string {
-  const pips = match.souls.map((c, i) => {
+  const pips = match.identities.map((c, i) => {
     const w = match.wins[i]!;
     const dots = Array.from({ length: ROUNDS_TO_WIN }, (_, k) => `<b class="${k < w ? "on" : ""}"></b>`).join("");
     return `<span class="pip" style="--c:${hex(c.color)}"><i></i>${size === "big" ? esc(c.name) : ""}${dots}</span>`;
@@ -92,27 +92,27 @@ export function pipsHtml(match: Match, size: "small" | "big"): string {
 /** Short round recap: damage dealt/taken and who hurt each fighter most (from round stats). */
 export function recapHtml(match: Match, facts: RoundFacts, firings: RuleFiring[], kos: KoEvent[]): string {
   const st = facts.stats;
-  const rows = match.souls.map((c, i) => {
+  const rows = match.identities.map((c, i) => {
     const dealt = st.damage[i]!.reduce((a, s, j) => a + (j === i ? 0 : s.damage), 0);
     const took = st.damage.reduce((a, row, j) => a + (j === i ? 0 : row[i]!.damage), 0);
     const worst = topDamager(st, i);
     const w = worst >= 0 ? st.damage[worst]![i]! : null;
-    const hurt = w && w.damage >= 8 ? `${esc(match.souls[worst]!.name)} ${Math.round(w.damage)}${behindHitText(w, 1)}` : "";
+    const hurt = w && w.damage >= 8 ? `${esc(match.identities[worst]!.name)} ${Math.round(w.damage)}${behindHitText(w, 1)}` : "";
     return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
   }).join("");
   // best rule (#11): a rule firing followed within 5 s by a knockout by the same fighter
   const br = bestRule(firings, kos);
   const brRule = br ? match.record.rounds[facts.round - 1]?.strategies[br.fighter]?.rules?.[br.rule] : undefined;
-  const best = br && brRule ? `<div class="best" style="--c:${hex(match.souls[br.fighter]!.color)}">BEST RULE · <b>${esc(match.names[br.fighter]!)}</b> '${esc(brRule.label)}' → knocked out ${esc(match.names[br.victim]!)}</div>` : "";
+  const best = br && brRule ? `<div class="best" style="--c:${hex(match.identities[br.fighter]!.color)}">BEST RULE · <b>${esc(match.names[br.fighter]!)}</b> '${esc(brRule.label)}' → knocked out ${esc(match.names[br.victim]!)}</div>` : "";
   return `<div class="recap">${rows}${best}</div>`;
 }
 
 export function dialogueHtml(match: Match, decision: Decision, labels: string[] | null, b: Extract<Beat, { kind: "dialogue" }>): string {
-  const c = match.souls[b.fighter]!;
+  const c = match.identities[b.fighter]!;
   const d = decision;
   const m = match.morale[b.fighter]!;
   const s = d.strategy;
-  const tgt = esc(s.target === "grudge" && s.grudge !== undefined ? `AFTER ${match.souls[s.grudge]!.name.toUpperCase()}` : `TARGET: ${String(s.target).toUpperCase()}`);
+  const tgt = esc(s.target === "grudge" && s.grudge !== undefined ? `AFTER ${match.identities[s.grudge]!.name.toUpperCase()}` : `TARGET: ${String(s.target).toUpperCase()}`);
   const head = b.phase === "intro" ? "BEFORE ROUND 1" : `AFTER ROUND ${b.round - 1} · NEXT: ROUND ${b.round}`;
   const meta = match.record.rounds[b.round - 1]?.meta?.[b.fighter];
   const who = meta
@@ -134,9 +134,9 @@ export function dialogueHtml(match: Match, decision: Decision, labels: string[] 
   const rt = s.retaliate === "attacker" ? "TURN ON ATTACKERS" : s.retaliate === "ignore" ? "IGNORE BACKSTABS" : "FIGHT BACK";
   return `
       <div class="panel" style="--c:${hex(c.color)}">
-        <div class="portrait">${portraitSvg(c.color, c.mark, s.weapons[0] ?? "fist", m.state)}</div>
+        <div class="portrait">${portraitSvg(c, s.weapons[0] ?? "fist", m.state)}</div>
         <div class="body">
-          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${c.title ? `<span class="title">${esc(c.title.toUpperCase())}</span>` : ""}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
+          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span><span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
           <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
@@ -149,13 +149,13 @@ export function dialogueHtml(match: Match, decision: Decision, labels: string[] 
 
 export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[], matchesPlayed: number): string {
   const m = match;
-  const w = match.souls[m.winner]!;
+  const w = match.identities[m.winner]!;
   const why = m.decidedBy() === "two-wins" ? `${m.wins[m.winner]} rounds to ${Math.max(...m.wins.filter((_, i) => i !== m.winner))}` : "won the deciding round";
   const best = Math.max(1, ...tally.points);
   const rows = tally
     .ranking()
     .map((id, rank) => {
-      const c = match.souls[id]!;
+      const c = match.identities[id]!;
       const gained = matchPoints[id]!;
       const wins = m.wins[id]!;
       const kos = m.kos[id]!;

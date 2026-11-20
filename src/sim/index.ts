@@ -4,6 +4,7 @@ export * from "./fight";
 export * from "./match";
 export * from "./morale";
 export * from "./soul";
+export * from "./identity";
 export * from "./souls";
 export * from "./voice";
 export * from "./controller";

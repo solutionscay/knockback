@@ -38,7 +38,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     id,
     name: def.name,
     color: def.color,
-    mark: def.mark,
+    look: { ...def },
     prefs: WEAPON_LIST.slice(),
     entity: e,
     hp: FIGHTER.maxHp,

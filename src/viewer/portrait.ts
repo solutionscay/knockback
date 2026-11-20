@@ -1,4 +1,5 @@
 /** Big fighter portraits for intro cards and the celebrate screen (inline SVG, same look as in game). */
+import type { Identity } from "../sim/identity";
 import type { MoraleState } from "../sim/morale";
 import type { Weapon } from "../sim/sim";
 
@@ -13,8 +14,10 @@ function shade(color: number, k: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-/** `markKind` is the soul's cosmetic mark: headband | antenna | crown | ears | none. */
-export function portraitSvg(color: number, markKind: string, weapon: Weapon, mood: Mood = "fight"): string {
+/** The portrait of a fighter's generated identity (#17). */
+export function portraitSvg(id: Identity, weapon: Weapon, mood: Mood = "fight", _lod?: string): string {
+  const color = id.color;
+  const markKind = id.mark;
   const c = hex(color);
   const dark = shade(color, 0.45);
   const mark =

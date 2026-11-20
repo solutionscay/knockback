@@ -17,8 +17,9 @@ import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
 import type { SimEvent, Strategy } from "./sim";
+import { assignIdentities, legacyIdentities, sanitizeIdentity, type Identity, type IdentityWish } from "./identity";
 import { soulRecord, TEMPERAMENT_MORALE, type Soul } from "./soul";
-import { exampleSouls, lookOf } from "./souls";
+import { exampleSouls } from "./souls";
 import { houseBrain, VoiceSession, type Brain, type Decision, type DecideContext } from "./voice";
 
 export const ROUNDS_TO_WIN = 2;
@@ -70,10 +71,16 @@ export interface RoundRecord {
 }
 
 export interface MatchRecord {
-  /** 3: plans may carry rules (#5). Version 2 records (no rules) still load. */
-  version: 2 | 3;
-  /** the souls that played (identity, voice, lines): a replay needs no files */
+  /**
+   * 4: generated identities (#17); souls have no name or look.
+   * 3: plans may carry rules (#5). 2: no rules. Versions 2 and 3 still load:
+   * their souls' names, colors and marks become the identities.
+   */
+  version: 2 | 3 | 4;
+  /** the souls that played (personality, voice, lines): a replay needs no files */
   souls: Soul[];
+  /** each seat's generated name and look (version 4) */
+  identities?: Identity[];
   /** match seed: makes the level; round physics seeds derive from it */
   seed: number;
   rounds: RoundRecord[];
@@ -84,6 +91,8 @@ export interface MatchRecord {
 export interface MatchOptions {
   /** one soul per seat (default: the four example souls in souls/) */
   souls?: Soul[];
+  /** identity wishes per seat (#19: an AI picks its own name or look); the rest comes from the seed */
+  identityWishes?: (IdentityWish | undefined)[];
   /** one decision function per fighter (default: houseBrain for all) */
   brains?: Brain[];
   session?: VoiceSession;
@@ -115,6 +124,8 @@ export class Match {
   readonly session: VoiceSession;
   readonly record: MatchRecord;
   readonly souls: Soul[];
+  /** each seat's generated name and look for this match (#17) */
+  readonly identities: Identity[];
   round = 0;
   wins = [0, 0, 0, 0];
   kos = [0, 0, 0, 0];
@@ -142,16 +153,17 @@ export class Match {
     if (opts.recorded) checkRecordVersion(opts.recorded);
     this.souls = (opts.recorded?.souls ?? opts.souls ?? exampleSouls()).map(soulRecord);
     if (this.souls.length !== 4) throw new Error("a match needs 4 souls");
+    this.identities = matchIdentities(seed, opts);
     this.brains = opts.brains ?? this.souls.map(() => houseBrain);
     this.session = opts.session ?? new VoiceSession();
     this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]));
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { version: 3, seed, souls: this.souls.map(soulRecord), rounds: [], winner: -1, wins: this.wins };
+    this.record = { version: 4, seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
-    return this.souls.map((s) => s.name);
+    return this.identities.map((i) => i.name);
   }
 
   get over(): boolean {
@@ -204,7 +216,7 @@ export class Match {
     this.fight = new Fight(
       ps,
       decisions.map((d) => d.strategy),
-      { level: this.level, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.souls.map(lookOf) },
+      { level: this.level, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities },
     );
     this.fight.onEvent = (e) => this.onEvent?.(e);
     this.record.rounds.push({
@@ -274,14 +286,28 @@ export class Match {
   }
 }
 
-/** Replay a whole match from its record (recorded decisions, same seeds). */
-/** Match record versions this engine loads; anything else is refused with a clear message. */
-export const RECORD_VERSIONS = [2, 3] as const;
-export function checkRecordVersion(rec: { version?: unknown; souls?: unknown }) {
-  if (!(RECORD_VERSIONS as readonly unknown[]).includes(rec.version) || !Array.isArray(rec.souls))
-    throw new Error(`can't load this match record: version ${JSON.stringify(rec.version)}${Array.isArray(rec.souls) ? "" : " without souls"}; this engine loads versions ${RECORD_VERSIONS.join(" and ")} (version 1 records come from the classes engine)`);
+/**
+ * The identities of a match: a record's own (version 4), an old record's
+ * souls (versions 2 and 3), or generated from the seed and any wishes.
+ */
+export function matchIdentities(seed: number, opts: Pick<MatchOptions, "recorded" | "identityWishes">): Identity[] {
+  const rec = opts.recorded;
+  if (rec && Array.isArray(rec.identities) && rec.identities.length === 4) {
+    const gen = assignIdentities(seed);
+    return rec.identities.map((v, i) => sanitizeIdentity(v, i, gen[i]!));
+  }
+  if (rec) return legacyIdentities(seed, rec.souls);
+  return assignIdentities(seed, opts.identityWishes);
 }
 
+/** Match record versions this engine loads; anything else is refused with a clear message. */
+export const RECORD_VERSIONS = [2, 3, 4] as const;
+export function checkRecordVersion(rec: { version?: unknown; souls?: unknown }) {
+  if (!(RECORD_VERSIONS as readonly unknown[]).includes(rec.version) || !Array.isArray(rec.souls))
+    throw new Error(`can't load this match record: version ${JSON.stringify(rec.version)}${Array.isArray(rec.souls) ? "" : " without souls"}; this engine loads versions ${RECORD_VERSIONS.slice(0, -1).join(", ")} and ${RECORD_VERSIONS[RECORD_VERSIONS.length - 1]} (version 1 records come from the classes engine)`);
+}
+
+/** Replay a whole match from its record (recorded decisions, same seeds). */
 export function replayMatch(record: MatchRecord): Match {
   const m = new Match(record.seed, { recorded: record });
   m.playToEnd();

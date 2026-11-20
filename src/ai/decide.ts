@@ -45,20 +45,20 @@ export function loadSouls(spec = "souls"): LoadedSoul[] {
   }
   if (files.length !== 4) throw new Error(`need 4 soul files, got ${files.length} from ${spec}`);
   const out = files.map((file, seat) => {
-    const p = parseSoul(readFileSync(file, "utf8"), seat);
+    const p = parseSoul(readFileSync(file, "utf8"), seat, basename(file).replace(/\.md$/, ""));
     if (p.errors.length) throw new Error(`soul ${basename(file)}: ${p.errors.join("; ")}`);
     return { file, soul: p.soul, warnings: p.warnings };
   });
-  const names = out.map((o) => o.soul.name.toLowerCase());
-  if (new Set(names).size !== 4) throw new Error(`soul names must be different: ${out.map((o) => o.soul.name).join(", ")}`);
+  const ids = out.map((o) => o.soul.id);
+  if (new Set(ids).size !== 4) throw new Error(`soul files must have different names: ${ids.join(", ")}`);
   return out;
 }
 
 /**
- * "claude,codex,grok,claude" (by seat) or "pike=codex,goldie=house" (by soul
- * name or seat number 0-3) -> provider name per seat.
+ * "claude,codex,grok,claude" (by seat) or "sniper=codex,vulture=house" (by soul
+ * file name or seat number 0-3) -> provider name per seat.
  */
-export function parseLineup(spec: string | undefined, names: string[] = ["brick", "pike", "squeaks", "goldie"]): string[] {
+export function parseLineup(spec: string | undefined, names: string[] = EXAMPLE_SOUL_ORDER): string[] {
   if (!spec) return DEFAULT_LINEUP.slice();
   const out = DEFAULT_LINEUP.slice();
   const parts = spec.split(",").map((s) => s.trim()).filter(Boolean);

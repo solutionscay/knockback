@@ -1,7 +1,8 @@
 /**
- * Souls: a fighter's identity lives in a soul file, not in the engine.
- * All fighters are physically equal; the soul gives a name, a color, an
- * attitude, how it talks and what it values in a fight. AI fighters read the
+ * Souls: a fighter's personality lives in a soul file, not in the engine.
+ * All fighters are physically equal; the soul gives an attitude, how it
+ * talks and what it values in a fight. A soul has no name and no look: each
+ * match gives every fighter a generated identity (identity.ts, #17). AI fighters read the
  * whole file; house bots map its fields (or, failing that, keywords in its
  * text) to a strategy, and speak its lines.
  *
@@ -11,17 +12,15 @@
  */
 import { MORALE_STATES, type MoraleState } from "./morale";
 import { RULE_RETALIATE, RULE_STANCES } from "./rules";
-import { isPickupWeapon, SEAT_LOOKS, TARGET_PREFERENCES, WEAPON_LIST, type Retaliate, type Stance, type TargetPref, type Weapon } from "./sim-types";
+import { isPickupWeapon, TARGET_PREFERENCES, WEAPON_LIST, type Retaliate, type Stance, type TargetPref, type Weapon } from "./sim-types";
 
 export type Temperament = "cocky" | "confident" | "calm" | "nervous";
 export type Voice = "brash" | "smug" | "nervous" | "sly" | "plain";
-export type Mark = "headband" | "antenna" | "ears" | "crown" | "none";
 export type LineTemplate = [ctx: string, states: "*" | MoraleState[], text: string];
 
 export interface Soul {
-  name: string;
-  title: string;
-  color: number;
+  /** the soul file's key ("brawler"): for lineups and logs, never shown in the game */
+  id: string;
   temperament: Temperament;
   voice: Voice;
   /** what it values in a fight, in plain words ("goes for the weakest", "holds grudges") */
@@ -32,7 +31,6 @@ export interface Soul {
   target: TargetPref;
   retaliate: Retaliate;
   catchphrase: string;
-  mark: Mark;
   /** the free text: attitude and how it talks (what AI fighters read) */
   body: string;
   /** its own lines for the house bot, by context and morale */
@@ -42,14 +40,10 @@ export interface Soul {
 export { WEAPON_LIST as PICKUP_WEAPONS };
 const TEMPERAMENTS: readonly Temperament[] = ["cocky", "confident", "calm", "nervous"];
 const VOICES: readonly Voice[] = ["brash", "smug", "nervous", "sly", "plain"];
-const MARKS: readonly Mark[] = ["headband", "antenna", "ears", "crown", "none"];
 const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", "grappling hook": "grapple", grenades: "grenade", rockets: "rocket", launcher: "rocket" };
 
 /** Morale baseline from temperament (morale itself still comes from match events). */
 export const TEMPERAMENT_MORALE: Record<Temperament, number> = { cocky: 45, confident: 25, calm: 8, nervous: -15 };
-
-/** Seat colors used when a soul gives none (or an invalid one). */
-export const SEAT_COLORS = SEAT_LOOKS.map((look) => look.color);
 
 export interface SoulParse {
   soul: Soul;
@@ -99,8 +93,11 @@ export function inferFromText(text: string): { stance?: Stance; target?: TargetP
   return out;
 }
 
-/** Parse a soul file. Never throws: problems are reported, defaults fill the gaps. */
-export function parseSoul(text: string, seat = 0): SoulParse {
+/** Front-matter keys a soul no longer has: the match generates names and looks (#17). */
+const IDENTITY_KEYS = ["name", "title", "color", "mark"];
+
+/** Parse a soul file. Never throws: problems are reported, defaults fill the gaps. `id` is the file's key. */
+export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulParse {
   const errors: string[] = [];
   const warnings: string[] = [];
   let front: Record<string, string> = {};
@@ -137,22 +134,7 @@ export function parseSoul(text: string, seat = 0): SoulParse {
     }
     return guessed ?? fallback;
   };
-  const headline = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
-  let name = (front.name ?? headline?.split(/["“(,]/)[0] ?? "").trim();
-  if (!name) {
-    errors.push("name is missing");
-    name = `Fighter ${seat + 1}`;
-  }
-  if (name.length > 16) {
-    warnings.push(`name "${name}" is long; shortened`);
-    name = name.slice(0, 16).trim();
-  }
-  let color = SEAT_COLORS[seat % 4]!;
-  if (front.color) {
-    const c = /^#?([0-9a-fA-F]{6})$/.exec(front.color);
-    if (c) color = parseInt(c[1]!, 16);
-    else errors.push(`color: "${front.color}" is not a #rrggbb color`);
-  }
+  for (const k of IDENTITY_KEYS) if (front[k] !== undefined) warnings.push(`${k}: ignored; each match gives the fighters generated names and looks`);
   let weapons: Weapon[] = [];
   if (front.weapons) {
     for (const w of list(front.weapons)) {
@@ -166,9 +148,7 @@ export function parseSoul(text: string, seat = 0): SoulParse {
     warnings.push("no weapon preferences: defaulting to shotgun, rocket");
   }
   const soul: Soul = {
-    name,
-    title: (front.title ?? "").slice(0, 32),
-    color,
+    id: id.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 24) || `soul${seat + 1}`,
     temperament: pick("temperament", TEMPERAMENTS, "confident", guess.temperament),
     voice: pick("voice", VOICES, "plain", guess.voice),
     values: front.values ? list(front.values).slice(0, 8) : [],
@@ -177,7 +157,6 @@ export function parseSoul(text: string, seat = 0): SoulParse {
     target: pick("target", TARGET_PREFERENCES, "nearest", guess.target),
     retaliate: pick("retaliate", RULE_RETALIATE, "turn", guess.retaliate),
     catchphrase: (front.catchphrase ?? "").slice(0, 80),
-    mark: pick("mark", MARKS, "none"),
     body,
     lines,
   };

@@ -1,6 +1,7 @@
 import type RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import type { PropKind } from "./levelgen";
 import type { PieceCell } from "./terrain";
+import { generateIdentities, type Look } from "./identity";
 
 /** "fist" is what everyone starts with; the rest are picked up in the arena. */
 export type Weapon = "rocket" | "shotgun" | "bat" | "grenade" | "grapple" | "fist";
@@ -142,9 +143,9 @@ export interface Powers {
 export interface Fighter {
   id: number;
   name: string;
-  /** cosmetic, from the soul (the engine never reads these) */
+  /** cosmetic, from the generated identity (the engine never reads these) */
   color: number;
-  mark: string;
+  look: Look;
   /** weapon pickups this fighter wants, best first (from its strategy) */
   prefs: Weapon[];
   entity: Entity;
@@ -233,17 +234,9 @@ export type SimEvent =
   | { type: "rule"; tick: number; fighter: number; rule: number; on: boolean; subject: number };
 
 /**
- * How a seat looks: name, color and a cosmetic mark, from its soul. Purely
- * visual: all fighters have the same body, speed, health and fists.
+ * How a seat looks: its generated identity (identity.ts). Purely visual: all
+ * fighters have the same body, speed, health and fists.
  */
-export interface Look {
-  name: string;
-  color: number;
-  mark: string;
-}
-export const SEAT_LOOKS: Look[] = [
-  { name: "Red", color: 0xff4f4f, mark: "none" },
-  { name: "Blue", color: 0x47a3ff, mark: "none" },
-  { name: "Green", color: 0x4fdc6a, mark: "none" },
-  { name: "Gold", color: 0xffc733, mark: "none" },
-];
+export type { Look };
+/** Looks for a Sim made without any (tests, tools): the identities of seed 0. */
+export const SEAT_LOOKS: Look[] = generateIdentities(0);

@@ -105,6 +105,7 @@ function fill(text: string, ctx: DecideContext, strategy: Strategy): string | nu
   const killer = f?.koBy ? name(f.koBy.by) : f?.humiliations.find((h) => h.by >= 0 && h.by !== ctx.me) ? name(f!.humiliations.find((h) => h.by >= 0 && h.by !== ctx.me)!.by) : undefined;
   const vals: Record<string, string | undefined> = {
     me: ctx.names[ctx.me],
+    ME: ctx.names[ctx.me]?.toUpperCase(),
     killer,
     victim: f?.kosDealt.length ? name(f.kosDealt[f.kosDealt.length - 1]!.victim) : undefined,
     weapon: f?.koBy ? WEAPON_PHRASE[f.koBy.weapon] ?? f.koBy.weapon : f?.kosDealt.length ? WEAPON_PHRASE[f.kosDealt[f.kosDealt.length - 1]!.weapon] : undefined,
@@ -206,9 +207,10 @@ export const VOICE_LINES: Record<Voice, LineTemplate[]> = {
 /** Pick a line: first context with an unused template that fits morale and the facts. */
 export function pickLine(ctx: DecideContext, strategy: Strategy): { line: string; id: string } {
   const soul = ctx.souls[ctx.me]!;
+  const sid = soul.id || `seat${ctx.me}`;
   const state: MoraleState = ctx.morale[ctx.me]!.state;
   // the soul's own lines first; template lines in its voice fill the gaps
-  const all = [...soul.lines.map((t, i) => ({ t, id: `${soul.name}:${i}` })), ...VOICE_LINES[soul.voice].map((t, i) => ({ t, id: `voice:${soul.voice}:${soul.name}:${i}` }))];
+  const all = [...soul.lines.map((t, i) => ({ t, id: `${sid}:${i}` })), ...VOICE_LINES[soul.voice].map((t, i) => ({ t, id: `voice:${soul.voice}:${sid}:${i}` }))];
   const own = new Set(soul.lines.map((t) => t[0]));
   const fits = (t: LineTemplate) => t[1] === "*" || t[1].includes(state);
   const tryCtx = (c: string, allowUsed: boolean) => {
@@ -230,7 +232,7 @@ export function pickLine(ctx: DecideContext, strategy: Strategy): { line: string
     const got = tryCtx(c, true);
     if (got) return { line: got.text!, id: got.id };
   }
-  return { line: soul.catchphrase || "...", id: `${soul.name}:catchphrase` };
+  return { line: soul.catchphrase || "...", id: `${sid}:catchphrase` };
 }
 
 /**

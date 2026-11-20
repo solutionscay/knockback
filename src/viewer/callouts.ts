@@ -124,7 +124,7 @@ export function targetText(s: Strategy, names: string[]): string {
 }
 
 /**
- * The headline of a plan change, 3-5 words ("→ target Pike"), or null if
+ * The headline of a plan change, 3-5 words ("→ target Zapko"), or null if
  * nothing that matters changed. Target first, then stance, weapons,
  * retaliate, rules.
  */

@@ -7,6 +7,7 @@
 import type { Application } from "pixi.js";
 import { betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
 import { Tally } from "../flow/score";
+import type { Identity } from "../sim/identity";
 import type { Soul } from "../sim/soul";
 import { DT } from "../sim/constants";
 import type { Fight } from "../sim/fight";
@@ -115,8 +116,9 @@ export class Game {
    * exactly (all decisions from the record). `live`: decisions arrive later via
    * pushDecisions() (AI fighters thinking on the server).
    */
-  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[] } = {}) {
-    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, souls: opts.souls });
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[] } = {}) {
+    // live: the server's identities come as wishes; they are valid and distinct, so they are kept as they are
+    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, souls: opts.souls, identityWishes: opts.identities });
     this.match.onEvent = (e) => this.onEvent(e);
     this.labels = opts.labels ?? null;
     this.live = !!opts.live;
@@ -127,7 +129,7 @@ export class Game {
       // show the arena while the fighters think about round 1
       this.waitingRound = 1;
       this.shown = null as unknown as Fight;
-      const preview = new Match(seed, { souls: this.match.souls });
+      const preview = new Match(seed, { souls: this.match.souls, identityWishes: this.match.identities });
       preview.prepareRound();
       this.shown = preview.fight!;
       this.scene.load(this.shown.sim);
@@ -201,7 +203,7 @@ export class Game {
     switch (b.kind) {
       case "level": {
         const lv = this.match.level;
-        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking: ${this.labels?.map((l, i) => `${esc(this.match.souls[i]!.name)} (${esc(l)})`).join(" · ") ?? ""}</div>` : "";
+        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking: ${this.labels?.map((l, i) => `${esc(this.match.identities[i]!.name)} (${esc(l)})`).join(" · ") ?? ""}</div>` : "";
         this.scene.camera.overview = true;
         h.intro.innerHTML = `
           <div class="levelcard">
@@ -261,7 +263,7 @@ export class Game {
         const scores = this.tally.add(res);
         for (const s of scores) this.matchPoints[s.fighter]! += s.total;
         saveTally(this.tally);
-        const w = this.match.souls[facts.winner]!;
+        const w = this.match.identities[facts.winner]!;
         const decided = this.match.over;
         h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span>${pipsHtml(this.match, "big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
         h.callout.innerHTML += recapHtml(this.match, facts, this.plans.roundFirings, this.plans.roundKos);

@@ -119,10 +119,10 @@ describe("stored rules and records (#5)", () => {
     expect(out[1]!.label.length).toBe(40);
   });
 
-  test("new records are version 3 and keep rules; version 2 records still load; others are refused clearly", () => {
+  test("new records are version 4 and keep rules; version 2 and 3 records still load; others are refused clearly", () => {
     const m = new Match(3);
     m.prepareRound([0, 1, 2, 3].map((i) => ({ line: "x", strategy: { target: "nearest", stance: "rush", weapons: ["bat"], rules: i === 0 ? [{ when: "alone_with", do: "stance", stance: "rush", label: "duel" }] : undefined, line: "x" } })));
-    expect(m.record.version).toBe(3);
+    expect(m.record.version).toBe(4);
     expect(m.record.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     expect(sanitizeRecord(JSON.parse(JSON.stringify(m.record)))!.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     // a version 2 record made by the current engine (the #3/#4 eval) replays exactly
@@ -132,12 +132,15 @@ describe("stored rules and records (#5)", () => {
       expect(rec.version).toBe(2);
       expect(() => replayMatch(rec)).not.toThrow();
       expect(sanitizeRecord(rec)).not.toBeNull();
+      // an old record keeps its fighters' names and colors (#17)
+      expect(replayMatch(sanitizeRecord(rec)!).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
+      expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).identities.map((i) => i.color)).toEqual(rec.souls.map((s: { color: number }) => s.color));
     }
     const v2made = new Match(11);
     v2made.playToEnd();
     const rec2 = { ...JSON.parse(JSON.stringify(v2made.record)), version: 2 };
     expect(replayMatch(rec2).record.rounds.map((r) => r.fight.finalHash)).toEqual(v2made.record.rounds.map((r) => r.fight.finalHash));
-    expect(() => new Match(1, { recorded: { ...rec2, version: 1 } })).toThrow(/version 1.*loads versions 2 and 3/);
+    expect(() => new Match(1, { recorded: { ...rec2, version: 1 } })).toThrow(/version 1.*loads versions 2, 3 and 4/);
     expect(sanitizeRecord({ ...rec2, version: 1 })).toBeNull();
   });
 });

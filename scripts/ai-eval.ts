@@ -52,7 +52,7 @@ const loaded = (() => {
 const souls = loaded.map((l) => l.soul);
 let lineup: string[] = [];
 try {
-  lineup = parseLineup(flags.lineup, souls.map((s) => s.name));
+  lineup = parseLineup(flags.lineup, souls.map((s) => s.id));
 } catch (e) {
   fail(e instanceof Error ? e.message : String(e));
 }
