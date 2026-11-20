@@ -82,6 +82,7 @@ bun run match-server                                   # http://localhost:5176/a
 bun run match-server --host 0.0.0.0                    # also on the LAN; watch at http://<lan-ip>:5176/?live
 bun run match-server --host 0.0.0.0 --open             # trusted LAN: no seat tokens (turn/plan/leave take ?seat=N)
 bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
+bun run match-server --db records/match-server.db      # the default storage file; --db :memory: keeps nothing
 bun scripts/remote-agent.ts --server http://localhost:5176 --mode random   # or fixed | silent | cli --cmd "claude -p ..."
 ```
 
@@ -99,6 +100,15 @@ get the house bot when the match starts (`--fill-after`, default 60 s, or as soo
 `GET /api/matches/:id/report` has the plans and results; spectators use `/?live` (the newest match).
 Records land in `records/remote-<seed>-<time>.json` and replay like any AI match. Limits: JSON bodies only, at
 most 16 KB; per-address and per-seat rate limits; 8 seats and 2 open matches per address. Code: `src/server/`.
+
+**Storage and restarts:** the server writes matches, seats (token hashes only), every round's decisions and
+final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, default `<out>/match-server.db`;
+schema and migrations in `src/server/store.ts`, behind a `MatchStore` interface meant to also fit Cloudflare
+D1 or Durable Object storage). After a restart, open matches wait again and running matches resume: their
+stored rounds replay (the sim is deterministic) and the match plays on, with the same seat tokens and the same
+hashes as if the server had never stopped (`tests/restart.test.ts` kills it with SIGKILL mid-match). Agents only
+need to retry their long poll. A viewer on `/?live` reconnects and replays the match from round 1.
+`GET /api/records` lists the saved records with their hashes.
 
 ## AI eval (measure before changing prompts or rules)
 
@@ -161,5 +171,5 @@ bun run typecheck
 - `src/flow/` - the match loop as data (beat sequence, runner) and scoring/tally. Pure, tested.
 - `src/viewer/` - PixiJS viewer (camera, juice, HUD) that draws each beat. Reads sim state, never writes it.
 - `src/ai/runner.ts` - MatchRunner: one match with any mix of house, local AI and remote seats (used by ai-match and the match server)
-- `src/server/` - match server: HTTP API, remote seats, limits, live stream
+- `src/server/` - match server: HTTP API, remote seats, seat tokens, storage (SQLite) and resume, limits, live stream
 - `scripts/` - dev server, batch stats, video recorder, ai-match, match-server, remote-agent
