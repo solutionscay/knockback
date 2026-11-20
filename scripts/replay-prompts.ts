@@ -5,7 +5,7 @@
  *   bun scripts/replay-prompts.ts <record.json> [--out prompts.json] [--print <seat> <round>]
  */
 import { writeFileSync } from "node:fs";
-import { buildPrompt } from "../src/ai/prompt";
+import { buildRoundPrompts } from "../src/ai/prompt";
 import { checkRecordVersion, initPhysics, Match, type MatchRecord } from "../src/sim";
 
 const args = process.argv.slice(2);
@@ -25,14 +25,9 @@ try {
 const m = new Match(rec.seed, { recorded: rec });
 const out: { round: number; prompts: string[] }[] = [];
 while (!m.over) {
-  const prev = m.record.rounds[m.record.rounds.length - 1];
-  const extras = {
-    level: m.level,
-    lastLines: prev ? prev.lines : null,
-    lastHealth: m.facts.length ? m.facts[m.facts.length - 1]!.fighters.map((f) => f.hpEnd) : null,
-  };
   const round = m.round + 1;
-  out.push({ round, prompts: m.souls.map((s, i) => buildPrompt(s, m.contextFor(i), { ...extras, myLines: m.record.rounds.map((r) => r.lines[i]!), lastPlans: m.record.rounds.length ? m.record.rounds[m.record.rounds.length - 1]!.strategies : null, seed: rec.seed })) });
+  const contexts = m.souls.map((_, i) => m.contextFor(i));
+  out.push({ round, prompts: buildRoundPrompts(m, m.souls, contexts) });
   m.prepareRound();
   while (!m.step()) {
     /* replay */

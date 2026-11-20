@@ -1,11 +1,11 @@
 /** Contact sheet for quick visual review: bun scripts/sheet.ts <seed> <out.jpg> <start> <step> [count=12] */
-import { chromium } from "playwright";
+import { launchViewerBrowser } from "./viewer-browser";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 const [seed = "1", out = "sheet.jpg", start = "2", step = "2", count = "12"] = process.argv.slice(2);
 const dir = mkdtempSync(join(process.env.SHEET_TMP ?? tmpdir(), "sheet-"));
-const browser = await chromium.launch({ args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
+const browser = await launchViewerBrowser();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 await page.goto(`http://localhost:5173/?seed=${seed}&capture`);

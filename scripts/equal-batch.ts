@@ -6,14 +6,11 @@
  *   bun scripts/equal-batch.ts [N=200] [firstSeed=1]
  */
 import { exampleSouls, initPhysics, Match, WEAPON_LIST, type Weapon } from "../src/sim";
+import { comparisonBatchOptions, sampleQuantile } from "./batch-options";
 
 await initPhysics();
-const pos = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--house-rules");
-const N = Number(pos[0] ?? 200);
-const first = Number(pos[1] ?? 1);
+const { count: N, first, houseRules } = comparisonBatchOptions(process.argv);
 const souls = exampleSouls();
-// --house-rules off: house bots without plan rules (#6 A/B)
-const houseRules = !process.argv.includes("--house-rules=off") && process.argv[process.argv.indexOf("--house-rules") + 1] !== "off";
 const seatRounds = [0, 0, 0, 0];
 const seatMatches = [0, 0, 0, 0];
 const soulRounds = [0, 0, 0, 0];
@@ -73,10 +70,6 @@ for (let k = 0; k < N; k++) {
 }
 const pct = (a: number, b: number) => `${((100 * a) / b).toFixed(1)}%`;
 const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
-const q = (a: number[], p: number) => {
-  const s = a.slice().sort((x, y) => x - y);
-  return s[Math.min(s.length - 1, Math.floor(p * s.length))]!;
-};
 const R = sum(seatRounds);
 const out: string[] = [];
 out.push(`${N} matches, ${R} rounds, ${((performance.now() - t0) / 1000).toFixed(0)} s (souls rotated across seats every match)`);
@@ -84,8 +77,8 @@ out.push(`round wins per seat:  ${seatRounds.map((w, i) => `seat ${i + 1} ${pct(
 out.push(`match wins per seat:  ${seatMatches.map((w, i) => `seat ${i + 1} ${pct(w, N)}`).join(", ")}`);
 out.push(`round wins per soul:  ${soulRounds.map((w, i) => `${souls[i]!.name} ${pct(w, R)}`).join(", ")}`);
 out.push(`match wins per soul:  ${soulMatches.map((w, i) => `${souls[i]!.name} ${pct(w, N)}`).join(", ")}`);
-out.push(`time to first weapon: median ${q(firstWeapon, 0.5).toFixed(1)} s, 75% within ${q(firstWeapon, 0.75).toFixed(1)} s, 90% within ${q(firstWeapon, 0.9).toFixed(1)} s; never armed in ${pct(neverArmed, fighterRounds)} of fighter-rounds`);
-out.push(`pickups per round: mean ${(sum(pickupsPerRound) / R).toFixed(1)} (weapons ${(sum(weaponPickups) / R).toFixed(1)}), round length median ${q(roundSecs, 0.5).toFixed(0)} s`);
+out.push(`time to first weapon: median ${sampleQuantile(firstWeapon, 0.5).toFixed(1)} s, 75% within ${sampleQuantile(firstWeapon, 0.75).toFixed(1)} s, 90% within ${sampleQuantile(firstWeapon, 0.9).toFixed(1)} s; never armed in ${pct(neverArmed, fighterRounds)} of fighter-rounds`);
+out.push(`pickups per round: mean ${(sum(pickupsPerRound) / R).toFixed(1)} (weapons ${(sum(weaponPickups) / R).toFixed(1)}), round length median ${sampleQuantile(roundSecs, 0.5).toFixed(0)} s`);
 const K = sum(Object.values(kills));
 out.push(`knockouts by weapon (${K}): ${Object.entries(kills)
   .sort((a, b) => b[1] - a[1])

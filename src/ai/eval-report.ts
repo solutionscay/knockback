@@ -1,3 +1,4 @@
+import { formatSeconds } from "../format";
 import { r3 } from "./eval-metrics";
 import { NA, type ChangeStats, type EvalReport, type RulesStats } from "./eval-types";
 
@@ -110,7 +111,7 @@ export function reportMarkdown(rep: EvalReport, opts: { title?: string; compare?
   if (!rel.length) L.push(`${NA}: no AI seats.`, "");
   else {
     L.push("| Provider | Calls | OK | Hedged | Timeouts | Errors | Invalid | Fallbacks | Median | p90 | Max |", "|---|---|---|---|---|---|---|---|---|---|---|");
-    for (const [k, r] of rel) L.push(`| ${k} | ${r.calls} | ${r.ok} | ${r.hedged ?? 0} | ${r.timeouts} | ${r.errors} | ${r.invalid} | ${r.fallbacks} | ${(r.ms.median / 1000).toFixed(1)} s | ${(r.ms.p90 / 1000).toFixed(1)} s | ${(r.ms.max / 1000).toFixed(1)} s |`);
+    for (const [k, r] of rel) L.push(`| ${k} | ${r.calls} | ${r.ok} | ${r.hedged ?? 0} | ${r.timeouts} | ${r.errors} | ${r.invalid} | ${r.fallbacks} | ${formatSeconds(r.ms.median)} | ${formatSeconds(r.ms.p90)} | ${formatSeconds(r.ms.max)} |`);
     L.push("");
   }
 

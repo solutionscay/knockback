@@ -84,10 +84,18 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "n" || e.key === "N") start(randomSeed());
 });
 
+const isRecordUrl = (url: unknown): url is string => typeof url === "string" && /^\/records\/[\w.-]+\.json$/.test(url);
+const viewerLabels = (labels: unknown) => Array.isArray(labels) ? labels.slice(0, 4).map((label) => String(label).slice(0, 40)) : undefined;
+
+async function fetchRecord(url: string) {
+  const raw = await (await fetch(url)).json();
+  return { raw, rec: sanitizeRecord(raw) };
+}
+
 const seedParam = params.get("seed");
 // only same-origin saved records: /records/<file>.json
 const recordParam = params.get("record");
-const recordUrl = recordParam && /^\/records\/[\w.-]+\.json$/.test(recordParam) ? recordParam : null;
+const recordUrl = isRecordUrl(recordParam) ? recordParam : null;
 let lastRecord: string | null = recordUrl;
 if (params.has("live")) {
   // Live AI match: the ai-match server streams each round's decisions.
@@ -100,10 +108,10 @@ if (params.has("live")) {
     const msg = JSON.parse(ev.data);
     if (msg.type === "match") {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
-      game.newMatch(Number(msg.seed) >>> 0, { live: true, souls: sanitizeSouls(msg.souls), labels: Array.isArray(msg.labels) ? msg.labels.slice(0, 4).map((l: unknown) => String(l).slice(0, 40)) : undefined });
+      game.newMatch(Number(msg.seed) >>> 0, { live: true, souls: sanitizeSouls(msg.souls), labels: viewerLabels(msg.labels) });
     } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta);
     else if (msg.type === "done") {
-      lastRecord = typeof msg.record === "string" && /^\/records\/[\w.-]+\.json$/.test(msg.record) ? msg.record : null;
+      lastRecord = isRecordUrl(msg.record) ? msg.record : null;
       seedEl.textContent += ` · replay: ?record=${msg.record}`;
     }
   };
@@ -111,8 +119,7 @@ if (params.has("live")) {
   // Replay a saved match exactly (every decision from the record).
   game.autoNext = null;
   game.onNeedNewMatch = () => location.reload();
-  const raw = await (await fetch(recordUrl)).json();
-  const rec = sanitizeRecord(raw);
+  const { raw, rec } = await fetchRecord(recordUrl);
   if (!rec) {
     // refuse clearly, on screen
     const why = raw && typeof raw === "object" && "version" in raw && raw.version !== 2 && raw.version !== 3 ? `record version ${JSON.stringify(raw.version)}; this viewer replays versions 2 and 3` : "not a Knockback match record";
@@ -124,7 +131,7 @@ if (params.has("live")) {
     document.body.appendChild(box);
     throw new Error(`can't replay: ${why}`);
   }
-  const labels = Array.isArray(raw.labels) ? raw.labels.slice(0, 4).map((l: unknown) => String(l).slice(0, 40)) : undefined;
+  const labels = viewerLabels(raw.labels);
   seedEl.textContent = `seed ${rec.seed} · replay`;
   game.newMatch(rec.seed, { recorded: rec, labels });
 } else start(seedParam !== null && seedParam !== "" ? Number(seedParam) >>> 0 : randomSeed());
@@ -140,11 +147,10 @@ if (capture) {
     },
     newMatch: (seed) => start(seed),
     loadRecord: async (url: string) => {
-      if (!/^\/records\/[\w.-]+\.json$/.test(url)) throw new Error("records must be /records/<file>.json");
-      const raw = await (await fetch(url)).json();
-      const rec = sanitizeRecord(raw);
+      if (!isRecordUrl(url)) throw new Error("records must be /records/<file>.json");
+      const { raw, rec } = await fetchRecord(url);
       if (!rec) throw new Error("not a Knockback match record");
-      game.newMatch(rec.seed, { recorded: rec, labels: Array.isArray(raw.labels) ? raw.labels.slice(0, 4).map((l: unknown) => String(l).slice(0, 40)) : undefined });
+      game.newMatch(rec.seed, { recorded: rec, labels: viewerLabels(raw.labels) });
     },
     setCamera: (mode) => game.setCamera(mode),
     state: () => ({

@@ -6,9 +6,9 @@
  */
 import type { Application } from "pixi.js";
 import { betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
-import { Tally, type FightScore } from "../flow/score";
+import { Tally } from "../flow/score";
 import type { Soul } from "../sim/soul";
-import { DT, FIGHT_TICKS, TICK_RATE } from "../sim/constants";
+import { DT } from "../sim/constants";
 import type { Fight } from "../sim/fight";
 import { Match, ROUNDS_TO_WIN, type DecisionMeta, type MatchRecord } from "../sim/match";
 import type { SimEvent } from "../sim/sim";
@@ -16,7 +16,7 @@ import { VoiceSession, type Decision } from "../sim/voice";
 import { hex } from "./portrait";
 import { sanitizeDecision } from "./sanitize";
 import { Scene, type CamMode } from "./scene";
-import { celebrateHtml, dialogueHtml, esc, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, restart, saveCamera, saveTally, type Hud } from "./game-hud";
+import { celebrateHtml, dialogueHtml, esc, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, renderDialogueLine, renderRoundClock, restart, saveCamera, saveTally, type Hud } from "./game-hud";
 import { GamePlans } from "./game-plans";
 
 const SLOW_TIME = 1.6;
@@ -44,7 +44,6 @@ export class Game {
   tally: Tally;
   /** points gained this match, per fighter */
   matchPoints = [0, 0, 0, 0];
-  matchScores: FightScore[][] = [];
   readonly session = new VoiceSession();
   private decisions: Decision[] = [];
   private acc = 0;
@@ -124,7 +123,6 @@ export class Game {
     this.liveQueue.clear();
     this.waitingRound = 0;
     this.matchPoints = [0, 0, 0, 0];
-    this.matchScores = [];
     if (this.live) {
       // show the arena while the fighters think about round 1
       this.waitingRound = 1;
@@ -162,10 +160,6 @@ export class Game {
       el.className = "";
       el.innerHTML = "";
     }
-  }
-
-  planLine(i: number): string {
-    return this.plans.planLine(i, this.match, this.shown, this.decisions);
   }
 
   /** Live AI match: the server sends each round's decisions as soon as the fighters have answered. */
@@ -265,7 +259,6 @@ export class Game {
         const facts = this.match.finishRound();
         const res = this.match.results[this.match.results.length - 1]!;
         const scores = this.tally.add(res);
-        this.matchScores.push(scores);
         for (const s of scores) this.matchPoints[s.fighter]! += s.total;
         saveTally(this.tally);
         const w = this.match.souls[facts.winner]!;
@@ -394,19 +387,8 @@ export class Game {
     this.scene.setCallouts(this.plans.update(this.clock, beat.kind !== "fight" || this.slow > 0), this.clock);
     if (beat.kind === "go" || beat.kind === "fight") this.plans.renderChips(this.hud.lineup, this.match, this.shown, this.decisions);
 
-    // per-frame HUD bits driven by beat progress (so capture stays in sync)
-    if (beat.kind === "dialogue") {
-      const line = this.decisions[beat.fighter]!.line;
-      const typed = this.hud.dialogue.querySelector<HTMLElement>(".typed");
-      const n = Math.floor(line.length * Math.min(1, Math.max(0, (this.flow.t - 0.2) / Math.min(1.6, beat.duration * 0.5))));
-      if (typed && typed.textContent!.length !== n) typed.textContent = line.slice(0, n);
-    }
-    if (beat.kind === "go" || beat.kind === "fight") {
-      const left = Math.max(0, (FIGHT_TICKS - this.shown.sim.tick) / TICK_RATE);
-      const txt = `<span class="r">ROUND ${this.match.round}</span>${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${pipsHtml(this.match, "small")}`;
-      if (this.hud.clock.innerHTML !== txt) this.hud.clock.innerHTML = txt;
-      this.hud.clock.className = left < 10 ? "show low" : "show";
-    }
+    if (beat.kind === "dialogue") renderDialogueLine(this.hud.dialogue, this.decisions[beat.fighter]!.line, this.flow.t, beat.duration);
+    if (beat.kind === "go" || beat.kind === "fight") renderRoundClock(this.hud.clock, this.match, this.shown.sim.tick);
     if (this.flow.done && this.match.over && this.autoNext !== null) {
       this.idleAfter += dt;
       const btn = this.hud.celebrate.querySelector<HTMLElement>(".auto");

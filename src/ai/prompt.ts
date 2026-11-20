@@ -6,7 +6,8 @@
  * its own earlier lines (so it doesn't repeat itself) and the choices.
  */
 import type { LevelDef } from "../sim/levelgen";
-import type { RoundStats } from "../sim/roundstats";
+import type { Match } from "../sim/match";
+import type { HitStat, RoundStats } from "../sim/roundstats";
 import type { Strategy } from "../sim/sim";
 import type { Soul } from "../sim/soul";
 import type { DecideContext } from "../sim/voice";
@@ -66,6 +67,10 @@ export function soulText(s: Soul): string {
 const WEAPON_NAME: Record<string, string> = { grapple: "hook", fist: "fists", impact: "a wall", crush: "falling junk", fall: "a fall", zone: "the zone" };
 const wname = (w: string) => WEAPON_NAME[w] ?? w;
 
+function topWeapon(stat: HitStat): string | undefined {
+  return Object.entries(stat.byWeapon).sort((a, b) => b[1].damage - a[1].damage)[0]?.[0];
+}
+
 /**
  * "WHAT HAPPENED TO YOU" (#4): who knocked me out, who hurt me most, who hit
  * me from behind most, whom I knocked out. One fact per sentence, names only.
@@ -83,7 +88,7 @@ export function whatHappenedLines(st: RoundStats, me: number, names: string[]): 
   if (top < 0) out.push(`Nobody damaged you.`);
   else {
     const s = st.damage[top]![me]!;
-    const w = Object.entries(s.byWeapon).sort((p, q) => q[1].damage - p[1].damage)[0]?.[0];
+    const w = topWeapon(s);
     out.push(`Most damage to you: ${names[top]} (${Math.round(s.damage)}${w ? `, ${wname(w)}` : ""}).`);
   }
   const behind = [0, 1, 2, 3].map((a) => (a === me ? 0 : st.damage[a]![me]!.fromBehind));
@@ -240,7 +245,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       .filter((a) => a !== me && st.damage[a]![me]!.damage >= 1)
       .map((a) => {
         const s = st.damage[a]![me]!;
-        const w = Object.entries(s.byWeapon).sort((p, q) => q[1].damage - p[1].damage)[0]?.[0];
+        const w = topWeapon(s);
         return `${names[a]} ${r(s.damage)} (${s.hits} hits, ${s.fromBehind} behind, ${wname(w ?? "")})`;
       });
     lines.push(`DAMAGE YOU TOOK: ${took.join("; ") || "none"}.`);
@@ -267,4 +272,23 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
   if (last) out.push(`EXAMPLES of changing a plan: ${examplesFor(x.seed ?? 0, ctx.round, me).join(" ")} If your last plan worked, keep it: change only what the facts show failed, or add a rule for it.`);
   out.push(`Reply ONLY with JSON: {"weapons":[1 to 3 weapons],"target":"<name or preference>","stance":"<stance>","retaliate":"<attacker|turn|ignore>","rules":[0 to 4 rules, e.g. ${rex[2]}],"why":"<reason>","line":"<what you say>"}`);
   return out.join("\n\n");
+}
+
+/** Assemble a round's prompt history for live decisions or a replay. */
+export function buildRoundPrompts(match: Match, souls: Soul[], contexts: DecideContext[], includeRuleProblems = false): string[] {
+  const rounds = match.record.rounds;
+  const previous = rounds[rounds.length - 1];
+  const lastFacts = match.facts[match.facts.length - 1];
+  const extras: PromptExtras = {
+    level: match.level,
+    lastLines: previous?.lines ?? null,
+    lastHealth: lastFacts ? lastFacts.fighters.map((f) => f.hpEnd) : null,
+    lastPlans: previous?.strategies ?? null,
+    seed: match.seed,
+  };
+  return souls.map((soul, seat) => buildPrompt(soul, contexts[seat]!, {
+    ...extras,
+    myLines: rounds.map((r) => r.lines[seat]!),
+    ...(includeRuleProblems ? { lastRuleProblems: previous?.meta?.[seat]?.ruleProblems } : {}),
+  }));
 }

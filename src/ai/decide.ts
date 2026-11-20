@@ -11,7 +11,7 @@ import { EXAMPLE_SOUL_ORDER } from "../sim/souls";
 import { houseBrain, type Decision } from "../sim/voice";
 import { checkFactsFromStats, checkLine } from "./factcheck";
 import { parseAnswer } from "./parse";
-import { buildPrompt } from "./prompt";
+import { buildRoundPrompts } from "./prompt";
 import { askHedged, PROVIDERS, type Provider } from "./providers";
 
 export const DEFAULT_LINEUP = ["claude", "codex", "grok", "claude"];
@@ -89,11 +89,8 @@ export interface RoundAsk {
  * without it each provider uses its `deadlineMs` (or DEFAULT_DEADLINE_MS).
  */
 export async function decideRound(match: Match, seats: Seat[], deadlineMs?: number): Promise<RoundAsk> {
-  const prevRound = match.record.rounds[match.record.rounds.length - 1];
-  const lastLines = prevRound ? prevRound.lines : null;
-  const lastHealth = match.facts.length ? match.facts[match.facts.length - 1]!.fighters.map((f) => f.hpEnd) : null;
   const ctxs = seats.map((_, me) => match.contextFor(me));
-  const prompts = seats.map((s, me) => buildPrompt(s.soul, ctxs[me]!, { level: match.level, lastLines, lastHealth, myLines: match.record.rounds.map((r) => r.lines[me]!), lastPlans: prevRound ? prevRound.strategies : null, seed: match.seed, lastRuleProblems: prevRound?.meta?.[me]?.ruleProblems }));
+  const prompts = buildRoundPrompts(match, seats.map((s) => s.soul), ctxs, true);
   const results = await Promise.all(
     seats.map(async (seat, me) => {
       const started = performance.now();

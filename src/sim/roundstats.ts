@@ -164,10 +164,20 @@ function mainKey<T extends string>(rec: Record<T, number>): T | null {
   return best;
 }
 
-/** The headline about the fighter who hurt `me` most. */
-export function attackerLine(st: RoundStats, me: number, names: string[]): string | null {
+/** Seat of the rival who did the most damage, with ties going to the first seat. */
+export function topDamager(st: RoundStats, me: number): number {
   let worst = -1;
   for (let a = 0; a < 4; a++) if (a !== me && st.damage[a]![me]!.damage > (worst >= 0 ? st.damage[worst]![me]!.damage : 0)) worst = a;
+  return worst;
+}
+
+export function behindHitText(stat: HitStat, moreThan: number): string {
+  return stat.hits > moreThan && stat.fromBehind === stat.hits ? " from behind" : stat.fromBehind >= 2 ? ` (${stat.fromBehind} from behind)` : "";
+}
+
+/** The headline about the fighter who hurt `me` most. */
+export function attackerLine(st: RoundStats, me: number, names: string[]): string | null {
+  const worst = topDamager(st, me);
   if (worst < 0) return null;
   const s = st.damage[worst]![me]!;
   if (s.damage < 8) return null;
@@ -176,7 +186,7 @@ export function attackerLine(st: RoundStats, me: number, names: string[]): strin
   const w = mainKey(weapons);
   const r = mainKey(s.byRange);
   // precise: "from behind" only if every hit was; otherwise say how many
-  const behind = s.hits > 0 && s.fromBehind === s.hits ? " from behind" : s.fromBehind >= 2 ? ` (${s.fromBehind} from behind)` : "";
+  const behind = behindHitText(s, 0);
   const chased = st.targetSeconds[me]![worst]!;
   const total = st.targetSeconds[me]!.reduce((a, b) => a + b, 0);
   const ignored = total > 4 && chased / total < 0.2 ? `, and you never turned on ${names[worst]}` : "";

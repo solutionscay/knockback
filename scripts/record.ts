@@ -13,7 +13,7 @@
  */
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "playwright";
+import { launchViewerBrowser } from "./viewer-browser";
 import { initPhysics, Match, replayMatch } from "../src/sim";
 
 // flags: --url <base>, --camera <auto|all|follow:N> (also --flag=value)
@@ -59,7 +59,7 @@ mkdirSync(framesDir, { recursive: true });
 mkdirSync(shotsDir, { recursive: true });
 
 await initPhysics();
-const browser = await chromium.launch({ args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
+const browser = await launchViewerBrowser();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 

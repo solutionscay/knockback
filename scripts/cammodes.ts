@@ -6,14 +6,14 @@
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "playwright";
+import { launchViewerBrowser } from "./viewer-browser";
 import { initPhysics, Match } from "../src/sim";
 
 const [out = "out", seedArg = "95"] = process.argv.slice(2);
 const seed = Number(seedArg);
 mkdirSync(out, { recursive: true });
 await initPhysics();
-const browser = await chromium.launch({ args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
+const browser = await launchViewerBrowser();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 await page.goto(`http://localhost:5173/?seed=${seed}&capture`);
@@ -31,8 +31,6 @@ const shot = async (name: string) => {
 // ---- screenshots of each mode, same moment of the same fight
 await cam({ kind: "auto" });
 await adv(22); // level card, intros, countdown, into the fight
-const t0 = 0;
-void t0;
 await cam({ kind: "auto" });
 await adv(1.5);
 await shot("1-auto.png");

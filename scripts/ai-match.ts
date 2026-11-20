@@ -15,13 +15,14 @@
  *
  * Providers: claude, codex, grok, house (built-in bot); stub/slow/junk/broken for testing.
  */
+import { formatSeconds } from "../src/format";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { networkInterfaces } from "node:os";
 import { join, resolve } from "node:path";
 import { decideRound, DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
 import { PROVIDERS, registerStubs } from "../src/ai/providers";
 import { initPhysics, Match } from "../src/sim";
 import index from "../index.html";
+import { logLanUrls, serveRecord } from "./viewer-server";
 
 const flags: Record<string, string> = {};
 {
@@ -95,16 +96,11 @@ if (!headless) {
         });
         return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
       }
-      if (url.pathname.startsWith("/records/")) {
-        const f = Bun.file(join(outDir, url.pathname.slice("/records/".length).replace(/[^\w.-]/g, "")));
-        return new Response(f, { headers: { "content-type": "application/json" } });
-      }
-      return new Response("Not found", { status: 404 });
+      return serveRecord(url.pathname, outDir) ?? new Response("Not found", { status: 404 });
     },
   });
   console.log(`AI match viewer: http://localhost:${server.port}/?live`);
-  if (hostname === "0.0.0.0" || hostname === "::")
-    for (const list of Object.values(networkInterfaces())) for (const ni of list ?? []) if (ni.family === "IPv4" && !ni.internal) console.log(`  LAN: http://${ni.address}:${server.port}/?live`);
+  logLanUrls(hostname, server.port, "/?live");
   const wait = Number(flags.wait ?? 0);
   if (wait > 0) {
     console.log(`waiting ${wait} s for a viewer to connect...`);
@@ -138,10 +134,10 @@ while (!match.over) {
   const askMs = Math.round(performance.now() - askStart);
   promptLog.push({ round, prompts: ask.prompts, raw: ask.raw });
   broadcast({ type: "decisions", round, decisions: ask.decisions, meta: ask.meta });
-  say(`ROUND ${round} plans (${(askMs / 1000).toFixed(1)} s to decide)`);
+  say(`ROUND ${round} plans (${formatSeconds(askMs)} to decide)`);
   ask.decisions.forEach((d, i) => {
     const m = ask.meta[i]!;
-    const tag = m.outcome === "ok" ? `${m.provider} ${(m.ms / 1000).toFixed(1)} s` : `${m.provider} ${(m.ms / 1000).toFixed(1)} s ${m.outcome.toUpperCase()}${m.detail ? ` (${m.detail})` : ""}`;
+    const tag = m.outcome === "ok" ? `${m.provider} ${formatSeconds(m.ms)}` : `${m.provider} ${formatSeconds(m.ms)} ${m.outcome.toUpperCase()}${m.detail ? ` (${m.detail})` : ""}`;
     say(`  ${names[i]!.padEnd(8)} [${tag}] "${d.line}"`);
     say(`  ${" ".repeat(8)}  plan: ${stratText(d.strategy)}`);
   });
@@ -158,7 +154,7 @@ while (!match.over) {
   say("");
 }
 const totalMs = performance.now() - t0;
-say(`MATCH: ${names[match.winner]} wins ${match.wins.join("-")} (${match.decidedBy()}), ${match.round} rounds, ${(totalMs / 1000).toFixed(1)} s total`);
+say(`MATCH: ${names[match.winner]} wins ${match.wins.join("-")} (${match.decidedBy()}), ${match.round} rounds, ${formatSeconds(totalMs)} total`);
 
 // response times + fallbacks
 say(`\nResponse times and fallbacks:`);
@@ -168,7 +164,7 @@ names.forEach((n, i) => {
   const fb = ms.filter((m) => m!.outcome.startsWith("fallback"));
   const avg = okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : 0;
   say(
-    `  ${n.padEnd(8)} ${labels[i]!.padEnd(18)} ${okMs.map((x) => (x / 1000).toFixed(1) + " s").join(", ") || "-"}${okMs.length ? `  (avg ${(avg / 1000).toFixed(1)} s)` : ""}  fallbacks: ${fb.length}${fb.length ? " " + fb.map((m) => `${m!.outcome}${m!.detail ? ` [${m!.detail}]` : ""}`).join("; ") : ""}`,
+    `  ${n.padEnd(8)} ${labels[i]!.padEnd(18)} ${okMs.map(formatSeconds).join(", ") || "-"}${okMs.length ? `  (avg ${formatSeconds(avg)})` : ""}  fallbacks: ${fb.length}${fb.length ? " " + fb.map((m) => `${m!.outcome}${m!.detail ? ` [${m!.detail}]` : ""}`).join("; ") : ""}`,
   );
 });
 

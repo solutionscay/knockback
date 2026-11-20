@@ -13,6 +13,7 @@
  * Souls rotate across seats every match (match k: seat i plays soul (i+k) % 4),
  * so every provider plays every soul and seat.
  */
+import { formatSeconds } from "../src/format";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
@@ -132,7 +133,7 @@ const worker = async () => {
     writeFileSync(`${base}.prompts.json`, JSON.stringify(played.prompts, null, 2));
     writeFileSync(`${base}.log.txt`, played.log.join("\n") + "\n");
     console.log(played.log.join("\n"));
-    console.log(`  (${(played.ms / 1000).toFixed(1)} s)\n`);
+    console.log(`  (${formatSeconds(played.ms)})\n`);
   }
 };
 await Promise.all(Array.from({ length: concurrency }, worker));

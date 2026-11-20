@@ -6,12 +6,12 @@
  */
 import { exampleSouls, initPhysics, Match, MORALE_STATES, TICK_RATE, VoiceSession, type MoraleState } from "../src/sim";
 import { Tally } from "../src/flow/score";
+import { houseRulesEnabled } from "./batch-options";
 
 await initPhysics();
 const SOULS = exampleSouls();
 const args = process.argv.slice(2);
-// --house-rules off: house bots without plan rules (#6 A/B)
-const houseRules = !(args.includes("--house-rules=off") || args[args.indexOf("--house-rules") + 1] === "off");
+const houseRules = houseRulesEnabled(args);
 const jsonIdx = args.indexOf("--json");
 const jsonOut = jsonIdx >= 0 ? args[jsonIdx + 1] : null;
 const pos = args.filter((a, i) => !a.startsWith("--") && (jsonIdx < 0 || i !== jsonIdx + 1) && args[i - 1] !== "--house-rules");

@@ -1,7 +1,10 @@
+import { formatSeconds } from "../format";
 import type { Beat } from "../flow/beats";
 import { POINTS, Tally } from "../flow/score";
+import { FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import { ROUNDS_TO_WIN, type Match } from "../sim/match";
 import type { MoraleState, RoundFacts } from "../sim/morale";
+import { behindHitText, topDamager } from "../sim/roundstats";
 import type { Sim, Strategy } from "../sim/sim";
 import type { Decision } from "../sim/voice";
 import { bestRule, type KoEvent, type RuleFiring } from "./callouts";
@@ -92,10 +95,9 @@ export function recapHtml(match: Match, facts: RoundFacts, firings: RuleFiring[]
   const rows = match.souls.map((c, i) => {
     const dealt = st.damage[i]!.reduce((a, s, j) => a + (j === i ? 0 : s.damage), 0);
     const took = st.damage.reduce((a, row, j) => a + (j === i ? 0 : row[i]!.damage), 0);
-    let worst = -1;
-    for (let a = 0; a < 4; a++) if (a !== i && st.damage[a]![i]!.damage > (worst >= 0 ? st.damage[worst]![i]!.damage : 0)) worst = a;
+    const worst = topDamager(st, i);
     const w = worst >= 0 ? st.damage[worst]![i]! : null;
-    const hurt = w && w.damage >= 8 ? `${esc(match.souls[worst]!.name)} ${Math.round(w.damage)}${w.hits > 1 && w.fromBehind === w.hits ? " from behind" : w.fromBehind >= 2 ? ` (${w.fromBehind} from behind)` : ""}` : "";
+    const hurt = w && w.damage >= 8 ? `${esc(match.souls[worst]!.name)} ${Math.round(w.damage)}${behindHitText(w, 1)}` : "";
     return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
   }).join("");
   // best rule (#11): a rule firing followed within 5 s by a knockout by the same fighter
@@ -115,7 +117,7 @@ export function dialogueHtml(match: Match, decision: Decision, labels: string[] 
   const meta = match.record.rounds[b.round - 1]?.meta?.[b.fighter];
   const who = meta
     ? meta.outcome === "ok"
-      ? `<span class="ai">${esc(meta.provider)} · ${(meta.ms / 1000).toFixed(1)} s</span>`
+      ? `<span class="ai">${esc(meta.provider)} · ${formatSeconds(meta.ms)}</span>`
       : meta.outcome === "house"
         ? `<span class="ai">house bot</span>`
         : `<span class="ai bot">${esc(meta.provider)} · ${meta.outcome === "fallback-timeout" ? "timed out" : meta.outcome === "fallback-error" ? "error" : "bad answer"} · ${meta.aiLine ? "bot plan" : "bot line"}</span>`
@@ -181,4 +183,17 @@ export function restart(el: HTMLElement, cls: string) {
   el.className = "";
   void el.offsetWidth;
   el.className = cls;
+}
+
+export function renderDialogueLine(el: HTMLElement, line: string, elapsed: number, duration: number) {
+  const typed = el.querySelector<HTMLElement>(".typed");
+  const n = Math.floor(line.length * Math.min(1, Math.max(0, (elapsed - 0.2) / Math.min(1.6, duration * 0.5))));
+  if (typed && typed.textContent!.length !== n) typed.textContent = line.slice(0, n);
+}
+
+export function renderRoundClock(el: HTMLElement, match: Match, tick: number) {
+  const left = Math.max(0, (FIGHT_TICKS - tick) / TICK_RATE);
+  const txt = `<span class="r">ROUND ${match.round}</span>${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${pipsHtml(match, "small")}`;
+  if (el.innerHTML !== txt) el.innerHTML = txt;
+  el.className = left < 10 ? "show low" : "show";
 }

@@ -4,6 +4,7 @@
  * readable log and the eval input. Engine-driven fights; deterministic
  * given the decisions.
  */
+import { formatSeconds } from "../format";
 import { Match, ReplayDivergedError, type MatchRecord } from "../sim/match";
 import { Rng } from "../sim/rng";
 import type { Strategy } from "../sim/sim";
@@ -11,6 +12,11 @@ import { houseStrategy } from "../sim/voice";
 import type { Soul } from "../sim/soul";
 import { decideRound, type Seat } from "./decide";
 import { evalMatchFrom, targetLabel, type EvalMatch } from "./eval";
+
+/** For comparison, use an independent strategy RNG for the house plan in an AI seat. */
+function shadowPlan(match: Match, round: number, seat: number): Strategy {
+  return houseStrategy({ ...match.contextFor(seat), strategyRng: new Rng((match.seed ^ (round * 0x9e37) ^ (seat * 0x85eb)) >>> 0) });
+}
 
 export interface PlayedMatch {
   match: Match;
@@ -29,7 +35,7 @@ export function rescoreRecord(rec: MatchRecord, lineup: string[]): EvalMatch {
   const housePlans: (Strategy | undefined)[][] = [];
   while (!match.over) {
     const round = match.round + 1;
-    housePlans.push(lineup.map((p, i) => (p !== "house" ? houseStrategy({ ...match.contextFor(i), strategyRng: new Rng((rec.seed ^ (round * 0x9e37) ^ (i * 0x85eb)) >>> 0) }) : undefined)));
+    housePlans.push(lineup.map((p, i) => (p !== "house" ? shadowPlan(match, round, i) : undefined)));
     match.prepareRound();
     while (!match.step()) {
       /* replay */
@@ -50,13 +56,13 @@ export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], de
   while (!match.over) {
     const round = match.round + 1;
     // for comparison: the house bot's plan in each AI seat's place (own rng: the match is unchanged)
-    housePlans.push(seats.map((s, i) => (s.provider ? houseStrategy({ ...match.contextFor(i), strategyRng: new Rng((seed ^ (round * 0x9e37) ^ (i * 0x85eb)) >>> 0) }) : undefined)));
+    housePlans.push(seats.map((s, i) => (s.provider ? shadowPlan(match, round, i) : undefined)));
     const ask = await decideRound(match, seats, deadlineMs);
     prompts.push({ round, prompts: ask.prompts, raw: ask.raw });
     ask.decisions.forEach((d, i) => {
       const m = ask.meta[i]!;
       const s = d.strategy;
-      log.push(`  r${round} ${names[i]!.padEnd(8)} [${m.provider}${m.outcome === "house" ? "" : ` ${(m.ms / 1000).toFixed(1)} s`}${m.outcome === "ok" || m.outcome === "house" ? "" : ` ${m.outcome}${m.detail ? ` (${m.detail})` : ""}`}] ${s.stance}, wants ${s.weapons.join(">")}, -> ${targetLabel(s, names)}, retaliate ${s.retaliate ?? "turn"}: "${d.line}"`);
+      log.push(`  r${round} ${names[i]!.padEnd(8)} [${m.provider}${m.outcome === "house" ? "" : ` ${formatSeconds(m.ms)}`}${m.outcome === "ok" || m.outcome === "house" ? "" : ` ${m.outcome}${m.detail ? ` (${m.detail})` : ""}`}] ${s.stance}, wants ${s.weapons.join(">")}, -> ${targetLabel(s, names)}, retaliate ${s.retaliate ?? "turn"}: "${d.line}"`);
     });
     match.prepareRound(ask.decisions, ask.meta);
     while (!match.step()) {

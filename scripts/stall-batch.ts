@@ -5,14 +5,11 @@
  *   bun scripts/stall-batch.ts [N=200] [firstSeed=1]
  */
 import { exampleSouls, FIGHT_TICKS, initPhysics, Match } from "../src/sim";
+import { comparisonBatchOptions, sampleQuantile } from "./batch-options";
 
 await initPhysics();
-const pos = process.argv.slice(2).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--house-rules");
-const N = Number(pos[0] ?? 200);
-const first = Number(pos[1] ?? 1);
+const { count: N, first, houseRules } = comparisonBatchOptions(process.argv);
 const souls = exampleSouls();
-// --house-rules off: house bots without plan rules (#6 A/B)
-const houseRules = !process.argv.includes("--house-rules=off") && process.argv[process.argv.indexOf("--house-rules") + 1] !== "off";
 const gaps: number[] = [];
 const lens: number[] = [];
 const worst: { seed: number; round: number; gap: number; at: number }[] = [];
@@ -60,18 +57,14 @@ for (let k = 0; k < N; k++) {
     worst.push({ seed, round: f.round, gap: gap / 60, at: gapAt / 60 });
   }
 }
-const q = (a: number[], p: number) => {
-  const s = a.slice().sort((x, y) => x - y);
-  return s[Math.min(s.length - 1, Math.floor(p * s.length))]!;
-};
 const hist = [20, 30, 45, 60, 75, 90].map((hi, i, arr) => {
   const lo = i ? arr[i - 1]! : 0;
   return `${lo}-${hi}s ${lens.filter((x) => x > lo && x <= hi + (hi === 90 ? 1 : 0)).length}`;
 });
 worst.sort((a, b) => b.gap - a.gap);
 console.log(`${N} matches, ${rounds} rounds, ${((performance.now() - t0) / 1000).toFixed(0)} s`);
-console.log(`longest stretch without fighter-on-fighter damage per round: max ${q(gaps, 1).toFixed(1)} s, p95 ${q(gaps, 0.95).toFixed(1)} s, p50 ${q(gaps, 0.5).toFixed(1)} s; rounds with a stretch over 8 s: ${gaps.filter((g) => g > 8).length}`);
-console.log(`round length: p50 ${q(lens, 0.5).toFixed(0)} s, p95 ${q(lens, 0.95).toFixed(0)} s, max ${q(lens, 1).toFixed(0)} s; distribution ${hist.join(", ")}`);
+console.log(`longest stretch without fighter-on-fighter damage per round: max ${sampleQuantile(gaps, 1).toFixed(1)} s, p95 ${sampleQuantile(gaps, 0.95).toFixed(1)} s, p50 ${sampleQuantile(gaps, 0.5).toFixed(1)} s; rounds with a stretch over 8 s: ${gaps.filter((g) => g > 8).length}`);
+console.log(`round length: p50 ${sampleQuantile(lens, 0.5).toFixed(0)} s, p95 ${sampleQuantile(lens, 0.95).toFixed(0)} s, max ${sampleQuantile(lens, 1).toFixed(0)} s; distribution ${hist.join(", ")}`);
 console.log(`time-outs: ${timeouts} (${((100 * timeouts) / rounds).toFixed(1)}%); rounds with sudden death: ${sudden} (${((100 * sudden) / rounds).toFixed(1)}%)`);
 console.log(`worst stretches: ${worst
   .slice(0, 6)

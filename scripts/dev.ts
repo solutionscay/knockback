@@ -4,9 +4,9 @@
  *   bun run dev --host 0.0.0.0       -> also reachable on the LAN
  *   bun run dev --port 8080
  */
-import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import index from "../index.html";
+import { logLanUrls, serveRecord } from "./viewer-server";
 
 const args = process.argv.slice(2);
 const opt = (name: string, def: string) => {
@@ -26,20 +26,10 @@ const server = Bun.serve({
   fetch(req) {
     // saved AI match records, for ?record=/records/<file>.json
     const url = new URL(req.url);
-    if (url.pathname.startsWith("/records/")) {
-      const f = Bun.file(join(process.cwd(), "records", url.pathname.slice("/records/".length).replace(/[^\w.-]/g, "")));
-      return new Response(f, { headers: { "content-type": "application/json" } });
-    }
-    return new Response("Not found", { status: 404 });
+    return serveRecord(url.pathname, join(process.cwd(), "records")) ?? new Response("Not found", { status: 404 });
   },
 });
 
 console.log(`Knockback viewer: http://localhost:${server.port}/`);
-if (hostname === "0.0.0.0" || hostname === "::") {
-  for (const list of Object.values(networkInterfaces())) {
-    for (const ni of list ?? []) {
-      if (ni.family === "IPv4" && !ni.internal) console.log(`  LAN: http://${ni.address}:${server.port}/`);
-    }
-  }
-}
+logLanUrls(hostname, server.port, "/");
 console.log("  add ?seed=123 to pick a match, ?hold to wait for the Next match button");

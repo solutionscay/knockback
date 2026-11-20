@@ -56,7 +56,7 @@ export class GamePlans {
   }
 
   /** One line under each HUD chip: target, stance, first weapon; ⚑ marks a rule override (#10, #11). */
-  planLine(i: number, match: Match, shown: Fight, decisions: Decision[]): string {
+  private planLine(i: number, match: Match, shown: Fight, decisions: Decision[]): string {
     const f = shown.sim.fighters[i]!;
     if (!f.alive) return `<span class="out">OUT</span>`;
     const base = this.planNow[i] ?? decisions[i]!.strategy;

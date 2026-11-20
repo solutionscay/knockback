@@ -3,9 +3,9 @@
  * while during the fight and report frames per second and frame times.
  *   bun scripts/fps.ts [seed] [seconds=20]   (dev server must be running)
  */
-import { chromium } from "playwright";
+import { launchViewerBrowser } from "./viewer-browser";
 const [seed = "4", secs = "20"] = process.argv.slice(2);
-const browser = await chromium.launch({ args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
+const browser = await launchViewerBrowser();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto(`http://localhost:5173/?seed=${seed}&hold`);
 await page.waitForTimeout(16000); // level card + intros + countdown, into the fight

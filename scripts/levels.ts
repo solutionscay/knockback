@@ -6,7 +6,7 @@
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { chromium } from "playwright";
+import { launchViewerBrowser } from "./viewer-browser";
 import { THEMES, themeFor } from "../src/sim/levelgen";
 
 const [out = "levels.jpg", ...rest] = process.argv.slice(2);
@@ -18,7 +18,7 @@ if (seeds.length === 0) {
   }
 }
 const dir = mkdtempSync(join(process.env.SHEET_TMP ?? tmpdir(), "levels-"));
-const browser = await chromium.launch({ args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
+const browser = await launchViewerBrowser();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto(`http://localhost:5173/?seed=${seeds[0]}&capture`);
 await page.waitForFunction(() => window.__kb?.ready, null, { timeout: 30000 });
