@@ -12,12 +12,13 @@
  * three rounds can have three different winners), the round-3 winner still
  * takes the match. Winner takes all.
  */
-import { CHARACTERS } from "./characters";
 import { Fight, type FightRecord, type FightResult } from "./fight";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
 import type { SimEvent, Strategy } from "./sim";
+import { soulRecord, TEMPERAMENT_MORALE, type Soul } from "./soul";
+import { exampleSouls, lookOf } from "./souls";
 import { houseBrain, VoiceSession, type Brain, type Decision, type DecideContext } from "./voice";
 
 export const ROUNDS_TO_WIN = 2;
@@ -47,7 +48,9 @@ export interface RoundRecord {
 }
 
 export interface MatchRecord {
-  version: 1;
+  version: 2;
+  /** the souls that played (identity, voice, lines): a replay needs no files */
+  souls: Soul[];
   /** match seed: makes the level; round physics seeds derive from it */
   seed: number;
   rounds: RoundRecord[];
@@ -56,6 +59,8 @@ export interface MatchRecord {
 }
 
 export interface MatchOptions {
+  /** one soul per seat (default: the four example souls in souls/) */
+  souls?: Soul[];
   /** one decision function per fighter (default: houseBrain for all) */
   brains?: Brain[];
   session?: VoiceSession;
@@ -84,6 +89,7 @@ export class Match {
   readonly brains: Brain[];
   readonly session: VoiceSession;
   readonly record: MatchRecord;
+  readonly souls: Soul[];
   round = 0;
   wins = [0, 0, 0, 0];
   kos = [0, 0, 0, 0];
@@ -106,16 +112,18 @@ export class Match {
     readonly opts: MatchOptions = {},
   ) {
     this.level = generateLevel(seed);
-    this.brains = opts.brains ?? CHARACTERS.map(() => houseBrain);
+    this.souls = (opts.recorded?.souls ?? opts.souls ?? exampleSouls()).map(soulRecord);
+    if (this.souls.length !== 4) throw new Error("a match needs 4 souls");
+    this.brains = opts.brains ?? this.souls.map(() => houseBrain);
     this.session = opts.session ?? new VoiceSession();
-    this.morale = initialMorale(CHARACTERS.map((c) => c.moraleBaseline));
+    this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]));
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { version: 1, seed, rounds: [], winner: -1, wins: this.wins };
+    this.record = { version: 2, seed, souls: this.souls.map(soulRecord), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
-    return CHARACTERS.map((c) => c.name);
+    return this.souls.map((s) => s.name);
   }
 
   get over(): boolean {
@@ -134,6 +142,7 @@ export class Match {
       round,
       me,
       names: this.names,
+      souls: this.souls,
       wins: this.wins.slice(),
       morale: this.morale.map((m) => ({ ...m })),
       last: this.facts[this.facts.length - 1] ?? null,
@@ -155,7 +164,7 @@ export class Match {
     const decisions: Decision[] = external
       ? external.map((d) => ({ ...d, strategy: { ...d.strategy } }))
       : rec
-        ? rec.strategies.map((s, i) => ({ line: rec.lines[i]!, strategy: { ...s } }))
+        ? rec.strategies.map((s, i) => ({ line: rec.lines[i]!, strategy: { ...s, weapons: (s.weapons ?? []).slice() } }))
         : this.brains.map((brain, me) => brain(this.contextFor(me)));
     if (!meta && rec?.meta) meta = rec.meta;
     this.round++;
@@ -166,13 +175,13 @@ export class Match {
     this.fight = new Fight(
       ps,
       decisions.map((d) => d.strategy),
-      { level: this.level, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect },
+      { level: this.level, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.souls.map(lookOf) },
     );
     this.fight.onEvent = (e) => this.onEvent?.(e);
     this.record.rounds.push({
       physicsSeed: ps,
       phase,
-      strategies: decisions.map((d) => ({ ...d.strategy })),
+      strategies: decisions.map((d) => ({ ...d.strategy, weapons: d.strategy.weapons.slice() })),
       lines: decisions.map((d) => d.line),
       fight: this.fight.record,
       winner: -1,

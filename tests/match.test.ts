@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Tally } from "../src/flow/score";
 import {
-  CHARACTERS,
+  exampleSouls,
   initialMorale,
+  TEMPERAMENT_MORALE,
   initPhysics,
   Match,
   matchWinner,
@@ -18,6 +19,9 @@ import {
   type RoundFacts,
 } from "../src/sim";
 import { StatsCollector } from "../src/sim/roundstats";
+
+const SOULS = exampleSouls();
+const BASE = SOULS.map((s) => TEMPERAMENT_MORALE[s.temperament]);
 
 setDefaultTimeout(240_000);
 beforeAll(async () => {
@@ -100,7 +104,7 @@ describe("best of 3", () => {
     expect(Buffer.from(sim.grid.mat).equals(Buffer.from(m.level.grid.mat))).toBe(true);
     expect(sim.tick).toBe(0);
     expect(m.moraleAtStart[1]!.map((x) => x.score)).toEqual(moraleAfter1);
-    expect(m.morale.map((x) => x.score)).not.toEqual(initialMorale(CHARACTERS.map((c) => c.moraleBaseline)).map((x) => x.score));
+    expect(m.morale.map((x) => x.score)).not.toEqual(initialMorale(BASE).map((x) => x.score));
   });
 
   test("tally: each round win +3, each knockout +1", () => {
@@ -169,16 +173,17 @@ describe("dialogue and the decision slot", () => {
     phase: last ? "between" : "intro",
     round: last ? last.round + 1 : 1,
     me,
-    names: CHARACTERS.map((c) => c.name),
+    names: SOULS.map((c) => c.name),
+    souls: SOULS,
     wins: last ? [0, 0, 0, 0].map((_, i) => (i === last.winner ? 1 : 0)) : [0, 0, 0, 0],
-    morale: initialMorale(CHARACTERS.map((c) => c.moraleBaseline)),
+    morale: initialMorale(BASE),
     last,
     history: last ? [last] : [],
     session,
     lineRng: new Rng(seed),
     strategyRng: new Rng(seed + 1),
   });
-  const strat = { target: "nearest" as const, stance: "rush" as const, loadout: ["bat", "grapple"] as ["bat", "grapple"], line: "" };
+  const strat = { target: "nearest" as const, stance: "rush" as const, weapons: ["bat" as const, "grapple" as const], line: "" };
 
   test("lines reference what actually happened", () => {
     const f = facts(1, [
@@ -197,8 +202,8 @@ describe("dialogue and the decision slot", () => {
 
   test("no repeated lines within a session until the relevant lines run dry", () => {
     const session = new VoiceSession();
-    const st = initialMorale(CHARACTERS.map((c) => c.moraleBaseline))[0]!.state;
-    const fitting = CHARACTERS[0]!.lines.filter((t) => (t[0] === "intro" || t[0] === "state") && (t[1] === "*" || t[1].includes(st))).length;
+    const st = initialMorale(BASE)[0]!.state;
+    const fitting = SOULS[0]!.lines.filter((t) => (t[0] === "intro" || t[0] === "state") && (t[1] === "*" || t[1].includes(st))).length;
     const seen = new Set<string>();
     for (let i = 0; i < fitting; i++) {
       const p = pickLine(ctxFor(0, null, session, i), strat);
@@ -216,13 +221,13 @@ describe("dialogue and the decision slot", () => {
     const calls: DecideContext[] = [];
     const brain: Brain = (ctx) => {
       calls.push(ctx);
-      return { line: `round ${ctx.round} from ${ctx.names[ctx.me]}`, strategy: { target: "weakest", stance: "cover", loadout: ["grenade", "bat"], line: "" } };
+      return { line: `round ${ctx.round} from ${ctx.names[ctx.me]}`, strategy: { target: "weakest", stance: "cover", weapons: ["grenade", "bat"], line: "" } };
     };
     const m = new Match(5, { brains: [brain, brain, brain, brain] });
     m.prepareRound();
     expect(calls.length).toBe(4);
     expect(calls[0]!.phase).toBe("intro");
-    expect(m.fight!.sim.fighters.every((f) => f.weapons[0] === "grenade" && f.weapons[1] === "bat")).toBe(true);
+    expect(m.fight!.sim.fighters.every((f) => f.prefs[0] === "grenade" && f.prefs[1] === "bat" && f.weapons[0] === "fist")).toBe(true);
     expect(m.record.rounds[0]!.lines[2]).toBe("round 1 from Squeaks");
     while (!m.step()) {
       /* round */

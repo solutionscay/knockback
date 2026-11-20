@@ -4,7 +4,6 @@
  * sentence per fighter about its round. Built from engine events (no
  * randomness), so fighters (and AIs) can look back and re-plan.
  */
-import { CHARACTERS } from "./characters";
 
 export type Range = "close" | "mid" | "long";
 
@@ -77,7 +76,7 @@ export class StatsCollector {
     }
   }
 
-  finish(kos: RoundStats["kos"], names: string[] = CHARACTERS.map((c) => c.name)): RoundStats {
+  finish(kos: RoundStats["kos"], names: string[] = ["Red", "Blue", "Green", "Gold"]): RoundStats {
     const st: RoundStats = { damage: this.damage, nearSeconds: this.nearSeconds, targetSeconds: this.targetSeconds, pickups: this.pickups, kos, summary: [] };
     st.summary = [0, 1, 2, 3].map((i) => summarize(st, i, names));
     return st;
@@ -90,6 +89,7 @@ const WEAPON_WORD: Record<string, string> = {
   bat: "the bat",
   grenade: "grenades",
   grapple: "the hook",
+  fist: "fists",
   barrel: "barrels",
   tnt: "TNT",
   gas: "a gas can",

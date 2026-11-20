@@ -1,7 +1,8 @@
 /**
- * Strategy controller: turns a fighter's match strategy { target preference,
- * stance, loadout } into frame-by-frame inputs. The engine does all target
- * picking, weapon switching, aiming and movement.
+ * Strategy controller: turns a fighter's round strategy { target preference,
+ * stance, weapon preferences, retaliate } into frame-by-frame inputs. The
+ * engine does all target picking, pickup hunting, weapon switching, aiming
+ * and movement. Every fighter gets the same controller and the same aim.
  */
 import { FIGHTER, REFLEX, WEAPONS } from "./constants";
 import type { Link, Surface } from "./nav";
@@ -10,15 +11,19 @@ import { clamp, zoneHalfAt, type Fighter, type Input, type Sim, type Strategy, t
 export interface Goal {
   surface: number;
   x: number;
+  /** the pickup this goal is for, if any */
+  item?: number;
 }
 
-/** Per-personality aim noise (perpendicular offset per meter of range). */
-export const AIM_NOISE: Record<Fighter["personality"], number> = {
-  aggressive: 0.1,
-  sniper: 0.03,
-  coward: 0.12,
-  opportunist: 0.06,
-};
+/** Aim noise (perpendicular offset per meter of range): the same for everyone. */
+export const AIM_NOISE = 0.07;
+
+/**
+ * Pickup hunting (path cost in meters-ish). Unarmed fighters go a long way
+ * for any weapon; armed ones detour only for a better one, or for anything
+ * when their stance is "item".
+ */
+export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, giveUpTicks: 100, skipTicks: 420 };
 
 const NO_FIRE: Input = { move: 0, jump: false, aimX: 1, aimY: 0, weapon: null, fire: false };
 
@@ -38,6 +43,9 @@ export class Controller {
   private noLos = 0;
   /** Effective target this tick. */
   targetId = -1;
+  /** pickup being chased: give up on it if we stop getting closer (unreachable spots) */
+  private chase: { id: number; best: number; since: number } | null = null;
+  private skipItems = new Map<number, number>();
   /** recent hits taken (for the back-attack reflex) */
   private hitLog: { src: number; tick: number; behind: boolean }[] = [];
   /** active reflex: who to face/fight and until when */
@@ -70,14 +78,14 @@ export class Controller {
     readonly fighterId: number,
     readonly aimNoise: number,
   ) {
-    this.strategy = { target: "nearest", stance: "distance", loadout: ["rocket", "shotgun"], line: "" };
+    this.strategy = { target: "nearest", stance: "rush", weapons: ["shotgun", "rocket", "bat"], line: "" };
   }
 
   setStrategy(s: Strategy, sim: Sim) {
     this.strategy = s;
     this.nextEval = sim.tick;
     this.nextRetarget = sim.tick;
-    sim.setLoadout(this.fighterId, s.loadout);
+    sim.setPrefs(this.fighterId, s.weapons ?? []);
   }
 
   /** Pick a target from the preference; sticky for a second so it does not flicker. */
@@ -142,22 +150,51 @@ export class Controller {
     let stance = this.strategy.stance;
     const close = me.weapons.includes("bat") || me.weapons.includes("shotgun");
 
-    if (stance === "item") {
+    // arm up: go for the pickups this fighter wants (fists only = go far for anything)
+    const armed = me.weapons.some((w) => w !== "fist");
+    {
       let best: Goal | null = null;
       let bc = Infinity;
       for (const it of sim.items()) {
-        if (it.itemType && me.weapons.includes(it.itemType as Weapon)) continue;
+        if ((this.skipItems.get(it.id) ?? -1) > sim.tick) continue;
+        const type = it.itemType!;
+        const isWeapon = type !== "health" && type !== "shield" && type !== "speed" && type !== "heavy" && type !== "damage" && type !== "jump";
+        let limit: number;
+        let extra = 0;
+        if (isWeapon) {
+          if (!sim.wantsWeapon(me, type as Weapon)) continue;
+          if (it.owner === me.id && sim.tick - it.born < 45) continue;
+          const rank = me.prefs.indexOf(type as Weapon);
+          extra = Math.max(0, rank) * PICKUP.rankCost;
+          limit = !armed ? PICKUP.unarmedLimit : stance === "item" ? PICKUP.itemStanceLimit : PICKUP.upgradeLimit;
+        } else if (stance === "item") limit = PICKUP.itemStanceLimit;
+        else if (type === "health" && me.hp < PICKUP.healthBelowHp) limit = PICKUP.healthLimit;
+        else continue;
         const t = it.body.translation();
         const s = nav.surfaceAt(t.x, t.y + 0.3, 0.2);
-        if (!s) continue;
+        if (!s || plan.cost[s.id] === Infinity) continue;
         const c = plan.cost[s.id]! + Math.abs(plan.arriveX[s.id]! - t.x) + zonePenalty(t.x);
-        if (c < bc) {
-          bc = c;
-          best = { surface: s.id, x: clamp(t.x, s.x0 + 0.3, s.x1 - 0.3) };
+        if (c > limit) continue;
+        if (c + extra < bc) {
+          bc = c + extra;
+          best = { surface: s.id, x: clamp(t.x, s.x0 + 0.3, s.x1 - 0.3), item: it.id };
         }
       }
-      if (best) return best;
-      stance = close ? "rush" : "distance";
+      if (best) {
+        // no closer for PICKUP.giveUpTicks: unreachable, skip it for a while
+        const d = Math.abs(sim.pos(me).x - best.x) + Math.abs(sim.pos(me).y - (nav.surfaces[best.surface]?.y ?? 0)) * 0.5;
+        if (!this.chase || this.chase.id !== best.item) this.chase = { id: best.item!, best: d, since: sim.tick };
+        else if (d < this.chase.best - 0.5) this.chase = { id: best.item!, best: d, since: sim.tick };
+        else if (sim.tick - this.chase.since > PICKUP.giveUpTicks) {
+          this.skipItems.set(best.item!, sim.tick + PICKUP.skipTicks);
+          this.chase = null;
+          return this.chooseGoal(sim, me, target, plan);
+        }
+        return best;
+      }
+      this.chase = null;
+      if (stance === "item") stance = close ? "rush" : "distance";
+      if (!armed) stance = "rush"; // nothing to grab: scrap with fists
     }
 
     if (stance === "rush") {
@@ -238,13 +275,16 @@ export class Controller {
       if (has("shotgun")) return "shotgun";
     }
     if (has("bat") && dist < 2.4) return "bat";
+    if (dist < 1.5 && !has("shotgun")) return "fist";
     if (ready("grapple") && los && dist > 3.5 && dist < 14 && (this.onLedge(sim, target, mp.x, mp.y) || has("bat") || has("shotgun"))) return "grapple";
     if (has("shotgun") && dist < 6.5) return "shotgun";
     if (has("grenade") && !los && dist > 2.5 && dist < 14) return "grenade";
     if (has("rocket") && dist >= 3) return "rocket";
     if (has("grenade") && dist > 2.5 && dist < 14) return "grenade";
     if (has("grapple") && dist > 3.5 && dist < 14) return "grapple";
-    return me.weapons[0];
+    // prefer what the strategy likes among what we carry; fists if nothing else
+    const carried = me.prefs.filter((w) => has(w));
+    return carried[0] ?? "fist";
   }
 
   private blocked(dist: number) {
@@ -410,11 +450,14 @@ export class Controller {
       case "bat":
         canFire &&= (dist <= 1.95 && Math.abs(dy0) < 1.6) || (blocked && dist < 3);
         break;
+      case "fist":
+        canFire &&= dist <= 1.45 && Math.abs(dy0) < 1.3;
+        break;
       case "grapple":
         canFire &&= los && dist >= 3.5 && dist <= WEAPONS.grapple.range - 0.5;
         break;
     }
-    if (canFire && weapon !== "bat" && weapon !== "grapple" && !(blocked && weapon === "shotgun")) {
+    if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && !(blocked && weapon === "shotgun")) {
       const hit = sim.raycast(mp.x, mp.y + 0.25, input.aimX, input.aimY, weapon === "shotgun" ? Math.min(dist, 6) : 2.2, me.entity.collider);
       if (hit && hit.terrain) canFire = false;
     }

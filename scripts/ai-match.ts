@@ -20,7 +20,6 @@ import { networkInterfaces } from "node:os";
 import { join, resolve } from "node:path";
 import { decideRound, DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
 import { registerStubs } from "../src/ai/providers";
-import { CHARACTERS } from "../src/sim/characters";
 import { initPhysics, Match } from "../src/sim";
 import index from "../index.html";
 
@@ -35,8 +34,17 @@ const flags: Record<string, string> = {};
   }
 }
 registerStubs();
-const lineup = parseLineup(flags.lineup);
-const souls = loadSouls(resolve(flags.souls ?? "souls"));
+const loaded = (() => {
+  try {
+    return loadSouls(flags.souls ? (flags.souls.includes(",") ? flags.souls : resolve(flags.souls)) : resolve("souls"));
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+})();
+for (const l of loaded) for (const w of l.warnings) console.warn(`soul ${l.file}: ${w}`);
+const souls = loaded.map((l) => l.soul);
+const lineup = parseLineup(flags.lineup, souls.map((s) => s.name));
 const seats = seatsFor(lineup, souls);
 const seed = flags.seed ? Number(flags.seed) >>> 0 : (Math.random() * 1e9) >>> 0;
 const deadline = flags.deadline ? Number(flags.deadline) * 1000 : DEFAULT_DEADLINE_MS;
@@ -104,13 +112,13 @@ if (!headless) {
 
 // ------------------------------------------------------------ the match
 await initPhysics();
-const names = CHARACTERS.map((c) => c.name);
+const names = souls.map((s) => s.name);
 const labels = seats.map((s) => s.provider?.label ?? "house");
 console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadline / 1000} s`);
-names.forEach((n, i) => console.log(`  ${n.padEnd(8)} ${labels[i]}`));
+names.forEach((n, i) => console.log(`  ${n.padEnd(8)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}`));
 const t0 = performance.now();
-const match = new Match(seed);
-broadcast({ type: "match", seed, labels, names, theme: match.level.theme });
+const match = new Match(seed, { souls });
+broadcast({ type: "match", seed, labels, names, souls: match.souls, theme: match.level.theme });
 console.log(`  level: ${match.level.theme}, ${match.level.width} m, ${match.level.platforms} platforms\n`);
 const log: string[] = [];
 const say = (s: string) => {
@@ -118,8 +126,8 @@ const say = (s: string) => {
   log.push(s);
 };
 const promptLog: { round: number; prompts: string[]; raw: (string | null)[] }[] = [];
-const stratText = (s: { stance: string; loadout: string[]; target: string; grudge?: number; retaliate?: string }) =>
-  `${s.stance} ${s.loadout.join("+")} -> ${s.target === "grudge" && s.grudge !== undefined ? names[s.grudge] : s.target}, retaliate ${s.retaliate ?? "turn"}`;
+const stratText = (s: { stance: string; weapons: string[]; target: string; grudge?: number; retaliate?: string }) =>
+  `${s.stance}, wants ${s.weapons.join(" > ")} -> ${s.target === "grudge" && s.grudge !== undefined ? names[s.grudge] : s.target}, retaliate ${s.retaliate ?? "turn"}`;
 
 while (!match.over) {
   const round = match.round + 1;

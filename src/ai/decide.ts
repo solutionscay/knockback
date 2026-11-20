@@ -1,12 +1,13 @@
 /**
- * Ask all four fighters for { loadout, target, stance, retaliate, line } in
+ * Ask all four fighters for { weapons, target, stance, retaliate, line } in
  * parallel, each with a deadline. A timeout, an error or junk falls back to
  * the house bot for that fighter (and is logged in the decision meta).
  */
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { CHARACTERS } from "../sim/characters";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 import type { DecisionMeta, Match } from "../sim/match";
+import { parseSoul, type Soul } from "../sim/soul";
+import { EXAMPLE_SOUL_ORDER } from "../sim/souls";
 import { houseBrain, type Decision } from "../sim/voice";
 import { parseAnswer } from "./parse";
 import { buildPrompt } from "./prompt";
@@ -18,25 +19,51 @@ export const DEFAULT_DEADLINE_MS = 20_000;
 export interface Seat {
   providerName: string;
   provider: Provider | null; // null = house bot
-  soul: string;
+  soul: Soul;
 }
 
-/** Souls live in souls/<name>.md (brick, pike, squeaks, goldie). */
-export function loadSouls(dir: string): string[] {
-  return CHARACTERS.map((c) => {
-    const p = join(dir, `${c.name.toLowerCase()}.md`);
-    return existsSync(p) ? readFileSync(p, "utf8") : `${c.voice}\nCatchphrase: "${c.catchphrase}"`;
+export interface LoadedSoul {
+  file: string;
+  soul: Soul;
+  warnings: string[];
+}
+
+/**
+ * Four souls from a folder (the example names first, then any other .md files
+ * alphabetically) or from a comma-separated list of files. Invalid souls
+ * (errors) stop the match with a clear message; warnings are reported.
+ */
+export function loadSouls(spec = "souls"): LoadedSoul[] {
+  let files: string[];
+  if (spec.includes(",") || spec.endsWith(".md")) files = spec.split(",").map((f) => f.trim()).filter(Boolean);
+  else {
+    if (!existsSync(spec) || !statSync(spec).isDirectory()) throw new Error(`souls folder not found: ${spec}`);
+    const all = readdirSync(spec).filter((f) => f.endsWith(".md") && !f.startsWith("_") && f.toLowerCase() !== "readme.md");
+    const ordered = [...EXAMPLE_SOUL_ORDER.map((n) => `${n}.md`).filter((f) => all.includes(f)), ...all.filter((f) => !EXAMPLE_SOUL_ORDER.includes(f.replace(/\.md$/, ""))).sort()];
+    files = ordered.slice(0, 4).map((f) => join(spec, f));
+  }
+  if (files.length !== 4) throw new Error(`need 4 soul files, got ${files.length} from ${spec}`);
+  const out = files.map((file, seat) => {
+    const p = parseSoul(readFileSync(file, "utf8"), seat);
+    if (p.errors.length) throw new Error(`soul ${basename(file)}: ${p.errors.join("; ")}`);
+    return { file, soul: p.soul, warnings: p.warnings };
   });
+  const names = out.map((o) => o.soul.name.toLowerCase());
+  if (new Set(names).size !== 4) throw new Error(`soul names must be different: ${out.map((o) => o.soul.name).join(", ")}`);
+  return out;
 }
 
-/** "claude,codex,grok,claude" or "brick=claude,pike=codex,..." -> provider name per fighter. */
-export function parseLineup(spec: string | undefined): string[] {
+/**
+ * "claude,codex,grok,claude" (by seat) or "pike=codex,goldie=house" (by soul
+ * name or seat number 0-3) -> provider name per seat.
+ */
+export function parseLineup(spec: string | undefined, names: string[] = ["brick", "pike", "squeaks", "goldie"]): string[] {
   if (!spec) return DEFAULT_LINEUP.slice();
   const out = DEFAULT_LINEUP.slice();
   const parts = spec.split(",").map((s) => s.trim()).filter(Boolean);
   parts.forEach((p, i) => {
     const [k, v] = p.includes("=") ? (p.split("=") as [string, string]) : [String(i), p];
-    const idx = /^\d$/.test(k) ? Number(k) : CHARACTERS.findIndex((c) => c.name.toLowerCase() === k.toLowerCase() || c.title.toLowerCase().endsWith(k.toLowerCase()));
+    const idx = /^\d$/.test(k) ? Number(k) : names.findIndex((n) => n.toLowerCase() === k.toLowerCase());
     if (idx < 0 || idx > 3) throw new Error(`unknown fighter "${k}" in --lineup`);
     out[idx] = v.toLowerCase();
   });
@@ -44,7 +71,7 @@ export function parseLineup(spec: string | undefined): string[] {
   return out;
 }
 
-export function seatsFor(lineup: string[], souls: string[]): Seat[] {
+export function seatsFor(lineup: string[], souls: Soul[]): Seat[] {
   return lineup.map((name, i) => ({ providerName: name, provider: name === "house" ? null : PROVIDERS[name]!, soul: souls[i]! }));
 }
 
@@ -61,7 +88,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
   const lastLines = prevRound ? prevRound.lines : null;
   const lastHealth = match.facts.length ? match.facts[match.facts.length - 1]!.fighters.map((f) => f.hpEnd) : null;
   const ctxs = seats.map((_, me) => match.contextFor(me));
-  const prompts = seats.map((s, me) => buildPrompt(s.soul, ctxs[me]!, { level: match.level, lastLines, lastHealth }));
+  const prompts = seats.map((s, me) => buildPrompt(s.soul, ctxs[me]!, { level: match.level, lastLines, lastHealth, myLines: match.record.rounds.map((r) => r.lines[me]!) }));
   const results = await Promise.all(
     seats.map(async (seat, me) => {
       const started = performance.now();
@@ -98,7 +125,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
       return;
     }
     if (r.outcome === "ok") {
-      const p = parseAnswer(r.raw!, me);
+      const p = parseAnswer(r.raw!, me, match.names);
       if (p.strategy && p.line) {
         decisions.push({ line: p.line, strategy: { ...p.strategy, line: p.line } });
         meta.push({ provider: label, ms: r.ms, outcome: "ok" });

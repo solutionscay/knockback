@@ -268,9 +268,13 @@ export class Scene {
     body.roundRect(-r * 0.85, hh - 0.12, r * 0.7, 0.16, 0.08).fill(shade(f.color, 0.4));
     body.roundRect(r * 0.15, hh - 0.12, r * 0.7, 0.16, 0.08).fill(shade(f.color, 0.4));
     // personality marks
-    if (f.personality === "aggressive") body.rect(-r, -hh * 0.62, r * 2, 0.12).fill(0x2a0d0d);
-    if (f.personality === "sniper") body.roundRect(-r * 0.2, -hh - 0.12, 0.08, 0.2, 0.04).fill(shade(f.color, 0.45));
-    if (f.personality === "opportunist") body.poly([-0.22, -hh + 0.04, -0.15, -hh - 0.18, -0.05, -hh + 0.0, 0.05, -hh - 0.2, 0.13, -hh + 0.0, 0.22, -hh - 0.16, 0.26, -hh + 0.06]).fill(0xfff1a6);
+    if (f.mark === "headband") body.rect(-r, -hh * 0.62, r * 2, 0.12).fill(0x2a0d0d);
+    if (f.mark === "antenna") body.roundRect(-r * 0.2, -hh - 0.12, 0.08, 0.2, 0.04).fill(shade(f.color, 0.45));
+    if (f.mark === "ears") {
+      body.poly([-r * 0.9, -hh + 0.1, -r * 1.25, -hh - 0.32, -r * 0.35, -hh - 0.02]).fill(f.color).stroke({ width: 0.05, color: shade(f.color, 0.45) });
+      body.poly([r * 0.9, -hh + 0.1, r * 1.25, -hh - 0.32, r * 0.35, -hh - 0.02]).fill(f.color).stroke({ width: 0.05, color: shade(f.color, 0.45) });
+    }
+    if (f.mark === "crown") body.poly([-0.22, -hh + 0.04, -0.15, -hh - 0.18, -0.05, -hh + 0.0, 0.05, -hh - 0.2, 0.13, -hh + 0.0, 0.22, -hh - 0.16, 0.26, -hh + 0.06]).fill(0xfff1a6);
     flash.roundRect(-r, -hh, r * 2, hh * 2, r).fill(0xffffff);
     flash.alpha = 0;
     root.addChild(aura, body, gun, face, flash, over);
@@ -358,8 +362,8 @@ export class Scene {
       case "swing": {
         const v = this.fighterView(e.fighter);
         v.swingT = 0.2;
-        this.swings.push({ x: e.x, y: e.y, dx: e.dx, dy: e.dy, life: 0.14, color: e.hit ? 0xffffff : 0xd8d8d8 });
-        if (e.hit) this.addShake(0.15);
+        this.swings.push({ x: e.x, y: e.y, dx: e.dx, dy: e.dy, life: e.weapon === "fist" ? 0.08 : 0.14, color: e.hit ? 0xffffff : 0xd8d8d8 });
+        if (e.hit) this.addShake(e.weapon === "fist" ? 0.06 : 0.15);
         break;
       }
       case "grapple": {

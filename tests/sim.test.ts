@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   BARREL,
   FIGHT_TICKS,
+  FIGHTER,
   FINISH_TICKS,
   GAS,
   initPhysics,
@@ -58,7 +59,7 @@ describe("determinism and replay", () => {
     a.playToEnd();
     const rec = JSON.parse(JSON.stringify(a.record));
     rec.strategies[0].stance = rec.strategies[0].stance === "rush" ? "cover" : "rush";
-    rec.strategies[1].loadout = ["grenade", "bat"];
+    rec.strategies[1].weapons = ["grenade", "bat"];
     expect(replayFight(rec).checkpoints[0]).not.toBe(a.record.checkpoints[0]);
     const x = new Fight(5);
     const y = new Fight(6);
@@ -94,16 +95,19 @@ describe("fight flow", () => {
     expect(m.result().kos[0]).toBe(3);
   });
 
-  test("bots give every fighter a strategy with a two-weapon loadout and a line", () => {
+  test("everyone starts equal: same health, fists only, weapon wishes from the strategy", () => {
     for (const seed of [11, 12, 13, 14]) {
       const m = new Fight(seed);
       for (const [i, s] of m.strategies.entries()) {
-        expect(s.loadout.length).toBe(2);
-        expect(s.loadout[0]).not.toBe(s.loadout[1]);
-        expect(s.line.length).toBeGreaterThan(10);
-        expect(m.sim.fighters[i]!.weapons).toEqual(s.loadout);
+        const f = m.sim.fighters[i]!;
+        expect(f.hp).toBe(FIGHTER.maxHp);
+        expect(f.weapons).toEqual(["fist", "fist"]);
+        expect(s.weapons.length).toBeGreaterThanOrEqual(1);
+        expect(f.prefs.slice(0, s.weapons.length)).toEqual(s.weapons);
+        expect(f.prefs.length).toBe(5);
       }
-      expect(m.strategies[0]!.stance).toBe("rush");
+      expect(Object.keys(m.sim.fighters[0]!).includes("personality")).toBe(false);
+      expect(Object.keys(m.sim.fighters[0]!).includes("speed")).toBe(false);
     }
   });
 
@@ -456,12 +460,14 @@ describe("weapons and switching", () => {
 
   test("the controller picks the bat up close, rockets at range and the hook for a target on a ledge", () => {
     const m = new Fight(1, [
-      { target: "nearest", stance: "rush", loadout: ["bat", "rocket"], line: "x" },
-      { target: "nearest", stance: "cover", loadout: ["rocket", "shotgun"], line: "x" },
-      { target: "nearest", stance: "cover", loadout: ["grapple", "rocket"], line: "x" },
-      { target: "nearest", stance: "cover", loadout: ["rocket", "shotgun"], line: "x" },
+      { target: "nearest", stance: "rush", weapons: ["bat", "rocket"], line: "x" },
+      { target: "nearest", stance: "cover", weapons: ["rocket", "shotgun"], line: "x" },
+      { target: "nearest", stance: "cover", weapons: ["grapple", "rocket"], line: "x" },
+      { target: "nearest", stance: "cover", weapons: ["rocket", "shotgun"], line: "x" },
     ]);
     const sim = m.sim;
+    sim.fighters[0]!.weapons = ["bat", "rocket"];
+    sim.fighters[2]!.weapons = ["grapple", "rocket"];
     const c = m.controllers[0]! as any;
     const t = sim.fighters[1]!;
     expect(c.chooseWeapon(sim, sim.fighters[0], t, 1.5, true)).toBe("bat");

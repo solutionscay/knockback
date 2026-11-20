@@ -4,10 +4,11 @@
  * Also runs the same seeds with morale's behavior nudges switched off, to show
  * how much morale moves win rates.
  */
-import { CHARACTERS, initPhysics, Match, MORALE_STATES, TICK_RATE, VoiceSession, type MoraleState } from "../src/sim";
+import { exampleSouls, initPhysics, Match, MORALE_STATES, TICK_RATE, VoiceSession, type MoraleState } from "../src/sim";
 import { Tally } from "../src/flow/score";
 
 await initPhysics();
+const SOULS = exampleSouls();
 const args = process.argv.slice(2);
 const jsonIdx = args.indexOf("--json");
 const jsonOut = jsonIdx >= 0 ? args[jsonIdx + 1] : null;
@@ -105,15 +106,15 @@ out.push(`decided by: ${count(rows.map((r) => r.decidedBy)).map(([k, v]) => `${k
 const roundsAll = rows.flatMap((r) => r.roundSeconds);
 out.push(`match length: ${avg((r) => r.fightSeconds).toFixed(0)} s of fighting avg (rounds ${(roundsAll.reduce((a, b) => a + b, 0) / roundsAll.length).toFixed(1)} s avg each); viewer adds ~${(2.4 + 4 * 3 + 3 + 4).toFixed(0)} s for the opening and ~15 s per break`);
 const roundWins = rows.flatMap((r) => r.roundWinners);
-out.push(`round wins: ${CHARACTERS.map((c, i) => `${c.name} ${pct((100 * roundWins.filter((w) => w === i).length) / roundWins.length)}`).join(", ")}`);
-out.push(`match wins: ${CHARACTERS.map((c, i) => `${c.name} ${pct((100 * rows.filter((r) => r.winner === i).length) / N)}`).join(", ")}`);
-out.push(`tally over all matches (round win 3, knockout 1): ${CHARACTERS.map((c, i) => `${c.name} ${on.tally.points[i]}`).join(", ")}`);
+out.push(`round wins: ${SOULS.map((c, i) => `${c.name} ${pct((100 * roundWins.filter((w) => w === i).length) / roundWins.length)}`).join(", ")}`);
+out.push(`match wins: ${SOULS.map((c, i) => `${c.name} ${pct((100 * rows.filter((r) => r.winner === i).length) / N)}`).join(", ")}`);
+out.push(`tally over all matches (round win 3, knockout 1): ${SOULS.map((c, i) => `${c.name} ${on.tally.points[i]}`).join(", ")}`);
 out.push(`ring-outs per match: ${avg((r) => r.ringouts).toFixed(2)}; humiliations per match: ${avg((r) => r.humiliations.length).toFixed(2)} (${count(rows.flatMap((r) => r.humiliations)).map(([k, v]) => `${k} ${v}`).join(", ")})`);
 // morale
 const starts = rows.flatMap((r) => r.moraleStart.flatMap((ms, ri) => ms.map((s, fi) => ({ s, fi, ri, won: r.roundWinners[ri] === fi }))));
 const later = starts.filter((x) => x.ri > 0);
 out.push(`morale states at the start of rounds 2-3 (${later.length} fighter-rounds): ${MORALE_STATES.map((s) => `${s} ${pct((100 * later.filter((x) => x.s === s).length) / later.length)}`).join(", ")}`);
-out.push(`  by character: ${CHARACTERS.map((c, i) => `${c.name} [${MORALE_STATES.map((s) => `${s[0]}${s[1]}${pct((100 * later.filter((x) => x.fi === i && x.s === s).length) / Math.max(1, later.filter((x) => x.fi === i).length))}`).join(" ")}]`).join("  ")}`);
+out.push(`  by character: ${SOULS.map((c, i) => `${c.name} [${MORALE_STATES.map((s) => `${s[0]}${s[1]}${pct((100 * later.filter((x) => x.fi === i && x.s === s).length) / Math.max(1, later.filter((x) => x.fi === i).length))}`).join(" ")}]`).join("  ")}`);
 out.push(`round win rate by morale state at round start (rounds 2-3; 25% = even): ${MORALE_STATES.map((s) => {
   const g = later.filter((x) => x.s === s);
   return `${s} ${pct((100 * g.filter((x) => x.won).length) / Math.max(1, g.length))} (n=${g.length})`;
@@ -121,9 +122,9 @@ out.push(`round win rate by morale state at round start (rounds 2-3; 25% = even)
 // A/B
 const offWins = off.rows.flatMap((r) => r.roundWinners);
 out.push(`morale behavior nudges A/B (same seeds, nudges off vs on):`);
-out.push(`  round wins OFF: ${CHARACTERS.map((c, i) => `${c.name} ${pct((100 * offWins.filter((w) => w === i).length) / offWins.length)}`).join(", ")}`);
-out.push(`  round wins ON:  ${CHARACTERS.map((c, i) => `${c.name} ${pct((100 * roundWins.filter((w) => w === i).length) / roundWins.length)}`).join(", ")}`);
-out.push(`  match wins OFF: ${CHARACTERS.map((c, i) => `${c.name} ${pct((100 * off.rows.filter((r) => r.winner === i).length) / N)}`).join(", ")}`);
+out.push(`  round wins OFF: ${SOULS.map((c, i) => `${c.name} ${pct((100 * offWins.filter((w) => w === i).length) / offWins.length)}`).join(", ")}`);
+out.push(`  round wins ON:  ${SOULS.map((c, i) => `${c.name} ${pct((100 * roundWins.filter((w) => w === i).length) / roundWins.length)}`).join(", ")}`);
+out.push(`  match wins OFF: ${SOULS.map((c, i) => `${c.name} ${pct((100 * off.rows.filter((r) => r.winner === i).length) / N)}`).join(", ")}`);
 const offStarts = off.rows.flatMap((r) => r.moraleStart.flatMap((ms, ri) => ms.map((st, fi) => ({ s: st, fi, ri, won: r.roundWinners[ri] === fi })))).filter((x) => x.ri > 0);
 out.push(`  round win rate by state, nudges OFF: ${MORALE_STATES.map((st) => {
   const g = offStarts.filter((x) => x.s === st);

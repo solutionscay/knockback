@@ -22,6 +22,7 @@ import {
   GLASS,
   GRAVITY,
   ITEM,
+  ARMORY,
   PAD,
   POWER,
   STEEL,
@@ -34,7 +35,6 @@ import {
   groups,
   type Blast,
 } from "./constants";
-import { CHARACTERS } from "./characters";
 import { dcos, dsin } from "./dmath";
 import { CELL, Mat, type Grid } from "./grid";
 import { generateLevel, PROP_HALF, type LevelDef, type PropKind } from "./levelgen";
@@ -42,24 +42,21 @@ import { NavGraph } from "./nav";
 import { Rng } from "./rng";
 import { buildPieceColliders, components, pieceCellWorld, Terrain, type PieceCell } from "./terrain";
 
-export type Weapon = "rocket" | "shotgun" | "bat" | "grenade" | "grapple";
+/** "fist" is what everyone starts with; the rest are picked up in the arena. */
+export type Weapon = "rocket" | "shotgun" | "bat" | "grenade" | "grapple" | "fist";
+/** Weapons that exist as pickups. */
 export const WEAPON_LIST: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple"];
+export const ALL_WEAPONS: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple", "fist"];
 export type PowerUp = "health" | "shield" | "speed" | "heavy" | "damage" | "jump";
 export const POWER_LIST: readonly PowerUp[] = ["health", "shield", "speed", "heavy", "damage", "jump"];
 export type ItemType = PowerUp | Weapon;
 export type Stance = "rush" | "distance" | "cover" | "item";
-export type Personality = "aggressive" | "sniper" | "coward" | "opportunist";
 export type EntityKind = PropKind | "fighter" | "chunk" | "item" | "grenade";
 export type ExplosionKind = "rocket" | "barrel" | "grenade" | "tnt" | "gas";
 
 /** Who a fighter goes after. Resolved continuously during the fight. */
 export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotgun" | "leader" | "grudge";
 
-/**
- * A fighter's one set of orders for the whole match, chosen before the fight
- * (house bots now, an AI later). `loadout` is the two weapons it starts with
- * (first = favorite). `line` is what it says in its intro.
- */
 /**
  * What to do when someone keeps hitting you from behind (see the reflex in controller.ts):
  *   attacker  switch your target to them for a while
@@ -68,13 +65,18 @@ export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotg
  */
 export type Retaliate = "attacker" | "turn" | "ignore";
 
+/**
+ * A fighter's orders for one round, chosen before it (house bot or AI).
+ * Nobody is handed weapons: `weapons` is which pickups to go for and use,
+ * best first. `line` is what it says before the round.
+ */
 export interface Strategy {
   target: TargetPref;
   retaliate?: Retaliate;
   /** For target "grudge": the fighter to go after. */
   grudge?: number;
   stance: Stance;
-  loadout: [Weapon, Weapon];
+  weapons: Weapon[];
   line: string;
 }
 
@@ -140,9 +142,11 @@ export interface Powers {
 export interface Fighter {
   id: number;
   name: string;
+  /** cosmetic, from the soul (the engine never reads these) */
   color: number;
-  personality: Personality;
-  speed: number;
+  mark: string;
+  /** weapon pickups this fighter wants, best first (from its strategy) */
+  prefs: Weapon[];
   entity: Entity;
   hp: number;
   alive: boolean;
@@ -192,7 +196,7 @@ export interface Rocket {
 export type SimEvent =
   | { type: "fire"; tick: number; fighter: number; weapon: Weapon; x: number; y: number; dx: number; dy: number }
   | { type: "pellet"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: boolean }
-  | { type: "swing"; tick: number; fighter: number; x: number; y: number; dx: number; dy: number; hit: boolean }
+  | { type: "swing"; tick: number; fighter: number; x: number; y: number; dx: number; dy: number; hit: boolean; weapon: "bat" | "fist" }
   | { type: "grapple"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number }
   | { type: "swap"; tick: number; fighter: number; weapon: Weapon }
   | {
@@ -225,14 +229,21 @@ export type SimEvent =
   | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number }
   | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number };
 
-/** Fighter identities come from the character data (characters.ts). */
-export const FIGHTER_DEFS: { name: string; title: string; color: number; personality: Personality; speed: number }[] = CHARACTERS.map((c) => ({
-  name: c.name,
-  title: c.title,
-  color: c.color,
-  personality: c.personality,
-  speed: c.speed,
-}));
+/**
+ * How a seat looks: name, color and a cosmetic mark, from its soul. Purely
+ * visual: all fighters have the same body, speed, health and fists.
+ */
+export interface Look {
+  name: string;
+  color: number;
+  mark: string;
+}
+export const SEAT_LOOKS: Look[] = [
+  { name: "Red", color: 0xff4f4f, mark: "none" },
+  { name: "Blue", color: 0x47a3ff, mark: "none" },
+  { name: "Green", color: 0x4fdc6a, mark: "none" },
+  { name: "Gold", color: 0xffc733, mark: "none" },
+];
 
 let rapierReady: Promise<void> | null = null;
 export function initPhysics(): Promise<void> {
@@ -302,7 +313,7 @@ export class Sim {
     platformsFallen: 0,
   };
 
-  constructor(seed: number, level?: LevelDef) {
+  constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS) {
     this.level = level ?? generateLevel(seed);
     this.grid = this.level.grid.clone();
     this.rng = new Rng(seed);
@@ -321,9 +332,55 @@ export class Sim {
       const s = high.splice(this.rng.int(0, high.length - 1), 1)[0]!;
       this.spawnItem(this.randomPower(), (s.x0 + s.x1) / 2, s.y + 0.4);
     }
-    // seat order is shuffled by seed so personalities do not own a spawn
+    // seat order is shuffled by seed so no seat owns a spawn
     const spawns = this.rng.shuffle(this.level.spawns.slice());
-    FIGHTER_DEFS.forEach((def, i) => this.addFighter(i, def, spawns[i]!.x, spawns[i]!.y));
+    for (let i = 0; i < 4; i++) this.addFighter(i, looks[i] ?? SEAT_LOOKS[i]!, spawns[i]!.x, spawns[i]!.y);
+    this.stockArmory(spawns);
+  }
+
+  /** Weapons waiting at the start: near each spawn (toward the middle), in the middle, up high. */
+  private stockArmory(spawns: { x: number; y: number }[]) {
+    const nav = this.nav;
+    const c = this.zone.center;
+    const placed: { x: number; y: number }[] = [];
+    // nearest free spot on a solid surface (weapons never stack: ARMORY.minGap apart)
+    const near = (x: number, y: number, maxDy: number) => {
+      let best: { x: number; y: number } | null = null;
+      let bd = Infinity;
+      for (const s of nav.surfaces) {
+        if (s.x1 - s.x0 < 1 || s.fragile || Math.abs(s.y - y) > maxDy) continue;
+        for (let k = 0; k <= 8; k++) {
+          const px = clamp(x + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.75, s.x0 + 0.4, s.x1 - 0.4);
+          if (placed.some((p) => Math.abs(p.x - px) < ARMORY.minGap && Math.abs(p.y - s.y) < 1)) continue;
+          const d = Math.abs(px - x) + Math.abs(s.y - y) * 1.5;
+          if (d < bd) {
+            bd = d;
+            best = { x: px, y: s.y };
+          }
+          break;
+        }
+      }
+      if (best) placed.push(best);
+      return best;
+    };
+    const bag = this.rng.shuffle(WEAPON_LIST.slice());
+    let k = 0;
+    const next = () => bag[k++ % bag.length]!;
+    for (const sp of spawns) {
+      for (let n = 0; n < ARMORY.nearSpawn; n++) {
+        const q = near(sp.x + (sp.x < c ? 1 : -1) * ARMORY.spawnOffset, sp.y, 2.5);
+        if (q) this.spawnItem(next(), q.x, q.y + 0.4);
+      }
+    }
+    for (let n = 0; n < ARMORY.middle; n++) {
+      const q = near(c + (n % 2 ? 2.5 : -2.5) * (1 + (n >> 1)), 0, 30);
+      if (q) this.spawnItem(next(), q.x, q.y + 0.4);
+    }
+    const high = nav.surfaces.filter((s) => s.y > 3.5 && s.x1 - s.x0 >= 2 && Math.abs((s.x0 + s.x1) / 2 - c) < 14);
+    for (let n = 0; n < ARMORY.high && high.length; n++) {
+      const s = high.splice(this.rng.int(0, high.length - 1), 1)[0]!;
+      this.spawnItem(this.rng.pick(WEAPON_LIST), (s.x0 + s.x1) / 2 + 0.8, s.y + 0.4);
+    }
   }
 
   // ---------------------------------------------------------------- building
@@ -386,7 +443,7 @@ export class Sim {
     return e;
   }
 
-  private addFighter(id: number, def: (typeof FIGHTER_DEFS)[number], x: number, y: number) {
+  private addFighter(id: number, def: Look, x: number, y: number) {
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(x, y + FIGHTER.halfHeight + FIGHTER.radius + 0.05)
@@ -419,8 +476,8 @@ export class Sim {
       id,
       name: def.name,
       color: def.color,
-      personality: def.personality,
-      speed: def.speed,
+      mark: def.mark,
+      prefs: WEAPON_LIST.slice(),
       entity: e,
       hp: FIGHTER.maxHp,
       alive: true,
@@ -430,11 +487,11 @@ export class Sim {
       facing: x < this.zone.center ? 1 : -1,
       aimX: x < this.zone.center ? 1 : -1,
       aimY: 0,
-      weapons: ["rocket", "shotgun"],
+      weapons: ["fist", "fist"],
       slot: 0,
       swap: 0,
       // nobody fires on the first frame
-      cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40 },
+      cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, fist: 20 },
       stun: 0,
       jumpCd: 0,
       airJumped: false,
@@ -461,11 +518,24 @@ export class Sim {
     this.register(e);
   }
 
-  /** Give a fighter its starting loadout (from the strategy). */
-  setLoadout(id: number, loadout: [Weapon, Weapon]) {
+  /** Which weapon pickups a fighter wants, best first (from its strategy). */
+  setPrefs(id: number, prefs: readonly Weapon[]) {
     const f = this.fighters[id]!;
-    f.weapons = [loadout[0], loadout[1]];
-    f.slot = 0;
+    const ok = prefs.filter((w, i) => WEAPON_LIST.includes(w) && prefs.indexOf(w) === i);
+    // anything not listed still beats fists, after the listed ones
+    f.prefs = [...ok, ...WEAPON_LIST.filter((w) => !ok.includes(w))];
+  }
+
+  /** Is a weapon pickup worth taking for this fighter right now? */
+  wantsWeapon(f: Fighter, w: Weapon): boolean {
+    if (f.weapons.includes(w)) return false;
+    if (f.weapons.includes("fist")) return true;
+    const other = f.weapons[1 - f.slot]!;
+    const rank = (x: Weapon) => {
+      const i = f.prefs.indexOf(x);
+      return i < 0 ? 99 : i;
+    };
+    return rank(w) < rank(other);
   }
 
   spawnItem(type: ItemType, x: number, y: number, vx = 0, vy = 0): Entity {
@@ -493,8 +563,14 @@ export class Sim {
     return "health";
   }
 
-  private randomDrop(): ItemType {
-    return this.rng.chance(0.6) ? this.randomPower() : this.rng.pick(WEAPON_LIST);
+  private randomDrop(weaponChance: number): ItemType {
+    return this.rng.chance(weaponChance) ? this.rng.pick(WEAPON_LIST) : this.randomPower();
+  }
+
+  private looseWeapons(): number {
+    let n = 0;
+    for (const e of this.entities.values()) if (e.kind === "item" && !e.dead && WEAPON_LIST.includes(e.itemType as Weapon)) n++;
+    return n;
   }
 
   // ----------------------------------------------------------------- queries
@@ -571,7 +647,8 @@ export class Sim {
 
   private supplyDrop() {
     const n = this.supplyCount++;
-    this.spawnItem(this.randomDrop(), this.dropX(), 16);
+    const wc = this.looseWeapons() >= SUPPLY.maxLooseWeapons ? 0 : SUPPLY.weaponChance;
+    this.spawnItem(this.randomDrop(wc), this.dropX(), 16);
     if (n % 2 === 0) {
       const x = this.dropX();
       const tnt = this.rng.chance(0.3);
@@ -750,7 +827,7 @@ export class Sim {
     let vx = v.x;
     let vy = v.y;
     if (f.jumpCd > 0) f.jumpCd--;
-    for (const w of WEAPON_LIST) if (f.cooldown[w] > 0) f.cooldown[w]--;
+    for (const w of ALL_WEAPONS) if (f.cooldown[w] > 0) f.cooldown[w]--;
     if (f.swap > 0) f.swap--;
     if (f.stun > 0) {
       f.stun--;
@@ -758,7 +835,7 @@ export class Sim {
       body.setLinvel({ x: vx, y: vy }, true);
       return;
     }
-    let speed = FIGHTER.walkSpeed * f.speed;
+    let speed = FIGHTER.walkSpeed;
     if (f.power.speed > 0) speed *= POWER.speed.mul;
     if (f.power.heavy > 0) speed *= POWER.heavy.speedMul;
     const target = clamp(inp.move, -1, 1) * speed;
@@ -828,6 +905,10 @@ export class Sim {
       case "bat":
         f.cooldown.bat = WEAPONS.bat.cooldown;
         this.swingBat(f, ox, oy, dx, dy);
+        break;
+      case "fist":
+        f.cooldown.fist = WEAPONS.fist.cooldown;
+        this.punch(f, ox, oy, dx, dy);
         break;
       case "grenade":
         f.cooldown.grenade = WEAPONS.grenade.cooldown;
@@ -924,7 +1005,42 @@ export class Sim {
       this.events.push({ type: "carve", tick: this.tick, cells: smashed });
       hitAny = true;
     }
-    this.events.push({ type: "swing", tick: this.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny });
+    this.events.push({ type: "swing", tick: this.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny, weapon: "bat" });
+  }
+
+  /** Fists: a short jab, small shove, chips nothing. */
+  private punch(f: Fighter, ox: number, oy: number, dx: number, dy: number) {
+    const P = WEAPONS.fist;
+    const cx = ox + dx * P.reach;
+    const cy = oy + dy * P.reach;
+    const found: Entity[] = [];
+    this.world.intersectionsWithShape({ x: cx, y: cy }, 0, new RAPIER.Ball(P.radius), (c) => {
+      const e = this.byCollider.get(c.handle);
+      if (e && !e.dead && e !== f.entity && !found.includes(e)) found.push(e);
+      return true;
+    });
+    let lx = dx;
+    let ly = dy + P.lift;
+    const l = Math.sqrt(lx * lx + ly * ly);
+    lx /= l;
+    ly /= l;
+    let hitAny = false;
+    for (const e of found) {
+      if (e.kind === "fighter" && e.fighter) {
+        if (!e.fighter.alive) continue;
+        const t = e.body.translation();
+        this.damageFighter(e.fighter, P.damage, f.id, lx * P.knockback, ly * P.knockback, "fist", t.x, t.y);
+        hitAny = true;
+      } else if (e.kind !== "item") {
+        this.hitProp(e, 4, f.id, "fist", cx, cy);
+        if (!e.dead) {
+          const m = e.body.mass();
+          e.body.applyImpulse({ x: lx * P.propImpulse * Math.min(m, 3), y: ly * P.propImpulse * Math.min(m, 3) }, true);
+        }
+        hitAny = true;
+      }
+    }
+    this.events.push({ type: "swing", tick: this.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny, weapon: "fist" });
   }
 
   private throwGrenade(f: Fighter, ox: number, oy: number, dx: number, dy: number) {
@@ -1196,7 +1312,7 @@ export class Sim {
         this.removeEntity(e);
         if (e.kind === "crate") {
           this.stats.cratesDestroyed++;
-          if (this.rng.chance(CRATE.dropChance)) this.spawnItem(this.randomDrop(), t.x, t.y + 0.2, 0, 3);
+          if (this.rng.chance(CRATE.dropChance)) this.spawnItem(this.randomDrop(ARMORY.crateWeaponChance), t.x, t.y + 0.2, 0, 3);
         }
       }
     }
@@ -1413,10 +1529,23 @@ export class Sim {
     if (by >= 0 && by !== f.id) this.fighters[by]!.kos++;
     const weapon = by >= 0 ? f.lastHitCause || "unknown" : cause === "ringout" ? "fall" : f.lastHitCause || "crush";
     this.events.push({ type: "ko", tick: this.tick, fighter: f.id, cause, by, weapon, x, y });
+    // a knocked-out fighter drops its weapons: up for grabs
+    if (cause === "hp") this.dropWeapons(f, x, y);
     f.entity.collider.setCollisionGroups(groups(G.PROP, G.TERRAIN));
     f.entity.body.lockRotations(false, true);
     f.entity.body.setAngvel(f.facing * -6, true);
     if (cause === "ringout") this.removeFighterBody(f);
+  }
+
+  private dropWeapons(f: Fighter, x: number, y: number) {
+    let side = -1;
+    for (const w of f.weapons) {
+      if (w === "fist") continue;
+      const e = this.spawnItem(w, x + side * 0.3, y + 0.6, side * 2.2, 4);
+      e.owner = f.id;
+      side = -side;
+    }
+    f.weapons = ["fist", "fist"];
   }
 
   private removeFighterBody(f: Fighter) {
@@ -1441,10 +1570,18 @@ export class Sim {
     for (const e of this.entities.values()) {
       if (e.kind !== "item" || e.dead) continue;
       const t = e.body.translation();
-      const dx = t.x - x;
+      // reach covers the whole body: from just below the feet to just above the head
+      const dx = Math.abs(t.x - x);
       const dy = t.y - y;
-      if (dx * dx + dy * dy > ITEM.pickupRange * ITEM.pickupRange) continue;
-      this.applyItem(f, e.itemType!);
+      const half = FIGHTER.halfHeight + FIGHTER.radius;
+      if (dx > ITEM.pickupRange * 0.85 || dy < -half - ITEM.reachBelow || dy > half + 0.3) continue;
+      const it = e.itemType!;
+      if (WEAPON_LIST.includes(it as Weapon)) {
+        // the one who just dropped it can't grab it straight back
+        if (e.owner === f.id && this.tick - e.born < ARMORY.pickupGraceTicks) continue;
+        if (!this.wantsWeapon(f, it as Weapon)) continue;
+      }
+      this.applyItem(f, it);
       this.events.push({ type: "pickup", tick: this.tick, fighter: f.id, item: e.itemType!, x: t.x, y: t.y });
       this.removeEntity(e);
       return;
@@ -1476,9 +1613,16 @@ export class Sim {
         f.power.jump = POWER.jump.ticks;
         return on("jump");
       default: {
-        // a weapon: replace the slot not in hand, unless already carried
+        // a weapon: fill an empty (fists) slot, else replace the one not in hand and drop it
         if (f.weapons.includes(it)) return;
-        const other = (1 - f.slot) as 0 | 1;
+        const free = f.weapons[1 - f.slot] === "fist" ? 1 - f.slot : f.weapons[f.slot] === "fist" ? f.slot : -1;
+        const other = (free >= 0 ? free : 1 - f.slot) as 0 | 1;
+        const old = f.weapons[other]!;
+        if (old !== "fist") {
+          const p = this.pos(f);
+          const d = this.spawnItem(old, p.x - f.facing * 0.4, p.y + 0.4, -f.facing * 2.5, 3.5);
+          d.owner = f.id;
+        }
         f.weapons[other] = it;
         f.slot = other;
         f.swap = SWAP_TICKS;
@@ -1520,8 +1664,8 @@ export class Sim {
       num(f.alive ? 1 : 0);
       num(f.stun);
       num(f.slot);
-      num(WEAPON_LIST.indexOf(f.weapons[0]) * 10 + WEAPON_LIST.indexOf(f.weapons[1]));
-      for (const w of WEAPON_LIST) num(f.cooldown[w]);
+      num(ALL_WEAPONS.indexOf(f.weapons[0]) * 10 + ALL_WEAPONS.indexOf(f.weapons[1]));
+      for (const w of ALL_WEAPONS) num(f.cooldown[w]);
       num(f.power.shield + f.power.speed * 1e3 + f.power.heavy * 1e6 + f.power.damage * 1e9 + f.power.jump * 1e12);
       num(f.aimX);
       num(f.aimY);

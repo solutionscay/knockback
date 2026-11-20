@@ -36,6 +36,11 @@ export function drawWeapon(g: Graphics, kind: string, color: number, scale = 1) 
       g.circle(0.35 * s, 0, 0.2 * s).fill(0x4b5a2a).stroke({ width: 0.04 * s, color: 0x1d2410 });
       g.rect(0.3 * s, -0.27 * s, 0.1 * s, 0.1 * s).fill(0x888888);
       break;
+    case "fist":
+      // a boxing glove in the fighter's color
+      g.roundRect(0.12 * s, -0.14 * s, 0.3 * s, 0.28 * s, 0.12 * s).fill(color).stroke({ width: 0.04 * s, color: 0x15171d });
+      g.rect(0.04 * s, -0.08 * s, 0.1 * s, 0.16 * s).fill(0xeeeeee).stroke({ width: 0.03 * s, color: 0x15171d });
+      break;
     case "grapple":
       g.roundRect(-0.1 * s, -0.1 * s, 0.7 * s, 0.2 * s, 0.05 * s).fill(0x3a3f4a).stroke({ width: 0.035 * s, color: 0x15171d });
       g.moveTo(0.6 * s, 0)
@@ -167,6 +172,8 @@ export function drawProp(g: Graphics, e: Entity, time: number): boolean {
       const power = it in POWER_COLOR;
       const col = power ? POWER_COLOR[it]! : 0xffb347;
       g.circle(0, 0, 0.55 + pulse * 0.12).fill({ color: col, alpha: 0.16 + pulse * 0.12 });
+      // weapons are what everyone is fighting over: a bright beacon ring
+      if (!power) g.circle(0, 0, 0.7 + pulse * 0.2).stroke({ width: 0.07, color: 0xffd27a, alpha: 0.5 + pulse * 0.4 });
       g.roundRect(-w, -h, w * 2, h * 2, 0.1).fill(power ? 0xf4f4f4 : 0x2a2d35).stroke({ width: 0.05, color: shade(col, 0.7) });
       itemIcon(g, it);
       return true;

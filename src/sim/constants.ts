@@ -79,6 +79,20 @@ export const WEAPONS = {
     blockDamage: 40,
     terrainDamage: 105,
   },
+  /**
+   * Fists: what every fighter starts with (and never loses). A weak, short
+   * jab with a small shove: enough to defend yourself and to scrap over a
+   * pickup, never enough to win a round on its own. Go find a weapon.
+   */
+  fist: {
+    cooldown: 24,
+    reach: 0.7,
+    radius: 0.7,
+    damage: 3.5,
+    knockback: 6.5,
+    lift: 0.45,
+    propImpulse: 3,
+  },
   /** Hook: yanks a fighter (or a prop) toward the shooter. */
   grapple: {
     cooldown: 110,
@@ -128,8 +142,8 @@ export const WEIGHT = { density: 7, ropeHp: 30 };
 export const CRUMBLE_DPS = 20;
 
 export const BLOCK = { size: 0.9, hp: 40, density: 1.4 };
-export const CRATE = { size: 0.8, hp: 14, density: 0.6, dropChance: 0.8 };
-export const ITEM = { size: 0.5, pickupRange: 1.1, healAmount: 35 };
+export const CRATE = { size: 0.8, hp: 14, density: 0.6, dropChance: 0.9 };
+export const ITEM = { size: 0.5, pickupRange: 1.1, healAmount: 35, reachBelow: 0.6 };
 
 /** Power-up durations (ticks) and strengths. */
 export const POWER = {
@@ -175,5 +189,12 @@ export const ZONE = {
   shockDamage: 4,
 };
 
-/** Supply drops: every interval, alternating barrels and an item, inside the zone. */
-export const SUPPLY = { firstTick: 9 * TICK_RATE, interval: 9 * TICK_RATE };
+/** Supply drops: every interval an item (often a weapon) inside the zone, barrels every other drop. */
+export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 6 * TICK_RATE, weaponChance: 0.65, maxLooseWeapons: 8 };
+
+/**
+ * Weapons waiting in the arena when a round starts. Everyone starts with
+ * fists only: one weapon a few meters from each spawn (toward the middle, so
+ * neighbours can contest it) and a few more in the middle and up high.
+ */
+export const ARMORY = { nearSpawn: 1, spawnOffset: 3.5, middle: 3, minGap: 1.5, high: 1, crateWeaponChance: 0.55, pickupGraceTicks: 45 };

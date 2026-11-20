@@ -7,7 +7,7 @@
 import type { Application } from "pixi.js";
 import { betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
 import { POINTS, Tally, type FightScore } from "../flow/score";
-import { CHARACTERS } from "../sim/characters";
+import type { Soul } from "../sim/soul";
 import { DT, FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import type { Fight } from "../sim/fight";
 import { Match, ROUNDS_TO_WIN, type DecisionMeta, type MatchRecord } from "../sim/match";
@@ -169,8 +169,8 @@ export class Game {
    * exactly (all decisions from the record). `live`: decisions arrive later via
    * pushDecisions() (AI fighters thinking on the server).
    */
-  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[] } = {}) {
-    this.match = new Match(seed, { session: this.session, recorded: opts.recorded });
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[] } = {}) {
+    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, souls: opts.souls });
     this.match.onEvent = (e) => this.onEvent(e);
     this.labels = opts.labels ?? null;
     this.live = !!opts.live;
@@ -182,7 +182,7 @@ export class Game {
       // show the arena while the fighters think about round 1
       this.waitingRound = 1;
       this.shown = null as unknown as Fight;
-      const preview = new Match(seed);
+      const preview = new Match(seed, { souls: this.match.souls });
       preview.prepareRound();
       this.shown = preview.fight!;
       this.scene.load(this.shown.sim, this.shown.controllers);
@@ -219,7 +219,7 @@ export class Game {
 
   private startLineup() {
     this.hud.lineup.innerHTML = this.shown.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.personality, this.decisions[f.id]!.strategy.loadout[0])}<span>${esc(f.name)}</span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.mark, this.decisions[f.id]!.strategy.weapons[0] ?? "fist")}<span>${esc(f.name)}</span></div>`)
       .join("");
     this.hud.lineup.className = "show";
   }
@@ -263,7 +263,7 @@ export class Game {
     switch (b.kind) {
       case "level": {
         const lv = this.match.level;
-        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking: ${this.labels?.map((l, i) => `${esc(CHARACTERS[i]!.name)} (${esc(l)})`).join(" · ") ?? ""}</div>` : "";
+        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking: ${this.labels?.map((l, i) => `${esc(this.match.souls[i]!.name)} (${esc(l)})`).join(" · ") ?? ""}</div>` : "";
         this.scene.overview = true;
         h.intro.innerHTML = `
           <div class="levelcard">
@@ -320,7 +320,7 @@ export class Game {
         this.matchScores.push(scores);
         for (const s of scores) this.matchPoints[s.fighter]! += s.total;
         this.saveTally();
-        const w = CHARACTERS[facts.winner]!;
+        const w = this.match.souls[facts.winner]!;
         const decided = this.match.over;
         h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span>${this.pipsHtml("big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
         h.callout.innerHTML += this.recapHtml(facts);
@@ -352,7 +352,7 @@ export class Game {
   }
 
   private pipsHtml(size: "small" | "big"): string {
-    const pips = CHARACTERS.map((c, i) => {
+    const pips = this.match.souls.map((c, i) => {
       const w = this.match.wins[i]!;
       const dots = Array.from({ length: ROUNDS_TO_WIN }, (_, k) => `<b class="${k < w ? "on" : ""}"></b>`).join("");
       return `<span class="pip" style="--c:${hex(c.color)}"><i></i>${size === "big" ? esc(c.name) : ""}${dots}</span>`;
@@ -363,24 +363,24 @@ export class Game {
   /** Short round recap: damage dealt/taken and who hurt each fighter most (from round stats). */
   private recapHtml(facts: import("../sim/morale").RoundFacts): string {
     const st = facts.stats;
-    const rows = CHARACTERS.map((c, i) => {
+    const rows = this.match.souls.map((c, i) => {
       const dealt = st.damage[i]!.reduce((a, s, j) => a + (j === i ? 0 : s.damage), 0);
       const took = st.damage.reduce((a, row, j) => a + (j === i ? 0 : row[i]!.damage), 0);
       let worst = -1;
       for (let a = 0; a < 4; a++) if (a !== i && st.damage[a]![i]!.damage > (worst >= 0 ? st.damage[worst]![i]!.damage : 0)) worst = a;
       const w = worst >= 0 ? st.damage[worst]![i]! : null;
-      const hurt = w && w.damage >= 8 ? `${esc(CHARACTERS[worst]!.name)} ${Math.round(w.damage)}${w.hits > 1 && w.fromBehind === w.hits ? " from behind" : w.fromBehind >= 2 ? ` (${w.fromBehind} from behind)` : ""}` : "";
+      const hurt = w && w.damage >= 8 ? `${esc(this.match.souls[worst]!.name)} ${Math.round(w.damage)}${w.hits > 1 && w.fromBehind === w.hits ? " from behind" : w.fromBehind >= 2 ? ` (${w.fromBehind} from behind)` : ""}` : "";
       return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
     }).join("");
     return `<div class="recap">${rows}</div>`;
   }
 
   private dialogueHtml(b: Extract<Beat, { kind: "dialogue" }>): string {
-    const c = CHARACTERS[b.fighter]!;
+    const c = this.match.souls[b.fighter]!;
     const d = this.decisions[b.fighter]!;
     const m = this.match.morale[b.fighter]!;
     const s = d.strategy;
-    const tgt = esc(s.target === "grudge" && s.grudge !== undefined ? `AFTER ${CHARACTERS[s.grudge]!.name.toUpperCase()}` : `TARGET: ${String(s.target).toUpperCase()}`);
+    const tgt = esc(s.target === "grudge" && s.grudge !== undefined ? `AFTER ${this.match.souls[s.grudge]!.name.toUpperCase()}` : `TARGET: ${String(s.target).toUpperCase()}`);
     const head = b.phase === "intro" ? "BEFORE ROUND 1" : `AFTER ROUND ${b.round - 1} · NEXT: ROUND ${b.round}`;
     const meta = this.match.record.rounds[b.round - 1]?.meta?.[b.fighter];
     const who = meta
@@ -396,12 +396,12 @@ export class Game {
     const rt = s.retaliate === "attacker" ? "TURN ON ATTACKERS" : s.retaliate === "ignore" ? "IGNORE BACKSTABS" : "FIGHT BACK";
     return `
       <div class="panel" style="--c:${hex(c.color)}">
-        <div class="portrait">${portraitSvg(c.color, c.personality, s.loadout[0], m.state)}</div>
+        <div class="portrait">${portraitSvg(c.color, c.mark, s.weapons[0] ?? "fist", m.state)}</div>
         <div class="body">
-          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span><span class="title">${esc(c.title.toUpperCase())}</span><span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
+          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${c.title ? `<span class="title">${esc(c.title.toUpperCase())}</span>` : ""}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
-          <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`${s.loadout[0]} + ${s.loadout[1]}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
+          <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
         </div>
         <button type="button" class="skip" title="Skip the dialogue">SKIP ▸▸</button>
         <div class="hint">SPACE ▸</div>
@@ -410,13 +410,13 @@ export class Game {
 
   private celebrateHtml(): string {
     const m = this.match;
-    const w = CHARACTERS[m.winner]!;
+    const w = this.match.souls[m.winner]!;
     const why = m.decidedBy() === "two-wins" ? `${m.wins[m.winner]} rounds to ${Math.max(...m.wins.filter((_, i) => i !== m.winner))}` : "won the deciding round";
     const best = Math.max(1, ...this.tally.points);
     const rows = this.tally
       .ranking()
       .map((id, rank) => {
-        const c = CHARACTERS[id]!;
+        const c = this.match.souls[id]!;
         const gained = this.matchPoints[id]!;
         const wins = m.wins[id]!;
         const kos = m.kos[id]!;

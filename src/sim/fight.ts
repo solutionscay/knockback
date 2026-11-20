@@ -6,14 +6,14 @@
  *
  * A FightRecord (seed + strategies) replays to the same state hash.
  */
-import { chooseStrategy } from "./bots";
+import { neutralStrategy } from "./bots";
 import { FIGHT_TICKS, FINISH_TICKS, TICK_RATE } from "./constants";
 import { AIM_NOISE, Controller } from "./controller";
 import type { LevelDef } from "./levelgen";
 import { MORALE_EFFECT, type FighterRoundFacts, type HumiliationKind, type MoraleState, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
 import { SAMPLE_TICKS, StatsCollector } from "./roundstats";
-import { NO_INPUT, Sim, type SimEvent, type Strategy } from "./sim";
+import { NO_INPUT, SEAT_LOOKS, Sim, type Look, type SimEvent, type Strategy } from "./sim";
 
 export interface FightOptions {
   /** Level to fight on (default: generated from the seed). Rounds of a match share one. */
@@ -22,6 +22,8 @@ export interface FightOptions {
   morale?: MoraleState[];
   /** Turn morale's behavior nudges off (for A/B stats). */
   noMoraleEffect?: boolean;
+  /** Names/colors from the souls (cosmetic: never affects the fight). */
+  looks?: Look[];
 }
 
 export interface FightRecord {
@@ -72,13 +74,13 @@ export class Fight {
     recorded?: Strategy[],
     readonly opts: FightOptions = {},
   ) {
-    this.sim = new Sim(seed, opts.level);
+    this.sim = new Sim(seed, opts.level, opts.looks ?? SEAT_LOOKS);
     const botRng = new Rng((seed ^ 0x5bd1e995) >>> 0);
-    this.strategies = recorded ? recorded.map((s) => ({ ...s })) : this.sim.fighters.map((f) => chooseStrategy(f, botRng));
+    this.strategies = recorded ? recorded.map((s) => ({ ...s, weapons: (s.weapons ?? []).slice() })) : this.sim.fighters.map(() => neutralStrategy(botRng));
     this.controllers = this.sim.fighters.map((f) => {
       const m = opts.morale?.[f.id];
       const k = m && !opts.noMoraleEffect ? MORALE_EFFECT[m].aim : 1;
-      return new Controller(f.id, AIM_NOISE[f.personality] * k);
+      return new Controller(f.id, AIM_NOISE * k);
     });
     for (const [i, c] of this.controllers.entries()) {
       c.peers = this.controllers;
@@ -181,7 +183,7 @@ export class Fight {
       chainReactions: this.chains,
       platformsFallen: sim.stats.platformsFallen,
       biggestHit: this.biggest,
-      stats: this.stats.finish(this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause }))),
+      stats: this.stats.finish(this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause })), this.sim.fighters.map((f) => f.name)),
     };
   }
 

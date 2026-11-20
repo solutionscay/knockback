@@ -106,7 +106,7 @@ export function registerStubs(delayMs = 30) {
     ask: async (prompt, signal) => {
       await wait(delayMs, signal);
       const me = /You are (\w+)/.exec(prompt)?.[1] ?? "someone";
-      return `Sure! Here's my plan:\n\`\`\`json\n{"loadout":["rocket","bat"],"target":"weakest","stance":"rush","retaliate":"attacker","line":"${me} is coming for you."}\n\`\`\``;
+      return `Sure! Here's my plan:\n\`\`\`json\n{"weapons":["rocket","bat"],"target":"weakest","stance":"rush","retaliate":"attacker","line":"${me} is coming for you."}\n\`\`\``;
     },
   });
   registerProvider("slow", { label: "slow/test", ask: async (_p, signal) => (await wait(600_000, signal), "{}") });

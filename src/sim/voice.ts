@@ -5,14 +5,15 @@
  * round. This is exactly where AI agents plug in: pass your own `Brain` per
  * fighter to `new Match(seed, { brains })`.
  *
- * houseBrain is the built-in version: lines from the character's template bank
- * (characters.ts) chosen by what actually happened, never repeated within a
- * session; strategy from the character's signature and current morale.
+ * houseBrain is the built-in version, driven by the fighter's soul: lines
+ * from the soul's own `## Lines` (or, where it has none, template lines in
+ * its voice), chosen by what actually happened and never repeated within a
+ * session; strategy from the soul's fields, bent by morale and last round.
  */
-import { CHARACTERS, type LineTemplate } from "./characters";
 import type { Morale, MoraleState, RoundFacts } from "./morale";
 import type { Rng } from "./rng";
 import type { Strategy, Weapon } from "./sim";
+import type { LineTemplate, Soul, Voice } from "./soul";
 
 export interface DecideContext {
   /** "intro" before round 1, "between" after a round */
@@ -21,6 +22,8 @@ export interface DecideContext {
   round: number;
   me: number;
   names: string[];
+  /** every fighter's soul (identity, attitude, voice, what it values) */
+  souls: Soul[];
   /** round wins so far, per fighter */
   wins: number[];
   morale: Morale[];
@@ -53,6 +56,7 @@ const WEAPON_PHRASE: Record<string, string> = {
   bat: "the bat",
   grenade: "a grenade",
   grapple: "the hook",
+  fist: "a punch",
   barrel: "a barrel",
   tnt: "the TNT",
   gas: "a gas can",
@@ -117,14 +121,96 @@ function fill(text: string, ctx: DecideContext, strategy: Strategy): string | nu
   return missing ? null : out;
 }
 
+/**
+ * Template lines by voice, for souls without their own lines (or without one
+ * for this moment). Same contexts and placeholders as a soul's `## Lines`.
+ */
+export const VOICE_LINES: Record<Voice, LineTemplate[]> = {
+  brash: [
+    ["intro", "*", "Line up. I'll take you one at a time or all at once."],
+    ["intro", "*", "I came here to win and I'm all out of patience."],
+    ["win", "*", "THAT'S how it's done. Somebody write it down."],
+    ["win", "*", "Round's mine. Next!"],
+    ["kod", "*", "{killer}, that was luck. Next round you get the real thing."],
+    ["kod", "*", "{killer} with {weapon}? Cheap shot. I'm coming."],
+    ["ko", "*", "{victim} went flying. Did you see that? EVERYBODY saw that."],
+    ["survived", "*", "Still standing. Still angry."],
+    ["mp:for", "*", "One more round and I'm done here."],
+    ["mp:against", "*", "{winner} thinks it's over. It's not over."],
+    ["decider", "*", "Last round. Everything I've got."],
+    ["state", "*", "Ring the bell already."],
+    ["state", ["furious"], "{grudge}. You. Me. Now."],
+  ],
+  smug: [
+    ["intro", "*", "I've done the arithmetic. It favors me."],
+    ["intro", "*", "Do try to make this interesting."],
+    ["win", "*", "As expected. Shall we go again?"],
+    ["win", "*", "Precisely as planned."],
+    ["kod", "*", "A fortunate {weapon}, {killer}. It won't repeat."],
+    ["kod", "*", "{killer}. Noted. Corrected next round."],
+    ["ko", "*", "{victim}, you were standing in a very poor spot."],
+    ["survived", "*", "Survival is a skill. I have several."],
+    ["mp:for", "*", "One more and I'll accept my trophy."],
+    ["mp:against", "*", "{winner} leads. Briefly."],
+    ["decider", "*", "The decider. How dramatic. I'll keep it brief."],
+    ["state", "*", "Patience. The numbers come around."],
+    ["state", ["furious"], "{grudge}, I've stopped being polite."],
+  ],
+  nervous: [
+    ["intro", "*", "Hi. Hello. Please don't aim at me first."],
+    ["intro", "*", "I'm fine. Totally fine. Why is everyone so big?"],
+    ["win", "*", "I won? I WON? Is that allowed?"],
+    ["win", "*", "Did everyone else just fall over? Thank you, luck."],
+    ["kod", "*", "{killer} got me with {weapon}. Ow. Big ow."],
+    ["kod", "*", "That was {killer}! I saw it! I felt it, mostly."],
+    ["ko", "*", "Sorry, {victim}! Was that me? That was me."],
+    ["survived", "*", "Still here! Nobody noticed me, which was the plan."],
+    ["mp:for", "*", "One more win? Me? Don't jinx it. Don't jinx it."],
+    ["mp:against", "*", "{winner} is winning. Should I be worried? I'm worried."],
+    ["decider", "*", "Last round. Deep breaths. Tiny deep breaths."],
+    ["state", "*", "Okay. Okay okay okay."],
+    ["state", ["desperate"], "Nothing to lose now. Except everything. Here goes!"],
+  ],
+  sly: [
+    ["intro", "*", "Go on, all of you. Wear each other out for me."],
+    ["intro", "*", "I'll be around. Waiting."],
+    ["win", "*", "Thanks for doing the hard work, everyone."],
+    ["win", "*", "Patience pays. It always does."],
+    ["kod", "*", "{killer} took a bite out of me. Rude."],
+    ["kod", "*", "Well played, {killer}. I'll remember that taste."],
+    ["ko", "*", "{victim} was looking a little tender."],
+    ["survived", "*", "The last one standing usually gets the scraps. I like scraps."],
+    ["mp:for", "*", "One more and the whole table is mine."],
+    ["mp:against", "*", "{winner} is getting fat on wins. Good. More to take."],
+    ["decider", "*", "Last round. Someone's going to be dinner."],
+    ["state", "*", "I can wait. Can you?"],
+    ["state", ["furious"], "{grudge}, you've made this personal."],
+  ],
+  plain: [
+    ["intro", "*", "Let's fight."],
+    ["intro", "*", "Ready when you are."],
+    ["win", "*", "Round to me."],
+    ["win", "*", "Good round. Again."],
+    ["kod", "*", "{killer} got me with {weapon}. Next time."],
+    ["ko", "*", "Got {victim}."],
+    ["survived", "*", "Made it to the end."],
+    ["mp:for", "*", "One more round."],
+    ["mp:against", "*", "{winner} is ahead. Not for long."],
+    ["decider", "*", "Last round. Let's go."],
+    ["state", "*", "Let's go."],
+  ],
+};
+
 /** Pick a line: first context with an unused template that fits morale and the facts. */
 export function pickLine(ctx: DecideContext, strategy: Strategy): { line: string; id: string } {
-  const ch = CHARACTERS[ctx.me]!;
+  const soul = ctx.souls[ctx.me]!;
   const state: MoraleState = ctx.morale[ctx.me]!.state;
-  const all = ch.lines.map((t, i) => ({ t, id: `${ch.name}:${i}` }));
+  // the soul's own lines first; template lines in its voice fill the gaps
+  const all = [...soul.lines.map((t, i) => ({ t, id: `${soul.name}:${i}` })), ...VOICE_LINES[soul.voice].map((t, i) => ({ t, id: `voice:${soul.voice}:${soul.name}:${i}` }))];
+  const own = new Set(soul.lines.map((t) => t[0]));
   const fits = (t: LineTemplate) => t[1] === "*" || t[1].includes(state);
   const tryCtx = (c: string, allowUsed: boolean) => {
-    const cands = all.filter(({ t, id }) => t[0] === c && fits(t) && (allowUsed || !ctx.session.used.has(id)));
+    const cands = all.filter(({ t, id }) => t[0] === c && fits(t) && (allowUsed || !ctx.session.used.has(id)) && (!own.has(c) || !id.startsWith("voice:")));
     const filled = cands.map((x) => ({ ...x, text: fill(x.t[2], ctx, strategy) })).filter((x) => x.text !== null);
     if (!filled.length) return null;
     // state-specific templates first, then any; random among the best
@@ -142,20 +228,25 @@ export function pickLine(ctx: DecideContext, strategy: Strategy): { line: string
     const got = tryCtx(c, true);
     if (got) return { line: got.text!, id: got.id };
   }
-  return { line: ch.catchphrase, id: `${ch.name}:catchphrase` };
+  return { line: soul.catchphrase || "...", id: `${soul.name}:catchphrase` };
 }
 
-/** The house strategy: signature play, bent by morale. */
+/**
+ * The house strategy: the soul's own play (its target, stance, weapons and
+ * retaliate fields, or what its text implies), bent by morale and by what
+ * happened last round. Temperament decides how morale bends it.
+ */
 export function houseStrategy(ctx: DecideContext): Strategy {
-  const ch = CHARACTERS[ctx.me]!;
+  const soul = ctx.souls[ctx.me]!;
   const m = ctx.morale[ctx.me]!;
-  const sig = ch.signature;
-  let loadout: [Weapon, Weapon] = [sig.loadout[0], sig.loadout[1]];
-  let stance = sig.stance;
-  let target = sig.target;
+  let weapons: Weapon[] = soul.weapons.slice();
+  let stance = soul.stance;
+  let target = soul.target;
   let grudge: number | undefined;
   const leader = ctx.wins.indexOf(Math.max(...ctx.wins));
   const someoneLeads = Math.max(...ctx.wins) > 0 && leader !== ctx.me;
+  const hothead = soul.temperament === "cocky" || soul.values.some((v) => /never backs down|grudge/.test(v));
+  const timid = soul.temperament === "nervous" || soul.stance === "cover";
   switch (m.state) {
     case "furious":
       if (m.grudge >= 0 && m.grudge !== ctx.me) {
@@ -169,15 +260,16 @@ export function houseStrategy(ctx: DecideContext): Strategy {
         target = "grudge";
         grudge = leader;
       }
-      if (ch.personality === "coward" || ch.personality === "opportunist") stance = "item";
+      if (timid || stance === "item") stance = "item";
+      else stance = "rush";
       break;
     case "rattled":
       if (stance === "distance") stance = "cover";
-      if (ch.personality === "aggressive") target = "weakest";
+      if (hothead) target = "weakest";
       break;
     case "cocky":
-      if (ch.personality === "coward") stance = "rush"; // what could go wrong
-      else if (ch.personality === "aggressive" && !someoneLeads) target = sig.target; // keeps hunting his favorite target
+      if (timid) stance = "rush"; // what could go wrong
+      else if (hothead && !someoneLeads) target = soul.target;
       else if (someoneLeads) {
         target = "grudge";
         grudge = leader;
@@ -186,11 +278,12 @@ export function houseStrategy(ctx: DecideContext): Strategy {
     case "confident":
       break;
   }
-  if (ch.personality === "sniper" && m.state === "furious") loadout = ["rocket", "grapple"];
-  // retaliation: the hothead switches to whoever jumps him; everyone else turns and fights back
-  let retaliate: Strategy["retaliate"] = ch.personality === "aggressive" ? "attacker" : "turn";
+  // whatever killed me last round goes up my wish list
+  const killedBy = ctx.last?.fighters[ctx.me]?.koBy?.weapon as Weapon | undefined;
+  if (killedBy && soul.weapons.length && ["rocket", "shotgun", "bat", "grenade", "grapple"].includes(killedBy) && !weapons.includes(killedBy) && m.state !== "rattled") weapons = [weapons[0]!, killedBy, ...weapons.slice(1)].slice(0, 3);
+  let retaliate: Strategy["retaliate"] = soul.retaliate;
   const st = ctx.last?.stats;
-  if (st) {
+  if (st && retaliate !== "ignore") {
     // learned from last round: someone I ignored hurt me badly
     for (let a = 0; a < 4; a++) {
       if (a === ctx.me) continue;
@@ -200,7 +293,7 @@ export function houseStrategy(ctx: DecideContext): Strategy {
       if (dealt >= 35 && (total === 0 || chased / total < 0.2)) retaliate = "attacker";
     }
   }
-  return { target, grudge, stance, loadout, retaliate, line: "" };
+  return { target, grudge, stance, weapons, retaliate, line: "" };
 }
 
 export const houseBrain: Brain = (ctx) => {
