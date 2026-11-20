@@ -802,39 +802,43 @@ export class MatchServer {
     }
   }
 
-  /** GET /api/models: the leaderboard over the record index (cached until the next record) */
-  modelsCache: { min: number | undefined; at: number; body: unknown } | null = null;
+  /**
+   * GET /api/models: the deduplicated seat entries of the record index, cached until the next record (or 60 s).
+   * Independent of ?min (which only re-ranks in memory), so query strings can't force a rebuild.
+   */
+  modelsCache: { at: number; kept: SeatEntry[][]; dropped: number } | null = null;
 
   /**
    * The model leaderboard from the SQLite record index: each row's per-seat stats (saved with the record), or for
-   * rows from before that column, the record file read once (wins and fallbacks; no replay) and the row filled in.
-   * Matches with test providers are left out; copies of one match count once.
+   * rows from before that column, the record file read once (wins and fallbacks; no replay) and the row filled in;
+   * a row whose file is missing or unusable is marked "[]" so it is not read again. Matches with test providers are
+   * left out; copies of one match count once.
    */
   async models(min?: number) {
-    if (this.modelsCache && this.modelsCache.min === min && Date.now() - this.modelsCache.at < 60_000) return this.modelsCache.body;
-    const rows = await this.store.listRecords(MODELS_MAX_RECORDS);
-    const sets: SeatEntry[][] = [];
-    for (const row of rows) {
-      let es: SeatEntry[] | null = null;
-      if (row.stats) {
-        try {
-          es = JSON.parse(row.stats) as SeatEntry[];
-        } catch {
-          es = null;
+    if (!this.modelsCache || Date.now() - this.modelsCache.at >= 60_000) {
+      const rows = await this.store.listRecords(MODELS_MAX_RECORDS);
+      const sets: SeatEntry[][] = [];
+      for (const row of rows) {
+        let es: SeatEntry[] | null = null;
+        if (row.stats) {
+          try {
+            const v = JSON.parse(row.stats);
+            es = Array.isArray(v) ? (v as SeatEntry[]) : [];
+          } catch {
+            es = [];
+          }
+        } else {
+          es = (await this.entriesFromFile(row.path)) ?? [];
+          await this.store.setRecordStats(row.matchId, JSON.stringify(es)).catch(() => undefined);
         }
+        if (es.length && !es.some((e) => e.model?.test)) sets.push(es);
       }
-      if (!es) {
-        es = await this.entriesFromFile(row.path);
-        if (es) await this.store.setRecordStats(row.matchId, JSON.stringify(es)).catch(() => undefined);
-      }
-      if (es?.length && !es.some((e) => e.model?.test)) sets.push(es);
+      this.modelsCache = { at: Date.now(), ...dedupe(sets) };
     }
-    const { kept, dropped } = dedupe(sets);
+    const { kept, dropped } = this.modelsCache;
     const lb = leaderboard(kept, min !== undefined ? { minMatches: min } : {});
     const h2h = headToHead(kept, lb.all.rows.map((r) => r.key));
-    const body = { ...lb, headToHead: h2h, duplicates: dropped, engine: ENGINE_VERSION, note: "match win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter match; models below the minimum are provisional; self-reported models are what remote agents said at join" };
-    this.modelsCache = { min, at: Date.now(), body };
-    return body;
+    return { ...lb, headToHead: h2h, duplicates: dropped, engine: ENGINE_VERSION, note: "match win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter match; models below the minimum are provisional; self-reported models are what remote agents said at join" };
   }
 
   /** A record file's seat entries (local records only: /records/<file>.json under outDir). */

@@ -241,15 +241,24 @@ describe("match server: self-reported models and GET /api/models", () => {
     await row("m1", 61);
     await row("m2", 61);
     await row("m3", 62);
+    await row("m4", 63);
     await store.insertRecord({ matchId: "m1", path: "/records/a.json", seed: 61, hashes: [], winner: a.winner, createdAt: 1, engine: a.engine ?? 0 });
     await store.insertRecord({ matchId: "m2", path: "/records/a-copy.json", seed: 61, hashes: [], winner: a.winner, createdAt: 2, engine: a.engine ?? 0 });
     await store.insertRecord({ matchId: "m3", path: "/records/t.json", seed: 62, hashes: [], winner: t.winner, createdAt: 3, engine: t.engine ?? 0 });
+    await store.insertRecord({ matchId: "m4", path: "/records/gone.json", seed: 63, hashes: [], winner: 0, createdAt: 4, engine: 0 });
     const lb = (await client(s)("GET", "/api/models")).data;
     expect(lb.all.matches).toBe(1);
     expect(lb.duplicates).toBe(1);
     expect(lb.all.rows.map((r: { name: string }) => r.name).sort()).toEqual(["CLAUDE HAIKU", "GPT-6 LUNA (CODEX)", "GROK 4.6", "HOUSE BOT"]);
     expect(lb.all.rows.every((r: { provisional: boolean }) => r.provisional)).toBe(true); // 1 match < 10
     expect((await store.getRecord("m1"))!.stats).toContain("claude-haiku"); // filled in
+    expect((await store.getRecord("m4"))!.stats).toBe("[]"); // missing file: marked, never read again
+    // ?min only re-ranks the cached entries: no rebuild per query string
+    const cached = s.modelsCache;
+    const again = (await client(s)("GET", "/api/models?min=1")).data;
+    expect(s.modelsCache).toBe(cached);
+    expect(again.minMatches).toBe(1);
+    expect(again.all.rows.every((r: { provisional: boolean }) => !r.provisional)).toBe(true);
     await store.close();
   });
 
