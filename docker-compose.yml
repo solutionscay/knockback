@@ -1,0 +1,56 @@
+# Knockback match server + Caddy (HTTPS, reverse proxy). #26
+#   local:  docker compose up -d --build          (https://localhost, self-signed by Caddy)
+#   VM:     deploy/deploy.sh (ships the image, writes KB_IMAGE_TAG to .env, runs `up -d`)
+# Settings come from .env next to this file (template: deploy/.env.example).
+name: knockback
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  server:
+    image: knockback-server:${KB_IMAGE_TAG:-local}
+    build:
+      context: .
+      args:
+        KB_VERSION: ${KB_IMAGE_TAG:-local}
+    init: true # tini as PID 1: signals reach Bun, zombies are reaped
+    restart: unless-stopped
+    environment:
+      KB_TRUST_PROXY: "true" # only Caddy reaches the server; it sets X-Forwarded-For
+      KB_DEADLINE: ${KB_DEADLINE:-20}
+      KB_FILL_AFTER: ${KB_FILL_AFTER:-60}
+      KB_OPEN: ${KB_OPEN:-false}
+      KB_NO_MATCH: ${KB_NO_MATCH:-true}
+    volumes:
+      - kb-data:/data # match-server.db (+ WAL) and records/
+    expose:
+      - "5176" # not published: reachable only through Caddy
+    stop_grace_period: 15s
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${KB_HTTP_PORT:-80}:80"
+      - "${KB_HTTPS_PORT:-443}:443"
+      - "${KB_HTTPS_PORT:-443}:443/udp" # HTTP/3
+    environment:
+      KB_DOMAIN: ${KB_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # certificates: keep them, or Let's Encrypt rate limits bite
+      - caddy-config:/config
+    logging: *logging
+
+volumes:
+  kb-data:
+  caddy-data:
+  caddy-config:

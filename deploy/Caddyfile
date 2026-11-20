@@ -1,0 +1,44 @@
+# Caddy in front of the match server (#26). KB_DOMAIN: the public hostname (a real
+# name gets a Let's Encrypt certificate automatically; "localhost" gets Caddy's
+# own local CA, for testing).
+{
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 5m
+			# no write timeout: long polls answer after up to 30 s and the live stream stays open
+		}
+	}
+}
+
+{$KB_DOMAIN:localhost} {
+	# compress everything except the live stream (compression would buffer it)
+	@compressible not path /api/live*
+	encode @compressible zstd gzip
+
+	reverse_proxy server:5176 {
+		# SSE: pass every event through at once, never buffer
+		flush_interval -1
+		# while the server restarts (upgrade, crash), hold requests up to 20 s instead of answering 502
+		lb_try_duration 20s
+		lb_try_interval 250ms
+		transport http {
+			dial_timeout 5s
+			# GET /turn long-polls for up to 30 s before its headers come back
+			response_header_timeout 45s
+		}
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
