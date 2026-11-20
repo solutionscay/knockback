@@ -195,7 +195,8 @@ describe("dialogue and the decision slot", () => {
 
   test("no repeated lines within a session until the relevant lines run dry", () => {
     const session = new VoiceSession();
-    const fitting = CHARACTERS[0]!.lines.filter((t) => (t[0] === "intro" || t[0] === "state") && (t[1] === "*" || t[1].includes("cocky"))).length;
+    const st = initialMorale(CHARACTERS.map((c) => c.moraleBaseline))[0]!.state;
+    const fitting = CHARACTERS[0]!.lines.filter((t) => (t[0] === "intro" || t[0] === "state") && (t[1] === "*" || t[1].includes(st))).length;
     const seen = new Set<string>();
     for (let i = 0; i < fitting; i++) {
       const p = pickLine(ctxFor(0, null, session, i), strat);

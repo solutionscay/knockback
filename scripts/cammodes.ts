@@ -82,7 +82,7 @@ for (let k = 0; k < 400; k++) {
 const hash = (await state()).hash;
 const m = new Match(seed);
 m.playToEnd();
-const line = `seed ${seed}: browser hash with ${switches} camera switches ${hash}, Bun headless hash ${m.record.finalHash} -> ${hash === m.record.finalHash ? "MATCH (camera is view-only)" : "MISMATCH"}`;
+const line = `seed ${seed}: browser hash with ${switches} camera switches ${hash}, Bun headless hash ${m.record.rounds.map((r) => r.fight.finalHash).join(",")} -> ${hash === m.record.rounds.map((r) => r.fight.finalHash).join(",") ? "MATCH (camera is view-only)" : "MISMATCH"}`;
 console.log(line);
 await Bun.write(join(out, "view-only-check.txt"), line + "\n");
 await browser.close();

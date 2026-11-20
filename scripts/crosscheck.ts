@@ -21,9 +21,9 @@ for (const seed of seeds) {
   });
   const m = new Match(seed);
   m.playToEnd();
-  const same = hash === m.record.finalHash;
+  const same = hash === m.record.rounds.map((r) => r.fight.finalHash).join(",");
   if (same) ok++;
-  console.log(`seed ${seed}: chromium ${hash}  bun ${m.record.finalHash}  ${same ? "MATCH" : "MISMATCH"}`);
+  console.log(`seed ${seed}: chromium ${hash}  bun ${m.record.rounds.map((r) => r.fight.finalHash).join(",")}  ${same ? "MATCH" : "MISMATCH"}`);
 }
 console.log(`${ok}/${seeds.length} match`);
 await browser.close();

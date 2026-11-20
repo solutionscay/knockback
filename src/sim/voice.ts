@@ -177,6 +177,7 @@ export function houseStrategy(ctx: DecideContext): Strategy {
       break;
     case "cocky":
       if (ch.personality === "coward") stance = "rush"; // what could go wrong
+      else if (ch.personality === "aggressive" && !someoneLeads) target = sig.target; // keeps hunting his favorite target
       else if (someoneLeads) {
         target = "grudge";
         grudge = leader;

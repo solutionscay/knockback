@@ -1,5 +1,8 @@
 /** Big fighter portraits for intro cards and the celebrate screen (inline SVG, same look as in game). */
+import type { MoraleState } from "../sim/morale";
 import type { Personality, Weapon } from "../sim/sim";
+
+export type Mood = "fight" | "win" | MoraleState;
 
 export const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
 
@@ -10,7 +13,7 @@ function shade(color: number, k: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export function portraitSvg(color: number, personality: Personality, weapon: Weapon, mood: "fight" | "win" = "fight"): string {
+export function portraitSvg(color: number, personality: Personality, weapon: Weapon, mood: Mood = "fight"): string {
   const c = hex(color);
   const dark = shade(color, 0.45);
   const mark =
@@ -31,16 +34,44 @@ export function portraitSvg(color: number, personality: Personality, weapon: Wea
       : weapon === "grenade"
         ? `<g transform="translate(108 112)"><circle r="17" fill="#4b5a2a" stroke="#1d2410" stroke-width="4"/><rect x="-5" y="-26" width="10" height="10" fill="#888"/></g>`
         : `<g transform="translate(60 108) rotate(-10)"><rect x="-12" y="-14" width="96" height="28" rx="7" fill="#3b4150" stroke="#15171d" stroke-width="4"/><rect x="70" y="-16" width="15" height="32" fill="${c}"/><rect x="12" y="10" width="9" height="16" fill="#15171d"/></g>`;
-  const eye =
-    mood === "win"
-      ? `<path d="M74 56 q10 -12 20 0" fill="none" stroke="#101018" stroke-width="6" stroke-linecap="round"/>`
-      : `<circle cx="84" cy="56" r="15" fill="#fff"/><circle cx="90" cy="57" r="7.5" fill="#101018"/>`;
-  const mouth = mood === "win" ? `<path d="M72 78 q14 14 28 0 z" fill="#101018"/>` : "";
+  // expression by mood (placeholder art: eye, brow, mouth, extras)
+  let eye = `<circle cx="84" cy="56" r="15" fill="#fff"/><circle cx="90" cy="57" r="7.5" fill="#101018"/>`;
+  let mouth = "";
+  let extra = "";
+  switch (mood) {
+    case "win":
+      eye = `<path d="M74 56 q10 -12 20 0" fill="none" stroke="#101018" stroke-width="6" stroke-linecap="round"/>`;
+      mouth = `<path d="M72 78 q14 14 28 0 z" fill="#101018"/>`;
+      break;
+    case "cocky":
+      // half-lidded, smirking
+      eye = `<circle cx="84" cy="57" r="14" fill="#fff"/><circle cx="90" cy="60" r="7" fill="#101018"/><path d="M69 52 L99 49 L99 42 L69 42 Z" fill="${c}"/><path d="M69 52 L99 49" stroke="#101018" stroke-width="4" stroke-linecap="round"/>`;
+      mouth = `<path d="M76 82 q14 4 24 -6" fill="none" stroke="#101018" stroke-width="5" stroke-linecap="round"/>`;
+      break;
+    case "confident":
+      mouth = `<path d="M76 80 q12 8 22 0" fill="none" stroke="#101018" stroke-width="5" stroke-linecap="round"/>`;
+      break;
+    case "rattled":
+      eye = `<circle cx="84" cy="56" r="15" fill="#fff"/><circle cx="84" cy="57" r="4.5" fill="#101018"/>`;
+      mouth = `<path d="M74 84 l6 -4 l6 4 l6 -4 l6 4" fill="none" stroke="#101018" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
+      extra = `<path d="M112 34 q6 10 0 14 q-6 -4 0 -14 z" fill="#9fe0ff" stroke="#3a8fb0" stroke-width="2"/><path d="M50 40 q5 8 0 11 q-5 -3 0 -11 z" fill="#9fe0ff" stroke="#3a8fb0" stroke-width="2"/>`;
+      break;
+    case "furious":
+      eye = `<circle cx="84" cy="58" r="14" fill="#fff"/><circle cx="88" cy="60" r="7.5" fill="#101018"/><path d="M66 40 L102 52" stroke="#101018" stroke-width="7" stroke-linecap="round"/>`;
+      mouth = `<path d="M74 86 q12 -10 24 0" fill="none" stroke="#101018" stroke-width="5" stroke-linecap="round"/>`;
+      extra = `<g fill="#ffffff" opacity=".7"><circle cx="40" cy="14" r="6"/><circle cx="32" cy="4" r="4"/><circle cx="108" cy="12" r="6"/><circle cx="116" cy="3" r="4"/></g><ellipse cx="62" cy="72" rx="9" ry="5" fill="#ff2a2a" opacity=".45"/>`;
+      break;
+    case "desperate":
+      eye = `<circle cx="84" cy="56" r="18" fill="#fff"/><circle cx="84" cy="58" r="9" fill="#101018"/><circle cx="80" cy="54" r="3" fill="#fff"/>`;
+      mouth = `<ellipse cx="86" cy="84" rx="7" ry="9" fill="#101018"/>`;
+      extra = `<path d="M112 34 q6 10 0 14 q-6 -4 0 -14 z" fill="#9fe0ff" stroke="#3a8fb0" stroke-width="2"/>`;
+      break;
+  }
   return `<svg viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <ellipse cx="72" cy="182" rx="46" ry="6" fill="rgba(0,0,0,.35)"/>
   <rect x="30" y="20" width="84" height="158" rx="42" fill="${c}" stroke="${dark}" stroke-width="6"/>
   <rect x="40" y="34" width="22" height="84" rx="11" fill="#fff" opacity=".22"/>
   <rect x="28" y="168" width="34" height="14" rx="7" fill="${dark}"/><rect x="80" y="168" width="34" height="14" rx="7" fill="${dark}"/>
-  ${mark}${eye}${mouth}${gun}
+  ${mark}${eye}${mouth}${extra}${gun}
 </svg>`;
 }

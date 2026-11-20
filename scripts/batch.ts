@@ -89,7 +89,7 @@ function run(noMoraleEffect: boolean): { rows: Row[]; ms: number; tally: Tally }
 }
 
 const on = run(false);
-const off = run(true);
+const off = args.includes("--no-ab") ? on : run(true);
 const rows = on.rows;
 const avg = (f: (r: Row) => number, rs = rows) => rs.reduce((a, r) => a + f(r), 0) / Math.max(1, rs.length);
 const pct = (v: number) => `${v.toFixed(0)}%`;
@@ -103,7 +103,7 @@ out.push(`matches: ${N} best-of-3 (seeds ${start}..${start + N - 1}), ${(on.ms /
 out.push(`rounds per match: ${avg((r) => r.rounds).toFixed(2)} avg; ${count(rows.map((r) => r.rounds)).sort((a, b) => Number(a[0]) - Number(b[0])).map(([k, v]) => `${k} rounds ${v} (${pct((100 * v) / N)})`).join(", ")}`);
 out.push(`decided by: ${count(rows.map((r) => r.decidedBy)).map(([k, v]) => `${k} ${v} (${pct((100 * v) / N)})`).join(", ")}  (decider = nobody on 2 wins, round 3 winner takes it)`);
 const roundsAll = rows.flatMap((r) => r.roundSeconds);
-out.push(`match length: ${avg((r) => r.fightSeconds).toFixed(0)} s of fighting avg (rounds ${avg(() => 0) + (roundsAll.reduce((a, b) => a + b, 0) / roundsAll.length).toFixed(1)} s avg each); viewer adds ~${(2.4 + 4 * 3 + 3 + 4).toFixed(0)} s for the opening and ~15 s per break`);
+out.push(`match length: ${avg((r) => r.fightSeconds).toFixed(0)} s of fighting avg (rounds ${(roundsAll.reduce((a, b) => a + b, 0) / roundsAll.length).toFixed(1)} s avg each); viewer adds ~${(2.4 + 4 * 3 + 3 + 4).toFixed(0)} s for the opening and ~15 s per break`);
 const roundWins = rows.flatMap((r) => r.roundWinners);
 out.push(`round wins: ${CHARACTERS.map((c, i) => `${c.name} ${pct((100 * roundWins.filter((w) => w === i).length) / roundWins.length)}`).join(", ")}`);
 out.push(`match wins: ${CHARACTERS.map((c, i) => `${c.name} ${pct((100 * rows.filter((r) => r.winner === i).length) / N)}`).join(", ")}`);

@@ -89,6 +89,8 @@ for (const [mi, seed] of seeds.entries()) {
   let tail = -1;
   let lastBeat = -1;
   let checked = false;
+  let dialogueN = 0;
+  const countdownShot = new Set<number>();
   const t0 = performance.now();
   const tag = `m${mi + 1}-seed${seed}`;
   for (;;) {
@@ -103,10 +105,13 @@ for (const [mi, seed] of seeds.entries()) {
       lastBeat = st.beatIndex;
       // beat screenshots, timed to when each beat's animation has settled
       if (st.beat === "level") pendingShots.push({ at: frame + 40, name: `${tag}-level-card` });
-      if (st.beat === "intro") pendingShots.push({ at: frame + 52, name: `${tag}-intro-${st.beatIndex}` });
-      if (st.beat === "countdown") pendingShots.push({ at: frame + 6, name: `${tag}-countdown-${3 - (st.beatIndex - 5)}` });
-      if (st.beat === "go") pendingShots.push({ at: frame + 5, name: `${tag}-fight` });
-      if (st.beat === "end") pendingShots.push({ at: frame + 12, name: `${tag}-end-callout` });
+      if (st.beat === "dialogue") pendingShots.push({ at: frame + 60, name: `${tag}-${st.dialoguePhase === "intro" ? "intro" : `between-r${st.round - 1}-r${st.round}`}-${++dialogueN}` });
+      if (st.beat === "countdown" && !countdownShot.has(st.round)) {
+        countdownShot.add(st.round);
+        pendingShots.push({ at: frame + 6, name: `${tag}-round${st.round}-countdown` });
+      }
+      if (st.beat === "go") pendingShots.push({ at: frame + 5, name: `${tag}-round${st.round}-fight` });
+      if (st.beat === "roundEnd") pendingShots.push({ at: frame + 20, name: `${tag}-round${st.round}-result` });
       if (st.beat === "celebrate") pendingShots.push({ at: frame + 85, name: `${tag}-celebrate` });
     }
     for (const p of pendingShots.filter((p) => p.at === frame)) await page.screenshot({ path: join(shotsDir, `${p.name}.png`) });
@@ -115,9 +120,12 @@ for (const [mi, seed] of seeds.entries()) {
       // cross-engine determinism check: Bun replays the same seed headless
       const m = new Match(seed);
       m.playToEnd();
-      const same = m.record.finalHash === st.hash;
-      const r = m.result();
-      report.push(`seed ${seed}: browser hash ${st.hash}, bun hash ${m.record.finalHash} -> ${same ? "MATCH" : "MISMATCH"}; fight ${(r.ticks / 60).toFixed(1)} s, winner ${r.winner} (${r.reason}), tally after: ${st.tally.join(",")}`);
+      const same = m.record.rounds.map((r) => r.fight.finalHash).join(",") === st.hash;
+      report.push(
+        `seed ${seed} (${m.level.theme}): browser round hashes ${st.hash}, bun ${m.record.rounds.map((r) => r.fight.finalHash).join(",")} -> ${same ? "MATCH" : "MISMATCH"}; ` +
+          `${m.round} rounds (${m.results.map((r) => (r.ticks / 60).toFixed(0) + " s").join(", ")}), round winners ${m.results.map((r) => m.names[r.winner]).join(", ")}, match winner ${m.names[m.winner]} (${m.decidedBy()})`,
+      );
+      m.record.rounds.forEach((r, i) => report.push(`  round ${i + 1} lines: ${r.lines.map((l, j) => `${m.names[j]}: "${l}"`).join(" | ")}`));
     }
     if (st.finished && tail < 0) tail = Math.round(TAIL_SECONDS * FPS);
     frame++;

@@ -47,9 +47,9 @@ export const CHARACTERS: Character[] = [
     title: "The Brawler",
     color: 0xff4f4f,
     personality: "aggressive",
-    speed: 1.08,
-    moraleBaseline: 50,
-    signature: { loadout: ["bat", "grapple"], stance: "rush", target: "nearest" },
+    speed: 1.16,
+    moraleBaseline: 44,
+    signature: { loadout: ["bat", "grapple"], stance: "rush", target: "strongest" },
     look: [
       "Barrel-chested red bean, a head shorter than he acts.",
       "Black headband with frayed tails, chipped-tooth grin, one cauliflower ear.",
@@ -104,7 +104,7 @@ export const CHARACTERS: Character[] = [
     title: "The Sniper",
     color: 0x47a3ff,
     personality: "sniper",
-    speed: 1.04,
+    speed: 0.98,
     moraleBaseline: 30,
     signature: { loadout: ["rocket", "shotgun"], stance: "distance", target: "strongest" },
     look: [
@@ -156,7 +156,7 @@ export const CHARACTERS: Character[] = [
     title: "The Rat",
     color: 0x4fdc6a,
     personality: "coward",
-    speed: 1.05,
+    speed: 1.0,
     moraleBaseline: -15,
     signature: { loadout: ["grenade", "shotgun"], stance: "cover", target: "nearest" },
     look: [

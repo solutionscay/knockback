@@ -9,7 +9,7 @@ declare global {
       advance: (dt: number, frames?: number) => void;
       newMatch: (seed: number) => void;
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
-      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[] };
+      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string };
       drainMoments: () => { time: number; kind: string; weight: number }[];
     };
   }
@@ -41,7 +41,9 @@ const game = new Game(app, {
   callout: el("callout"),
   celebrate: el("celebrate"),
   cam: el("cam"),
+  dialogue: el("dialogue"),
 });
+el("dialogue").addEventListener("click", () => game.advanceDialogue());
 // camera bar + lineup chips: click to switch modes / follow a fighter
 document.getElementById("hud")!.addEventListener("click", (e) => {
   const t = (e.target as HTMLElement).closest<HTMLElement>("[data-cam],[data-follow]");
@@ -65,6 +67,11 @@ document.getElementById("new")!.addEventListener("click", () => start(randomSeed
 document.getElementById("reset")!.addEventListener("click", () => game.resetTally());
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === " " || e.key === "Enter") {
+    e.preventDefault();
+    game.advanceDialogue();
+  }
+  if (e.key === "s" || e.key === "S" || e.key === "Escape") game.skipDialogue();
   if (e.key === "a" || e.key === "A") game.setCamera({ kind: "auto" });
   if (e.key === "v" || e.key === "V") game.setCamera({ kind: "all" });
   if (e.key >= "1" && e.key <= "4") game.toggleFollow(Number(e.key) - 1);
@@ -90,11 +97,14 @@ if (capture) {
       beatIndex: game.flow.index,
       finished: game.flow.done,
       over: game.match.over,
-      hash: game.match.over ? game.match.record.finalHash : "",
+      hash: game.match.over ? game.match.record.rounds.map((r) => r.fight.finalHash).join(",") : "",
+      round: game.match.round,
+      wins: game.match.wins.slice(),
+      dialoguePhase: game.flow.beat.kind === "dialogue" ? (game.flow.beat as { phase: string }).phase : "",
       tally: game.tally.points.slice(),
       camera: JSON.stringify(game.scene.camMode),
-      alive: game.match.sim.fighters.map((f) => f.alive),
-      hp: game.match.sim.fighters.map((f) => f.hp),
+      alive: game.shown.sim.fighters.map((f) => f.alive),
+      hp: game.shown.sim.fighters.map((f) => f.hp),
     }),
     drainMoments() {
       const m = game.moments;

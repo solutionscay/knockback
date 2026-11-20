@@ -59,11 +59,11 @@ export const WEAPONS = {
   },
   /** Melee launch: the ring-out tool. */
   bat: {
-    cooldown: 44,
+    cooldown: 38,
     reach: 0.95,
     radius: 0.95,
-    damage: 6,
-    knockback: 10.8,
+    damage: 7,
+    knockback: 11.8,
     lift: 0.75,
     propImpulse: 9,
     terrainRadius: 0.7,

@@ -134,6 +134,8 @@ export class Scene {
    * off center (fraction of the view width), leaving room for cards.
    */
   focus: { id: number; offsetX: number; heightM: number } | null = null;
+  /** Morale state per fighter for this round (faces). */
+  morale: string[] = [];
   /** The viewer's camera choice; intro focus, level overview and celebrate override it. */
   camMode: CamMode = { kind: "all" };
   /** Called when a followed fighter has been out for a beat (the game switches to auto). */
@@ -926,9 +928,30 @@ export class Scene {
       face.clear();
       const aimLocalX = f.aimX * f.facing;
       const aimLocalY = -f.aimY;
-      face.circle(0.14, -0.48, 0.17).fill(0xffffff);
+      const mood = this.morale[f.id] ?? "confident";
+      const eyeR = mood === "desperate" ? 0.2 : 0.17;
+      face.circle(0.14, -0.48, eyeR).fill(0xffffff);
       if (f.alive) {
-        face.circle(0.14 + aimLocalX * 0.07, -0.48 + aimLocalY * 0.07, 0.085).fill(0x101018);
+        const pr = mood === "rattled" ? 0.055 : mood === "desperate" ? 0.1 : 0.085;
+        const jitter = mood === "rattled" || mood === "desperate" ? (Math.random() - 0.5) * 0.03 : 0;
+        face.circle(0.14 + aimLocalX * 0.07 + jitter, -0.48 + aimLocalY * 0.07, pr).fill(0x101018);
+        // morale on the face (placeholder art)
+        if (mood === "cocky") {
+          face.rect(-0.05, -0.68, 0.4, 0.17).fill(f.color);
+          face.moveTo(-0.04, -0.51).lineTo(0.34, -0.54).stroke({ width: 0.05, color: 0x101018, cap: "round" });
+          face.moveTo(0.02, -0.22).quadraticCurveTo(0.16, -0.2, 0.28, -0.3).stroke({ width: 0.045, color: 0x101018, cap: "round" });
+        } else if (mood === "furious") {
+          face.moveTo(-0.06, -0.72).lineTo(0.34, -0.6).stroke({ width: 0.07, color: 0x101018, cap: "round" });
+          face.moveTo(0.04, -0.2).quadraticCurveTo(0.16, -0.3, 0.28, -0.2).stroke({ width: 0.045, color: 0x101018, cap: "round" });
+          if (Math.random() < 0.08) this.fx.add({ x: p.x + (Math.random() - 0.5) * 0.4, y: p.y + 0.95, vy: 1.5, kind: "smoke", life: 0.6, size: 0.08, size1: 0.25, color: 0xffffff, alpha: 0.6, back: false });
+        } else if (mood === "rattled" || mood === "desperate") {
+          face.poly([-0.36, -0.8, -0.3, -0.66, -0.42, -0.66]).fill({ color: 0x9fe0ff, alpha: 0.9 });
+          face.circle(-0.36, -0.66, 0.06).fill({ color: 0x9fe0ff, alpha: 0.9 });
+          if (mood === "desperate") face.ellipse(0.17, -0.24, 0.06, 0.08).fill(0x101018);
+          else face.moveTo(0.02, -0.24).lineTo(0.08, -0.28).lineTo(0.14, -0.24).lineTo(0.2, -0.28).lineTo(0.26, -0.24).stroke({ width: 0.035, color: 0x101018 });
+        } else {
+          face.moveTo(0.04, -0.27).quadraticCurveTo(0.16, -0.2, 0.28, -0.27).stroke({ width: 0.04, color: 0x101018, cap: "round" });
+        }
         if (f.stun > 0) {
           face.clear();
           face.moveTo(0.05, -0.57).lineTo(0.23, -0.39).moveTo(0.23, -0.57).lineTo(0.05, -0.39).stroke({ width: 0.06, color: 0x101018 });

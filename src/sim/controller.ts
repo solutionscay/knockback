@@ -15,7 +15,7 @@ export interface Goal {
 /** Per-personality aim noise (perpendicular offset per meter of range). */
 export const AIM_NOISE: Record<Fighter["personality"], number> = {
   aggressive: 0.1,
-  sniper: 0.025,
+  sniper: 0.03,
   coward: 0.12,
   opportunist: 0.06,
 };

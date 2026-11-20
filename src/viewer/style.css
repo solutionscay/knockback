@@ -591,3 +591,208 @@ body {
 body.capture #controls {
   display: none;
 }
+
+/* ---------------------------------------------------------- dialogue frame (RPG style, readable) */
+#dialogue {
+  position: absolute;
+  left: 50%;
+  bottom: 7vh;
+  transform: translateX(-50%);
+  width: min(78vw, 150vh);
+  pointer-events: auto;
+}
+#dialogue.show .panel {
+  animation: dlgin 0.32s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+@keyframes dlgin {
+  from {
+    transform: translateY(6vh) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+#dialogue .panel {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26vh 1fr;
+  gap: 3vh;
+  align-items: end;
+  min-height: 19vh;
+  padding: 2.6vh 4vh 2.6vh 2.4vh;
+  border-radius: 2vh;
+  background: rgba(10, 11, 18, 0.96);
+  border: 0.35vh solid rgba(255, 255, 255, 0.12);
+  border-left: 1.2vh solid var(--c);
+  box-shadow:
+    0 2.4vh 6vh rgba(0, 0, 0, 0.6),
+    inset 0 0 0 0.2vh rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+#dialogue .portrait {
+  align-self: end;
+  margin-top: -14vh;
+}
+#dialogue .portrait svg {
+  width: 26vh;
+  height: 30vh;
+  filter: drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45));
+}
+#dialogue .who {
+  display: flex;
+  align-items: baseline;
+  gap: 1.6vh;
+  flex-wrap: wrap;
+}
+#dialogue .name {
+  font-size: 6vh;
+  line-height: 1;
+  color: var(--c);
+  text-shadow: 0 0.4vh 0 #000;
+}
+#dialogue .title {
+  font-size: 1.9vh;
+  letter-spacing: 0.3em;
+  color: #c9c6be;
+}
+#dialogue .mood {
+  font-size: 1.6vh;
+  letter-spacing: 0.18em;
+  padding: 0.4vh 1.1vh;
+  border-radius: 99px;
+  color: #0b0d14;
+  background: var(--m);
+}
+#dialogue .line {
+  margin-top: 1.4vh;
+  font-family: "Helvetica Neue", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 3.6vh;
+  line-height: 1.3;
+  color: #fbf8f0;
+  min-height: 9.4vh;
+}
+#dialogue .line::before {
+  content: "“";
+  color: var(--c);
+}
+#dialogue .caret {
+  display: inline-block;
+  width: 0.45em;
+  height: 1em;
+  margin-left: 0.12em;
+  vertical-align: -0.12em;
+  background: var(--c);
+  animation: blink 0.5s steps(1) infinite;
+}
+#dialogue .plan {
+  margin-top: 1.4vh;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9vh;
+  align-items: center;
+  font-size: 1.5vh;
+  letter-spacing: 0.12em;
+}
+#dialogue .plan .k {
+  color: #9a978f;
+  margin-right: 0.6vh;
+}
+#dialogue .plan b {
+  padding: 0.45vh 1.1vh;
+  border-radius: 0.8vh;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.2vh solid var(--c);
+  color: #f4f1ea;
+}
+#dialogue .skip {
+  position: absolute;
+  top: 1.6vh;
+  right: 1.8vh;
+  font: 800 1.5vh system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  color: #f4f1ea;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 0.8vh;
+  padding: 0.6vh 1.2vh;
+  cursor: pointer;
+}
+#dialogue .skip:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+#dialogue .hint {
+  position: absolute;
+  right: 2vh;
+  bottom: 1.4vh;
+  font: 800 1.4vh system-ui, sans-serif;
+  letter-spacing: 0.2em;
+  color: #9a978f;
+  animation: blink 1s steps(1) infinite;
+}
+
+/* ---------------------------------------------------------- round pips */
+.pips {
+  display: inline-flex;
+  gap: 1vh;
+  align-items: center;
+}
+.pips.small {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5vh;
+  font-size: 1.2vh;
+}
+.pips.big {
+  display: flex;
+  justify-content: center;
+  gap: 2.4vh;
+  margin: 1.6vh 0 0.6vh;
+  font-size: 2.4vh;
+  -webkit-text-stroke: 0;
+  letter-spacing: 0.04em;
+}
+.pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5vh;
+  color: var(--c);
+}
+.pip i {
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  background: var(--c);
+  display: inline-block;
+}
+.pip b {
+  width: 0.8em;
+  height: 0.8em;
+  border-radius: 0.2em;
+  border: 0.15em solid var(--c);
+  display: inline-block;
+}
+.pip b.on {
+  background: var(--c);
+}
+#clock .r {
+  font-size: 0.55em;
+  letter-spacing: 0.2em;
+  opacity: 0.75;
+  margin-right: 1vh;
+  vertical-align: 0.25em;
+}
+#count em {
+  position: absolute;
+  top: 18vh;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-style: normal;
+  font-size: 5vh;
+  letter-spacing: 0.3em;
+  color: #fff3c4;
+  text-shadow: 0 0.5vh 0 #000;
+}
