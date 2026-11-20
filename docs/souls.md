@@ -1,6 +1,6 @@
 # Souls: how a fighter thinks and talks
 
-Knockback has no character classes. All four fighters have the same body, speed, health and aim, and start every round with only their **fists**. Weapons (rocket, shotgun, bat, grenade, grappling hook) and power-ups are picked up in the arena.
+Knockback has no character classes. All four fighters have the same body, speed, health and aim, and start every round with only their **fists**. Weapons (rocket, shotgun, bat, grenade, grappling hook, flamethrower) and power-ups are picked up in the arena.
 
 A fighter's personality comes from its **soul file**: attitude, how it talks and what it values in a fight. Swap a soul and the fighter plays and talks differently. A soul has **no name and no look**: before each match every fighter gets a generated identity (name, head shape, eye style, mark and color) from the match seed. See "Identities" below.
 
@@ -48,7 +48,7 @@ Use the catchphrase sparingly: at most once a match.
 | `temperament` | `cocky`, `confident`, `calm`, `nervous` | starting morale (45, 25, 8, -15); how morale bends the house bot's plan |
 | `voice` | `brash`, `smug`, `nervous`, `sly`, `plain` | which template lines the house bot falls back on |
 | `values` | comma-separated phrases | shown to the AI ("what you value in a fight"); keywords feed the house bot |
-| `weapons` | 1 to 3 of `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works), best first | the house bot's weapon wishes; a habit the AI is told about |
+| `weapons` | 1 to 3 of `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works), `flamethrower` (`flamer` also works), best first | the house bot's weapon wishes; a habit the AI is told about |
 | `stance` | `rush`, `distance`, `cover`, `item` | the house bot's stance |
 | `target` | `nearest`, `weakest`, `strongest`, `leader` | the house bot's target preference |
 | `retaliate` | `attacker`, `turn`, `ignore` | what the house bot does when hit from behind by someone it is not chasing |
@@ -89,7 +89,7 @@ When `stance`, `target`, `retaliate`, `temperament`, `voice` or `weapons` is mis
 | target | "weakest", "finish off" → weakest; "strongest", "biggest threat" → strongest; "leader", "whoever is winning" → leader; "nearest" → nearest |
 | stance | "hide", "scared", "cover", "cautious" → cover; "distance", "snipe", "long range" → distance; "loot", "collect", "power-up", "pickups" → item; "never backs down", "charge", "rush", "brawl" → rush |
 | retaliate | "grudge", "never forgets", "revenge" → attacker; "ignores", "single-minded" → ignore |
-| weapons | any weapon named in the text ("hook" means the grapple) |
+| weapons | any weapon named in the text ("hook" means the grapple, "flame" the flamethrower) |
 | temperament | "cocky", "arrogant", "talks big" → cocky; "nervous", "scared" → nervous; "calm", "patient" → calm |
 | voice | "loud", "trash talk" → brash; "smug", "posh" → smug; "nervous", "apolog…" → nervous; "sly", "gloat" → sly |
 

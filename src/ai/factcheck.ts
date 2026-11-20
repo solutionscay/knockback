@@ -25,10 +25,10 @@ export const CLAIMS: { kind: ClaimKind; re: RegExp }[] = [
   { kind: "back", re: /\b(in the back|from behind|back-?(?:shot|stab|hook)s?|my back|behind my back|sneak(?:ed|ing)? up on me)\b/i },
   { kind: "hit", re: /\b((?:shot|hit|blasted|hooked|batted|smacked|whacked|nailed|bonked|grenaded|rocketed|peppered|pelted|stung) (?:me|my)|owes? me)\b/i },
   // only a possessive ("Rivet's bat") claims who used a weapon; "grab that bat" is a wish, not an accusation
-  { kind: "weapon", re: /(?:'s|’s) (hook|grapple|bat|rockets?|shotgun|grenades?)\b/i },
+  { kind: "weapon", re: /(?:'s|’s) (hook|grapple|bat|rockets?|shotgun|grenades?|flamethrower|flamer)\b/i },
 ];
 
-const WEAPON_WORD: Record<string, string> = { hook: "grapple", grapple: "grapple", bat: "bat", rocket: "rocket", rockets: "rocket", shotgun: "shotgun", grenade: "grenade", grenades: "grenade" };
+const WEAPON_WORD: Record<string, string> = { hook: "grapple", grapple: "grapple", bat: "bat", rocket: "rocket", rockets: "rocket", shotgun: "shotgun", grenade: "grenade", grenades: "grenade", flamethrower: "flamethrower", flamer: "flamethrower" };
 
 export interface Mismatch {
   claim: string;

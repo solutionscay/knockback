@@ -34,7 +34,7 @@ The `rules` key is optional. Plans without rules work as before.
 - `target`: my current target;
 - a fighter's name, which is stored as that fighter's seat number. A name can't be your own.
 
-**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`, `jetpack`.
+**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works), `flamethrower` (`flamer` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`, `jetpack`.
 
 ## Actions (`do`)
 

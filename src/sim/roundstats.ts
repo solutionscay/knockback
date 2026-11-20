@@ -150,6 +150,8 @@ const WEAPON_WORD: Record<string, string> = {
   bat: "the bat",
   grenade: "grenades",
   grapple: "the hook",
+  flamethrower: "the flamethrower",
+  fire: "fire",
   fist: "fists",
   barrel: "barrels",
   tnt: "TNT",

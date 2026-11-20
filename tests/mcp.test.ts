@@ -83,6 +83,8 @@ describe("MCP tools", () => {
     const submit = tools.find((t) => t.name === "submit_plan")! as any;
     const st = submit.inputSchema.properties.strategy.properties;
     expect(st.weapons.items.enum).toEqual([...WEAPON_LIST]);
+    expect(st.weapons.items.enum).toContain("flamethrower"); // #32
+    expect(st.weapons.description).toContain("flamethrower (short cone of fire");
     expect(st.stance.enum).toEqual([...RULE_STANCES]);
     expect(st.retaliate.enum).toEqual([...RULE_RETALIATE]);
     expect(st.rules.items.properties.when.enum).toEqual([...RULE_WHEN]);

@@ -31,6 +31,7 @@ describe("parsing AI answers", () => {
     expect(parseAnswer('{"weapons":["rocket","bat"],"target":"Brick","stance":"cover","line":"x"}', 0, NAMES).strategy).toBeNull();
     expect(parseAnswer('{"weapons":["rocket","bat","grenade","shotgun"],"target":"nearest","stance":"cover","line":"x"}', 0, NAMES).strategy).toBeNull();
     expect(parseAnswer('{"weapons":["fist"],"target":"nearest","stance":"cover","line":"x"}', 0, NAMES).strategy).toBeNull();
+    expect(parseAnswer('{"weapons":["Flamer","rocket"],"target":"nearest","stance":"rush","line":"x"}', 0, NAMES).strategy?.weapons).toEqual(["flamethrower", "rocket"]); // #32
     // names come from the souls: swap a soul and its name becomes a target
     expect(parseAnswer('{"weapons":["bat"],"target":"Vex","stance":"rush","line":"x"}', 0, ["A", "Vex", "C", "D"]).strategy?.grudge).toBe(1);
   });

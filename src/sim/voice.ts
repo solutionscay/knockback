@@ -58,6 +58,8 @@ const WEAPON_PHRASE: Record<string, string> = {
   bat: "the bat",
   grenade: "a grenade",
   grapple: "the hook",
+  flamethrower: "the flamethrower",
+  fire: "the flames",
   fist: "a punch",
   barrel: "a barrel",
   tnt: "the TNT",

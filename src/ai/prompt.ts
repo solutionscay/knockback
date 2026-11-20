@@ -34,6 +34,7 @@ export const WEAPON_HELP: Record<string, string> = {
   bat: "melee launch, best for ring-outs",
   grenade: "bounces around cover",
   grapple: "hook: yanks a fighter to you, off ledges",
+  flamethrower: "short cone of fire: burns over time, sets wood, crates and barrels alight; limited fuel",
 };
 
 const r = (n: number) => Math.round(n);
@@ -64,7 +65,7 @@ export function soulText(s: Soul): string {
   return [s.body, ...facts].join("\n");
 }
 
-const WEAPON_NAME: Record<string, string> = { grapple: "hook", fist: "fists", impact: "a wall", crush: "falling junk", fall: "a fall", zone: "the zone" };
+const WEAPON_NAME: Record<string, string> = { grapple: "hook", flamethrower: "the flamethrower", fire: "fire", fist: "fists", impact: "a wall", crush: "falling junk", fall: "a fall", zone: "the zone" };
 const wname = (w: string) => WEAPON_NAME[w] ?? w;
 
 function topWeapon(stat: HitStat): string | undefined {

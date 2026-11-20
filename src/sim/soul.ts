@@ -40,7 +40,7 @@ export interface Soul {
 export { WEAPON_LIST as PICKUP_WEAPONS };
 const TEMPERAMENTS: readonly Temperament[] = ["cocky", "confident", "calm", "nervous"];
 const VOICES: readonly Voice[] = ["brash", "smug", "nervous", "sly", "plain"];
-const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", "grappling hook": "grapple", grenades: "grenade", rockets: "rocket", launcher: "rocket" };
+const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", "grappling hook": "grapple", grenades: "grenade", rockets: "rocket", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower" };
 
 /** Morale baseline from temperament (morale itself still comes from match events). */
 export const TEMPERAMENT_MORALE: Record<Temperament, number> = { cocky: 45, confident: 25, calm: 8, nervous: -15 };
@@ -82,7 +82,8 @@ export function inferFromText(text: string): { stance?: Stance; target?: TargetP
   else if (has("never backs down", "charge", "rush", "in your face", "close up", "brawl")) out.stance = "rush";
   if (has("grudge", "never forgets", "revenge", "gets even")) out.retaliate = "attacker";
   else if (has("ignores", "single-minded", "never distracted")) out.retaliate = "ignore";
-  for (const w of WEAPON_LIST) if (t.includes(w === "grapple" ? "hook" : w) || t.includes(w)) out.weapons.push(w);
+  const word: Partial<Record<Weapon, string>> = { grapple: "hook", flamethrower: "flame" };
+  for (const w of WEAPON_LIST) if (t.includes(word[w] ?? w) || t.includes(w)) out.weapons.push(w);
   if (has("cocky", "arrogant", "swagger", "talks big")) out.temperament = "cocky";
   else if (has("nervous", "anxious", "jittery", "scared")) out.temperament = "nervous";
   else if (has("calm", "patient", "cool-headed")) out.temperament = "calm";
