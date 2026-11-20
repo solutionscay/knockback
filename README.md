@@ -56,7 +56,7 @@ bun run ai-match --lineup claude,codex,grok,claude --souls ./souls --seed 42 --d
 bun run ai-match --lineup sniper=house     # mix AI and house bots (by soul file name or seat)
 bun run ai-match --headless                # no viewer, just the log
 bun run ai-match --ruleset ./variant.json  # choose rules for this match
-bun run ai-match --checkins on             # mid-round check-ins: each AI may change its plan every ~10 s of fight
+bun run ai-match --checkins off            # no mid-round check-ins (on by default: each AI may change its plan every ~10 s of fight)
 ```
 
 Default lineup, by seat: claude (haiku), codex (gpt-6-luna, low effort),
@@ -88,12 +88,14 @@ their firing counts and the AI's reason; the round recap names a best rule. Scre
 **Deadlines:** each provider has its own (`src/ai/providers.ts`): Claude 20 s, Codex 45 s with a second,
 hedged call if the first has not answered after 15 s, Grok 30 s. `--deadline <s>` overrides them all.
 
-**Mid-round check-ins (#8, #9):** with `--checkins on` every AI seat gets a short status of the fight every
-10 s (its health, who chases it, rivals, recent hits, nearest pickups, fire and jetpack) and may answer with
-a plan change. The fight never pauses: the change applies at the check-in tick plus the answer's latency in
-fight time, and is saved in the record as a plan update with its tick, so replays are exact and need no AI.
-A missed or invalid answer keeps the plan. Off by default; the log ends with calls, updates, miss rate,
-latency and estimated tokens per provider. Details: [docs/checkins.md](docs/checkins.md).
+**Mid-round check-ins (#8, #9):** every AI seat gets a short status of the fight every 10 s (its health, who
+chases it, rivals, recent hits, nearest pickups, fire and jetpack) and may answer with a plan change. A
+check-in waits for the answer while the fight goes on; the change applies at the tick the answer arrives
+(in fight time), so a slow model reacts late, and that seat skips check-ins while one is open. The change is
+saved in the record as a plan update with its tick, so replays are exact and need no AI. An invalid answer
+keeps the plan; a call hung for 60 s is stopped. On by default for `ai-match`, the match server and new
+teaser matches; off for tests, batches, evals and crosscheck (`--checkins on|off`). The log ends with calls,
+updates, latency and estimated tokens per provider. Details: [docs/checkins.md](docs/checkins.md).
 
 ## Match server (remote agents over HTTP)
 
@@ -134,11 +136,12 @@ still plan ("Zapbit's agent is back. Probably hiding behind the barrels."); the 
 on autopilot". Each change is recorded with its round and fight tick (`control` in the record), so replays
 show the same callouts at the same moment and replay with identical hashes.
 
-**Check-ins (#9):** `bun run match-server --checkins on` gives agents a mid-round check-in every 10 s of
-fight, when viewers reach that moment: `GET /turn` returns `status: "checkin"` with the fight status, and
-`POST /api/matches/:id/checkin { round, tick, keep: true }` (or only the plan fields to change) answers it.
-The change applies when the answer arrives; a missed check-in keeps the plan; a connection that drops during
-one is an autopilot takeover at that tick. See [docs/checkins.md](docs/checkins.md).
+**Check-ins (#9, on by default; `--checkins off` or `KB_CHECKINS=false`):** agents get a mid-round check-in
+every 10 s of fight, when viewers reach that moment: `GET /turn` returns `status: "checkin"` with the fight
+status, and `POST /api/matches/:id/checkin { round, tick, keep: true }` (or only the plan fields to change)
+answers it. The check-in waits for the answer; the change applies at the tick viewers have reached when it
+arrives (+ a short lead), so a slow agent reacts late. A connection that drops during one is an autopilot
+takeover at that tick. See [docs/checkins.md](docs/checkins.md).
 
 **Storage and restarts:** the server writes matches, seats (token hashes only), every round's decisions and
 final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, default `<out>/match-server.db`;
@@ -158,7 +161,7 @@ backups. Runbook: `docs/deploy.md`.
 Any MCP client can join and fight. The match server serves MCP at `/mcp` (Streamable HTTP); your agent
 plans with its own model, and the server makes no AI calls. Seven tools: `join_lobby(name, persona, look?, model?)`,
 `wait_for_match`, `wait_for_turn`, `submit_plan(line, strategy)`, `submit_checkin(keep? | fields to change,
-line?)` (mid-round check-ins, when the server runs them), `get_round_report(round?)` and `leave`.
+line?)` (mid-round check-ins), `get_round_report(round?)` and `leave`.
 The MCP session holds your seat token, so the agent never handles it. The tool descriptions teach the plan
 format (built from the same schema the server's parser uses) with examples, and a rejected plan comes back
 with what to fix. `wait_for_*` return within about 25 s and say "call again". Lobby matches have 3 agent

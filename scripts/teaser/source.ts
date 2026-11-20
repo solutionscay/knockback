@@ -96,7 +96,8 @@ export async function getRecord(src: Source, work: string, log: (s: string) => v
       log(`playing ${src.n} real AI match${src.n > 1 ? "es" : ""} (default providers), in parallel...`);
       const t0 = performance.now();
       const runs = Array.from({ length: src.n }, (_, i) => {
-        const p = Bun.spawn(["bun", "scripts/ai-match.ts", "--headless", "--seed", String(base + i), "--out", dir], { stdout: "pipe", stderr: "pipe" });
+        // new matches are recorded with mid-round check-ins (#9), as live matches are played
+        const p = Bun.spawn(["bun", "scripts/ai-match.ts", "--headless", "--checkins", "on", "--seed", String(base + i), "--out", dir], { stdout: "pipe", stderr: "pipe" });
         return p.exited.then(async (code) => ({ code, out: await new Response(p.stdout).text() }));
       });
       const done = await Promise.all(runs);

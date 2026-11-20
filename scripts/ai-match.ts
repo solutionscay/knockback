@@ -6,8 +6,8 @@
  *   bun run ai-match --lineup claude,codex,grok,claude   (by seat; souls: brawler, sniper, rat, vulture)
  *   bun run ai-match --lineup sniper=house --souls ./souls --seed 42 --deadline 20
  *   bun run ai-match --headless            # no server: just play and print the log
- *   bun run ai-match --checkins on         # mid-round check-ins (#9): each AI may change its plan every ~10 s of fight
- *        --checkin-deadline 8 --checkin-every 10 --checkin-max 6   (seconds; max = check-ins per round)
+ *   bun run ai-match --checkins off        # no mid-round check-ins (on by default, #9: each AI may change its plan every ~10 s of fight)
+ *        --checkin-cap 60 --checkin-every 10 --checkin-max 8   (seconds; cap = hung-call limit; max = check-ins per seat per round)
  *
  * Before each round all four fighters are asked in parallel; the engine plays
  * the round headless at once (it is deterministic), and the decisions are
@@ -15,10 +15,10 @@
  * time. The record (seed + all decisions) is saved to records/ and replays
  * exactly in the viewer with ?record=/records/<file>.json.
  *
- * Check-ins run in fast mode here: the sim waits at each check-in tick for
- * the answers (up to the deadline) and an answer applies at the check-in
- * tick plus its measured latency in fight time, saved in the record as a
- * plan update; the replay needs no AI.
+ * Check-ins run in fast mode here: a check-in waits for its answer while the
+ * fight goes on in fight time, and the answer applies at the check-in tick
+ * plus its measured latency, saved in the record as a plan update; the
+ * replay needs no AI.
  *
  * Providers: claude, codex, grok, house (built-in bot); stub/slow/junk/broken for testing.
  */
@@ -71,7 +71,8 @@ const selection: MatchRuleset | undefined = await (async () => {
     process.exit(1);
   }
 })();
-const checkins = checkinFlags(flags);
+// mid-round check-ins are on by default for real matches (--checkins off turns them off)
+const checkins = checkinFlags(flags, true);
 const headless = flags.headless === "true";
 const hostname = flags.host ?? "localhost";
 const port = Number(flags.port ?? 5175);

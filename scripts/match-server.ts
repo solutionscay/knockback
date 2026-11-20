@@ -17,12 +17,14 @@
  * instant mode (tests, scripted demos). Agents that drop or miss a deadline
  * hand their fighter to the house bot until they come back.
  *
- * Check-ins (#9): --checkins on gives every agent (and local AI seat) a status
- * every 10 s of fight; it may change its plan (GET /turn status "checkin",
- * POST /checkin; MCP: wait_for_turn + submit_checkin). At broadcast pace the
- * check-in comes when viewers reach that moment and the change applies when
- * the answer arrives. --checkin-deadline (s, default 8), --checkin-every,
- * --checkin-max as in ai-match. A missed check-in keeps the plan.
+ * Check-ins (#9, on by default; --checkins off or KB_CHECKINS=false): every
+ * agent (and local AI seat) gets a status every 10 s of fight and may change
+ * its plan (GET /turn status "checkin", POST /checkin; MCP: wait_for_turn +
+ * submit_checkin). At broadcast pace the check-in comes when viewers reach
+ * that moment; it waits for the answer, and the change applies at the tick
+ * viewers have reached when it arrives (+ a lead), so a slow answer applies
+ * late. --checkin-cap (s, default 60) only stops hung calls; --checkin-every,
+ * --checkin-max as in ai-match.
  *
  * MCP (#21): agents connect to /mcp (Streamable HTTP; scripts/mcp-stdio.ts for stdio
  * clients). join_lobby seats them in lobby matches: --lobby-seats (default
@@ -86,7 +88,8 @@ const api = new MatchServer({
   defaultFillAfterMs: secs(flags["fill-after"], 60_000),
   version: process.env.KB_VERSION ?? "dev",
   pace: flags.fast === "true" ? "fast" : "broadcast",
-  checkins: checkinFlags(flags),
+  // mid-round check-ins are on by default here (--checkins off / KB_CHECKINS=false turns them off)
+  checkins: checkinFlags(flags, true),
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
 
