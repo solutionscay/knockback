@@ -47,9 +47,11 @@ test("bat preference and slot order cannot displace a ranged weapon beyond melee
 test("hold the longest usable reach outside range, and consider cooldowns within range", () => {
   for (const ranged of ["shotgun", "railgun", "rocket", "grenade", "mine", "flamethrower", "grapple"] as const) {
     for (const melee of ["bat", "hammer", "fist"] as const) {
-      const { sim, me, controller } = setup([melee, ranged], 19);
-      me.cooldown[ranged] = 100;
-      expect(controller.think(sim).weapon).toBe(ranged);
+      for (const meters of [4.5, 8, 15, 24, 37]) {
+        const { sim, me, controller } = setup([melee, ranged], meters);
+        me.cooldown[ranged] = 100;
+        expect(controller.think(sim).weapon).toBe(ranged);
+      }
     }
   }
   const empty = setup(["bat", "mine"], 15);
@@ -99,7 +101,11 @@ test("a grenade lobs to the fighter when a nearby destructible is inside the bla
 
 test("duel and breach use the same reach policy, and stand-off ignores slot order", () => {
   const duel = setup(["flamethrower", "shotgun"], 8, { duel: true, wall: Mat.Dirt });
+  duel.sim.tick = duel.sim.ruleset.tactics.patience.pressAfter + 1;
+  expect(duel.controller.pressing(duel.sim)).toBe(true);
   expect(duel.controller.think(duel.sim).weapon).toBe("shotgun");
+  const breach = setup(["bat", "shotgun"], 9, { wall: Mat.Dirt });
+  expect(breach.controller.think(breach.sim).weapon).toBe("shotgun");
   const goals = ([["bat", "shotgun"], ["shotgun", "bat"]] as [Weapon, Weapon][])
     .map(weapons => {
       const { sim, controller } = setup(weapons, 8);
