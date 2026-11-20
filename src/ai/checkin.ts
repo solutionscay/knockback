@@ -279,7 +279,7 @@ export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinC
     `RIVALS: ${rivals}.`,
     `LAST 10s: took ${took}; dealt ${dealt}.`,
     `NEAREST PICKUPS: ${near}. FIRE: ${st.fire}.${ruleset.weapons.enabled.length !== CLASSIC.weapons.enabled.length || ruleset.pickups.enabled.length !== CLASSIC.pickups.enabled.length ? ` Enabled items: ${enabledItems(ruleset).join(", ")}.` : ""}`,
-    `The fight keeps going while you think. Keep the plan, or change only what matters. Fields: target (a name or nearest|weakest|strongest|leader), stance (rush|distance|cover|item), weapons (1-3 pickups), retaliate (attacker|turn|ignore), rules (replaces yours, e.g. [{"when":"my_health_below","value":30,"do":"stance","stance":"cover"}]). line = what you shout (under ${cfg.maxLine} chars), why = reason.`,
+    `The fight keeps going while you think. Keep the plan, or change only what matters. Fields: target (a name or nearest|weakest|strongest|leader), stance (rush|distance|cover|item), weapons (1-3 weapons to go for: ${ruleset.weapons.enabled.join("|")}; power-ups like shield or jetpack are not weapons), retaliate (attacker|turn|ignore), rules (replaces yours, e.g. [{"when":"my_health_below","value":30,"do":"stance","stance":"cover"}]). line = what you shout (under ${cfg.maxLine} chars), why = reason.`,
     `Reply ONLY with JSON: {"keep":true} or e.g. {"target":"weakest","stance":"cover","line":"...","why":"..."}`,
   ].join("\n");
 }
@@ -310,8 +310,10 @@ export function parseCheckin(text: string, me: number, names: string[], current:
   if (o.keep === true && !given.length) return { kind: "keep", ...extra };
   if (!given.length) return o.keep === undefined && !line ? { kind: "invalid", problems: ["neither keep nor plan fields"] } : { kind: "keep", ...extra };
   const cur = planOf(current, names);
+  // models often list power-ups (shield, jetpack) as weapons: drop those, keep the weapons (none left: weapons unchanged)
+  const ws = Array.isArray(o.weapons) ? o.weapons.filter((w) => typeof w === "string" && validatePlan({ weapons: [w], target: "nearest", stance: "rush" }, me, names).strategy) : o.weapons;
   const merged = {
-    weapons: o.weapons ?? current.weapons,
+    weapons: Array.isArray(ws) && !ws.length ? current.weapons : (ws ?? current.weapons),
     target: o.target ?? cur.target,
     stance: o.stance ?? current.stance,
     retaliate: o.retaliate ?? current.retaliate ?? "turn",

@@ -105,6 +105,14 @@ describe("check-in answers", () => {
     expect(parseCheckin(`{"stance":"rush","weapons":["rocket","bat"]}`, 0, NAMES, PLAN).kind).toBe("keep");
   });
 
+  test("power-ups listed as weapons are dropped, not fatal (models do this: shield, jetpack)", () => {
+    const a = parseCheckin(`{"weapons":["shield","hook","shotgun"],"stance":"cover"}`, 0, NAMES, PLAN);
+    expect(a.kind === "update" && a.strategy.weapons).toEqual(["grapple", "shotgun"]);
+    const b = parseCheckin(`{"weapons":["shield"],"stance":"cover"}`, 0, NAMES, PLAN);
+    expect(b.kind === "update" && b.strategy.weapons).toEqual(["rocket", "bat"]); // none left: weapons unchanged
+    expect(parseCheckin(`{"weapons":["jetpack"]}`, 0, NAMES, PLAN).kind).toBe("keep");
+  });
+
   test("a check-in line is short", () => {
     const a = parseCheckin(`{"stance":"cover","line":"${"very ".repeat(30)}long"}`, 0, NAMES, PLAN);
     expect(a.kind === "update" && a.line!.length).toBeLessThanOrEqual(CHECKIN.maxLine);
