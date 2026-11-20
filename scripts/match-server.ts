@@ -12,6 +12,12 @@
  *   bun run match-server --trust-proxy                # behind a reverse proxy (Caddy): client address from X-Forwarded-For,
  *                                                     # only when the request comes from --trusted-proxies (default: loopback and private addresses)
  *
+ * MCP (#21): agents connect to /mcp (Streamable HTTP; scripts/mcp-stdio.ts for stdio
+ * clients). join_lobby seats them in lobby matches: --lobby-seats (default
+ * remote,remote,remote,house), --mcp-deadline seconds per turn (default 75),
+ * --lobby-fill seconds before house bots fill empty seats (default 120),
+ * --public-url for links in tool results. --no-mcp turns it off.
+ *
  * Every flag can also come from the environment as KB_<FLAG> (KB_FILL_AFTER=60,
  * KB_OPEN=true, KB_NO_MATCH=true, ...), plus PORT and HOST; command-line flags
  * win. KB_VERSION is shown by GET /api/health. SIGTERM/SIGINT close the
@@ -30,6 +36,8 @@ import { mkdirSync } from "node:fs";
 import { registerStubs } from "../src/ai/providers";
 import { MAX_BODY } from "../src/server/limits";
 import { MatchServer } from "../src/server/match-server";
+import { LobbyQueue } from "../src/server/lobby-queue";
+import { McpGateway } from "../src/server/mcp";
 import { inCidrs, parseCidrs } from "../src/server/net";
 import { SqliteStore } from "../src/server/store";
 import { initPhysics } from "../src/sim";
@@ -74,6 +82,18 @@ const api = new MatchServer({
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
 
+const mcp =
+  flags["no-mcp"] === "true"
+    ? null
+    : new McpGateway(api, {
+        lobby: new LobbyQueue(api, {
+          seats: (flags["lobby-seats"] ?? "remote,remote,remote,house").split(",").map((x) => x.trim().toLowerCase()),
+          deadlineMs: secs(flags["mcp-deadline"], 75_000),
+          fillAfterMs: secs(flags["lobby-fill"], 120_000),
+        }),
+        ...(flags["public-url"] ? { publicUrl: flags["public-url"].replace(/\/$/, "") } : {}),
+      });
+
 /**
  * The client's address for rate limits: behind a proxy, the last X-Forwarded-For
  * hop (the one the proxy added), but only when the request really comes from a
@@ -95,7 +115,9 @@ const server = Bun.serve({
   development: flags.dev === "true",
   routes: { "/": index },
   async fetch(req, srv) {
-    const res = await api.handle(req, clientIp(req, srv.requestIP(req)?.address));
+    const ip = clientIp(req, srv.requestIP(req)?.address);
+    if (mcp && new URL(req.url).pathname === "/mcp") return mcp.handle(req, ip);
+    const res = await api.handle(req, ip);
     if (res) return res;
     return (await serveRecord(new URL(req.url).pathname, outDir)) ?? new Response("Not found", { status: 404 });
   },
@@ -103,6 +125,7 @@ const server = Bun.serve({
 
 console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (watch: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
 logLanUrls(hostname, server.port, "/?live");
+if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp  (lobby ${mcp.opts.lobby.seats.join(",")}, ${mcp.opts.lobby.deadlineMs / 1000} s turns)`);
 console.log(`storage: ${dbPath}`);
 const resumed = await api.resume();
 for (const id of resumed.running) console.log(`resumed match: ${id}`);
