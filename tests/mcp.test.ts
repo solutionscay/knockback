@@ -133,6 +133,18 @@ describe("MCP tools", () => {
     gw.close();
   });
 
+  test("making lobby matches is charged to the agent's address (POST /api/matches's limit)", async () => {
+    // one remote seat per lobby match: every join opens (and at once starts) a new match
+    const { gw } = setup({ seats: ["remote", "house", "house", "house"], fillAfterMs: 300_000 });
+    const errs: boolean[] = [];
+    for (let i = 0; i < 7; i++) errs.push((await (await connect(gw, "10.3.0.1")).call("join_lobby", { name: `S${i}`, persona: SOUL })).isError);
+    expect(errs.slice(0, 5)).toEqual([false, false, false, false, false]);
+    expect(errs.at(-1)).toBe(true); // 5 burst, then 1 per 12 s per address
+    const other = await connect(gw, "10.3.0.2");
+    expect((await other.call("join_lobby", { name: "Other", persona: SOUL })).isError).toBe(false);
+    gw.close();
+  });
+
   test("errors explain the fix: no match yet, bad persona, bad enum, wrong state; leave frees the seat", async () => {
     const { api, gw } = setup({ fillAfterMs: 300_000 });
     const a = await connect(gw);

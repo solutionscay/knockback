@@ -19,6 +19,8 @@ export interface LobbyOptions {
   deadlineMs?: number;
   /** a lobby match starts after this long with house bots in the empty seats (default 120 s) */
   fillAfterMs?: number;
+  /** open lobby matches at once (default 4): a new one is only made when every open one is full */
+  maxOpen?: number;
 }
 
 export interface Seated {
@@ -32,6 +34,7 @@ export class LobbyQueue {
   readonly seats: string[];
   readonly deadlineMs: number;
   readonly fillAfterMs: number;
+  readonly maxOpen: number;
   /** lobby matches, oldest first */
   private ids: string[] = [];
   private chain: Promise<unknown> = Promise.resolve();
@@ -43,6 +46,7 @@ export class LobbyQueue {
     this.seats = opts.seats ?? ["remote", "remote", "remote", "house"];
     this.deadlineMs = opts.deadlineMs ?? 75_000;
     this.fillAfterMs = opts.fillAfterMs ?? 120_000;
+    this.maxOpen = opts.maxOpen ?? 4;
     if (!this.seats.includes("remote")) throw new Error("lobby seats need at least one remote seat");
   }
 
@@ -69,6 +73,9 @@ export class LobbyQueue {
       const r = await this.join(m, body, ip);
       if (r) return { ...r, match: m, created: false };
     }
+    // making a match is charged to the agent's address like POST /api/matches, and lobby matches are capped
+    if (this.open().length >= this.maxOpen) throw new HttpError(503, `${this.maxOpen} lobby matches are waiting for players; try again shortly`);
+    this.api.createLimit.take(ip, "new lobby matches");
     const m = await this.api.createMatch({ seats: this.seats, deadlineMs: this.deadlineMs, fillAfterMs: this.fillAfterMs });
     this.ids.push(m.id);
     this.api.log(`lobby: new match ${m.id} (${this.seats.join(",")}, deadline ${this.deadlineMs / 1000} s, fills after ${this.fillAfterMs / 1000} s)`);
