@@ -187,7 +187,7 @@ describe("ops", () => {
     }
   });
 
-  test("GET /lobby is the landing page; /api/live without ?match prefers the newest started match", async () => {
+  test("GET /lobby is the landing page; /api/live without ?match: the newest running match, else the newest open one (#35: it carries the pick cards)", async () => {
     const s = new MatchServer({ outDir: tmp(), defaultFillAfterMs: 300_000 });
     const lobby = (await s.handle(new Request("http://kb.test/lobby")))!;
     expect(lobby.headers.get("content-type")).toContain("text/html");
@@ -202,9 +202,9 @@ describe("ops", () => {
     const reader = res.body!.getReader();
     const first = new TextDecoder().decode((await reader.read()).value);
     reader.cancel();
-    expect(first).toContain(`"seed":3`);
+    expect(first).toContain(`"type":"lineup","matchId":"${open.id}"`); // nothing running: the open match, with its pick cards
     expect(open.status).toBe("open");
-    await open.start();
+    await open.start(); // running now: it is the default either way
   });
 
   test("the live stream sends an SSE comment while someone watches", async () => {

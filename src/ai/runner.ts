@@ -109,6 +109,10 @@ export interface RunnerOptions {
   checkins?: boolean | Partial<CheckinConfig>;
   /** a seat that is on autopilot gets no check-in (the server's remote seats) */
   onAutopilot?: (seat: number) => boolean;
+  /** before a round's plans are asked (#35: round 1 waits for the minimum pick window) */
+  beforeAsk?: (round: number) => Promise<void> | void;
+  /** right before a round's decisions are streamed, which is also before it is simulated (#35: picks lock) */
+  beforeBroadcast?: (round: number) => Promise<void> | void;
 }
 
 /** A stored round: what decideRound returned for it. */
@@ -193,6 +197,7 @@ export class MatchRunner {
     const match = this.match;
     const names = this.names;
     const round = match.round + 1;
+    await this.opts.beforeAsk?.(round);
     const askStart = performance.now();
     this.asking = round;
     let ask: RoundAsk;
@@ -272,6 +277,7 @@ export class MatchRunner {
     const match = this.match;
     const names = this.names;
     this.prompts.push({ round, prompts: ask.prompts, raw: ask.raw });
+    if (!replayed) await this.opts.beforeBroadcast?.(round);
     const decidedAt = Date.now();
     // the round's check-in schedule: a live viewer holds at each tick until that check-in is open or over (#9)
     const schedule = !replayed && this.checkin && this.checkinAsk.some(Boolean) ? checkinTicks(this.checkin, this.match.ruleset.round.fightTicks) : null;

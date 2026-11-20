@@ -47,6 +47,10 @@ import { checkinSchema, planSchema, RemoteSeat } from "./remote";
 import type { CheckinConfig } from "../ai/checkin";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
 import type { ControlEvent } from "../ai/runner";
+import { PICK_MIN_WINDOW_MS, PICK_THROTTLE_MS, PICKS_PER_ADDRESS, PickBook, soulOpeningLine, spectatorOf } from "./picks";
+import { cleanLine } from "../ai/parse";
+import { assignIdentities } from "../sim/identity";
+import { portraitSvg } from "../viewer/portrait";
 import { SqliteStore, type MatchRow, type MatchStore, type SeatRow } from "./store";
 import { dedupe, headToHead, leaderboard, MODEL_RE, modelOf, remoteLabel, seatEntries, type SeatEntry } from "../stats/models";
 import { modelsPage } from "./models-page";
@@ -65,7 +69,7 @@ export const SEATS_PER_IP = 8;
 export const MATCHES_PER_IP = 2;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 const LOOK_KEYS = ["name", "shape", "eyes", "mark", "minor", "color"] as const;
-const JOIN_KEYS = ["name", "persona", "look", "seat", "model"];
+const JOIN_KEYS = ["name", "persona", "look", "seat", "model", "line"];
 
 /** Who sits in a remote seat. */
 export interface SeatAgent {
@@ -89,6 +93,8 @@ export interface SeatAgent {
   lastSeen: number;
   /** the house bot drives this fighter until the agent comes back (#22): why */
   autopilot: string | null;
+  /** said at join, shown on spectators' pick cards (#35) */
+  openingLine: string | null;
 }
 
 /** "remote" (an agent's seat), "house" (the house bot), or a local provider name (CLI only). */
@@ -132,6 +138,10 @@ export interface ServerOptions {
    * a status every ~10 s of fight and may change their plan. Default off.
    */
   checkins?: boolean | Partial<CheckinConfig>;
+  /** spectator picks (#35): different spectators one address may add to one match's tally (default 8) */
+  picksPerAddress?: number;
+  /** at broadcast pace, picks stay open at least this long after the match starts (default 30 s) */
+  pickWindowMs?: number;
   log?: (s: string) => void;
 }
 
@@ -139,7 +149,7 @@ const hex = (bytes: number) => randomBytes(bytes).toString("hex");
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 /** Validate a join body: name, persona (a soul text), optional look wishes and seat. */
-export function checkJoin(body: Record<string, unknown>): { name: string; persona: string; look: IdentityWish | null; model: string | null; seat?: number; soulId: string; warnings: string[] } {
+export function checkJoin(body: Record<string, unknown>): { name: string; persona: string; look: IdentityWish | null; model: string | null; seat?: number; soulId: string; warnings: string[]; line: string | null } {
   const problems: string[] = [];
   const extra = Object.keys(body).filter((k) => !JOIN_KEYS.includes(k));
   if (extra.length) problems.push(`unknown fields: ${extra.join(", ")} (allowed: ${JOIN_KEYS.join(", ")})`);
@@ -152,11 +162,14 @@ export function checkJoin(body: Record<string, unknown>): { name: string; person
   if (seat !== undefined && !(Number.isInteger(seat) && (seat as number) >= 0 && (seat as number) <= 3)) problems.push("seat: 0-3");
   const model = typeof body.model === "string" ? body.model.trim() : body.model;
   if (model !== undefined && model !== null && model !== "" && !(typeof model === "string" && MODEL_RE.test(model))) problems.push("model: the model you run, as you would name it (1-40 characters: letters, digits, space . _ : + ( ) / -), e.g. claude-opus-5-5");
+  // the opening line (#35): shown on spectators' pick cards before the match; validated like a plan's line
+  const line = body.line === undefined ? null : typeof body.line === "string" && body.line.length <= 400 ? cleanLine(body.line) : null;
+  if (body.line !== undefined && !line) problems.push("line: one short in-character sentence (a non-empty string, at most 400 characters; kept to 120)");
   if (problems.length) throw new HttpError(400, "invalid join", problems);
   const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
   const parsed = parseSoul(persona as string, 0, soulId);
   if (parsed.errors.length) throw new HttpError(422, "invalid persona", parsed.errors);
-  return { name, persona: persona as string, look, model: typeof model === "string" && model ? model : null, soulId, warnings: parsed.warnings, ...(seat !== undefined ? { seat: seat as number } : {}) };
+  return { name, persona: persona as string, look, model: typeof model === "string" && model ? model : null, soulId, warnings: parsed.warnings, line, ...(seat !== undefined ? { seat: seat as number } : {}) };
 }
 
 export class ServerMatch {
@@ -251,7 +264,7 @@ export class ServerMatch {
 
   seatRow(seat: number): SeatRow {
     const a = this.agents[seat]!;
-    return { matchId: this.id, seat, name: a.name, persona: a.persona, look: a.look, model: a.model, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound };
+    return { matchId: this.id, seat, name: a.name, persona: a.persona, look: a.look, model: a.model, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound, openingLine: a.openingLine };
   }
 
   row(): MatchRow {
@@ -260,7 +273,7 @@ export class ServerMatch {
 
   /** Put a stored agent back in its seat (resume). */
   restoreSeat(r: SeatRow) {
-    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, model: r.model ?? null, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0, lastSeen: Date.now(), autopilot: null };
+    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, model: r.model ?? null, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0, lastSeen: Date.now(), autopilot: null, openingLine: r.openingLine ?? null };
     this.agents[r.seat] = agent;
     const rs = this.remoteSeat(r.seat, agent);
     if (r.leftRound !== null) rs.left = true;
@@ -275,12 +288,13 @@ export class ServerMatch {
     const seat = j.seat ?? free[0];
     if (seat === undefined) throw new HttpError(409, "no free remote seat");
     const token = `st_${hex(24)}`;
-    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, model: j.model, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0, lastSeen: Date.now(), autopilot: null };
+    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, model: j.model, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0, lastSeen: Date.now(), autopilot: null, openingLine: j.line };
     this.agents[seat] = agent;
     this.remoteSeat(seat, agent);
     this.server.tokens.set(agent.tokenHash, { match: this.id, seat });
     this.server.log(`match ${this.id}: ${agent.name} joined seat ${seat}${agent.model ? ` (says it runs ${agent.model})` : ""}`);
     this.changed();
+    this.lineup();
     return { seat, token };
   }
 
@@ -294,6 +308,7 @@ export class ServerMatch {
       this.server.tokens.delete(a.tokenHash);
       this.server.log(`match ${this.id}: ${a.name} left seat ${seat} before the start`);
       this.changed();
+      this.lineup();
       return { seat, status: "open", houseFromRound: null };
     }
     if (this.status !== "running") throw new HttpError(409, `match ${this.id} is ${this.status}`);
@@ -373,6 +388,83 @@ export class ServerMatch {
     return this.agents.filter((a) => a && a.leftAt === null && !a.autopilot).length;
   }
 
+  // ---------------------------------------------------------------- spectator picks (#35)
+  readonly picks = new PickBook();
+  /** when the match started (all seats filled): the pick window stays open PICK_MIN_WINDOW_MS after it, at broadcast pace */
+  startedAtMs: number | null = null;
+  private picksTimer: ReturnType<typeof setTimeout> | undefined;
+  private picksSentAt = 0;
+
+  /** Tell spectators which match this stream is (before the start too), so they can show the pick cards. */
+  lineup() {
+    if (this.status === "open") this.live.broadcast({ type: "lineup", matchId: this.id });
+  }
+
+  /** The 4 fighters as spectators see them on the pick cards: name, look, who plays it, the opening line. */
+  pickFighters() {
+    const souls = this.souls();
+    const ids = this.runner?.match.identities ?? assignIdentities(this.seed, this.agents.map((a) => a?.look ?? undefined));
+    return this.kinds.map((k, i) => {
+      const a = this.agents[i];
+      const id = ids[i]!;
+      const line = a?.openingLine ?? soulOpeningLine(souls[i]!.lines, souls[i]!.catchphrase || undefined, id.name, this.seed + i);
+      const label = a ? `agent · ${a.name}` : k === "remote" && this.status === "open" ? "open seat" : k === "remote" || k === "house" ? "house bot" : k;
+      return { seat: i, name: id.name, color: id.color, look: id, label, line, svg: portraitSvg(id, "fist", "fight", "full") };
+    });
+  }
+
+  /** Everything a pick card needs, plus this spectator's pick. Never part of anything an agent sees. */
+  picksView(spectator: string | null) {
+    const t = this.picks.tally();
+    const over = this.status === "over" && this.runner?.match.over;
+    return {
+      match: this.id,
+      status: this.status,
+      locked: this.picks.locked,
+      lockedAt: this.picks.lockedAt,
+      // the earliest the window can close: the fill timer, then 30 s of picks (at broadcast pace)
+      locksAtEarliest: this.picks.locked ? this.picks.lockedAt : (this.startedAtMs ?? this.startsAt) + (this.server.opts.pace === "broadcast" ? this.server.opts.pickWindowMs : 0),
+      now: Date.now(),
+      counts: t.counts,
+      total: t.total,
+      yours: spectator ? this.picks.yours(spectator) : null,
+      fighters: this.pickFighters(),
+      ...(over ? { winner: this.runner!.match.winner, calledIt: this.picks.split(this.runner!.match.winner).calledIt } : {}),
+    };
+  }
+
+  /** A spectator picks (or changes) a fighter; the tally goes out on the stream, throttled. */
+  async pick(spectator: string, seat: number, ip: string) {
+    if (this.picks.locked) throw new HttpError(409, "picks are locked: round 1 has started");
+    if (this.status !== "open" && this.status !== "running") throw new HttpError(409, `match ${this.id} is ${this.status}`);
+    const changed = this.picks.pick(spectator, seat, ip, this.server.opts.picksPerAddress);
+    const now = Date.now();
+    await this.store.upsertPick({ matchId: this.id, spectator, seat, ip, createdAt: now, updatedAt: now });
+    if (changed) this.schedulePicksEvent();
+  }
+
+  private schedulePicksEvent() {
+    if (this.picksTimer) return;
+    const wait = Math.max(0, this.picksSentAt + PICK_THROTTLE_MS - Date.now());
+    this.picksTimer = setTimeout(() => {
+      this.picksTimer = undefined;
+      if (this.picks.locked) return;
+      this.picksSentAt = Date.now();
+      this.live.broadcast({ type: "picks", matchId: this.id, ...this.picks.tally() });
+    }, wait);
+  }
+
+  /** Close the pick window: right before round 1's decisions go out (and before round 1 is simulated). Persisted first. */
+  async lockPicks() {
+    if (this.picks.locked) return;
+    this.picks.lockedAt = Date.now();
+    clearTimeout(this.picksTimer);
+    this.picksTimer = undefined;
+    await this.store.updateMatch(this.id, { picksLockedAt: this.picks.lockedAt });
+    this.live.broadcast({ type: "picksLocked", matchId: this.id, ...this.picks.tally() });
+    this.server.log(`match ${this.id}: picks locked (${this.picks.tally().total} picks)`);
+  }
+
   /** Build the seats (souls, providers) and the runner. */
   protected buildRunner(): MatchRunner {
     const souls = this.souls();
@@ -400,6 +492,16 @@ export class ServerMatch {
       pace: this.server.opts.pace,
       // nobody to wait for: no spectator and no agent in control
       shouldPace: () => this.live.size > 0 || this.activeAgents() > 0,
+      // picks (#35): at broadcast pace, at least 30 s of picks after the start before round 1 is asked ...
+      beforeAsk: async (round) => {
+        if (round !== 1 || this.server.opts.pace !== "broadcast" || this.picks.locked) return;
+        const until = (this.startedAtMs ?? Date.now()) + this.server.opts.pickWindowMs;
+        while (Date.now() < until && (this.live.size > 0 || this.activeAgents() > 0)) await Bun.sleep(Math.min(250, until - Date.now()));
+      },
+      // ... and the window closes right before round 1's decisions are broadcast and simulated
+      beforeBroadcast: async (round) => {
+        if (round === 1) await this.lockPicks();
+      },
       onPlayed: (round, hash, updates) => this.store.setRoundHash(this.id, round, hash, updates),
       checkins: this.server.opts.checkins,
       // a fighter on autopilot (or whose agent left) gets no check-in; the house bot's plan plays on
@@ -414,9 +516,10 @@ export class ServerMatch {
     if (this.status !== "open") return;
     clearTimeout(this.timer);
     this.status = "running";
+    this.startedAtMs = Date.now();
     try {
       this.runner = this.buildRunner();
-      await this.store.updateMatch(this.id, { status: "running", startedAt: Date.now() });
+      await this.store.updateMatch(this.id, { status: "running", startedAt: this.startedAtMs });
     } catch (e) {
       this.fail(e);
       return;
@@ -433,6 +536,8 @@ export class ServerMatch {
     try {
       this.runner = this.buildRunner();
       this.runner.start();
+      // round 1 was decided before the restart: its decisions go out again now, so picks must be closed
+      if (rounds.length) await this.lockPicks();
       for (const r of rounds) await this.runner.replayRound(r);
       await this.restoreControl();
     } catch (e) {
@@ -502,7 +607,8 @@ export class ServerMatch {
   }
 
   private onEvent(e: RunnerEvent) {
-    this.live.broadcast(e);
+    // the stream says which match it is, so spectators can fetch the pick cards (#35)
+    this.live.broadcast(e.type === "match" ? { ...e, matchId: this.id } : e);
     if (e.type === "round") this.changed();
   }
 
@@ -628,7 +734,9 @@ export class ServerMatch {
         };
       })
       .filter((x) => round === undefined || x.round === round);
-    return { ...this.info(), rounds };
+    // the crowd's final split (#35), once the match is over: never while agents still play
+    const over = this.status === "over" && m.over;
+    return { ...this.info(), rounds, ...(over ? { picks: this.picks.split(m.winner) } : {}) };
   }
 }
 
@@ -645,13 +753,15 @@ export class MatchServer {
   readonly joinLimit = new RateLimiter(10, 1 / 6);
   readonly createLimit = new RateLimiter(5, 1 / 12);
   readonly seatLimit = new RateLimiter(30, 5);
+  // spectator picks (#35): per address
+  readonly pickLimit = new RateLimiter(20, 1);
   // rebuilding a finished match from storage replays its physics: scarce per address, one load per match at a time
   readonly loadLimit = new RateLimiter(5, 1 / 5);
   private loading = new Map<string, Promise<ServerMatch>>();
 
   constructor(opts: ServerOptions) {
     const { store, log, ...rest } = opts;
-    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", pace: "fast", dropGraceMs: 5000, checkins: false, ...rest };
+    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", pace: "fast", dropGraceMs: 5000, checkins: false, picksPerAddress: PICKS_PER_ADDRESS, pickWindowMs: PICK_MIN_WINDOW_MS, ...rest };
     this.store = store ?? new SqliteStore(":memory:");
     this.log = log ?? (() => {});
   }
@@ -682,8 +792,16 @@ export class MatchServer {
   private async restore(row: MatchRow): Promise<ServerMatch> {
     const m = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt, storedRuleset(row));
     for (const s of await this.store.listSeats(row.id)) m.restoreSeat(s);
+    await this.restorePicks(m, row);
     this.add(m);
     return m;
+  }
+
+  /** Picks and the lock survive a restart (#35). */
+  private async restorePicks(m: ServerMatch, row: MatchRow) {
+    m.picks.load(await this.store.listPicks(row.id));
+    m.picks.lockedAt = row.picksLockedAt ?? null;
+    m.startedAtMs = row.startedAt;
   }
 
   /**
@@ -721,6 +839,7 @@ export class MatchServer {
     const m = new ServerMatch(`m_${hex(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this, c.ip ?? null, Date.now(), selected);
     await this.store.insertMatch(m.row());
     this.add(m);
+    m.lineup();
     this.log(`match ${m.id} created: seed ${seed}, seats ${kinds.join(",")}, deadline ${m.deadlineMs / 1000} s, starts in ${(m.startsAt - m.createdAt) / 1000} s at the latest`);
     m.armFillTimer();
     return m;
@@ -750,11 +869,13 @@ export class MatchServer {
         }
   }
 
-  /** What /api/live shows without ?match: the newest match that has started (an open one has nothing to show yet), else the newest. */
+  /**
+   * What /api/live shows without ?match: the newest running match; else the
+   * newest open one (its stream carries the pick cards, #35); else the newest.
+   */
   private liveDefault(): ServerMatch | null {
-    let best: ServerMatch | null = null;
-    for (const m of this.matches.values()) if (m.status !== "open" && (!best || m.createdAt >= best.createdAt)) best = m;
-    return best ?? this.newest;
+    const newest = (st: string) => [...this.matches.values()].filter((m) => m.status === st).sort((a, b) => b.createdAt - a.createdAt)[0];
+    return newest("running") ?? newest("open") ?? this.newest;
   }
 
   /** Liveness and readiness for the container healthcheck: the process answers and the store can be read. */
@@ -784,6 +905,7 @@ export class MatchServer {
     const load = (async () => {
       const loaded = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt, storedRuleset(row));
       for (const s of await this.store.listSeats(row.id)) loaded.restoreSeat(s);
+      await this.restorePicks(loaded, row);
       const rec = await this.store.getRecord(mid);
       await loaded.loadFinished(row, await this.store.listRounds(mid), rec?.path ?? null, rec?.engine ?? 0);
       this.add(loaded);
@@ -903,13 +1025,39 @@ export class MatchServer {
       // each record's engine version; old ones (another engine) show as a summary card in the viewer, not a replay
       return json({ engine: ENGINE_VERSION, records: (await this.store.listRecords(100)).map((r) => ({ ...r, old: r.engine !== ENGINE_VERSION })) });
     }
-    const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|checkin|leave|report))?$/.exec(path);
+    if (path === "/api/picks") {
+      // a replay's crowd split, read-only (#35): the record holds no picks, the index maps it to its match
+      allow("GET");
+      const rec = url.searchParams.get("record") ?? "";
+      const hit = (await this.store.listRecords(1000)).find((r) => r.path === rec);
+      if (!hit) throw new HttpError(404, "no match for that record");
+      const m = await this.matchOr404(hit.matchId, ip);
+      const sp = spectatorOf(req);
+      return json(m.picksView(sp.hash));
+    }
+    const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|checkin|leave|report|pick|picks))?$/.exec(path);
     if (!mm) throw new HttpError(404, `no such endpoint: ${method} ${path} (see GET /api)`);
     const match = await this.matchOr404(mm[1]!, ip);
     switch (mm[2]) {
       case undefined:
         allow("GET");
         return json(match.info());
+      case "picks": {
+        // spectators (#35): the pick cards, the tally, the lock, this browser's pick (anonymous cookie id)
+        allow("GET");
+        const sp = spectatorOf(req);
+        return json(match.picksView(sp.hash), 200, sp.setCookie ? { "set-cookie": sp.setCookie } : {});
+      }
+      case "pick": {
+        allow("POST");
+        this.pickLimit.take(ip, "picks");
+        const b = await readJson(req, 256);
+        const extra = Object.keys(b).filter((k) => k !== "seat");
+        if (extra.length || !Number.isInteger(b.seat) || (b.seat as number) < 0 || (b.seat as number) > 3) throw new HttpError(400, "send { seat: 0-3 }", extra.length ? [`unknown fields: ${extra.join(", ")}`] : undefined);
+        const sp = spectatorOf(req);
+        await match.pick(sp.hash, b.seat as number, ip);
+        return json(match.picksView(sp.hash), 200, sp.setCookie ? { "set-cookie": sp.setCookie } : {});
+      }
       case "report": {
         allow("GET");
         const r = url.searchParams.get("round");
@@ -1076,7 +1224,7 @@ function apiIndex(open: boolean) {
       "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-300), ruleset?: preset name or settings } -> match',
       "GET /api/matches": "all matches",
       "GET /api/matches/:id": "status and seats",
-      "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat?, model? (the model you run, e.g. claude-opus-5-5: shown on your fighter's card as self-reported) } -> { seat, token }",
+      "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat?, model? (the model you run, e.g. claude-opus-5-5: shown on your fighter's card as self-reported), line? (an opening line for spectators' pick cards) } -> { seat, token }",
       "GET /api/matches/:id/turn?wait=25": "long poll -> { status: open | turn | checkin | waiting | left | over, ... }; a turn carries context, prompt and schema; a checkin (mid-round, when the server runs check-ins) carries the fight status, a prompt and its schema",
       "POST /api/matches/:id/checkin": "{ round, tick, keep: true } or { round, tick, ...plan fields to change (target, stance, weapons, retaliate, rules), line?, why? } -> { accepted, result: keep | update }; the change applies when the answer arrives (fight time)",
       "POST /api/matches/:id/plan": "{ round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer } -> { accepted, plan }",
@@ -1090,6 +1238,9 @@ function apiIndex(open: boolean) {
       "GET /api/agents/:name": "an agent's bot, persona summary, record and recent matches (from the last 300 stored matches)",
       "GET /share/:id.svg": "the 1200x630 share card of a finished match",
       "GET /api/records": "index of saved records (path, seed, hashes, winner, engine version; old = made by another engine, shown as a summary, not replayed)",
+      "GET /api/matches/:id/picks": "spectators (#35): the pick cards, the crowd's tally, the lock, your pick (anonymous cookie)",
+      "POST /api/matches/:id/pick": "spectators (#35): { seat } until the picks lock (right before round 1's plans are shown)",
+      "GET /api/picks?record=/records/<file>.json": "a replay's final crowd split (read-only)",
     },
     limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },
     schema: planSchema(),

@@ -44,6 +44,8 @@ export interface MatchRow {
   error: string | null;
   /** winning seat once over */
   winner: number | null;
+  /** when spectator picks locked (#35): right before round 1's decisions were broadcast */
+  picksLockedAt?: number | null;
 }
 
 export interface SeatRow {
@@ -61,6 +63,20 @@ export interface SeatRow {
   leftRound: number | null;
   /** the model the agent reported at join (unverified), or null */
   model?: string | null;
+  /** the agent's opening line, shown on spectators' pick cards (#35) */
+  openingLine?: string | null;
+}
+
+/** A spectator's pick (#35): kept apart from the match; never in the record, prompts or tool results. */
+export interface PickRow {
+  matchId: string;
+  /** sha256 of the spectator's cookie id */
+  spectator: string;
+  seat: number;
+  /** the picking address, for the per-address cap */
+  ip: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface RoundRow {
@@ -99,7 +115,7 @@ export interface RecordRow {
   stats?: string | null;
 }
 
-export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner">>;
+export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt">>;
 export type SeatPatch = Partial<Pick<SeatRow, "leftAt" | "leftRound">>;
 
 export interface MatchStore {
@@ -127,6 +143,9 @@ export interface MatchStore {
   /** a change of control (autopilot / agent back, #22), in order */
   insertControl(matchId: string, idx: number, e: ControlEvent): Promise<void>;
   listControl(matchId: string): Promise<ControlEvent[]>;
+  /** spectator picks (#35): one per spectator per match, changeable until the lock */
+  upsertPick(p: PickRow): Promise<void>;
+  listPicks(matchId: string): Promise<PickRow[]>;
   insertRecord(r: RecordRow): Promise<void>;
   getRecord(matchId: string): Promise<RecordRow | null>;
   listRecords(limit?: number): Promise<RecordRow[]>;
@@ -235,6 +254,18 @@ export const MIGRATIONS: string[] = [
      WHERE body IS NOT NULL AND json_type(body, '$.arena.spawns.spread') IS NULL;
    UPDATE ruleset_presets SET body = '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', version = version + 1 WHERE name = 'Classic';
    UPDATE ruleset_presets SET body = '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}' WHERE name = 'Close Quarters' AND body IS NULL;`,
+  // 8 (#35): spectator picks, the pick lock, agents' opening lines
+  `CREATE TABLE picks (
+     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+     spectator TEXT NOT NULL,          -- sha256 of the spectator cookie id; the id itself is never stored
+     seat INTEGER NOT NULL CHECK (seat BETWEEN 0 AND 3),
+     ip TEXT NOT NULL,
+     created_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL,
+     PRIMARY KEY (match_id, spectator)
+   );
+   ALTER TABLE matches ADD COLUMN picks_locked_at INTEGER;
+   ALTER TABLE seats ADD COLUMN opening_line TEXT;`,
 ];
 
 type Row = Record<string, unknown>;
@@ -256,6 +287,7 @@ const matchOf = (r: Row): MatchRow => ({
   creator: (r.creator as string | null) ?? null,
   error: (r.error as string | null) ?? null,
   winner: (r.winner as number | null) ?? null,
+  picksLockedAt: (r.picks_locked_at as number | null) ?? null,
 });
 
 const presetOf = (r: Row): RulesetPreset => ({
@@ -276,9 +308,10 @@ const seatOf = (r: Row): SeatRow => ({
   leftAt: (r.left_at as number | null) ?? null,
   leftRound: (r.left_round as number | null) ?? null,
   model: (r.model as string | null) ?? null,
+  openingLine: (r.opening_line as string | null) ?? null,
 });
 
-const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round" };
+const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round", picksLockedAt: "picks_locked_at" };
 
 export class SqliteStore implements MatchStore {
   readonly db: Database;
@@ -361,8 +394,8 @@ export class SqliteStore implements MatchStore {
   }
   async insertSeat(s: SeatRow) {
     this.db
-      .query("INSERT INTO seats (match_id, seat, name, persona, look, token_hash, joined_at, left_at, left_round, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(s.matchId, s.seat, s.name, s.persona, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound, s.model ?? null);
+      .query("INSERT INTO seats (match_id, seat, name, persona, look, token_hash, joined_at, left_at, left_round, model, opening_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(s.matchId, s.seat, s.name, s.persona, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound, s.model ?? null, s.openingLine ?? null);
   }
   async updateSeat(matchId: string, seat: number, patch: SeatPatch) {
     this.patch("seats", "match_id = ? AND seat = ?", [matchId, seat], patch);
@@ -405,6 +438,21 @@ export class SqliteStore implements MatchStore {
   }
   async listControl(matchId: string) {
     return (this.db.query("SELECT event FROM control WHERE match_id = ? ORDER BY idx").all(matchId) as Row[]).map((r) => p<ControlEvent>(r.event));
+  }
+  async upsertPick(pk: PickRow) {
+    this.db
+      .query("INSERT INTO picks (match_id, spectator, seat, ip, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (match_id, spectator) DO UPDATE SET seat = excluded.seat, updated_at = excluded.updated_at")
+      .run(pk.matchId, pk.spectator, pk.seat, pk.ip, pk.createdAt, pk.updatedAt);
+  }
+  async listPicks(matchId: string) {
+    return (this.db.query("SELECT * FROM picks WHERE match_id = ? ORDER BY created_at").all(matchId) as Row[]).map((r) => ({
+      matchId,
+      spectator: r.spectator as string,
+      seat: r.seat as number,
+      ip: r.ip as string,
+      createdAt: r.created_at as number,
+      updatedAt: r.updated_at as number,
+    }));
   }
   async insertRecord(r: RecordRow) {
     this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, engine, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.engine, r.stats ?? null);
