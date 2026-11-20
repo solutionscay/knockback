@@ -42,7 +42,7 @@ export class GamePlans {
     }
   }
 
-  /** Mid-round plan updates in the record (#10; stub until #8/#9): a thought and the chip, at their tick. */
+  /** Mid-round plan updates (#8, #10): a thought and the chip, when the engine applies them (at their tick). */
   applyUpdates(match: Match, shown: Fight, decisions: Decision[], clock: number) {
     const ups = match.record.rounds[match.round - 1]?.planUpdates;
     if (!ups) return;
@@ -92,7 +92,8 @@ export class GamePlans {
 
   onEvent(e: SimEvent, match: Match, clock: number) {
     if (e.type === "rule" && e.on) {
-      const rule = match.decisions[e.fighter]?.strategy.rules?.[e.rule];
+      // the plan playing now: a mid-round update (#8) brings its own rules
+      const rule = (match.fight?.controllers[e.fighter]?.strategy ?? match.decisions[e.fighter]?.strategy)?.rules?.[e.rule];
       // few callouts: the same rule of the same fighter tags again only after CALLOUT.ruleRepeatSeconds
       const key = e.fighter * 8 + e.rule;
       if (clock - (this.ruleTagAt.get(key) ?? -1e9) >= CALLOUT.ruleRepeatSeconds && clock - this.lastRuleTag >= CALLOUT.ruleGapSeconds) {

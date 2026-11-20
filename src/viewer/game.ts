@@ -346,7 +346,7 @@ export class Game {
     this.plans.onEvent(e, this.match, this.clock);
     if (e.type === "rule" && this.debugRules) {
       const f = this.shown.sim.fighters[e.fighter]!;
-      const rule = this.match.decisions[e.fighter]?.strategy.rules?.[e.rule];
+      const rule = (this.shown.controllers[e.fighter]?.strategy ?? this.match.decisions[e.fighter]?.strategy)?.rules?.[e.rule];
       const who = e.subject >= 0 ? ` -> ${this.match.names[e.subject]}` : "";
       console.info(`[rule] ${(e.tick / 60).toFixed(1)} s ${f.name} rule ${e.rule + 1} '${rule?.label ?? "?"}' ${e.on ? "ON" : "off"}${who}`);
       if (e.on && !f.removed) {
