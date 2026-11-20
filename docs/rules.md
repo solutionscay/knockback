@@ -17,7 +17,7 @@ The `rules` key is optional. Plans without rules work as before.
 
 | when | parameters | true when |
 |---|---|---|
-| `holds` | `who`, `item` (a weapon) | a fighter in `who` carries the item |
+| `holds` | `who`, `item` (a weapon or jetpack) | a fighter in `who` carries the weapon or has jetpack fuel left |
 | `my_health_below` | `value` (10–90) | my health % is less than `value` |
 | `health_below` | `who`, `value` (10–90) | a fighter in `who` has health % less than `value` |
 | `near_ledge` | `who` | a fighter in `who` stands within 2 m of a pit edge or the level edge |
@@ -34,7 +34,7 @@ The `rules` key is optional. Plans without rules work as before.
 - `target`: my current target;
 - a fighter's name, which is stored as that fighter's seat number. A name can't be your own.
 
-**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`, `jetpack`. The `holds` trigger also accepts `jetpack` and checks whether the fighter has fuel.
+**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`, `jetpack`.
 
 ## Actions (`do`)
 

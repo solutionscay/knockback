@@ -969,12 +969,13 @@
           }
         ],
         "checkpoints": [
-          "b8c80132"
+          "a69652a8",
+          "c09da1a2"
         ],
-        "finalHash": "49b11424",
-        "ticks": 1058
+        "finalHash": "1168f762",
+        "ticks": 1349
       },
-      "winner": 2,
+      "winner": 1,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1116,13 +1117,12 @@
           }
         ],
         "checkpoints": [
-          "c6364aef",
-          "265052b4"
+          "bd692cd4"
         ],
-        "finalHash": "60153639",
-        "ticks": 1733
+        "finalHash": "6692de68",
+        "ticks": 754
       },
-      "winner": 2,
+      "winner": 1,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1151,11 +1151,11 @@
       ]
     }
   ],
-  "winner": 2,
+  "winner": 1,
   "wins": [
     0,
-    0,
     2,
+    0,
     0
   ],
   "labels": [

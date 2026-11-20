@@ -4,13 +4,16 @@ import type { Surface } from "./nav";
 import type { Fighter, Input, Sim } from "./sim";
 
 type Point = { x: number; y: number };
-type Flight = { x: number; y: number; edge: number; until: number };
+type Flight = { x: number; y: number; edge: number; until: number; crossedLip: boolean };
+type Burst = { direction: number; until: number; rescue: boolean };
 
 const FEET = FIGHTER.halfHeight + FIGHTER.radius;
 const CLEARANCE = FIGHTER.radius + 0.25;
 
 export class JetpackPilot {
   private flight: Flight | null = null;
+  private burst: Burst | null = null;
+  private nextBurst = 0;
 
   steer(sim: Sim, me: Fighter, target: Fighter, p: Point, v: Point, input: Input, rush: boolean, requested: boolean): boolean {
     if (me.stun > 0) return false;
@@ -27,13 +30,21 @@ export class JetpackPilot {
     const half = sim.zoneHalfAhead(60);
     const outside = sim.zoneEnabled && Math.abs(p.x - sim.zone.center) > half - 0.5;
     const falling = !me.grounded && v.y < -1 && sim.nav.fallBelow(sim.grid, p.x, sim.feetY(me)) > 5;
-    if (outside || falling) {
-      const x = outside ? clamp(p.x, sim.zone.center - half + 2, sim.zone.center + half - 2) : p.x;
-      input.move = outside ? Math.sign(x - p.x) : input.move;
-      if (falling || (outside && Math.abs(input.move) > 0.5 && this.clear(sim, me, p.x, p.y, 0, 1, 2.3))) {
-        this.boost(input);
-        return true;
-      }
+    const inward = Math.sign(sim.zone.center - p.x);
+    if (this.burst && (sim.tick >= this.burst.until || (!this.burst.rescue && (outside || falling)))) {
+      this.nextBurst = sim.tick + 22;
+      this.burst = null;
+    }
+    if (!this.burst && (outside || falling) &&
+        (falling || this.clear(sim, me, p.x, p.y, 0, 1, 2.3))) {
+      // Hold through the first reversal of a fall. Releasing as soon as vy
+      // approaches zero leaves the fighter in the pit and wastes the tank.
+      this.burst = { direction: outside ? inward : 0, until: sim.tick + 36, rescue: true };
+    }
+    if (this.burst) {
+      const dir = outside ? inward : this.burst.direction;
+      if (dir) input.move = dir;
+      return this.boost(input);
     }
 
     const upper = sim.nav.surfaces[target.surface];
@@ -50,13 +61,14 @@ export class JetpackPilot {
     const dx = t.x - p.x;
     const dir = Math.sign(dx);
     const distance = Math.abs(dx);
-    if ((rush || requested) && distance > (requested ? 3 : 7) && distance < 17 &&
+    if (sim.tick >= this.nextBurst && !outside && !falling && v.y < 3 &&
+        (rush || requested) && distance > (requested ? 3 : 7) && distance < 17 &&
         Math.abs(t.y - p.y) < 2 && (requested || input.move * dir > 0.5) &&
         this.clear(sim, me, p.x, p.y, dir, 0, Math.min(distance - 1, 5)) &&
         this.clear(sim, me, p.x, p.y, 0, 1, 2.8)) {
       input.move = dir;
-      this.boost(input);
-      return true;
+      this.burst = { direction: dir, until: sim.tick + 22, rescue: false };
+      return this.boost(input);
     }
     return false;
   }
@@ -84,7 +96,7 @@ export class JetpackPilot {
       const x = lip - side * 0.75;
       if (!this.clear(sim, me, edge, top, -side, 0, Math.abs(x - edge))) continue;
       score = approach;
-      best = { x, y: surface.y, edge, until: sim.tick + 160 };
+      best = { x, y: surface.y, edge, until: sim.tick + 160, crossedLip: false };
     }
     return best;
   }
@@ -92,8 +104,9 @@ export class JetpackPilot {
   private fly(me: Fighter, p: Point, v: Point, input: Input, flight: Flight): boolean {
     const above = p.y >= flight.y + FEET + 0.22;
     const over = Math.abs(p.x - flight.x) < 0.6;
-    if (!above && me.power.jetpack <= 0 && !over) return false;
-    const x = above || over ? flight.x : flight.edge;
+    if (!above && !over && (me.power.jetpack <= 0 || flight.crossedLip)) return false;
+    if (above) flight.crossedLip = true;
+    const x = flight.crossedLip || over ? flight.x : flight.edge;
     input.move = clamp((x - p.x) * 1.8 - v.x * 0.14, -1, 1);
     input.jump = false;
     if (me.power.jetpack > 0 && !above && !over && Math.abs(flight.edge - p.x) < 0.55) this.boost(input);
@@ -103,6 +116,7 @@ export class JetpackPilot {
   private boost(input: Input) {
     input.thrust = true;
     input.jump = false;
+    return true;
   }
 
   private clear(sim: Sim, me: Fighter, x: number, y: number, dx: number, dy: number, distance: number): boolean {

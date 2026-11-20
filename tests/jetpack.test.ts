@@ -61,6 +61,26 @@ test("a bot boosts inward from outside the zone", () => {
   expect(input.move).toBeLessThan(0);
 });
 
+test("a gap rescue holds thrust through the transition from falling to climbing", () => {
+  const sim = sandbox();
+  const f = place(sim, 0, 12, -2);
+  f.entity.body.setLinvel({ x: 0, y: -4 }, true);
+  sim.applyItem(f, "jetpack");
+  const ctl = new Controller(f.id, 0);
+  const evs = [];
+  for (let i = 0; i < 30; i++) {
+    const inputs = idle();
+    const input = ctl.think(sim);
+    expect(input.thrust).toBe(true);
+    inputs[0] = { ...input, fire: false };
+    sim.step(inputs);
+    evs.push(...sim.events.splice(0));
+  }
+  expect(f.power.jetpack).toBe(POWER.jetpack.fuelTicks - 30);
+  expect(sim.vel(f).y).toBeGreaterThan(1);
+  expect(evs.filter(e => e.type === "jetpack")).toHaveLength(1);
+});
+
 test("plans can seek, use and recognize a held jetpack", () => {
   const { strategy, ruleProblems } = parseAnswer(JSON.stringify({
     weapons: ["bat"], target: "nearest", stance: "rush", line: "Up we go!",
