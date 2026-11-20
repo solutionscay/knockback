@@ -1,6 +1,8 @@
 import type { DecisionMeta } from "../sim/match";
 import type { Strategy } from "../sim/sim";
 
+import type { CheckinMeta } from "../sim/match";
+import type { CheckinStats } from "./checkin-log";
 export interface EvalDecision {
   strategy: Strategy;
   line: string;
@@ -27,6 +29,9 @@ export interface EvalRound {
   /** decisions made before this round, per seat */
   decisions: EvalDecision[];
   facts: EvalRoundFacts;
+  /** mid-round check-ins (#9) and how many became plan updates; absent when check-ins were off */
+  checkins?: CheckinMeta[];
+  planUpdates?: number;
 }
 
 export interface EvalMatch {
@@ -135,7 +140,10 @@ export interface EvalReport {
   seeds: number[];
   lineups: string[];
   variety: { ai: VarietyGroup | NA; house: VarietyGroup | NA };
-  change: { ai: ChangeStats | NA; house: ChangeStats | NA; byFighter: Record<string, ChangeStats>; checkinsPerRound: NA };
+  /** checkinsPerRound: plan updates from check-ins per round (#9), n/a when check-ins were off */
+  change: { ai: ChangeStats | NA; house: ChangeStats | NA; byFighter: Record<string, ChangeStats>; checkinsPerRound: number | NA };
+  /** check-in numbers per provider (#9): answers, updates, misses, latency, estimated tokens; n/a when check-ins were off */
+  checkins?: CheckinStats[] | NA;
   rules: { ai: RulesStats | NA; house: RulesStats | NA };
   follows: { ai: FollowStats | NA; house: FollowStats | NA };
   facts: FactCheck;

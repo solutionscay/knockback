@@ -8,11 +8,13 @@
  *   bun run ai-eval --matches 3 --compare evals/baseline/report.json
  *
  * Flags: --matches N, --seeds a-b (or a,b,c), --lineup, --souls, --deadline s,
+ * --checkins on (mid-round check-ins, #9; --checkin-deadline/-every/-max),
  * --concurrency 1..4, --out <dir>, --tag <name>, --compare <report.json>, --yes.
  * --rescore <run dir>: recompute the report from a run's saved records (exact replay, no AI calls).
  * Souls rotate across seats every match (match k: seat i plays soul (i+k) % 4),
  * so every provider plays every soul and seat.
  */
+import { CHECKIN, checkinFlags } from "../src/ai/checkin";
 import { formatSeconds } from "../src/format";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -74,6 +76,14 @@ if (!seeds.length) fail("no matches to run");
 const deadline = flags.deadline ? Number(flags.deadline) * 1000 : undefined;
 const deadlineText = deadline !== undefined ? `${deadline / 1000} s` : `per provider (${[...new Set(lineup.filter((p) => p !== "house"))].map((p) => `${p} ${(PROVIDERS[p]?.deadlineMs ?? DEFAULT_DEADLINE_MS) / 1000} s${PROVIDERS[p]?.hedgeAfterMs ? `, hedged at ${PROVIDERS[p]!.hedgeAfterMs! / 1000} s` : ""}`).join("; ")})`;
 const concurrency = Math.max(1, Math.min(4, Number(flags.concurrency ?? 1)));
+// mid-round check-ins (#9): --checkins on, plus --checkin-deadline/--checkin-every/--checkin-max
+const checkins = (() => {
+  try {
+    return checkinFlags(flags);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
+  }
+})();
 const tag = (flags.tag ?? "").replace(/[^\w.-]/g, "");
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const outDir = resolve(flags.out ?? join("evals", `${stamp}${tag ? `-${tag}` : ""}`));
@@ -111,7 +121,8 @@ const sample = new Match(seeds[0]!, { souls });
 const firstChars = Math.round(souls.reduce((a, s, i) => a + buildPrompt(s, sample.contextFor(i), { level: sample.level, lastLines: null, lastHealth: null }).length, 0) / 4);
 // later rounds carry the last round's stats and lines: about 1.45x the first prompt (measured on real matches)
 const estChars = seeds.length * aiSeats * (firstChars + 1.45 * firstChars * 1.8);
-console.log(`KNOCKBACK AI EVAL  ${seeds.length} matches (seeds ${seeds[0]}${seeds.length > 1 ? `..${seeds[seeds.length - 1]}` : ""}), lineup ${lineup.join(",")}, deadline ${deadlineText}, concurrency ${concurrency}`);
+console.log(`KNOCKBACK AI EVAL  ${seeds.length} matches (seeds ${seeds[0]}${seeds.length > 1 ? `..${seeds[seeds.length - 1]}` : ""}), lineup ${lineup.join(",")}, deadline ${deadlineText}, concurrency ${concurrency}${checkins ? ", check-ins on" : ""}`);
+if (checkins) console.log(`check-ins: up to ${checkins.maxPerRound ?? CHECKIN.maxPerRound} per AI seat per round -> up to ${seeds.length * 3 * aiSeats * (checkins.maxPerRound ?? CHECKIN.maxPerRound)} more calls (short prompts, ~1,100 characters each; most rounds end before the last check-in)`);
 console.log(`cost estimate: ${aiSeats} AI seats -> up to ${maxCalls} calls (2 or 3 rounds a match, about ${Math.round(seeds.length * 2.6 * aiSeats)} expected), ~${Math.round(estChars / 1000)}k prompt characters (~${Math.round(estChars / 4000)}k tokens)${realSeats ? ` to real providers (${realSeats} seats)` : " (stub/house only: free)"}`);
 if (realSeats && maxCalls > CONFIRM_CALLS && flags.yes !== "true") fail(`that is more than ${CONFIRM_CALLS} AI calls: add --yes to run it`);
 console.log(`output: ${outDir}\n`);
@@ -126,12 +137,13 @@ const worker = async () => {
     const k = next++;
     const seed = seeds[k]!;
     const rotated = [0, 1, 2, 3].map((i) => souls[(i + k) % 4]!);
-    const played = await playAiMatch(seed, seatsFor(lineup, rotated), rotated, deadline);
+    const played = await playAiMatch(seed, seatsFor(lineup, rotated), rotated, deadline, checkins);
     results[k] = played;
     const base = join(outDir, `match-${seed}`);
     writeFileSync(`${base}.json`, JSON.stringify({ ...played.match.record, labels: lineup, lineup, totalMs: Math.round(played.ms) }, null, 2));
     writeFileSync(`${base}.prompts.json`, JSON.stringify(played.prompts, null, 2));
     writeFileSync(`${base}.log.txt`, played.log.join("\n") + "\n");
+    if (played.checkinPrompts?.length) writeFileSync(`${base}.checkins.json`, JSON.stringify(played.checkinPrompts, null, 2));
     console.log(played.log.join("\n"));
     console.log(`  (${formatSeconds(played.ms)})\n`);
   }
@@ -146,7 +158,7 @@ const compare = oldReport ? compareReports(oldReport, report) : undefined;
 writeFileSync(join(outDir, "report.json"), JSON.stringify({ ...report, run: { tag, lineup, deadline: deadlineText, concurrency, seconds: Math.round(totalS) } }, null, 2));
 writeFileSync(
   join(outDir, "report.md"),
-  reportMarkdown(report, { title: `AI eval${tag ? `: ${tag}` : ""}`, compare, meta: [`Lineup flag: ${lineup.join(",")}; deadline ${deadlineText}; ran in ${totalS.toFixed(0)} s.`] }),
+  reportMarkdown(report, { title: `AI eval${tag ? `: ${tag}` : ""}`, compare, meta: [`Lineup flag: ${lineup.join(",")}; deadline ${deadlineText}${checkins ? "; check-ins on" : ""}; ran in ${totalS.toFixed(0)} s.`] }),
 );
 writeFileSync(join(outDir, "log.txt"), played.map((p) => p.log.join("\n")).join("\n\n") + "\n");
 console.log(`done in ${totalS.toFixed(1)} s: ${join(outDir, "report.md")}`);

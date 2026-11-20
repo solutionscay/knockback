@@ -55,7 +55,14 @@ export function reportMarkdown(rep: EvalReport, opts: { title?: string; compare?
     s === NA ? `| ${name} | ${NA} | | | | | | |` : `| ${name} | ${s.transitions} | ${s.changed} (${pct(s.changeRate)}) | ${s.fields.stance} | ${s.fields.target} | ${s.fields.retaliate} | ${s.fields.weapons} | ${s.fields.rules ?? 0} |`;
   L.push(row("all AI", rep.change.ai), row("all house", rep.change.house));
   for (const [k, s] of Object.entries(rep.change.byFighter).sort()) L.push(row(k, s));
-  L.push("", `Check-in updates per round: ${rep.change.checkinsPerRound} (check-ins don't exist yet).`, "");
+  L.push("", `Check-in plan updates per round: ${rep.change.checkinsPerRound}${rep.change.checkinsPerRound === NA ? " (check-ins were off)" : ""}.`, "");
+  if (rep.checkins && rep.checkins !== NA) {
+    L.push("## Check-ins", "", "Mid-round check-ins (#9): asked, answered (miss rate), plan updates, keeps, invalid answers and errors; latency of the answers; prompt size and estimated tokens (about 4 characters a token).", "");
+    L.push("| Provider | Asked | Answered (miss) | Updates | Keeps | Invalid | Errors | Latency avg / median / max | Prompt chars | Tokens in / out |", "|---|---|---|---|---|---|---|---|---|---|");
+    for (const c of rep.checkins)
+      L.push(`| ${c.provider} | ${c.asked} | ${c.answered} (${pct(c.missRate)}) | ${c.updates} | ${c.keeps} | ${c.invalid} | ${c.errors} | ${(c.avgMs / 1000).toFixed(1)} / ${(c.p50Ms / 1000).toFixed(1)} / ${(c.maxMs / 1000).toFixed(1)} s | ${c.avgPromptChars} | ~${c.tokensIn} / ~${c.tokensOut} |`);
+    L.push("");
+  }
 
   L.push("## Rules", "", "Plan rules (#5-#7). Rejected = dropped by the parser; fired = started at least once in its round.", "");
   L.push("| Measure | AI | House |", "|---|---|---|");

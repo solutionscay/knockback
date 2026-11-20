@@ -15,12 +15,19 @@ import type { Strategy } from "../sim/sim";
 import { checkFactsFromStats } from "./factcheck";
 import { changeOf, factsOf, followsOf, hasHouseSeats, reliabilityOf, resultsOf, rulesOf, varietyOf, whyOf } from "./eval-metrics";
 import { NA, type EvalMatch, type EvalReport } from "./eval-types";
+import { checkinStats } from "./checkin-log";
 
 export * from "./eval-types";
 export { changeOf, factsOf, followsOf, hasHouseSeats, quantile, reliabilityOf, resultsOf, rulesOf, targetLabel, variety, varietyOf, whyOf } from "./eval-metrics";
 export * from "./eval-report";
 
 /** The whole report. Pure. */
+/** Plan updates from check-ins per round (#9), over the rounds that had check-ins on; n/a when none did. */
+function checkinsPerRound(matches: EvalMatch[]): number | NA {
+  const rounds = matches.flatMap((m) => m.rounds).filter((r) => r.checkins);
+  return rounds.length ? Math.round((rounds.reduce((a, r) => a + (r.planUpdates ?? 0), 0) / rounds.length) * 100) / 100 : NA;
+}
+
 export function computeReport(matches: EvalMatch[]): EvalReport {
   const ai = changeOf(matches, "ai");
   const house = changeOf(matches, "house");
@@ -32,7 +39,8 @@ export function computeReport(matches: EvalMatch[]): EvalReport {
     seeds: matches.map((m) => m.seed),
     lineups: [...new Set(matches.map((m) => m.seats.join(",")))],
     variety: { ai: varietyOf(matches, "ai"), house: varietyOf(matches, "house") },
-    change: { ai: ai.all, house: house.all, byFighter: { ...ai.byFighter, ...house.byFighter }, checkinsPerRound: NA },
+    change: { ai: ai.all, house: house.all, byFighter: { ...ai.byFighter, ...house.byFighter }, checkinsPerRound: checkinsPerRound(matches) },
+    checkins: matches.some((m) => m.rounds.some((r) => r.checkins)) ? checkinStats(matches.map((m) => ({ rounds: m.rounds.map((r) => ({ checkins: r.checkins })) as never }))) : NA,
     rules: { ai: rulesOf(matches, "ai"), house: rulesOf(matches, "house") },
     follows: { ai: followsOf(matches, "ai"), house: followsOf(matches, "house") },
     facts: factsOf(matches),
@@ -59,6 +67,7 @@ export function evalMatchFrom(match: Match, seats: string[], housePlans?: (Strat
       return {
         decisions: rd.strategies.map((s, i) => ({ strategy: s, line: rd.lines[i]!, meta: rd.meta?.[i] ?? { provider: "house", ms: 0, outcome: "house" as const }, ...(housePlans?.[r]?.[i] ? { house: housePlans[r]![i]! } : {}) })),
         facts: { winner: f.winner, ...checkFactsFromStats(f.stats), rules: f.stats.rules?.map((row) => row.map((x) => ({ ...x }))), kos: f.stats.kos.map((k) => ({ victim: k.victim, by: k.by, weapon: k.weapon, cause: k.cause })) },
+        ...(rd.checkins ? { checkins: rd.checkins.map((c) => ({ ...c })), planUpdates: rd.planUpdates?.length ?? 0 } : {}),
       };
     }),
   };

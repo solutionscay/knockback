@@ -183,3 +183,24 @@ describe("the check-in loop (fast mode)", () => {
     }
   });
 });
+
+describe("check-in metrics in the eval harness", () => {
+  test("ai-eval with check-ins: updates per round and per-provider numbers; off: n/a", async () => {
+    const { playAiMatch } = await import("../src/ai/run");
+    const { computeReport, reportMarkdown } = await import("../src/ai/eval");
+    const souls = exampleSouls();
+    const on = await playAiMatch(5, seatsFor(["stub", "stub", "house", "house"], souls), souls, undefined, { maxPerRound: 2 });
+    const rep = computeReport([on.eval]);
+    expect(typeof rep.change.checkinsPerRound).toBe("number");
+    expect(rep.checkins).not.toBe("n/a");
+    const c = (rep.checkins as { provider: string; asked: number; updates: number }[])[0]!;
+    expect(c.provider).toBe("stub/test");
+    expect(c.asked).toBeGreaterThan(0);
+    expect(on.checkinPrompts!.length).toBe(c.asked);
+    expect(reportMarkdown(rep, { title: "t" })).toContain("## Check-ins");
+    const off = await playAiMatch(5, seatsFor(["stub", "stub", "house", "house"], souls), souls);
+    const r2 = computeReport([off.eval]);
+    expect(r2.change.checkinsPerRound).toBe("n/a");
+    expect(r2.checkins).toBe("n/a");
+  });
+});
