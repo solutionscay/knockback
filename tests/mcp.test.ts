@@ -85,6 +85,11 @@ describe("MCP tools", () => {
     expect(st.weapons.items.enum).toEqual([...WEAPON_LIST]);
     expect(st.weapons.items.enum).toContain("flamethrower"); // #32
     expect(st.weapons.description).toContain("flamethrower (short cone of fire");
+    for (const [weapon, help] of [["mine", "sticky throw"], ["railgun", "charged piercing beam"], ["hammer", "ground shockwave"]]) {
+      expect(st.weapons.items.enum).toContain(weapon);
+      expect(st.weapons.description).toContain(`${weapon} (${help}`);
+      expect(st.rules.items.properties.do_item.enum).toContain(weapon);
+    }
     expect(st.stance.enum).toEqual([...RULE_STANCES]);
     expect(st.retaliate.enum).toEqual([...RULE_RETALIATE]);
     expect(st.rules.items.properties.when.enum).toEqual([...RULE_WHEN]);

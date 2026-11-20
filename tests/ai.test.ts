@@ -6,7 +6,7 @@ import { decideRound, loadSouls, parseLineup, seatsFor } from "../src/ai/decide"
 import { cleanLine, jsonObjects, MAX_LINE, parseAnswer } from "../src/ai/parse";
 import { buildPrompt } from "../src/ai/prompt";
 import { grokText, registerStubs } from "../src/ai/providers";
-import { exampleSouls, Fight, houseStrategy, initPhysics, initialMorale, Match, parseSoul, REFLEX, replayMatch, Rng, StatsCollector, TEMPERAMENT_MORALE, VoiceSession, type DecideContext, type Soul } from "../src/sim";
+import { exampleSouls, Fight, houseStrategy, initPhysics, initialMorale, isPickupWeapon, Match, parseSoul, REFLEX, replayMatch, Rng, StatsCollector, TEMPERAMENT_MORALE, VoiceSession, type DecideContext, type Soul } from "../src/sim";
 import { sanitizeDecision, sanitizeRecord } from "../src/viewer/sanitize";
 
 setDefaultTimeout(240_000);
@@ -32,6 +32,7 @@ describe("parsing AI answers", () => {
     expect(parseAnswer('{"weapons":["rocket","bat","grenade","shotgun"],"target":"nearest","stance":"cover","line":"x"}', 0, NAMES).strategy).toBeNull();
     expect(parseAnswer('{"weapons":["fist"],"target":"nearest","stance":"cover","line":"x"}', 0, NAMES).strategy).toBeNull();
     expect(parseAnswer('{"weapons":["Flamer","rocket"],"target":"nearest","stance":"rush","line":"x"}', 0, NAMES).strategy?.weapons).toEqual(["flamethrower", "rocket"]); // #32
+    expect(parseAnswer('{"weapons":["Sticky mine","Rail gun","Shockwave hammer"],"target":"nearest","stance":"rush","line":"x"}', 0, NAMES).strategy?.weapons).toEqual(["mine", "railgun", "hammer"]);
     // names come from the souls: swap a soul and its name becomes a target
     expect(parseAnswer('{"weapons":["bat"],"target":"Vex","stance":"rush","line":"x"}', 0, ["A", "Vex", "C", "D"]).strategy?.grudge).toBe(1);
   });
@@ -366,7 +367,7 @@ describe("collectible weapons", () => {
   test("weapons wait in the arena at the start, one near every spawn, and a knocked-out fighter drops his", () => {
     for (const seed of [1, 2, 3, 4, 5]) {
       const f = new Fight(seed);
-      const weapons = f.sim.items().filter((e) => ["rocket", "shotgun", "bat", "grenade", "grapple"].includes(e.itemType!));
+      const weapons = f.sim.items().filter((e) => isPickupWeapon(e.itemType));
       expect(weapons.length).toBeGreaterThanOrEqual(5);
       for (const fi of f.sim.fighters) {
         const p = f.sim.pos(fi);
@@ -391,7 +392,7 @@ describe("collectible weapons", () => {
       m.prepareRound();
       const first = [-1, -1, -1, -1];
       m.onEvent = (e) => {
-        if (e.type === "pickup" && ["rocket", "shotgun", "bat", "grenade", "grapple"].includes(e.item) && first[e.fighter]! < 0) first[e.fighter] = e.tick;
+        if (e.type === "pickup" && isPickupWeapon(e.item) && first[e.fighter]! < 0) first[e.fighter] = e.tick;
       };
       while (!m.step()) {
         /* round */

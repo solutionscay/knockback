@@ -7,7 +7,7 @@
 import { autoLabel, checkRule, MAX_RULE_LABEL, PICKUPS, ruleKey, RULE_RETALIATE, RULE_STANCES, WHO_TRIGGERS } from "../sim/rules";
 import { isPickupWeapon, MAX_RULES, RULE_DO, RULE_WHEN, TARGET_PREFERENCES, type ItemType, type Retaliate, type Rule, type RuleWho, type Stance, type Strategy, type TargetPref, type Weapon } from "../sim/sim-types";
 
-const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", grappling: "grapple", "grappling hook": "grapple", "baseball bat": "bat", rockets: "rocket", grenades: "grenade", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower", flames: "flamethrower" };
+const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", grappling: "grapple", "grappling hook": "grapple", "baseball bat": "bat", rockets: "rocket", grenades: "grenade", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower", flames: "flamethrower", "sticky mine": "mine", "rail gun": "railgun", "shockwave hammer": "hammer" };
 
 export const MAX_LINE = 120;
 /** the optional "why" (#3): one sentence in game terms */

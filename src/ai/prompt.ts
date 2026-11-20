@@ -8,7 +8,7 @@
 import type { LevelDef } from "../sim/levelgen";
 import type { Match } from "../sim/match";
 import type { HitStat, RoundStats } from "../sim/roundstats";
-import type { Strategy } from "../sim/sim";
+import type { Strategy, Weapon } from "../sim/sim";
 import type { Soul } from "../sim/soul";
 import type { DecideContext } from "../sim/voice";
 
@@ -34,8 +34,11 @@ export const WEAPON_HELP: Record<string, string> = {
   bat: "melee launch for ring-outs",
   grenade: "bounces around cover",
   grapple: "hook pulls rivals off ledges",
-  flamethrower: "short cone of fire, lasting burns, ignites wood, crates and barrels, limited fuel",
-};
+  flamethrower: "short cone of fire, ignites wood and props, limited fuel",
+  mine: "sticky throw, proximity or timed blast (3 throws)",
+  railgun: "charged piercing beam, heavy shove (3 shots)",
+  hammer: "ground shockwave, breaks walls (6 slams)",
+} satisfies Record<Exclude<Weapon, "fist">, string>;
 
 const r = (n: number) => Math.round(n);
 
@@ -174,9 +177,9 @@ export function ruleExamplesFor(seed: number, round: number, me: number): string
 /** The RULES section (#7): optional conditional rules, compact. Kept under 1,200 characters. */
 export function rulesSection(examples: string[]): string {
   return [
-    "RULES (optional, at most 4, first = highest priority): conditions the engine checks during the round; a rule acts while its trigger holds (at least 1 s). A rule that never fires does nothing.",
+    "RULES (optional, max 4, first wins): active while triggered, for at least 1 s. A rule that never fires does nothing.",
     'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two)',
-    'who: anyone | enemy | target | a name. do (+ its key): target (go for that fighter) | avoid (keep away) | seek item | use item (weapon or jetpack) | stance "stance": rush/distance/cover/item | retaliate "retaliate": attacker/turn/ignore. target/avoid need a trigger about a fighter; after holds or item_near give the action\'s item as "do_item".',
+    'who: anyone | enemy | target | name. do: target | avoid | seek item | use item (weapon or jetpack) | stance "stance": rush/distance/cover/item | retaliate "retaliate": attacker/turn/ignore. target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.',
     `Examples: ${examples.join(" ")}`,
   ].join("\n");
 }
@@ -257,7 +260,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
     out.push(lines.join(" "));
   }
   if (x.lastLines) out.push(`WHAT EVERYONE SAID LAST: ${names.map((n, i) => `${n}: "${x.lastLines![i]}"`).join(" | ")}`);
-  if (x.myLines?.length) out.push(`YOUR EARLIER LINES THIS MATCH: ${x.myLines.map((l) => `"${l}"`).join(" ")}. Say something new: do not start with the same words as any of them, and do not reuse your catchphrase if you already said it.`);
+  if (x.myLines?.length) out.push(`YOUR EARLIER LINES THIS MATCH: ${x.myLines.map((l) => `"${l}"`).join(" ")}. Open with new words. Use your catchphrase once per match.`);
   out.push(
     `CHOICES: weapons = 1 to 3 distinct pickups, best first, from ${Object.entries(WEAPON_HELP)
       .map(([w, h]) => `${w} (${h})`)
@@ -266,8 +269,8 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       `jetpack has limited fuel for climbing, escape and pursuit. Rules can seek, use or check for it with holds. ` +
       `stance = rush | distance | cover | item (detour for pickups). ` +
       `retaliate = after 3 hits from behind by a non-target (default turn): attacker = chase that fighter for 10 s, turn = fight back for 3 s then resume, ignore = glance back and stay on target. ` +
-      `why = one short sentence in game terms, not in character, under 100 characters: why this plan. ` +
-      `line = what you say out loud now, one short in-character sentence (under 90 characters) reacting to what happened.`,
+      `why = explain your plan in game terms (under 100 characters). ` +
+      `line = one in-character reaction (under 90 characters).`,
   );
   const rex = ruleExamplesFor(x.seed ?? 0, ctx.round, me);
   out.push(rulesSection(rex.slice(0, 2)));
