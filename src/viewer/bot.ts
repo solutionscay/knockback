@@ -204,12 +204,7 @@ function lidded(cells: Cells, up = 0): Cells {
   return cells.filter(([, r]) => r >= cut).map(([c, r]) => [c, r - up]);
 }
 
-/** FNV-1a, as in Skiff: the same name gives the same rhythm everywhere. */
-export function hash(text: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
-  return h >>> 0;
-}
+export { hash } from "./hash";
 /** Skiff's blink: every 4 to 7 s, closed for the last 2.6 % of the period; one face in five blinks twice. */
 export function blinkClosed(t: number, h: number): boolean {
   const p = 4 + ((h >>> 16) % 31) / 10;

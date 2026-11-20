@@ -3,6 +3,7 @@
  * tests/sound.test.ts); the sim is only read, never changed, so sound can't touch determinism.
  */
 import { ALL_WEAPONS, type SimEvent } from "../../sim/sim-types";
+import { hash } from "../hash";
 
 /** One sound to play: a name from the sound book, where (world meters, or none for the show sounds), how. */
 export interface Cue {
@@ -175,17 +176,10 @@ export function cueForMood(mood: string, x: number, y: number, voice: number, se
   return s ? cue(s, x, y, 1, voice / 440, seed) : null;
 }
 
-/** FNV-1a, for a stable per-name voice. */
-function hashStr(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
-  return h >>> 0;
-}
-
 /** Each bot's voice pitch (Hz) for its dialogue blips and mood beeps, from its identity: stable and distinct-ish. */
 export function voiceHz(id: { name: string; shape: string; color: number }): number {
   // 13 steps of a whole tone apart over ~2 octaves, nudged by shape so two similar names still differ
-  const steps = (hashStr(id.name) + hashStr(id.shape) * 7 + (id.color & 0xff)) % 13;
+  const steps = (hash(id.name) + hash(id.shape) * 7 + (id.color & 0xff)) % 13;
   return 220 * Math.pow(2, (steps * 2) / 12);
 }
 
