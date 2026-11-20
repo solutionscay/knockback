@@ -30,7 +30,7 @@ describe("engine version", () => {
     expect(ENGINE_VERSION).toBeGreaterThanOrEqual(1);
     expect(new Match(4).record.engine).toBe(ENGINE_VERSION);
     expect(recordEngine({})).toBe(0);
-    expect(recordEngine({ engine: "1" })).toBe(0);
+    expect(recordEngine({ engine: String(ENGINE_VERSION) })).toBe(0);
     expect(recordEngine({ engine: -2 })).toBe(0);
     expect(recordEngine(null)).toBe(0);
     expect(isOtherEngine({ engine: ENGINE_VERSION })).toBe(false);
@@ -54,7 +54,7 @@ describe("engine version", () => {
     const t0 = performance.now();
     expect(() => replayMatch(old)).toThrow(OtherEngineError);
     expect(performance.now() - t0).toBeLessThan(1000); // refused up front (a full replay takes seconds)
-    expect(() => replayMatch(old)).toThrow(/engine v0; this is engine v1/);
+    expect(() => replayMatch(old)).toThrow(`engine v0; this is engine v${ENGINE_VERSION},`);
     expect(() => replayMatch({ ...old, engine: ENGINE_VERSION + 1 })).toThrow(OtherEngineError);
     expect(() => rescoreRecord(old, ["house", "house", "house", "house"])).toThrow(OtherEngineError);
   });
