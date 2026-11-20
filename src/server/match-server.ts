@@ -19,10 +19,15 @@
  * Every body is JSON, at most MAX_BODY bytes; requests are rate limited per
  * address and per seat. The match itself runs in MatchRunner, exactly like a
  * local AI match.
+ *
+ * Storage (#27): every change is written through a MatchStore (default: an
+ * in-memory SQLite). resume() rebuilds the server from it after a restart:
+ * open matches wait again, running matches replay their stored rounds
+ * (deterministic) and play on; finished ones load on demand.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { DEFAULT_DEADLINE_MS, type Seat } from "../ai/decide";
-import { MatchRunner, type RunnerEvent } from "../ai/runner";
+import { MatchRunner, type RunnerEvent, type StoredRound } from "../ai/runner";
 import { PROVIDERS } from "../ai/providers";
 import type { IdentityWish } from "../sim/identity";
 import { parseSoul, type Soul } from "../sim/soul";
@@ -30,6 +35,7 @@ import { exampleSouls } from "../sim/souls";
 import { errorResponse, HttpError, json, MAX_BODY, RateLimiter, readJson } from "./limits";
 import { LiveStream } from "./live";
 import { planSchema, RemoteSeat } from "./remote";
+import { SqliteStore, type MatchRow, type MatchStore, type SeatRow } from "./store";
 
 export const MAX_PERSONA = 8_000;
 export const MIN_PERSONA = 40;
@@ -81,6 +87,8 @@ export interface ServerOptions {
   defaultDeadlineMs?: number;
   /** an open match starts after this long, house bots in the empty seats */
   defaultFillAfterMs?: number;
+  /** persistence (default: in-memory SQLite, i.e. nothing survives a restart) */
+  store?: MatchStore;
   log?: (s: string) => void;
 }
 
@@ -137,8 +145,8 @@ export class ServerMatch {
   /** Start now if there is nobody to wait for, else when the fill timer ends. */
   armFillTimer() {
     const wait = this.startsAt - Date.now();
-    if (!this.kinds.includes("remote") || wait <= 0 || this.kinds.every((k, i) => k !== "remote" || this.agents[i])) queueMicrotask(() => this.start());
-    else this.timer = setTimeout(() => this.start(), wait);
+    if (!this.kinds.includes("remote") || wait <= 0 || this.full) queueMicrotask(() => void this.start());
+    else this.timer = setTimeout(() => void this.start(), wait);
   }
 
   /** Wake every long poll on this match. */
@@ -162,11 +170,41 @@ export class ServerMatch {
     });
   }
 
-  private remoteSeat(seat: number, agent: SeatAgent): RemoteSeat {
+  get store(): MatchStore {
+    return this.server.store;
+  }
+
+  /** True when every remote seat has an agent. */
+  get full(): boolean {
+    return this.kinds.every((k, i) => k !== "remote" || this.agents[i]);
+  }
+
+  remoteSeat(seat: number, agent: SeatAgent): RemoteSeat {
     const rs = new RemoteSeat(agent.name, this.deadlineMs);
     rs.onChange = () => this.changed();
+    // accepted plans are stored before the turn ends, so a restart in mid-ask keeps them
+    rs.onAccept = (round, raw) => this.store.insertPlan({ matchId: this.id, round, seat, raw, at: Date.now() });
+    rs.stored = async (round) => (await this.store.getPlan(this.id, round, seat))?.raw ?? null;
     this.remote[seat] = rs;
     return rs;
+  }
+
+  seatRow(seat: number): SeatRow {
+    const a = this.agents[seat]!;
+    return { matchId: this.id, seat, name: a.name, persona: a.persona, look: a.look, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound };
+  }
+
+  row(): MatchRow {
+    return { id: this.id, seed: this.seed, kinds: this.kinds, deadlineMs: this.deadlineMs, fillAfterMs: this.fillAfterMs, status: this.status, createdAt: this.createdAt, startedAt: null, endedAt: null, creator: this.creator, error: this.error, winner: null };
+  }
+
+  /** Put a stored agent back in its seat (resume). */
+  restoreSeat(r: SeatRow) {
+    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0 };
+    this.agents[r.seat] = agent;
+    const rs = this.remoteSeat(r.seat, agent);
+    if (r.leftRound !== null) rs.left = true;
+    this.server.tokens.set(r.tokenHash, { match: this.id, seat: r.seat });
   }
 
   /** Seat an agent; returns the seat and its token (shown once, stored hashed). */
@@ -183,7 +221,6 @@ export class ServerMatch {
     this.server.tokens.set(agent.tokenHash, { match: this.id, seat });
     this.server.log(`match ${this.id}: ${agent.name} joined seat ${seat}`);
     this.changed();
-    if (this.kinds.every((k, i) => k !== "remote" || this.agents[i])) queueMicrotask(() => this.start());
     return { seat, token };
   }
 
@@ -226,18 +263,21 @@ export class ServerMatch {
       seats,
       ...(wishes.some(Boolean) ? { identityWishes: wishes } : {}),
       onEvent: (e) => this.onEvent(e),
+      onDecided: (round, ask) => this.store.insertRound({ matchId: this.id, round, decisions: ask.decisions, meta: ask.meta, prompts: ask.prompts, raw: ask.raw, finalHash: null }),
+      onPlayed: (round, hash) => this.store.setRoundHash(this.id, round, hash),
     });
     this.remote.forEach((rs, i) => rs?.bind(runner.match, i));
     return runner;
   }
 
   /** Play the match in the background. */
-  start() {
+  async start() {
     if (this.status !== "open") return;
     clearTimeout(this.timer);
     this.status = "running";
     try {
       this.runner = this.buildRunner();
+      await this.store.updateMatch(this.id, { status: "running", startedAt: Date.now() });
     } catch (e) {
       this.fail(e);
       return;
@@ -248,6 +288,34 @@ export class ServerMatch {
     this.play();
   }
 
+  /** Resume a running match: replay its stored rounds (same decisions, same fights), then play on. */
+  async resumeRunning(rounds: StoredRound[]) {
+    this.status = "running";
+    try {
+      this.runner = this.buildRunner();
+      this.runner.start();
+      for (const r of rounds) await this.runner.replayRound(r);
+    } catch (e) {
+      this.fail(e);
+      return;
+    }
+    const m = this.runner.match;
+    this.server.log(`match ${this.id}: resumed after ${rounds.length} stored round${rounds.length === 1 ? "" : "s"} (wins ${m.wins.join("-")}, hashes ${m.record.rounds.map((r) => r.fight.finalHash).join(",") || "-"})`);
+    this.changed();
+    this.play();
+  }
+
+  /** Rebuild a finished match from storage (for its report and its agents' last poll); not played on. */
+  async loadFinished(row: MatchRow, rounds: StoredRound[], recordPath: string | null) {
+    this.status = row.status;
+    this.error = row.error;
+    if (row.status === "failed" && !rounds.length) return;
+    this.runner = this.buildRunner();
+    this.runner.start();
+    for (const r of rounds) await this.runner.replayRound(r);
+    this.runner.recordFile = recordPath ? recordPath.replace(/^\/records\//, "") : null;
+  }
+
   protected play() {
     this.runner!
       .run()
@@ -255,11 +323,14 @@ export class ServerMatch {
       .catch((e) => this.fail(e));
   }
 
-  protected finish() {
+  protected async finish() {
     const r = this.runner!;
-    r.save(this.server.opts.outDir, "remote");
+    const file = r.save(this.server.opts.outDir, "remote");
+    const m = r.match;
+    await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now() });
+    await this.store.updateMatch(this.id, { status: "over", winner: m.winner, endedAt: Date.now() });
     this.status = "over";
-    this.server.log(`match ${this.id}: ${r.names[r.match.winner]} wins ${r.match.wins.join("-")}; record ${r.recordFile}`);
+    this.server.log(`match ${this.id}: ${r.names[m.winner]} wins ${m.wins.join("-")}; record ${r.recordFile}`);
     this.changed();
   }
 
@@ -267,6 +338,7 @@ export class ServerMatch {
     this.status = "failed";
     this.error = e instanceof Error ? e.message : String(e);
     this.server.log(`match ${this.id}: failed: ${this.error}`);
+    this.store.updateMatch(this.id, { status: "failed", error: this.error, endedAt: Date.now() }).catch((x) => this.server.log(`store: ${x}`));
     this.live.broadcast({ type: "error", error: this.error });
     this.changed();
   }
@@ -384,7 +456,8 @@ export class MatchServer {
   /** sha256(seat token) -> its match and seat (dropped when the match leaves memory) */
   readonly tokens = new Map<string, { match: string; seat: number }>();
   protected newest: ServerMatch | null = null;
-  readonly opts: Required<Omit<ServerOptions, "log">>;
+  readonly opts: Required<Omit<ServerOptions, "log" | "store">>;
+  readonly store: MatchStore;
   readonly log: (s: string) => void;
   // per address: all requests; joins and match creation are scarcer
   readonly ipLimit = new RateLimiter(60, 10);
@@ -393,8 +466,40 @@ export class MatchServer {
   readonly seatLimit = new RateLimiter(30, 5);
 
   constructor(opts: ServerOptions) {
-    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, ...opts } as MatchServer["opts"];
-    this.log = opts.log ?? (() => {});
+    const { store, log, ...rest } = opts;
+    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, ...rest };
+    this.store = store ?? new SqliteStore(":memory:");
+    this.log = log ?? (() => {});
+  }
+
+  /**
+   * Rebuild from storage after a restart: open matches wait for players again
+   * (their seat tokens still work), running matches replay their stored rounds
+   * and play on. Returns the ids.
+   */
+  async resume(): Promise<{ open: string[]; running: string[] }> {
+    const out = { open: [] as string[], running: [] as string[] };
+    const rows = (await this.store.listMatches(["open", "running"])).reverse(); // oldest first
+    for (const row of rows) {
+      if (this.matches.has(row.id)) continue;
+      const m = await this.restore(row);
+      if (row.status === "open") {
+        m.armFillTimer();
+        out.open.push(m.id);
+        this.log(`match ${m.id}: open again (${m.agents.filter(Boolean).length} agents seated)`);
+      } else {
+        await m.resumeRunning(await this.store.listRounds(m.id));
+        out.running.push(m.id);
+      }
+    }
+    return out;
+  }
+
+  private async restore(row: MatchRow): Promise<ServerMatch> {
+    const m = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt);
+    for (const s of await this.store.listSeats(row.id)) m.restoreSeat(s);
+    this.add(m);
+    return m;
   }
 
   /**
@@ -420,7 +525,7 @@ export class MatchServer {
 
   // ------------------------------------------------------------ matches
   /** From code (the CLI) any provider is allowed; over HTTP only remote and house (see checkCreate). */
-  createMatch(c: CreateMatch = {}): ServerMatch {
+  async createMatch(c: CreateMatch = {}): Promise<ServerMatch> {
     const kinds = c.seats ?? ["remote", "remote", "remote", "remote"];
     if (kinds.length !== 4) throw new HttpError(400, "seats: exactly 4");
     for (const k of kinds) if (k !== "remote" && k !== "house" && !PROVIDERS[k]) throw new HttpError(400, `seats: unknown seat kind "${k}" (remote, house${Object.keys(PROVIDERS).length ? `, ${Object.keys(PROVIDERS).join(", ")}` : ""})`);
@@ -429,6 +534,7 @@ export class MatchServer {
     if (c.ip !== undefined && active.filter((m) => m.creator === c.ip).length >= MATCHES_PER_IP) throw new HttpError(429, `at most ${MATCHES_PER_IP} open or running matches per address`);
     const seed = c.seed !== undefined ? c.seed >>> 0 : randomBytes(4).readUInt32LE(0);
     const m = new ServerMatch(`m_${hex(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this, c.ip ?? null);
+    await this.store.insertMatch(m.row());
     this.add(m);
     this.log(`match ${m.id} created: seed ${seed}, seats ${kinds.join(",")}, deadline ${m.deadlineMs / 1000} s, starts in ${(m.startsAt - m.createdAt) / 1000} s at the latest`);
     m.armFillTimer();
@@ -448,10 +554,16 @@ export class MatchServer {
         }
   }
 
-  private matchOr404(mid: string): ServerMatch {
+  /** A match in memory, or a finished one loaded from storage. */
+  private async matchOr404(mid: string): Promise<ServerMatch> {
     const m = this.matches.get(mid);
-    if (!m) throw new HttpError(404, `no match ${mid}`);
-    return m;
+    if (m) return m;
+    const row = /^m_[0-9a-f]{8}$/.test(mid) ? await this.store.getMatch(mid) : null;
+    if (!row || (row.status !== "over" && row.status !== "failed")) throw new HttpError(404, `no match ${mid}`);
+    const loaded = await this.restore(row);
+    const rec = (await this.store.listRecords(1000)).find((r) => r.matchId === mid);
+    await loaded.loadFinished(row, await this.store.listRounds(mid), rec?.path ?? null);
+    return loaded;
   }
 
   // ------------------------------------------------------------ HTTP
@@ -479,7 +591,7 @@ export class MatchServer {
     if (path === "/api/live") {
       allow("GET");
       const mid = url.searchParams.get("match");
-      const m = mid ? this.matchOr404(mid) : this.newest;
+      const m = mid ? await this.matchOr404(mid) : this.newest;
       if (!m) throw new HttpError(404, "no match yet");
       return m.live.response();
     }
@@ -489,11 +601,15 @@ export class MatchServer {
       allow("POST");
       this.createLimit.take(ip, "new matches");
       const b = await readJson(req, 2048);
-      return json(this.createMatch({ ...checkCreate(b), ip }).info(), 201);
+      return json((await this.createMatch({ ...checkCreate(b), ip })).info(), 201);
+    }
+    if (path === "/api/records") {
+      allow("GET");
+      return json({ records: await this.store.listRecords(100) });
     }
     const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|leave|report))?$/.exec(path);
     if (!mm) throw new HttpError(404, `no such endpoint: ${method} ${path} (see GET /api)`);
-    const match = this.matchOr404(mm[1]!);
+    const match = await this.matchOr404(mm[1]!);
     switch (mm[2]) {
       case undefined:
         allow("GET");
@@ -568,10 +684,23 @@ export class MatchServer {
 
   /** Hooks a storage-backed server overrides. */
   protected async join(match: ServerMatch, j: ReturnType<typeof checkJoin>, ip: string) {
-    return match.join(j, ip);
+    const r = match.join(j, ip);
+    try {
+      await this.store.insertSeat(match.seatRow(r.seat));
+    } catch (e) {
+      match.agents[r.seat] = null;
+      match.remote[r.seat] = null;
+      this.tokens.delete(hashToken(r.token));
+      throw e;
+    }
+    if (match.full) queueMicrotask(() => void match.start());
+    return r;
   }
   protected async leave(match: ServerMatch, seat: number) {
-    return match.leave(seat);
+    const r = match.leave(seat);
+    if (r.status === "open") await this.store.deleteSeat(match.id, seat);
+    else await this.store.updateSeat(match.id, seat, { leftAt: match.agents[seat]!.leftAt, leftRound: match.agents[seat]!.leftRound });
+    return r;
   }
 }
 
@@ -632,6 +761,7 @@ function apiIndex(open: boolean) {
       "POST /api/matches/:id/leave": "the house bot takes your seat (before the start: the seat is free again)",
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
       "GET /api/live?match=:id": "spectator event stream (SSE)",
+      "GET /api/records": "index of saved records (path, seed, hashes, winner)",
     },
     limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },
     schema: planSchema(),

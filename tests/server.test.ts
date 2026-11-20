@@ -8,6 +8,7 @@ import { MatchRunner, ResumeError, type RunnerEvent, type StoredRound } from "..
 import { RateLimiter } from "../src/server/limits";
 import { MatchServer } from "../src/server/match-server";
 import { checkPlanShape } from "../src/server/remote";
+import { SqliteStore } from "../src/server/store";
 import { exampleSouls, initPhysics, replayMatch } from "../src/sim";
 
 setDefaultTimeout(120_000);
@@ -155,7 +156,7 @@ describe("match server API", () => {
     const s = new MatchServer({ outDir: tmp() });
     const call = client(s, "9.9.9.9");
     const ids: string[] = [];
-    for (let i = 0; i < 4; i++) ids.push(s.createMatch({ fillAfterMs: 300_000 }).id);
+    for (let i = 0; i < 4; i++) ids.push((await s.createMatch({ fillAfterMs: 300_000 })).id);
     const codes: number[] = [];
     for (let i = 0; i < 12; i++) codes.push((await call("POST", `/api/matches/${ids[i % 4]}/join`, joinBody(`A${i}`))).status);
     expect(codes.slice(0, 8).every((c) => c === 201)).toBe(true);
@@ -177,7 +178,7 @@ describe("match server API", () => {
     const s = new MatchServer({ outDir: out });
     const call = client(s);
     const m = (await call("POST", "/api/matches", { seats: ["remote", "remote", "remote", "house"], seed: 31337, deadlineSec: 2, fillAfterSec: 30 })).data;
-    const other = s.createMatch({ seats: ["remote", "remote", "house", "house"], fillAfterMs: 300_000 });
+    const other = await s.createMatch({ seats: ["remote", "remote", "house", "house"], fillAfterMs: 300_000 });
     const otherToken = (await call("POST", `/api/matches/${other.id}/join`, joinBody("Elsewhere"))).data.token;
     const tokens: string[] = [];
     for (const n of ["Planner", "Answerer", "Silent"]) tokens.push((await call("POST", `/api/matches/${m.id}/join`, joinBody(n))).data.token);
@@ -233,7 +234,7 @@ describe("match server API", () => {
   test("open mode: no token needed, the seat is named with ?seat=N; a token still works", async () => {
     const s = new MatchServer({ outDir: tmp(), open: true });
     const call = client(s);
-    const m = s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 8, deadlineMs: 2000, fillAfterMs: 30_000 });
+    const m = await s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 8, deadlineMs: 2000, fillAfterMs: 30_000 });
     const a = (await call("POST", `/api/matches/${m.id}/join`, joinBody("NoToken"))).data;
     const b = (await call("POST", `/api/matches/${m.id}/join`, joinBody("WithToken"))).data;
     expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`)).status).toBe(400); // which seat?
@@ -245,7 +246,7 @@ describe("match server API", () => {
   test("leave: before the start the seat is free again; mid-match the house bot plays it from the next turn", async () => {
     const s = new MatchServer({ outDir: tmp() });
     const call = client(s);
-    const m = s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 21, deadlineMs: 3000, fillAfterMs: 30_000 });
+    const m = await s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 21, deadlineMs: 3000, fillAfterMs: 30_000 });
     const early = (await call("POST", `/api/matches/${m.id}/join`, joinBody("Early"))).data;
     expect((await call("POST", `/api/matches/${m.id}/leave`, undefined, early.token)).data).toEqual({ seat: 0, status: "open", houseFromRound: null });
     expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`, undefined, early.token)).status).toBe(401); // token gone
@@ -281,7 +282,7 @@ describe("match server API", () => {
     registerProvider("fixedplan", { label: "fixed/test", ask: async () => answer });
     const s = new MatchServer({ outDir: tmp() });
     const call = client(s);
-    const m = s.createMatch({ seats: ["house", "remote", "house", "house"], seed: 99, deadlineMs: 5000, fillAfterMs: 30_000 });
+    const m = await s.createMatch({ seats: ["house", "remote", "house", "house"], seed: 99, deadlineMs: 5000, fillAfterMs: 30_000 });
     const a = (await call("POST", `/api/matches/${m.id}/join`, joinBody("Same"))).data;
     await playSeat(call, m.id, a.token, () => PLAN);
     const remote = m.runner!.match.record;
@@ -293,9 +294,38 @@ describe("match server API", () => {
     expect(remote.rounds.map((r) => r.strategies)).toEqual(local.match.record.rounds.map((r) => r.strategies));
   });
 
+  test("storage: an open match and its seat tokens survive a restart; a finished match's report loads from storage", async () => {
+    const dir = tmp();
+    const db = join(dir, "server.db");
+    const a = new MatchServer({ outDir: dir, store: new SqliteStore(db) });
+    const m = await a.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 61, deadlineMs: 2000, fillAfterMs: 300_000 });
+    const first = (await client(a)("POST", `/api/matches/${m.id}/join`, joinBody("Before"))).data;
+    await a.store.close(); // the old server is gone (its fill timer would never fire in a dead process)
+
+    const b = new MatchServer({ outDir: dir, store: new SqliteStore(db) });
+    expect(await b.resume()).toEqual({ open: [m.id], running: [] });
+    const call = client(b);
+    expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`, undefined, first.token)).data.status).toBe("open"); // same token
+    const second = (await call("POST", `/api/matches/${m.id}/join`, joinBody("After"))).data;
+    expect(second.seat).toBe(1);
+    await Promise.all([playSeat(call, m.id, first.token, () => PLAN), playSeat(call, m.id, second.token, () => PLAN)]);
+    const played = b.matches.get(m.id)!.runner!.match.record;
+    await b.store.close();
+
+    const c = new MatchServer({ outDir: dir, store: new SqliteStore(db) });
+    expect(await c.resume()).toEqual({ open: [], running: [] });
+    const rep = (await client(c)("GET", `/api/matches/${m.id}/report`)).data;
+    expect(rep.status).toBe("over");
+    expect(rep.rounds.map((r: any) => r.result.finalHash)).toEqual(hashes(played));
+    expect(rep.record).toMatch(/^\/records\/remote-61-/);
+    expect((await client(c)("GET", `/api/matches/${m.id}/turn?wait=0`, undefined, first.token)).data.status).toBe("over");
+    expect((await client(c)("GET", "/api/records")).data.records[0].hashes).toEqual(hashes(played));
+    await c.store.close();
+  });
+
   test("empty remote seats get the house bot when the fill timer ends; the live stream replays history", async () => {
     const s = new MatchServer({ outDir: tmp(), defaultFillAfterMs: 50 });
-    const m = s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 5 });
+    const m = await s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 5 });
     for (let i = 0; i < 400 && m.status !== "over"; i++) await Bun.sleep(25);
     expect(m.status).toBe("over");
     expect(m.info().seats.map((x) => x.kind)).toEqual(["house", "house", "house", "house"]);
