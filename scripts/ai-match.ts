@@ -138,7 +138,7 @@ while (!match.over) {
   ask.decisions.forEach((d, i) => {
     const m = ask.meta[i]!;
     const tag = m.outcome === "ok" ? `${m.provider} ${formatSeconds(m.ms)}` : `${m.provider} ${formatSeconds(m.ms)} ${m.outcome.toUpperCase()}${m.detail ? ` (${m.detail})` : ""}`;
-    say(`  ${names[i]!.padEnd(8)} [${tag}] "${d.line}"`);
+    say(`  ${names[i]!.padEnd(12)} [${tag}] "${d.line}"`);
     say(`  ${" ".repeat(8)}  plan: ${stratText(d.strategy)}`);
   });
   match.prepareRound(ask.decisions, ask.meta);
@@ -164,7 +164,7 @@ names.forEach((n, i) => {
   const fb = ms.filter((m) => m!.outcome.startsWith("fallback"));
   const avg = okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : 0;
   say(
-    `  ${n.padEnd(8)} ${labels[i]!.padEnd(18)} ${okMs.map(formatSeconds).join(", ") || "-"}${okMs.length ? `  (avg ${formatSeconds(avg)})` : ""}  fallbacks: ${fb.length}${fb.length ? " " + fb.map((m) => `${m!.outcome}${m!.detail ? ` [${m!.detail}]` : ""}`).join("; ") : ""}`,
+    `  ${n.padEnd(12)} ${labels[i]!.padEnd(18)} ${okMs.map(formatSeconds).join(", ") || "-"}${okMs.length ? `  (avg ${formatSeconds(avg)})` : ""}  fallbacks: ${fb.length}${fb.length ? " " + fb.map((m) => `${m!.outcome}${m!.detail ? ` [${m!.detail}]` : ""}`).join("; ") : ""}`,
   );
 });
 

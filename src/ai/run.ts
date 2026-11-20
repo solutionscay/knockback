@@ -62,7 +62,7 @@ export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], de
     ask.decisions.forEach((d, i) => {
       const m = ask.meta[i]!;
       const s = d.strategy;
-      log.push(`  r${round} ${names[i]!.padEnd(8)} [${m.provider}${m.outcome === "house" ? "" : ` ${formatSeconds(m.ms)}`}${m.outcome === "ok" || m.outcome === "house" ? "" : ` ${m.outcome}${m.detail ? ` (${m.detail})` : ""}`}] ${s.stance}, wants ${s.weapons.join(">")}, -> ${targetLabel(s, names)}, retaliate ${s.retaliate ?? "turn"}: "${d.line}"`);
+      log.push(`  r${round} ${names[i]!.padEnd(12)} [${m.provider}${m.outcome === "house" ? "" : ` ${formatSeconds(m.ms)}`}${m.outcome === "ok" || m.outcome === "house" ? "" : ` ${m.outcome}${m.detail ? ` (${m.detail})` : ""}`}] ${s.stance}, wants ${s.weapons.join(">")}, -> ${targetLabel(s, names)}, retaliate ${s.retaliate ?? "turn"}: "${d.line}"`);
     });
     match.prepareRound(ask.decisions, ask.meta);
     while (!match.step()) {
