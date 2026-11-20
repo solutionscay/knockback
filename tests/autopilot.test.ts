@@ -118,6 +118,22 @@ describe("HTTP agents", () => {
     m.takeover(1, "test cleanup");
   });
 
+  test("a stale drop of an agent whose seat was freed doesn't touch the newcomer in that seat", async () => {
+    const s = new MatchServer({ outDir: tmp(), dropGraceMs: 80 });
+    const call = http(s);
+    const m = await s.createMatch({ seats: ["remote", "remote", "house", "house"], fillAfterMs: 300_000 });
+    const old = (await call("POST", `/api/matches/${m.id}/join`, { name: "Old", persona: SOUL })).data;
+    const oldHash = m.agents[0]!.tokenHash;
+    await call("POST", `/api/matches/${m.id}/leave`, undefined, old.token);
+    const fresh = (await call("POST", `/api/matches/${m.id}/join`, { name: "Fresh", persona: SOUL, seat: 0 })).data;
+    expect(fresh.seat).toBe(0);
+    m.takeover(0, "closed its session", undefined, oldHash); // e.g. the old MCP session closing late
+    m.dropped(0, "connection lost", oldHash);
+    await Bun.sleep(150);
+    expect(m.agents[0]!.name).toBe("Fresh");
+    await m.start();
+  });
+
   test("an agent that drops before the start frees its seat", async () => {
     const s = new MatchServer({ outDir: tmp(), dropGraceMs: 50 });
     const call = http(s);

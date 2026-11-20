@@ -287,9 +287,10 @@ export class ServerMatch {
    * the start the seat goes back to the queue instead. A missed mid-round
    * check-in (#8/#9) will call this with phase "checkin" and its tick.
    */
-  takeover(seat: number, reason: string, at?: Pick<ControlEvent, "round" | "phase" | "tick">) {
+  takeover(seat: number, reason: string, at?: Pick<ControlEvent, "round" | "phase" | "tick">, expect?: string) {
     const a = this.agents[seat];
-    if (!a || a.leftAt !== null || a.autopilot) return;
+    // `expect`: the seat token hash of the agent this is about; a seat freed and taken by someone else is left alone
+    if (!a || a.leftAt !== null || a.autopilot || (expect !== undefined && a.tokenHash !== expect)) return;
     if (this.status === "open") {
       this.server.log(`match ${this.id}: ${a.name} dropped before the start (${reason}); the seat is free again`);
       void this.server.freeSeat(this, seat);
@@ -313,12 +314,13 @@ export class ServerMatch {
   }
 
   /** A seat's connection dropped mid-request: autopilot unless it sends something within the grace period. */
-  dropped(seat: number, reason = "connection lost") {
+  dropped(seat: number, reason = "connection lost", expect?: string) {
     const since = Date.now();
     const a = this.agents[seat];
-    if (!a) return;
+    if (!a || (expect !== undefined && a.tokenHash !== expect)) return;
     setTimeout(() => {
-      if (a.lastSeen <= since && a.polls === 0) this.takeover(seat, reason);
+      // the same agent (not a newcomer in a freed seat), silent since the drop
+      if (this.agents[seat] === a && a.lastSeen <= since && a.polls === 0) this.takeover(seat, reason, undefined, a.tokenHash);
     }, this.server.opts.dropGraceMs).unref?.();
   }
 
@@ -346,7 +348,7 @@ export class ServerMatch {
         await this.store.insertRound({ matchId: this.id, round, decisions: ask.decisions, meta: ask.meta, prompts: ask.prompts, raw: ask.raw, finalHash: null });
         // a missed deadline hands the fighter to the house bot (it already played this round)
         ask.meta.forEach((m, seat) => {
-          if (m.outcome === "fallback-timeout" && this.remote[seat]) this.takeover(seat, "missed the deadline", { round, phase: "plan", tick: null });
+          if (m.outcome === "fallback-timeout" && this.remote[seat]) this.takeover(seat, "missed the deadline", { round, phase: "plan", tick: null }, this.agents[seat]?.tokenHash);
         });
       },
       pace: this.server.opts.pace,
@@ -807,7 +809,7 @@ export class MatchServer {
         } finally {
           agent.polls--;
           // the client went away in the middle of the long poll (#22): autopilot unless it comes back quickly
-          if (req.signal.aborted) match.dropped(seat);
+          if (req.signal.aborted) match.dropped(seat, "connection lost", agent.tokenHash);
         }
       }
       case "plan": {

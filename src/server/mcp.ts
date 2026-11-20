@@ -28,7 +28,7 @@ import { MAX_RULES, RULE_DO, RULE_WHEN, WEAPON_LIST } from "../sim/sim-types";
 import { RateLimiter } from "./limits";
 import type { LobbyQueue } from "./lobby-queue";
 import type { MatchServer } from "./match-server";
-import { MAX_PERSONA, MIN_PERSONA } from "./match-server";
+import { hashToken, MAX_PERSONA, MIN_PERSONA } from "./match-server";
 import { TARGET_CHOICES } from "./remote";
 
 /** a wait_for_* call returns within this long; the agent calls again */
@@ -182,8 +182,9 @@ export class McpGateway {
 
   /** The session is gone for good: the house bot takes its fighter (#22). */
   private handOver(state: Session, reason: string) {
-    if (state.match === undefined || state.seat === undefined) return;
-    this.api.matches.get(state.match)?.takeover(state.seat, reason);
+    if (state.match === undefined || state.seat === undefined || !state.token) return;
+    // only this session's own agent: the seat may have been freed and taken by someone else
+    this.api.matches.get(state.match)?.takeover(state.seat, reason, undefined, hashToken(state.token));
   }
 
   private sweep(now = Date.now()) {
@@ -212,9 +213,10 @@ export class McpGateway {
       live.state.lastSeen = Date.now();
       // a tool call whose connection drops (the agent's process died, the network went) is a disconnect (#22);
       // the seat goes on autopilot unless the session sends something again within the grace period
-      if (req.method === "POST" && live.state.match !== undefined && live.state.seat !== undefined) {
+      if (req.method === "POST" && live.state.match !== undefined && live.state.seat !== undefined && live.state.token) {
         const { match, seat } = live.state;
-        req.signal.addEventListener("abort", () => this.api.matches.get(match)?.dropped(seat), { once: true });
+        const expect = hashToken(live.state.token);
+        req.signal.addEventListener("abort", () => this.api.matches.get(match)?.dropped(seat, "connection lost", expect), { once: true });
       }
       return live.transport.handleRequest(req);
     }
@@ -268,7 +270,16 @@ export class McpGateway {
       },
     );
     const log = (tool: string, ok: boolean, extra = "") => this.api.log(`mcp ${state.id.slice(0, 8)} ${state.name ?? "-"}: ${tool} ${ok ? "ok" : "ERROR"}${extra ? ` ${extra}` : ""}`);
-    const needMatch = (): CallToolResult | null => (state.match ? null : text({ error: "you are not in a match: call join_lobby first" }, true));
+    const needMatch = (): CallToolResult | null => {
+      if (!state.match) return text({ error: "you are not in a match: call join_lobby first" }, true);
+      // the seat was freed on the server (the agent dropped before the start): forget it
+      const m = this.api.matches.get(state.match);
+      if (m && state.seat !== undefined && state.token && m.agents[state.seat]?.tokenHash !== hashToken(state.token)) {
+        Object.assign(state, { match: undefined, seat: undefined, token: undefined, round: undefined });
+        return text({ error: "your seat was given up (you were disconnected before the match started): call join_lobby again" }, true);
+      }
+      return null;
+    };
     const timed = <A>(name: string, fn: (a: A, extra: { signal: AbortSignal }) => Promise<CallToolResult>) => {
       return async (a: A, extra: { signal: AbortSignal }) => {
         state.lastSeen = Date.now();
