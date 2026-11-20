@@ -14,6 +14,7 @@
  * --create remote,house,house,house creates a match first (seats over HTTP: remote or house) and joins it.
  * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).
  * --seed <n> makes the random plans repeatable.
+ * --line "<text>" gives an opening line at join (spectators see it on the pick cards, #35).
  * --leave-after <round> leaves the match when that round's turn comes (the house bot takes over).
  * --no-token: don't send the seat token (works only against a server started with --open).
  * If the server restarts, the client keeps retrying with the same seat token and plays on.
@@ -132,7 +133,7 @@ for (let tries = 0; !matchId; tries++) {
     await Bun.sleep(1000);
   }
 }
-const join = await call("POST", `/api/matches/${matchId}/join`, { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.seat ? { seat: Number(flags.seat) } : {}), ...(flags.model ? { model: flags.model } : {}) });
+const join = await call("POST", `/api/matches/${matchId}/join`, { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.seat ? { seat: Number(flags.seat) } : {}), ...(flags.model ? { model: flags.model } : {}), ...(flags.line ? { line: flags.line } : {}) });
 if (join.status !== 201) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
 const seat: number = join.data.seat;
 // the seat token: sent on turn, plan and leave; in --open mode the seat number can stand in for it
