@@ -24,22 +24,17 @@ export interface MapContext {
   fighterPos(id: number): { x: number; y: number } | null;
 }
 
-const WEAPON_ITEMS = new Set(["rocket", "shotgun", "bat", "grenade", "grapple", "fist"]);
+const WEAPON_ITEMS = new Set(["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "fist"]);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const cue = (sound: string, x: number | undefined, y: number | undefined, gain: number, pitch: number, seed: number): Cue => ({ sound, x, y, gain, pitch, seed: seed >>> 0 });
 
 /**
- * Hooks for event types that are not in the sim yet (jetpack on main soon, fire in its own branch): when such an
- * event arrives with these names it sounds right away, no viewer change needed. Fields x, y (or fighter) are used
- * when present.
+ * Hooks for event types the sim may add later: an event with one of these names sounds right away, with no viewer
+ * change. Fields x, y (or fighter) are used when present. (Jetpack and fire events are mapped explicitly below.)
  */
 export const EVENT_HOOKS: Record<string, string> = {
-  jetpack: "jetpack.hiss",
   thrust: "jetpack.hiss",
   flame: "flame.whoosh",
-  flamethrower: "flame.whoosh",
-  ignite: "fire.crackle",
-  burn: "fire.crackle",
   fire_spread: "fire.crackle",
 };
 
@@ -59,7 +54,7 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       return [cue(explosionSound(e.radius), e.x, e.y, gain, pitch, e.tick * 31 + Math.round(e.x * 7))];
     }
     case "fire": {
-      const s = { rocket: "rocket.launch", shotgun: "shotgun.fire", grenade: "grenade.throw", grapple: "grapple.shoot" }[e.weapon as string];
+      const s = { rocket: "rocket.launch", shotgun: "shotgun.fire", grenade: "grenade.throw", grapple: "grapple.shoot", flamethrower: "flame.whoosh" }[e.weapon as string];
       return s ? [cue(s, e.x, e.y, 1, 1, e.tick + e.fighter)] : []; // bat and fist sound on their swing
     }
     case "swing": {
@@ -118,6 +113,14 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       return [cue("chain.snap", undefined, undefined, 0.7, 0.9, e.tick + e.entity)];
     case "platformSwing":
       return [cue("platform.creak", e.x, e.y, 1, 1, e.tick)];
+    case "jetpack":
+      return [cue("jetpack.hiss", at(e.fighter).x, at(e.fighter).y, 1, 1, e.tick + e.fighter)]; // kept going while jetting (SoundDirector)
+    case "ignite":
+      return [cue("fire.crackle", e.x, e.y, e.what === "cell" ? 0.6 : 0.9, 1, e.tick + Math.round(e.x * 3))];
+    case "burn":
+      return [cue("fire.crackle", at(e.fighter).x, at(e.fighter).y, 1, 1.2, e.tick + e.fighter)];
+    case "fuelOut":
+      return [cue("fuel.out", at(e.fighter).x, at(e.fighter).y, 1, 1, e.tick + e.fighter)];
     case "platformFall":
       return [cue("platform.creak", e.x, e.y, 1, 0.8, e.tick)]; // the crash comes when it lands (SoundWatch)
     default: {

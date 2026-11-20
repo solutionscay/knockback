@@ -47,8 +47,8 @@ These names are the contract for a sample pack.
 | swing / melee | `bat.swing`, `fist.swing` (misses); `bat.hit`, `fist.hit` |
 | bounce | `grenade.bounce` (detected by the viewer), `pad.bounce` |
 | grapple / reel | `grapple.latch`, `grapple.reel` |
-| jetpack | `jetpack.hiss` (hook) |
-| fire | `flame.whoosh`, `fire.crackle` (hooks) |
+| jetpack | `jetpack.hiss` (on thrust, repeated while jetting) |
+| flame / fire | `flame.whoosh` (flamethrower pulses), `fuel.out` (empty tank); `fire.crackle` (something catches fire, a fighter starts burning) |
 | chain / platform | `chain.snap`; `platform.creak` (swinging or falling); `platform.crash` (when it lands, detected by the viewer) |
 | break / terrain | `glass.break`, `wood.break`, `steel.clang`; `terrain.crumble` (loose terrain pieces) |
 | zap / fuse | `zap`; `fuse.lit` |
@@ -61,7 +61,7 @@ These names are the contract for a sample pack.
 | ui | `countdown.tick`, `countdown.go`, `suddenDeath.siren`, `round.end`, `win.jingle` |
 | blip | `blip` (dialogue text) |
 
-**Hooks for features on their way:** events named `jetpack` or `thrust`, `flame` or `flamethrower`, and `ignite`, `burn` or `fire_spread` sound with no viewer change, as soon as the sim sends them. The cue takes its position from the event's `x` and `y`, or from its `fighter`. The table is `EVENT_HOOKS` in `map.ts`.
+**Hooks for events the sim may add later:** events named `thrust`, `flame` or `fire_spread` sound with no viewer change. The cue takes its position from the event's `x` and `y`, or from its `fighter`. The table is `EVENT_HOOKS` in `map.ts`. The jetpack (#31) and fire (#32, #33) events are mapped explicitly.
 
 ## Optional private sample pack
 

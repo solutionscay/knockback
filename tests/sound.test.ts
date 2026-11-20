@@ -70,11 +70,20 @@ describe("event -> sound mapping", () => {
     expect(one({ type: "rule", fighter: 0, rule: 0, on: true, subject: -1 })).toEqual([]);
   });
 
-  test("hooks for jetpack and fire events that are not in the sim yet", () => {
+  test("jetpack and fire: thrust, flame pulses, things catching fire, a burning fighter, an empty tank", () => {
     expect(one({ type: "jetpack", fighter: 2 })).toEqual(["jetpack.hiss"]);
     expect(cuesForEvent(ev({ type: "jetpack", fighter: 2 }), ctx)[0]!.x).toBe(4);
+    expect(one({ type: "fire", fighter: 0, weapon: "flamethrower", x: 0, y: 0, dx: 1, dy: 0 })).toEqual(["flame.whoosh"]);
+    expect(one({ type: "ignite", what: "prop", x: 1, y: 2, source: "flame", by: 0 })).toEqual(["fire.crackle"]);
+    expect(one({ type: "burn", fighter: 1, by: 0, cause: "flamethrower" })).toEqual(["fire.crackle"]);
+    expect(one({ type: "fuelOut", fighter: 1 })).toEqual(["fuel.out"]);
+    expect(one({ type: "pickup", fighter: 0, item: "flamethrower", x: 0, y: 0 })).toEqual(["pickup.weapon"]);
+    expect(one({ type: "pickup", fighter: 0, item: "jetpack", x: 0, y: 0 })).toEqual(["pickup.power"]);
+  });
+
+  test("hooks: event names the sim may add later sound with no viewer change", () => {
     expect(one({ type: "flame", x: 1, y: 2 })).toEqual(["flame.whoosh"]);
-    expect(one({ type: "burn", x: 1, y: 2 })).toEqual(["fire.crackle"]);
+    expect(one({ type: "thrust", fighter: 1 })).toEqual(["jetpack.hiss"]);
     expect(one({ type: "nothing-like-this" })).toEqual([]);
   });
 

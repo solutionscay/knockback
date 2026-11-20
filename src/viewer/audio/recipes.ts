@@ -85,18 +85,22 @@ export const SOUNDS: Record<string, SoundDef> = {
     recipe: { layers: [L({ wave: "square", freq: 180, freqEnd: 420, duty: 0.3, attack: 0.01, decay: 0.35, vibrato: [1, 30], lowpass: 1800, gain: 0.13 })] },
     group: "reel", max: 3, gap: 0.05, priority: 4,
   },
-  // --------------------------------------------------------------- hooks for features on their way (jetpack, fire)
+  // --------------------------------------------------------------- jetpack and fire
   "jetpack.hiss": {
     recipe: { layers: [L({ wave: "noise", freq: 5000, attack: 0.03, hold: 0.25, decay: 0.2, highpass: 1500, lowpass: 6000, gain: 0.25 }), L({ wave: "saw", freq: 90, attack: 0.03, hold: 0.25, decay: 0.2, vibrato: [0.5, 20], lowpass: 400, gain: 0.08 })] },
     group: "jetpack", max: 4, gap: 0.12, priority: 3,
   },
   "flame.whoosh": {
     recipe: { layers: [L({ wave: "noise", freq: 1800, attack: 0.05, hold: 0.3, decay: 0.3, lowpass: 1500, lowpassEnd: 900, gain: 0.35 }), ...pops([0.08, 0.2, 0.33], 0.12)] },
-    group: "fire", max: 4, gap: 0.1, priority: 5,
+    group: "flame", max: 3, gap: 0.18, priority: 5,
   },
   "fire.crackle": {
     recipe: { layers: [L({ wave: "noise", freq: 900, attack: 0.05, hold: 0.2, decay: 0.2, lowpass: 900, gain: 0.12 }), ...pops([0.02, 0.09, 0.15, 0.24, 0.31, 0.4], 0.2)] },
-    group: "fire", max: 4, gap: 0.1, priority: 2,
+    group: "fire", max: 4, gap: 0.12, priority: 2,
+  },
+  "fuel.out": {
+    recipe: { layers: [L({ wave: "noise", freq: 1200, decay: 0.06, lowpass: 1500, gain: 0.25 }), L({ wave: "noise", freq: 1000, decay: 0.05, lowpass: 1200, gain: 0.2, delay: 0.1 }), L({ wave: "square", freq: 220, freqEnd: 110, duty: 0.3, decay: 0.2, gain: 0.08, delay: 0.16 })] },
+    group: "flame", max: 3, gap: 0.05, priority: 4,
   },
   // --------------------------------------------------------------- arena: chains, platforms, props
   "chain.snap": {

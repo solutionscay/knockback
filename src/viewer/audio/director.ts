@@ -21,6 +21,8 @@ export class SoundDirector {
   private grenades = new Map<number, Watched>();
   private falling = new Map<number, Watched>();
   private typed = -1;
+  /** jetting fighters: when the next hiss starts (a long burn keeps hissing) */
+  private jets = new Map<number, number>();
   /** each fighter's last lasting mood: a hit flash or the K.O. face in between is not a change of mood */
   private moods = new Map<number, string>();
   private typedFighter = -1;
@@ -39,6 +41,7 @@ export class SoundDirector {
   /** A new round's arena: forget what was watched. */
   reset() {
     this.moods.clear();
+    this.jets.clear();
     this.grenades.clear();
     this.falling.clear();
     this.engine.limiter.reset();
@@ -55,6 +58,7 @@ export class SoundDirector {
     };
     for (const c of cuesForEvent(e, ctx)) this.play(c, clock);
     if (e.type === "platformFall") this.falling.set(e.entity, { vy: 0, until: e.tick + 8 * 60 });
+    if (e.type === "jetpack") this.jets.set(e.fighter, e.tick + 24);
   }
 
   beat(b: { kind: string; value?: number }, clock: number) {
@@ -82,8 +86,20 @@ export class SoundDirector {
     this.play(cueForMood(mood, x, y, voiceHz(identity), tick + id), clock);
   }
 
-  /** After each sim tick: grenade bounces and platform crashes, from velocity changes. */
+  /** After each sim tick: grenade bounces and platform crashes, from velocity changes; jetpack hiss while jetting. */
   tick(sim: Sim, clock: number) {
+    for (const [id, next] of this.jets) {
+      const f = sim.fighters[id];
+      if (!f || f.removed || !f.alive || !f.jetting) {
+        this.jets.delete(id);
+        continue;
+      }
+      if (sim.tick >= next) {
+        const p = f.entity.body.translation();
+        this.play({ sound: "jetpack.hiss", x: p.x, y: p.y, gain: 0.9, pitch: 1, seed: sim.tick + id }, clock);
+        this.jets.set(id, sim.tick + 24);
+      }
+    }
     const seen = new Set<number>();
     for (const e of sim.entities.values()) {
       if (e.kind !== "grenade" || e.dead) continue;
