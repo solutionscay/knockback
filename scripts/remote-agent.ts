@@ -16,6 +16,12 @@
  * --leave-after <round> leaves the match when that round's turn comes (the house bot takes over).
  * --no-token: don't send the seat token (works only against a server started with --open).
  * If the server restarts, the client keeps retrying with the same seat token and plays on.
+ *
+ * Mid-round check-ins (#9, when the server runs them): GET /turn returns status
+ * "checkin" with the fight status; the agent answers with POST /checkin.
+ * random: a random stance or target change half the time, else keep; fixed:
+ * take cover below 40 health, else keep; cli: the check-in prompt goes to the
+ * command; silent: no answer (the plan stays).
  */
 import { readFileSync } from "node:fs";
 import { Rng } from "../src/sim/rng";
@@ -90,6 +96,20 @@ function fixedPlan(t: any) {
   };
 }
 
+/** A check-in answer by mode: only the fields to change, or keep. */
+async function checkinAnswer(t: any): Promise<Record<string, unknown>> {
+  const st = t.checkin;
+  const base = { round: t.round, tick: t.tick };
+  if (mode === "cli") return { ...base, answer: (await cliAnswer(t.prompt, t.msLeft)).slice(0, 8000) };
+  if (mode === "fixed") return st.you.health < 40 && st.you.plan.stance !== "cover" ? { ...base, stance: "cover", line: "Time to hide.", why: "low health" } : { ...base, keep: true };
+  if (rng.next() < 0.5) return { ...base, keep: true };
+  const alive = st.rivals.filter((r: any) => !r.out);
+  const weakest = alive.sort((a: any, b: any) => a.health - b.health)[0];
+  return rng.next() < 0.5 && weakest && st.you.plan.target !== weakest.name
+    ? { ...base, target: weakest.name, line: `${weakest.name}, you're wobbling.`, why: `${weakest.name} has ${weakest.health} health` }
+    : { ...base, stance: st.you.plan.stance === "rush" ? "distance" : "rush", line: "Change of plan!", why: "random check-in" };
+}
+
 async function cliAnswer(prompt: string, msLeft: number): Promise<string> {
   const cmd = flags.cmd ?? "claude -p --model haiku --tools '' --no-session-persistence";
   const child = Bun.spawn(["sh", "-c", cmd], { stdin: new Blob([prompt]), stdout: "pipe", stderr: "ignore" });
@@ -142,6 +162,16 @@ for (;;) {
   if (t.status === "left") {
     log(t.message);
     break;
+  }
+  if (t.status === "checkin") {
+    if (mode === "silent") {
+      // the check-in stays open (and GET /turn keeps returning it) until its deadline: wait it out
+      await Bun.sleep(t.msLeft + 100);
+      continue;
+    }
+    const c = await call("POST", `/api/matches/${matchId}/checkin?${q}`, await checkinAnswer(t), key);
+    log(`check-in at ${t.second} s (${t.checkin.you.health} health): ${c.status === 200 ? `${c.data.result}${c.data.changed?.length ? ` (${c.data.changed.join(", ")})` : ""}` : `rejected ${c.status} ${c.data?.error}`}`);
+    continue;
   }
   if (t.status !== "turn") continue;
   if (t.round >= leaveAfter) {

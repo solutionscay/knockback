@@ -24,7 +24,7 @@ declare global {
       newMatch: (seed: number) => void;
       loadRecord: (url: string) => Promise<void>;
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
-      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string; tick: number; view: { cx: number; cy: number; s: number; shx: number; shy: number } | null; soles: ([number, number] | null)[]; items: { type: string; x: number; y: number }[]; fighters: { x: number; y: number; grounded: boolean; alive: boolean }[] };
+      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string; tick: number; heldSeconds: number; view: { cx: number; cy: number; s: number; shx: number; shy: number } | null; soles: ([number, number] | null)[]; items: { type: string; x: number; y: number }[]; fighters: { x: number; y: number; grounded: boolean; alive: boolean }[] };
       drainMoments: () => { time: number; kind: string; weight: number }[];
       /** sound (#12): the cues since the last call, with game time, pan and gain (scripts/sound-mix.ts renders them) */
       drainSounds: () => LoggedCue[];
@@ -142,8 +142,12 @@ if (params.has("live")) {
     if (msg.type === "match") {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
       game.newMatch(Number(msg.seed) >>> 0, { live: true, souls: sanitizeSouls(msg.souls), identities: sanitizeIdentities(msg.identities), labels: viewerLabels(msg.labels) });
-    } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta);
+    } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta, msg.checkinTicks);
     else if (msg.type === "control") game.pushControl(msg); // an agent dropped or came back (#22)
+    else if (msg.type === "checkin") game.pushCheckin(msg.round, msg.tick, msg.leadTicks); // a mid-round check-in opened (#9)
+    else if (msg.type === "planUpdate") game.pushPlanUpdate(msg.round, msg.update); // ...and an answer changed a plan (#8)
+    else if (msg.type === "checkinEnd") game.pushCheckinEnd(msg.round, msg.tick);
+    else if (msg.type === "checkinsDone") game.pushCheckinsDone(msg.round);
     else if (msg.type === "done") {
       lastRecord = isRecordUrl(msg.record) ? msg.record : null;
       seedEl.textContent += ` · replay: ?record=${msg.record}`;
@@ -215,6 +219,7 @@ if (capture) {
       hp: game.shown.sim.fighters.map((f) => f.hp),
       // for screenshot scripts: the shown fight's tick and where each fighter is (world meters, y up)
       tick: game.shown.sim.tick,
+      heldSeconds: game.heldSeconds,
       view: game.scene.lastFrame,
       soles: game.scene.soles(),
       // for screenshot scripts: the pickups lying in the arena (world meters, y up)

@@ -25,7 +25,7 @@ import { checkinSummaryLines, planChangeSummary } from "./checkin-log";
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
   | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string }
-  | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[] }
+  | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[]; checkinTicks?: number[] }
   | { type: "round"; round: number; winner: number; seconds: number; reason: string; wins: number[]; kos: RoundFacts["stats"]["kos"]; summary: string[] }
   | { type: "done"; record: string | null; winner: number; wins: number[] }
   | ({ type: "control" } & ControlEvent)
@@ -34,7 +34,9 @@ export type RunnerEvent =
   /** a check-in answer became a plan update (#8): it applies at update.tick */
   | { type: "planUpdate"; round: number; update: PlanUpdate }
   /** the check-in is over: no more updates from it */
-  | { type: "checkinEnd"; round: number; tick: number };
+  | { type: "checkinEnd"; round: number; tick: number }
+  /** no more check-ins this round (the rest of the schedule was skipped: the round ended, or one fighter is left) */
+  | { type: "checkinsDone"; round: number };
 
 /**
  * Who controls a fighter, as it changes (#22): the house bot takes over a
@@ -265,7 +267,9 @@ export class MatchRunner {
     const names = this.names;
     this.prompts.push({ round, prompts: ask.prompts, raw: ask.raw });
     const decidedAt = Date.now();
-    this.emit({ type: "decisions", round, decisions: ask.decisions, meta: ask.meta });
+    // the round's check-in schedule: a live viewer holds at each tick until that check-in is open or over (#9)
+    const schedule = !replayed && this.checkin && this.checkinAsk.some(Boolean) ? checkinTicks(this.checkin) : null;
+    this.emit({ type: "decisions", round, decisions: ask.decisions, meta: ask.meta, ...(schedule ? { checkinTicks: schedule } : {}) });
     this.say(replayed ? `ROUND ${round} plans (replayed from storage)` : `ROUND ${round} plans (${formatSeconds(askMs)} to decide)`);
     ask.decisions.forEach((d, i) => {
       const m = ask.meta[i]!;
@@ -280,7 +284,7 @@ export class MatchRunner {
         if (match.stepUntil(u.tick)) break;
         match.addUpdate(u);
       }
-    } else if (this.checkin) await this.fightWithCheckins(round, ask, decidedAt);
+    } else if (schedule) await this.fightWithCheckins(round, ask, decidedAt);
     while (!match.step()) {
       /* the engine plays the round */
     }
@@ -342,6 +346,7 @@ export class MatchRunner {
       }
     } finally {
       this.fighting = null;
+      this.emit({ type: "checkinsDone", round });
     }
   }
 

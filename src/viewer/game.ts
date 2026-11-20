@@ -16,7 +16,8 @@ import { Match, ROUNDS_TO_WIN, type DecisionMeta, type MatchRecord } from "../si
 import type { SimEvent } from "../sim/sim";
 import { VoiceSession, type Decision } from "../sim/voice";
 import { hex } from "./portrait";
-import { sanitizeDecision } from "./sanitize";
+import { sanitizeDecision, sanitizePlanUpdate } from "./sanitize";
+import type { PlanUpdate } from "../sim/match";
 import { Scene, type CamMode } from "./scene";
 import { celebrateHtml, dialogueHtml, esc, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, renderDialogueLine, renderRoundClock, restart, saveCamera, saveTally, type Hud } from "./game-hud";
 import { GamePlans } from "./game-plans";
@@ -67,6 +68,19 @@ export class Game {
   live = false;
   private liveQueue = new Map<number, { decisions: Decision[]; meta: DecisionMeta[] }>();
   private waitingRound = 0;
+  /** live: plan updates (#8) for rounds not prepared yet */
+  private liveUpdates = new Map<number, PlanUpdate[]>();
+  /**
+   * live: the check-ins of each round that are not over yet (#9), by round,
+   * then tick; `at` is set when the check-in opened. The fight never runs past
+   * the earliest tick an answer could still apply at: before a check-in opens,
+   * its tick + 1 s (the minimum delay); once open, its tick + the time since
+   * it opened + the server's lead. So an update never arrives for a tick
+   * already shown, even for a viewer ahead of the server's pacing estimate.
+   */
+  private checkins = new Map<number, Map<number, { leadTicks: number; at: number | null }>>();
+  /** live: seconds the fight was held waiting for a check-in (diagnostics) */
+  heldSeconds = 0;
   /** sound (#12): set by main.ts; reads what the viewer shows, never the sim's state */
   sound: SoundDirector | null = null;
   /** video mode (?capture&video): no zoom on the talking bot or the winner, no K.O. slow motion (docs/video.md) */
@@ -139,6 +153,8 @@ export class Game {
     this.labels = opts.labels ?? null;
     this.live = !!opts.live;
     this.liveQueue.clear();
+    this.liveUpdates.clear();
+    this.checkins.clear();
     this.waitingRound = 0;
     this.matchPoints = [0, 0, 0, 0];
     if (this.live) {
@@ -201,17 +217,70 @@ export class Game {
   }
 
   /** Live AI match: the server sends each round's decisions as soon as the fighters have answered. */
-  pushDecisions(round: number, decisions: Decision[], meta: DecisionMeta[]) {
+  pushDecisions(round: number, decisions: Decision[], meta: DecisionMeta[], checkinTicks?: unknown) {
+    // the round's check-in schedule (#9): hold at each tick until the server has asked
+    if (Array.isArray(checkinTicks) && !this.checkins.has(round))
+      this.checkins.set(round, new Map(checkinTicks.filter((t): t is number => Number.isInteger(t) && t > 0 && t < 1e5).slice(0, 20).map((t) => [t, { leadTicks: 0, at: null }])));
     decisions = [0, 1, 2, 3].map((i) => sanitizeDecision(decisions?.[i], i));
     meta = (Array.isArray(meta) ? meta : []).slice(0, 4).map((m) => ({ ...m, provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0 }));
     this.liveQueue.set(round, { decisions, meta });
     if (this.waitingRound === round) this.startLiveRound(round);
   }
 
+  /** Live: a mid-round check-in opened (#9). */
+  pushCheckin(round: number, tick: number, leadTicks: number) {
+    if (!Number.isInteger(round) || !Number.isInteger(tick)) return;
+    const sched = this.checkins.get(round) ?? new Map();
+    sched.set(tick, { leadTicks: Number.isInteger(leadTicks) ? Math.max(0, Math.min(600, leadTicks)) : 0, at: this.clock });
+    this.checkins.set(round, sched);
+  }
+
+  /** Live: a check-in closed; no more updates from it. */
+  pushCheckinEnd(round: number, tick: number) {
+    this.checkins.get(round)?.delete(tick);
+  }
+
+  /** Live: no more check-ins this round. */
+  pushCheckinsDone(round: number) {
+    this.checkins.delete(round);
+  }
+
+  /** Live: a check-in answer became a plan update (#8); the engine applies it at its tick. */
+  pushPlanUpdate(round: number, raw: unknown) {
+    const u = sanitizePlanUpdate(raw);
+    if (!u || !Number.isInteger(round)) return;
+    const m = this.match;
+    if (m.round === round && m.phase === "fighting" && m.fight) this.addLiveUpdate(u);
+    else if (round > m.round) this.liveUpdates.set(round, [...(this.liveUpdates.get(round) ?? []), u]);
+  }
+
+  private addLiveUpdate(u: PlanUpdate) {
+    const f = this.match.fight!;
+    // the gate makes this rare; if it happens anyway, apply it now (this view may differ from the record)
+    if (u.tick < f.sim.tick) {
+      console.warn(`plan update for tick ${u.tick} arrived at tick ${f.sim.tick}; applying it now`);
+      u = { ...u, tick: f.sim.tick };
+    }
+    this.match.addUpdate(u);
+  }
+
+  /** The last tick the live fight may show now (Infinity when this round has no check-in still to come). */
+  private liveGate(): number {
+    let gate = Infinity;
+    for (const [tick, c] of this.checkins.get(this.match.round) ?? []) {
+      // an answer applies at tick + max(1 s, its latency + lead); keep 10 ticks of margin for the stream
+      const after = c.at === null ? 60 : Math.max(60, Math.floor((this.clock - c.at) * 60) + c.leadTicks);
+      gate = Math.min(gate, tick + after - 10);
+    }
+    return gate;
+  }
+
   private startLiveRound(round: number) {
     const got = this.liveQueue.get(round)!;
     this.waitingRound = 0;
     this.decisions = this.match.prepareRound(got.decisions, got.meta);
+    for (const u of this.liveUpdates.get(round) ?? []) this.addLiveUpdate(u);
+    this.liveUpdates.delete(round);
     if (round === 1) {
       this.showFight(this.match.fight!);
       this.plans.startLineup(this.hud.lineup, this.shown, this.decisions);
@@ -415,7 +484,14 @@ export class Game {
     if (mode !== "frozen") {
       this.acc += simDt;
       let ticks = 0;
+      const gate = this.live && mode === "fight" ? this.liveGate() : Infinity;
       while (this.acc >= DT && ticks < 8) {
+        // live: hold the fight while a check-in answer could still land on the next tick
+        if (mode === "fight" && !this.shown.over && this.shown.sim.tick >= gate) {
+          this.heldSeconds += dt;
+          this.acc = Math.min(this.acc, DT);
+          break;
+        }
         this.acc -= DT;
         ticks++;
         this.scene.capturePrev();
