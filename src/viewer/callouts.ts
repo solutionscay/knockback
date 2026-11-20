@@ -20,8 +20,10 @@ export const CALLOUT = {
   thoughtMaxWait: 3,
   ruleMaxWait: 0.8,
   maxQueue: 6,
-  /** the same rule of the same fighter shows its tag again only after this long */
-  ruleRepeatSeconds: 10,
+  /** the same rule of the same fighter shows its tag again only after this long (in practice: its first firing in a round) */
+  ruleRepeatSeconds: 20,
+  /** and rule tags (any fighter) come at least this far apart: few callouts on a LAN screen */
+  ruleGapSeconds: 3,
 };
 
 export type CalloutKind = "thought" | "rule";

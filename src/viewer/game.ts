@@ -58,6 +58,7 @@ export class Game {
   private pendingThoughts: { at: number; fighter: number; text: string }[] = [];
   private roundFirings: RuleFiring[] = [];
   private ruleTagAt = new Map<number, number>();
+  private lastRuleTag = -1e9;
   private roundKos: KoEvent[] = [];
   /** each fighter's base plan now (the round's decision, then any plan updates) */
   private planNow: (Strategy | null)[] = [null, null, null, null];
@@ -541,8 +542,9 @@ export class Game {
       const rule = this.match.decisions[e.fighter]?.strategy.rules?.[e.rule];
       // few callouts: the same rule of the same fighter tags again only after CALLOUT.ruleRepeatSeconds
       const key = e.fighter * 8 + e.rule;
-      if (this.clock - (this.ruleTagAt.get(key) ?? -1e9) >= CALLOUT.ruleRepeatSeconds) {
+      if (this.clock - (this.ruleTagAt.get(key) ?? -1e9) >= CALLOUT.ruleRepeatSeconds && this.clock - this.lastRuleTag >= CALLOUT.ruleGapSeconds) {
         this.ruleTagAt.set(key, this.clock);
+        this.lastRuleTag = this.clock;
         this.callouts.add({ kind: "rule", fighter: e.fighter, text: ruleTagText(rule), subject: e.subject, at: this.clock });
       }
       this.roundFirings.push({ tick: e.tick, fighter: e.fighter, rule: e.rule });
