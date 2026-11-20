@@ -102,6 +102,8 @@ export class Match {
   fight: Fight | null = null;
   decisions: Decision[] = [];
   phase: MatchPhase = "planning";
+  /** replaying a record: the first round whose end state differs from the record (-1 = none) */
+  diverged = -1;
   winner = -1;
   private lineRng: Rng;
   private strategyRng: Rng;
@@ -202,6 +204,9 @@ export class Match {
     const fight = this.fight!;
     const res = fight.result();
     const facts = fight.facts(this.round);
+    // replaying a record: it must end in the recorded state, or the record came from another engine version
+    const want = this.opts.recorded?.rounds[this.round - 1]?.fight.finalHash;
+    if (want && want !== fight.record.finalHash && this.diverged < 0) this.diverged = this.round;
     this.results.push(res);
     this.facts.push(facts);
     this.wins[res.winner]!++;
@@ -244,5 +249,13 @@ export class Match {
 export function replayMatch(record: MatchRecord): Match {
   const m = new Match(record.seed, { recorded: record });
   m.playToEnd();
+  if (m.diverged >= 0) throw new ReplayDivergedError(m.diverged);
   return m;
+}
+
+/** A record that no longer replays to its recorded state (made by an older engine). */
+export class ReplayDivergedError extends Error {
+  constructor(readonly round: number) {
+    super(`this record does not replay with the current engine: round ${round} ends in a different state than recorded (it was made by an older engine version); replay it from the commit that made it`);
+  }
 }

@@ -4,7 +4,7 @@
  * readable log and the eval input. Engine-driven fights; deterministic
  * given the decisions.
  */
-import { Match, type MatchRecord } from "../sim/match";
+import { Match, ReplayDivergedError, type MatchRecord } from "../sim/match";
 import { Rng } from "../sim/rng";
 import type { Strategy } from "../sim/sim";
 import { houseStrategy } from "../sim/voice";
@@ -36,6 +36,7 @@ export function rescoreRecord(rec: MatchRecord, lineup: string[]): EvalMatch {
     }
     match.finishRound();
   }
+  if (match.diverged >= 0) throw new ReplayDivergedError(match.diverged);
   return evalMatchFrom(match, lineup, housePlans);
 }
 
