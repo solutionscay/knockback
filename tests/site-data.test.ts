@@ -164,7 +164,8 @@ describe("fight feed (/watch)", () => {
   const msgs = [
     { type: "match", seed: 1 },
     { type: "decisions", round: 1, decisions: [0, 1, 2, 3].map((i) => ({ line: `hi ${i}`, strategy: { stance: "rush", target: "nearest", weapons: ["bat"] } })) },
-    { type: "checkin", round: 1, tick: 600 },
+    { type: "checkin", round: 1, tick: 600, seats: [0] },
+    { type: "checkin", round: 1, tick: 600, seats: [2] },
     { type: "planUpdate", round: 1, update: { tick: 660, fighter: 2, strategy: { stance: "cover", target: "weakest", weapons: ["rocket"] }, line: "hiding now" } },
     { type: "control", seat: 1, mode: "autopilot", round: 1, phase: "checkin", tick: 700, reason: "connection lost", line: "Zap's brain went to get milk." },
     { type: "round", round: 1, winner: 0, kos: [{ victim: 1, by: 0, cause: "ringout" }] },
@@ -173,7 +174,7 @@ describe("fight feed (/watch)", () => {
   ];
   const entries = msgs.flatMap(feedEntries);
   test("messages become entries with the moment viewers reach them", () => {
-    expect(entries.map((e) => e.kind)).toEqual(["line", "line", "line", "line", "checkin", "plan", "control", "round", "control", "done"]);
+    expect(entries.map((e) => e.kind)).toEqual(["line", "line", "line", "line", "checkin", "checkin", "plan", "control", "round", "control", "done"]);
     const line = entries[0]!;
     expect(line.kind === "line" && line.plan).toBe("rush · nearest · bat");
     const ap = entries.find((e) => e.kind === "control")!;
@@ -185,7 +186,7 @@ describe("fight feed (/watch)", () => {
   test("the feed never runs ahead of the fight", () => {
     expect(visibleFeed(entries, null)).toEqual([]);
     expect(visibleFeed(entries, { round: 1, phase: "plan", tick: 0 }).map((e) => e.kind)).toEqual(["line", "line", "line", "line"]);
-    expect(visibleFeed(entries, { round: 1, phase: "fight", tick: 650 }).map((e) => e.kind)[0]).toBe("checkin");
+    expect(visibleFeed(entries, { round: 1, phase: "fight", tick: 650 }).map((e) => e.kind)).toEqual(["checkin", "line", "line", "line", "line"]); // one check-in line for both seats
     expect(visibleFeed(entries, { round: 1, phase: "fight", tick: 9999 }).some((e) => e.kind === "round")).toBe(false); // the result waits for the round end
     expect(visibleFeed(entries, { round: 1, phase: "end", tick: 0 })[0]!.kind).toBe("round");
     expect(visibleFeed(entries, { round: 2, phase: "fight", tick: 10 }).some((e) => e.kind === "done")).toBe(false);

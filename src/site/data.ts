@@ -337,7 +337,9 @@ export function reachedPos(at: PlaybackPos | null, when: PlaybackPos): boolean {
 
 /** Entries viewers have reached, newest first. */
 export function visibleFeed(entries: FeedEntry[], at: PlaybackPos | null): FeedEntry[] {
-  return entries.filter((e) => reachedPos(at, e.when)).reverse();
+  // one entry per key: a check-in comes once per seat asked, the same moment for all
+  const seen = new Set<string>();
+  return entries.filter((e) => reachedPos(at, e.when) && !seen.has(e.key) && seen.add(e.key)).reverse();
 }
 
 // ------------------------------------------------------------------ replay timeline (/replay)
