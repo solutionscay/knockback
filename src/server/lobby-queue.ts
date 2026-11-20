@@ -9,6 +9,7 @@
  * Seating goes through the HTTP join endpoint in-process, so it gets the same
  * validation, rate limits and seat tokens as any HTTP agent.
  */
+import { selectRuleset } from "./match-rulesets";
 import { HttpError } from "./limits";
 import { checkJoin, type MatchServer, type ServerMatch } from "./match-server";
 
@@ -61,15 +62,18 @@ export class LobbyQueue {
    * free seat, or in a new one. Serialized, so two agents arriving together
    * share a match instead of opening two.
    */
-  seat(body: Record<string, unknown>, ip: string): Promise<Seated> {
-    const run = this.chain.then(() => this.seatNow(body, ip));
+  seat(body: Record<string, unknown>, ip: string, ruleset?: string): Promise<Seated> {
+    const run = this.chain.then(() => this.seatNow(body, ip, ruleset));
     this.chain = run.catch(() => undefined);
     return run;
   }
 
-  private async seatNow(body: Record<string, unknown>, ip: string): Promise<Seated> {
+  private async seatNow(body: Record<string, unknown>, ip: string, ruleset?: string): Promise<Seated> {
     checkJoin(body); // reject invalid input before creating a match
+    const selection = await selectRuleset(this.api.store, ruleset);
+    const key = JSON.stringify(selection);
     for (const m of this.open()) {
+      if (JSON.stringify(m.selection) !== key) continue;
       if (!m.kinds.some((k, i) => k === "remote" && !m.agents[i])) continue;
       const r = await this.join(m, body, ip);
       if (r) return { ...r, match: m, created: false };
@@ -77,7 +81,7 @@ export class LobbyQueue {
     // making a match is charged to the agent's address like POST /api/matches, and lobby matches are capped
     if (this.open().length >= this.maxOpen) throw new HttpError(503, `${this.maxOpen} lobby matches are waiting for players; try again shortly`);
     this.api.createLimit.take(ip, "new lobby matches");
-    const m = await this.api.createMatch({ seats: this.seats, deadlineMs: this.deadlineMs, fillAfterMs: this.fillAfterMs });
+    const m = await this.api.createMatch({ seats: this.seats, deadlineMs: this.deadlineMs, fillAfterMs: this.fillAfterMs }, selection);
     this.ids.push(m.id);
     this.api.log(`lobby: new match ${m.id} (${this.seats.join(",")}, deadline ${this.deadlineMs / 1000} s, fills after ${this.fillAfterMs / 1000} s)`);
     try {

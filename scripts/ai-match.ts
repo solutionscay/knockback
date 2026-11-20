@@ -26,9 +26,11 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
 import { MatchRunner } from "../src/ai/runner";
+import { selectRuleset, type MatchRuleset } from "../src/server/match-rulesets";
+import { SqliteStore } from "../src/server/store";
 import { LiveStream } from "../src/server/live";
 import { PROVIDERS, registerStubs } from "../src/ai/providers";
-import { initPhysics } from "../src/sim";
+import { initPhysics, resolveRuleset } from "../src/sim";
 import { checkinFlags } from "../src/ai/checkin";
 import index from "../index.html";
 import { logLanUrls, serveRecord } from "./viewer-server";
@@ -54,6 +56,21 @@ const seed = flags.seed ? Number(flags.seed) >>> 0 : (Math.random() * 1e9) >>> 0
 const deadline = flags.deadline ? Number(flags.deadline) * 1000 : undefined;
 const deadlineText = deadline !== undefined ? `${deadline / 1000} s` : `per provider (${[...new Set(lineup.filter((p) => p !== "house"))].map((p) => `${p} ${(PROVIDERS[p]?.deadlineMs ?? DEFAULT_DEADLINE_MS) / 1000} s${PROVIDERS[p]?.hedgeAfterMs ? `, hedged at ${PROVIDERS[p]!.hedgeAfterMs! / 1000} s` : ""}`).join("; ")})`;
 const outDir = resolve(flags.out ?? "records");
+const selection: MatchRuleset | undefined = await (async () => {
+  if (!flags.ruleset) return undefined;
+  try {
+    const file = Bun.file(resolve(flags.ruleset));
+    if (await file.exists()) return { ruleset: resolveRuleset(await file.json()) };
+    const db = resolve(flags["ruleset-db"] ?? "records/match-server.db");
+    if (flags["ruleset-db"] && !await Bun.file(db).exists()) throw new Error(`ruleset database does not exist: ${db}`);
+    const store = new SqliteStore(await Bun.file(db).exists() ? db : ":memory:");
+    try { return await selectRuleset(store, flags.ruleset); }
+    finally { await store.close(); }
+  } catch (e) {
+    console.error(`--ruleset: ${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
+  }
+})();
 const checkins = checkinFlags(flags);
 const headless = flags.headless === "true";
 const hostname = flags.host ?? "localhost";
@@ -87,7 +104,7 @@ if (!headless) {
 
 // ------------------------------------------------------------ the match
 await initPhysics();
-const runner = new MatchRunner({ seed, seats, deadlineMs: deadline, lineup, checkins, onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
+const runner = new MatchRunner({ seed, seats, ...selection, deadlineMs: deadline, lineup, checkins, onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
 const { labels, match } = runner;
 console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}${runner.checkin ? `  check-ins every ${runner.checkin.everyS} s (deadline ${runner.checkin.deadlineMs / 1000} s, at most ${runner.checkin.maxPerRound} a round)` : ""}`);
 match.identities.forEach((id, i) => console.log(`  ${id.name.padEnd(12)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}  (${id.shape} head, ${id.eyes} eyes, ${id.mark}, #${id.color.toString(16).padStart(6, "0")})`));

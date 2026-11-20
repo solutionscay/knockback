@@ -102,6 +102,29 @@ describe("MCP tools", () => {
     gw.close();
   });
 
+  test("a named lobby ruleset updates only the joining client's schemas", async () => {
+    const { api, gw } = setup();
+    await api.store.putRulesetPreset("Bat Only", { weapons: { enabled: ["bat"] }, pickups: { enabled: ["health"] } });
+    const [custom, classic] = await Promise.all([connect(gw), connect(gw, "10.0.0.2")]);
+    try {
+      const joined = await custom.call("join_lobby", { name: "Batter", persona: SOUL, ruleset: "Bat Only" });
+      const standard = await classic.call("join_lobby", { name: "Classic", persona: SOUL });
+      expect(joined.isError).toBe(false);
+      expect(standard.isError).toBe(false);
+      expect(joined.data.match).not.toBe(standard.data.match);
+      const tools = (await custom.client.listTools()).tools;
+      const plan = tools.find(t => t.name === "submit_plan")! as any;
+      expect(plan.inputSchema.properties.strategy.properties.weapons.items.enum).toEqual(["bat"]);
+      expect(plan.inputSchema.properties.strategy.properties.rules.items.properties.item.enum).toEqual(["bat", "health"]);
+      expect(JSON.stringify(tools.find(t => t.name === "submit_checkin"))).not.toContain("railgun");
+      expect(JSON.stringify((await classic.client.listTools()).tools.find(t => t.name === "submit_plan"))).toContain("railgun");
+      await custom.call("leave");
+      expect(JSON.stringify((await custom.client.listTools()).tools.find(t => t.name === "submit_plan"))).toContain("railgun");
+    } finally {
+      gw.close();
+    }
+  });
+
   test("three MCP agents + a house bot play a full match; the seat token never reaches an agent; the record replays", async () => {
     const { api, gw } = setup();
     const agents = await Promise.all(["A", "B", "C"].map((_, i) => connect(gw, `10.0.0.${i + 1}`)));

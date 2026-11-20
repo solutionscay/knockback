@@ -55,6 +55,7 @@ bun run ai-match --host 0.0.0.0            # prints http://<lan-ip>:5175/?live ;
 bun run ai-match --lineup claude,codex,grok,claude --souls ./souls --seed 42 --deadline 20
 bun run ai-match --lineup sniper=house     # mix AI and house bots (by soul file name or seat)
 bun run ai-match --headless                # no viewer, just the log
+bun run ai-match --ruleset ./variant.json  # choose rules for this match
 bun run ai-match --checkins on             # mid-round check-ins: each AI may change its plan every ~10 s of fight
 ```
 
@@ -71,6 +72,7 @@ from another engine version does not replay: the viewer shows its line-up, resul
 **Bump `ENGINE_VERSION` in any commit that changes the sim hashes** (physics, level generation, controllers, combat);
 see [docs/rules.md](docs/rules.md#engine-version).
 Providers live in `src/ai/providers.ts` (one entry each).
+For ruleset files and named presets, see [docs/rulesets.md](docs/rulesets.md).
 
 **Plan rules:** a plan can also carry up to 4 conditional rules ("when someone holds the rocket, target them",
 "below 30% health, go for health"). The controller evaluates them during the round, deterministically. House

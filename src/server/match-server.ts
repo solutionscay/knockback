@@ -1,3 +1,5 @@
+import { CLASSIC } from "../sim/ruleset";
+import { selectRuleset, storedRuleset, type MatchRuleset } from "./match-rulesets";
 /**
  * The match server (#20, #25): Knockback matches with remote agents as
  * players, over a plain JSON HTTP API. Empty or silent seats get the house bot.
@@ -91,6 +93,8 @@ export interface SeatAgent {
 export type SeatKind = string;
 
 export interface CreateMatch {
+  /** Preset name or inline JSON settings. */
+  ruleset?: unknown;
   seats?: SeatKind[];
   seed?: number;
   deadlineMs?: number;
@@ -177,6 +181,7 @@ export class ServerMatch {
     /** the address that created it over HTTP (none for CLI matches) */
     readonly creator: string | null = null,
     createdAt = Date.now(),
+    readonly selection: MatchRuleset = { ruleset: CLASSIC, preset: "Classic", presetVersion: 1 },
   ) {
     this.remote = kinds.map(() => null);
     this.createdAt = createdAt;
@@ -248,7 +253,7 @@ export class ServerMatch {
   }
 
   row(): MatchRow {
-    return { id: this.id, seed: this.seed, kinds: this.kinds, deadlineMs: this.deadlineMs, fillAfterMs: this.fillAfterMs, status: this.status, createdAt: this.createdAt, startedAt: null, endedAt: null, creator: this.creator, error: this.error, winner: null };
+    return { ...this.selection, id: this.id, seed: this.seed, kinds: this.kinds, deadlineMs: this.deadlineMs, fillAfterMs: this.fillAfterMs, status: this.status, createdAt: this.createdAt, startedAt: null, endedAt: null, creator: this.creator, error: this.error, winner: null };
   }
 
   /** Put a stored agent back in its seat (resume). */
@@ -378,6 +383,7 @@ export class ServerMatch {
     const wishes = this.agents.map((a) => a?.look ?? undefined);
     const runner = new MatchRunner({
       seed: this.seed,
+      ...this.selection,
       seats,
       ...(wishes.some(Boolean) ? { identityWishes: wishes } : {}),
       onEvent: (e) => this.onEvent(e),
@@ -533,7 +539,7 @@ export class ServerMatch {
         attempts: c.attempts,
         checkin: c.status,
         prompt: c.prompt,
-        schema: checkinSchema(),
+        schema: checkinSchema(this.selection.ruleset),
         submit: `POST /api/matches/${this.id}/checkin with {"round":${c.round},"tick":${c.tick},"keep":true} or {"round":${c.round},"tick":${c.tick}, ...only the plan fields to change, "line":"..."}; no answer in time = keep the plan`,
       };
     const t = this.remote[seat]?.turn;
@@ -547,7 +553,7 @@ export class ServerMatch {
         attempts: t.attempts,
         context: t.context,
         prompt: t.prompt,
-        schema: planSchema(),
+        schema: planSchema(this.selection.ruleset),
         submit: `POST /api/matches/${this.id}/plan with {"round":${t.round}, ...plan} or {"round":${t.round},"answer":"<model reply with the JSON>"}`,
       };
     return { ...base, status: "waiting", round: m.round + (m.phase === "fighting" ? 0 : 1), message: "the other seats are planning or the round is being played" };
@@ -559,6 +565,8 @@ export class ServerMatch {
       id: this.id,
       status: this.status,
       seed: this.seed,
+      ruleset: this.selection.preset ?? "Custom",
+      ...(this.selection.presetVersion !== undefined ? { rulesetVersion: this.selection.presetVersion } : {}),
       deadlineSec: this.deadlineMs / 1000,
       createdAt: new Date(this.createdAt).toISOString(),
       ...(this.status === "open" ? { startsInSec: Math.max(0, Math.ceil((this.startsAt - Date.now()) / 1000)) } : {}),
@@ -668,7 +676,7 @@ export class MatchServer {
   }
 
   private async restore(row: MatchRow): Promise<ServerMatch> {
-    const m = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt);
+    const m = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt, storedRuleset(row));
     for (const s of await this.store.listSeats(row.id)) m.restoreSeat(s);
     this.add(m);
     return m;
@@ -697,15 +705,16 @@ export class MatchServer {
 
   // ------------------------------------------------------------ matches
   /** From code (the CLI) any provider is allowed; over HTTP only remote and house (see checkCreate). */
-  async createMatch(c: CreateMatch = {}): Promise<ServerMatch> {
+  async createMatch(c: CreateMatch = {}, selection?: MatchRuleset): Promise<ServerMatch> {
     const kinds = c.seats ?? ["remote", "remote", "remote", "remote"];
     if (kinds.length !== 4) throw new HttpError(400, "seats: exactly 4");
     for (const k of kinds) if (k !== "remote" && k !== "house" && !PROVIDERS[k]) throw new HttpError(400, `seats: unknown seat kind "${k}" (remote, house${Object.keys(PROVIDERS).length ? `, ${Object.keys(PROVIDERS).join(", ")}` : ""})`);
+    const selected = selection ?? await selectRuleset(this.store, c.ruleset);
     const active = [...this.matches.values()].filter((m) => m.status === "open" || m.status === "running");
     if (active.length >= this.opts.maxMatches) throw new HttpError(503, `${active.length} matches are open or running (at most ${this.opts.maxMatches}); try later`);
     if (c.ip !== undefined && active.filter((m) => m.creator === c.ip).length >= MATCHES_PER_IP) throw new HttpError(429, `at most ${MATCHES_PER_IP} open or running matches per address`);
     const seed = c.seed !== undefined ? c.seed >>> 0 : randomBytes(4).readUInt32LE(0);
-    const m = new ServerMatch(`m_${hex(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this, c.ip ?? null);
+    const m = new ServerMatch(`m_${hex(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this, c.ip ?? null, Date.now(), selected);
     await this.store.insertMatch(m.row());
     this.add(m);
     this.log(`match ${m.id} created: seed ${seed}, seats ${kinds.join(",")}, deadline ${m.deadlineMs / 1000} s, starts in ${(m.startsAt - m.createdAt) / 1000} s at the latest`);
@@ -769,7 +778,7 @@ export class MatchServer {
     if (this.loading.has(mid)) return this.loading.get(mid)!;
     this.loadLimit.take(ip, "loads of old matches");
     const load = (async () => {
-      const loaded = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt);
+      const loaded = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt, storedRuleset(row));
       for (const s of await this.store.listSeats(row.id)) loaded.restoreSeat(s);
       const rec = await this.store.getRecord(mid);
       await loaded.loadFinished(row, await this.store.listRounds(mid), rec?.path ?? null, rec?.engine ?? 0);
@@ -874,7 +883,7 @@ export class MatchServer {
       if (method === "GET") return json({ matches: [...this.matches.values()].map((m) => m.info()) });
       allow("POST");
       this.createLimit.take(ip, "new matches");
-      const b = await readJson(req, 2048);
+      const b = await readJson(req);
       return json((await this.createMatch({ ...checkCreate(b), ip })).info(), 201);
     }
     if (path === "/api/models") {
@@ -1026,9 +1035,9 @@ function checkLook(v: unknown, problems: string[]): IdentityWish | undefined {
 
 function checkCreate(b: Record<string, unknown>): CreateMatch {
   const problems: string[] = [];
-  const extra = Object.keys(b).filter((k) => !["seats", "seed", "deadlineSec", "fillAfterSec"].includes(k));
+  const extra = Object.keys(b).filter((k) => !["seats", "seed", "deadlineSec", "fillAfterSec", "ruleset"].includes(k));
   if (extra.length) problems.push(`unknown fields: ${extra.join(", ")}`);
-  const c: CreateMatch = {};
+  const c: CreateMatch = { ruleset: b.ruleset };
   if (b.seats !== undefined) {
     if (!Array.isArray(b.seats) || b.seats.length !== 4 || !b.seats.every((s) => s === "remote" || s === "house")) problems.push('seats: 4 of "remote" or "house"');
     else if (!b.seats.includes("remote")) problems.push("seats: at least one remote seat");
@@ -1057,7 +1066,7 @@ function apiIndex(open: boolean) {
       ? "open mode: no seat tokens needed; turn, plan and leave take ?seat=N (a token still works)"
       : "Authorization: Bearer <seat token> (from POST /api/matches/:id/join) for turn, plan and leave",
     endpoints: {
-      "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-300) } -> match',
+      "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-300), ruleset?: preset name or settings } -> match',
       "GET /api/matches": "all matches",
       "GET /api/matches/:id": "status and seats",
       "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat?, model? (the model you run, e.g. claude-opus-5-5: shown on your fighter's card as self-reported) } -> { seat, token }",

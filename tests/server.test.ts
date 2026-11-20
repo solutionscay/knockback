@@ -120,6 +120,44 @@ async function playSeat(call: Call, mid: string, token: string | undefined, answ
   }
 }
 
+test("HTTP ruleset selection stores the preset version and body across a database reopen", async () => {
+  const path = join(tmp(), "match-server.db");
+  const store = new SqliteStore(path);
+  const server = new MatchServer({ store, outDir: tmp() });
+  const call = client(server);
+  let id: string;
+  try {
+    expect((await store.defaultRulesetPreset())?.name).toBe("Classic");
+    expect((await store.listRulesetPresets()).map(p => p.name)).toEqual(["Classic", "Chaos", "Close Quarters", "Sniper Alley"]);
+    await store.putRulesetPreset("Fast Fire", { fire: { spread: 0.18 } });
+    await store.setDefaultRulesetPreset("Fast Fire");
+    const invalid = await call("POST", "/api/matches", { ruleset: { fire: { spread: 2 } } });
+    expect(invalid.status).toBe(400);
+    expect(JSON.stringify(invalid.data)).toContain("fire.spread");
+    expect((await call("POST", "/api/matches", { ruleset: "Sniper Alley" })).status).toBe(400);
+    const named = await call("POST", "/api/matches", { ruleset: "Fast Fire", fillAfterSec: 300 });
+    expect(named.status).toBe(201);
+    expect(named.data).toMatchObject({ ruleset: "Fast Fire", rulesetVersion: 1 });
+    id = named.data.id;
+    const byDefault = await call("POST", "/api/matches", { fillAfterSec: 300 });
+    expect(byDefault.data).toMatchObject({ ruleset: "Fast Fire", rulesetVersion: 1 });
+    const inline = await client(server, "1.2.3.5")("POST", "/api/matches", { ruleset: { fire: { spread: 0.2 } }, fillAfterSec: 300 });
+    expect(inline.status).toBe(201);
+    expect(inline.data.ruleset).toBe("Custom");
+    expect((await store.getMatch(inline.data.id))?.ruleset?.fire.spread).toBe(0.2);
+    await store.putRulesetPreset("Fast Fire", { fire: { spread: 0.3 } });
+  } finally {
+    await store.close();
+  }
+  const reopened = new SqliteStore(path);
+  try {
+    expect(await reopened.getMatch(id)).toMatchObject({ preset: "Fast Fire", presetVersion: 1, ruleset: { fire: { spread: 0.18 } } });
+    expect(await reopened.defaultRulesetPreset()).toMatchObject({ version: 2, ruleset: { fire: { spread: 0.3 } } });
+  } finally {
+    await reopened.close();
+  }
+});
+
 describe("ops", () => {
   test("GET /api/health: ok with the version and match counts, without rate limiting; 503 when the store fails", async () => {
     const s = new MatchServer({ outDir: tmp(), version: "abc123" });

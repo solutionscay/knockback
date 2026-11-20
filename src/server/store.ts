@@ -9,6 +9,7 @@
  * types) so a Cloudflare backend (#26: D1, or a Durable Object's own SQLite)
  * can implement it; SqliteStore is the bun:sqlite one for local and LAN use.
  */
+import { CLASSIC, resolveRuleset, type Ruleset } from "../sim/ruleset";
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
@@ -17,7 +18,17 @@ import type { Decision } from "../sim/voice";
 
 export type MatchStatus = "open" | "running" | "over" | "failed";
 
+export interface RulesetPreset {
+  name: string;
+  ruleset: Ruleset | null;
+  version: number;
+  isDefault: boolean;
+}
+
 export interface MatchRow {
+  ruleset?: Ruleset;
+  preset?: string;
+  presetVersion?: number;
   id: string;
   seed: number;
   /** per seat: "remote", "house" or a local provider name */
@@ -92,6 +103,11 @@ export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedA
 export type SeatPatch = Partial<Pick<SeatRow, "leftAt" | "leftRound">>;
 
 export interface MatchStore {
+  getRulesetPreset(name: string): Promise<RulesetPreset | null>;
+  defaultRulesetPreset(): Promise<RulesetPreset | null>;
+  listRulesetPresets(): Promise<RulesetPreset[]>;
+  putRulesetPreset(name: string, ruleset: unknown): Promise<RulesetPreset>;
+  setDefaultRulesetPreset(name: string): Promise<void>;
   insertMatch(m: MatchRow): Promise<void>;
   updateMatch(id: string, patch: MatchPatch): Promise<void>;
   getMatch(id: string): Promise<MatchRow | null>;
@@ -188,6 +204,20 @@ export const MIGRATIONS: string[] = [
   // 5 (model spotlight): the model a remote agent reported at join; per-seat model stats of each record
   `ALTER TABLE seats ADD COLUMN model TEXT;
    ALTER TABLE records ADD COLUMN stats TEXT;`,
+  // 6 (#36): ruleset presets and the settings pinned to each match
+  `CREATE TABLE ruleset_presets (
+     name TEXT PRIMARY KEY COLLATE NOCASE,
+     body TEXT,
+     version INTEGER NOT NULL DEFAULT 1,
+     is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+     CHECK (is_default = 0 OR body IS NOT NULL)
+   );
+   CREATE UNIQUE INDEX one_default_ruleset ON ruleset_presets(is_default) WHERE is_default = 1;
+   INSERT INTO ruleset_presets (name, body, is_default) VALUES ('Classic', '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', 1);
+   INSERT INTO ruleset_presets (name) VALUES ('Sniper Alley'), ('Close Quarters'), ('Chaos');
+   ALTER TABLE matches ADD COLUMN ruleset_body TEXT;
+   ALTER TABLE matches ADD COLUMN ruleset_preset TEXT;
+   ALTER TABLE matches ADD COLUMN ruleset_version INTEGER;`,
 ];
 
 type Row = Record<string, unknown>;
@@ -198,6 +228,8 @@ const matchOf = (r: Row): MatchRow => ({
   id: r.id as string,
   seed: r.seed as number,
   kinds: p(r.kinds),
+  ...(r.ruleset_body ? { ruleset: resolveRuleset(p(r.ruleset_body)) } : {}),
+  ...(r.ruleset_preset ? { preset: r.ruleset_preset as string, presetVersion: r.ruleset_version as number } : {}),
   deadlineMs: r.deadline_ms as number,
   fillAfterMs: r.fill_after_ms as number,
   status: r.status as MatchStatus,
@@ -207,6 +239,13 @@ const matchOf = (r: Row): MatchRow => ({
   creator: (r.creator as string | null) ?? null,
   error: (r.error as string | null) ?? null,
   winner: (r.winner as number | null) ?? null,
+});
+
+const presetOf = (r: Row): RulesetPreset => ({
+  name: r.name as string,
+  ruleset: r.body === null ? null : resolveRuleset(p(r.body)),
+  version: r.version as number,
+  isDefault: r.is_default === 1,
 });
 
 const seatOf = (r: Row): SeatRow => ({
@@ -254,10 +293,41 @@ export class SqliteStore implements MatchStore {
     this.db.query(`UPDATE ${table} SET ${set} WHERE ${where}`).run(...(keys.map((k) => patch[k]) as never[]), ...(args as never[]));
   }
 
+  async getRulesetPreset(name: string) {
+    const row = this.db.query("SELECT * FROM ruleset_presets WHERE name = ?").get(name) as Row | null;
+    return row ? presetOf(row) : null;
+  }
+  async defaultRulesetPreset() {
+    const row = this.db.query("SELECT * FROM ruleset_presets WHERE is_default = 1").get() as Row | null;
+    return row ? presetOf(row) : null;
+  }
+  async listRulesetPresets() {
+    return (this.db.query("SELECT * FROM ruleset_presets ORDER BY is_default DESC, name").all() as Row[]).map(presetOf);
+  }
+  async putRulesetPreset(name: string, input: unknown) {
+    name = name.trim();
+    if (!name || name.length > 64 || /[\x00-\x1f]/.test(name)) throw new Error("ruleset preset name must be 1–64 printable characters");
+    if (name.toLowerCase() === "classic") throw new Error("Classic is the built-in ruleset");
+    if (input === undefined) throw new Error("ruleset preset needs settings");
+    const ruleset = resolveRuleset(input);
+    const row = this.db.query(
+      "INSERT INTO ruleset_presets (name, body) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET body = excluded.body, version = version + 1 RETURNING *",
+    ).get(name, j(ruleset)) as Row;
+    return presetOf(row);
+  }
+  async setDefaultRulesetPreset(name: string) {
+    this.db.transaction(() => {
+      const row = this.db.query("SELECT body FROM ruleset_presets WHERE name = ?").get(name) as Row | null;
+      if (!row?.body) throw new Error("lobby default must be a preset with settings");
+      this.db.query("UPDATE ruleset_presets SET is_default = 0 WHERE is_default = 1").run();
+      this.db.query("UPDATE ruleset_presets SET is_default = 1 WHERE name = ?").run(name);
+    })();
+  }
+
   async insertMatch(m: MatchRow) {
     this.db
-      .query("INSERT INTO matches (id, seed, kinds, deadline_ms, fill_after_ms, status, created_at, started_at, ended_at, creator, error, winner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(m.id, m.seed, j(m.kinds), m.deadlineMs, m.fillAfterMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.creator, m.error, m.winner);
+      .query("INSERT INTO matches (id, seed, kinds, deadline_ms, fill_after_ms, status, created_at, started_at, ended_at, creator, error, winner, ruleset_body, ruleset_preset, ruleset_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(m.id, m.seed, j(m.kinds), m.deadlineMs, m.fillAfterMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.creator, m.error, m.winner, m.ruleset ? j(m.ruleset) : null, m.preset ?? null, m.presetVersion ?? null);
   }
   async updateMatch(id: string, patch: MatchPatch) {
     this.patch("matches", "id = ?", [id], patch);

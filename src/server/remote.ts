@@ -1,3 +1,4 @@
+import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 /**
  * A remote agent's seat. To the runner it is one more Provider (an `ask` of
  * prompt -> answer text), so decideRound gives it the same deadline and
@@ -11,11 +12,11 @@
 import { CHECKIN, parseCheckin, type CheckinStatus } from "../ai/checkin";
 import { remoteLabel } from "../stats/models";
 import { parseAnswer, MAX_LINE, MAX_WHY } from "../ai/parse";
-import { lastPlanLines, ruleResultLine, whatHappenedLines, WEAPON_HELP } from "../ai/prompt";
+import { lastPlanLines, ruleResultLine, whatHappenedLines, weaponHelp, enabledRuleExamples } from "../ai/prompt";
 import type { Provider } from "../ai/providers";
 import type { Match } from "../sim/match";
 import type { Strategy } from "../sim/sim";
-import { MAX_RULE_LABEL, PICKUPS, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
+import { MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
 import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 
 /** Targets the prompt offers besides the rivals' names. */
@@ -28,9 +29,9 @@ export const MAX_ANSWER = 8_000;
 export const MAX_ATTEMPTS = 10;
 
 /** The plan schema every turn carries, so a client needs no other docs. */
-export function planSchema() {
+export function planSchema(ruleset: Ruleset = CLASSIC) {
   return {
-    weapons: { type: "array of 1-3 different weapons, best first", values: WEAPON_HELP },
+    weapons: { type: "array of 1-3 different weapons, best first", values: weaponHelp(ruleset) },
     target: { type: "string", values: ["<a rival's name>", ...TARGET_CHOICES] },
     stance: { type: "string", values: RULE_STANCES },
     retaliate: { type: "string, optional (default turn)", values: RULE_RETALIATE },
@@ -41,9 +42,9 @@ export function planSchema() {
       who: ["anyone", "enemy", "target", "<a rival's name>"],
       whoTriggers: WHO_TRIGGERS,
       valueRanges: RULE_VALUE,
-      items: PICKUPS,
+      items: enabledItems(ruleset),
       label: `string, optional, at most ${MAX_RULE_LABEL} characters`,
-      example: { when: "holds", who: "anyone", item: "rocket", do: "target", label: "chase the rocket holder" },
+      example: JSON.parse(enabledRuleExamples(ruleset)[0]!),
     },
     why: { type: `string, optional, at most ${MAX_WHY} characters: why this plan, in game terms` },
     line: { type: `string, required, at most ${MAX_LINE} characters: what your fighter says out loud` },
@@ -134,14 +135,14 @@ export interface CheckinTurn {
 export const CHECKIN_KEYS = ["round", "tick", "keep", "weapons", "target", "stance", "retaliate", "rules", "why", "line", "answer"] as const;
 
 /** The check-in answer schema every check-in turn carries. */
-export function checkinSchema() {
+export function checkinSchema(ruleset: Ruleset = CLASSIC) {
   return {
     keep: { type: "boolean: true = keep the plan (the default when no plan field is sent)" },
     target: { type: "string, optional", values: ["<a rival's name>", ...TARGET_CHOICES] },
     stance: { type: "string, optional", values: RULE_STANCES },
-    weapons: { type: "array of 1-3 different weapons, optional", values: WEAPON_HELP },
+    weapons: { type: "array of 1-3 different weapons, optional", values: weaponHelp(ruleset) },
     retaliate: { type: "string, optional", values: RULE_RETALIATE },
-    rules: { type: `array of 0-${MAX_RULES} rules, optional: replaces your rules (same shape as in a round plan)` },
+    rules: { type: `array of 0-${MAX_RULES} rules, optional: replaces your rules (same shape as in a round plan)`, items: enabledItems(ruleset) },
     line: { type: `string, optional, at most ${CHECKIN.maxLine} characters: what your fighter shouts with the change` },
     why: { type: `string, optional, at most ${MAX_WHY} characters` },
     answer: { type: "string, alternative: a model's raw reply that contains the JSON" },
@@ -347,7 +348,7 @@ export class RemoteSeat {
     const plan = current();
     if (!plan) return { ok: false, status: 409, error: "your fighter is not fighting now" };
     // the runner parses this same text against the same plan, so it gets exactly this result
-    const a = parseCheckin(raw, this.seat, match.names, plan);
+    const a = parseCheckin(raw, this.seat, match.names, plan, undefined, match.ruleset);
     if (a.kind === "invalid") return { ok: false, status: 422, error: "invalid check-in answer", problems: a.problems.map((x) => `bad value: ${x}`) };
     t.resolve(raw);
     return { ok: true, result: a.kind, changed: a.kind === "update" ? a.changed : [], ...(a.line ? { line: a.line } : {}) };
@@ -370,7 +371,7 @@ export class RemoteSeat {
     if (turn.round !== round) return { ok: false, status: 409, error: `wrong round: the turn is for round ${turn.round}` };
     if (++turn.attempts > MAX_ATTEMPTS) return { ok: false, status: 429, error: `more than ${MAX_ATTEMPTS} invalid plans this round; the house bot plays it at the deadline` };
     const raw = body.answer !== undefined ? (body.answer as string) : JSON.stringify(Object.fromEntries(Object.entries(body).filter(([k]) => k !== "round")));
-    const p = parseAnswer(raw, this.seat, match.names);
+    const p = parseAnswer(raw, this.seat, match.names, match.ruleset);
     const problems = [...(p.strategy ? [] : p.problems.map((x) => `bad value: ${x}`)), ...(p.line ? [] : ["line: missing or empty"])];
     // structured plans must be fully valid; a raw answer keeps the AI rule (bad rules are dropped with a warning)
     if (body.answer === undefined && p.ruleProblems?.length) problems.push(...p.ruleProblems);

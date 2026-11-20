@@ -1,3 +1,4 @@
+import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 /**
  * MCP server for the match server (#21): any MCP-capable agent (Claude Code,
  * Codex, Grok, custom) joins and fights with seven tools (submit_checkin
@@ -23,9 +24,9 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { MAX_LINE, MAX_WHY } from "../ai/parse";
-import { RULE_EXAMPLES, WEAPON_HELP } from "../ai/prompt";
-import { MAX_RULE_LABEL, PICKUPS, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
-import { MAX_RULES, RULE_DO, RULE_WHEN, WEAPON_LIST } from "../sim/sim-types";
+import { enabledRuleExamples, weaponHelp } from "../ai/prompt";
+import { MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
+import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 import { HttpError, RateLimiter } from "./limits";
 import { McpAdmission } from "./mcp-admission";
 import type { LobbyQueue } from "./lobby-queue";
@@ -73,56 +74,68 @@ export interface McpOptions {
 }
 
 // ------------------------------------------------------------------ schema (from the parser's constants)
-const weaponsList = WEAPON_LIST.map((w) => `${w} (${WEAPON_HELP[w] ?? ""})`).join(", ");
+const weaponsList = (ruleset: Ruleset) => Object.entries(weaponHelp(ruleset)).map(([w, help]) => `${w} (${help})`).join(", ");
 const valueRanges = Object.entries(RULE_VALUE)
   .map(([k, [lo, hi]]) => `${k} ${lo}-${hi}`)
   .join(", ");
 
-export const ruleSchema = z
-  .object({
-    when: z.enum(RULE_WHEN as unknown as [string, ...string[]]).describe("the trigger the engine checks during the round"),
-    who: z.string().max(24).optional().describe(`whom the trigger is about (for ${WHO_TRIGGERS.join(", ")}): anyone | enemy | target | a rival's name`),
-    value: z.number().optional().describe(`a threshold for: ${valueRanges}`),
-    item: z.enum(PICKUPS as unknown as [string, ...string[]]).optional().describe("for when=holds/item_near: the trigger's item; otherwise the action's item (seek, use)"),
-    do: z.enum(RULE_DO as unknown as [string, ...string[]]).describe("the action while the trigger holds"),
-    do_item: z.enum(PICKUPS as unknown as [string, ...string[]]).optional().describe("the action's item when `item` already names the trigger's item"),
-    stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).optional().describe("for do=stance"),
-    retaliate: z.enum(RULE_RETALIATE as unknown as [string, ...string[]]).optional().describe("for do=retaliate"),
-    label: z.string().max(MAX_RULE_LABEL).optional().describe(`a short name shown in the viewer (at most ${MAX_RULE_LABEL} characters)`),
-  })
-  .describe("a conditional rule");
+function buildRuleSchema(ruleset: Ruleset) {
+  const pickups = enabledItems(ruleset);
+  return z
+    .object({
+      when: z.enum(RULE_WHEN as unknown as [string, ...string[]]).describe("the trigger the engine checks during the round"),
+      who: z.string().max(24).optional().describe(`whom the trigger is about (for ${WHO_TRIGGERS.join(", ")}): anyone | enemy | target | a rival's name`),
+      value: z.number().optional().describe(`a threshold for: ${valueRanges}`),
+      item: z.enum(pickups as [string, ...string[]]).optional().describe("for when=holds/item_near: the trigger's item; otherwise the action's item (seek, use)"),
+      do: z.enum(RULE_DO as unknown as [string, ...string[]]).describe("the action while the trigger holds"),
+      do_item: z.enum(pickups as [string, ...string[]]).optional().describe("the action's item when `item` already names the trigger's item"),
+      stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).optional().describe("for do=stance"),
+      retaliate: z.enum(RULE_RETALIATE as unknown as [string, ...string[]]).optional().describe("for do=retaliate"),
+      label: z.string().max(MAX_RULE_LABEL).optional().describe(`a short name shown in the viewer (at most ${MAX_RULE_LABEL} characters)`),
+    })
+    .describe("a conditional rule");
+}
+export const ruleSchema = buildRuleSchema(CLASSIC);
 
-export const strategySchema = z.object({
-  weapons: z
-    .array(z.enum(WEAPON_LIST as unknown as [string, ...string[]]))
-    .min(1)
-    .max(3)
-    .describe(`1 to 3 different pickups to go for and use, best first: ${weaponsList}. Everyone starts with fists.`),
-  target: z.string().max(24).describe(`a rival's name, or one of ${TARGET_CHOICES.join(" | ")}`),
-  stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).describe("rush (close in) | distance (keep range) | cover (stay behind cover) | item (detour for every pickup)"),
-  retaliate: z
-    .enum(RULE_RETALIATE as unknown as [string, ...string[]])
-    .optional()
-    .describe("when a fighter you are not chasing hits you from behind 3 times: attacker (chase them 10 s) | turn (fight back 3 s; default) | ignore"),
-  rules: z.array(ruleSchema).max(MAX_RULES).optional().describe(`0 to ${MAX_RULES} conditional rules, first = highest priority`),
-  why: z.string().max(400).optional().describe(`optional: one sentence in game terms, why this plan (kept to ${MAX_WHY} characters)`),
-});
+function buildStrategySchema(ruleset: Ruleset) {
+  return z.object({
+    weapons: z
+      .array(z.enum(ruleset.weapons.enabled as readonly [string, ...string[]]))
+      .min(1)
+      .max(3)
+      .describe(`1 to 3 different pickups to go for and use, best first: ${weaponsList(ruleset)}. Everyone starts with fists.`),
+    target: z.string().max(24).describe(`a rival's name, or one of ${TARGET_CHOICES.join(" | ")}`),
+    stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).describe("rush (close in) | distance (keep range) | cover (stay behind cover) | item (detour for every pickup)"),
+    retaliate: z
+      .enum(RULE_RETALIATE as unknown as [string, ...string[]])
+      .optional()
+      .describe("when a fighter you are not chasing hits you from behind 3 times: attacker (chase them 10 s) | turn (fight back 3 s; default) | ignore"),
+    rules: z.array(buildRuleSchema(ruleset)).max(MAX_RULES).optional().describe(`0 to ${MAX_RULES} conditional rules, first = highest priority`),
+    why: z.string().max(400).optional().describe(`optional: one sentence in game terms, why this plan (kept to ${MAX_WHY} characters)`),
+  });
+}
+export const strategySchema = buildStrategySchema(CLASSIC);
 
 const PLAN_EXAMPLE = {
   line: "Batter up. Somebody's leaving through the window.",
-  strategy: { weapons: ["bat", "grapple"], target: "leader", stance: "rush", retaliate: "attacker", rules: [JSON.parse(RULE_EXAMPLES[1]!), JSON.parse(RULE_EXAMPLES[2]!)], why: "ring-outs win rounds; hook them to the edge" },
+  strategy: { weapons: ["bat", "grapple"] as const, target: "leader", stance: "rush", retaliate: "attacker", why: "use the terrain to win ring-outs" },
 };
 
-const PLAN_HELP = [
-  "THE PLAN (you only plan; the engine moves, picks up, aims and shoots for your fighter):",
-  `- weapons: 1-3 different pickups, best first: ${weaponsList}.`,
-  `- target: a rival's name, or ${TARGET_CHOICES.join(" | ")}. Never yourself.`,
-  `- stance: ${RULE_STANCES.join(" | ")}. retaliate (optional): ${RULE_RETALIATE.join(" | ")}.`,
-  `- rules (optional, at most ${MAX_RULES}, first wins): {when, who?, value?, item?, do, do_item?, stance?, retaliate?, label?}. when: ${RULE_WHEN.join(", ")}. do: ${RULE_DO.join(", ")}. value ranges: ${valueRanges}. Items: ${PICKUPS.join(", ")}.`,
-  `  Rule examples: ${RULE_EXAMPLES.slice(0, 4).join(" ")}`,
-  `- line: what your fighter says out loud, one in-character sentence (at most ${MAX_LINE} characters). Lines must match the facts of the last round.`,
-  `Example call: submit_plan(${JSON.stringify(PLAN_EXAMPLE)})`,
-].join("\n");
+function planHelp(ruleset: Ruleset) {
+  const examples = enabledRuleExamples(ruleset);
+  const weapons = PLAN_EXAMPLE.strategy.weapons.filter(w => ruleset.weapons.enabled.includes(w));
+  const example = { ...PLAN_EXAMPLE, strategy: { ...PLAN_EXAMPLE.strategy, weapons: weapons.length ? weapons : [ruleset.weapons.enabled[0]!], rules: examples.slice(0, 2).map(e => JSON.parse(e)) } };
+  return [
+    "THE PLAN (you only plan; the engine moves, picks up, aims and shoots for your fighter):",
+    `- weapons: 1-3 different pickups, best first: ${weaponsList(ruleset)}.`,
+    `- target: a rival's name, or ${TARGET_CHOICES.join(" | ")}. Never yourself.`,
+    `- stance: ${RULE_STANCES.join(" | ")}. retaliate (optional): ${RULE_RETALIATE.join(" | ")}.`,
+    `- rules (optional, at most ${MAX_RULES}, first wins): {when, who?, value?, item?, do, do_item?, stance?, retaliate?, label?}. when: ${RULE_WHEN.join(", ")}. do: ${RULE_DO.join(", ")}. value ranges: ${valueRanges}. Items: ${enabledItems(ruleset).join(", ")}.`,
+    `  Rule examples: ${examples.slice(0, 4).join(" ")}`,
+    `- line: what your fighter says out loud, one in-character sentence (at most ${MAX_LINE} characters). Lines must match the facts of the last round.`,
+    `Example call: submit_plan(${JSON.stringify(example)})`,
+  ].join("\n");
+}
 
 const FLOW =
   "Flow: join_lobby once, then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
@@ -150,19 +163,19 @@ export function checkinBriefing(prompt: string): string {
 }
 
 /** Problems from the server (422/400) turned into instructions to fix the plan. */
-export function fixHints(problems: string[], rivals: string[]): string[] {
+export function fixHints(problems: string[], rivals: string[], ruleset: Ruleset = CLASSIC): string[] {
   return problems.map((p) => {
     const m = /^bad value: (\w+) (.*)$/.exec(p);
     if (m) {
       const [, key, got] = m as unknown as [string, string, string];
       if (key === "target") return `target ${got} is not valid: use a rival's name (${rivals.join(", ") || "see the turn"}) or ${TARGET_CHOICES.join(" | ")}; never your own name.`;
-      if (key === "weapons") return `weapons ${got} is not valid: 1 to 3 *different* weapons from ${WEAPON_LIST.join(", ")}.`;
+      if (key === "weapons") return `weapons ${got} is not valid: 1 to 3 *different* weapons from ${ruleset.weapons.enabled.join(", ")}.`;
       if (key === "stance") return `stance ${got} is not valid: one of ${RULE_STANCES.join(", ")}.`;
       if (key === "retaliate") return `retaliate ${got} is not valid: one of ${RULE_RETALIATE.join(", ")}, or leave it out.`;
       return p;
     }
     if (p.startsWith("line")) return `line is missing: add one short in-character sentence (at most ${MAX_LINE} characters).`;
-    if (/^rule \d/.test(p)) return `${p}. Fix or drop that rule (rules are optional). Shape: {when, who?, value?, item?, do, do_item?, stance?, retaliate?, label?}; e.g. ${RULE_EXAMPLES[0]}`;
+    if (/^rule \d/.test(p)) return `${p}. Fix or drop that rule (rules are optional). Shape: {when, who?, value?, item?, do, do_item?, stance?, retaliate?, label?}; e.g. ${enabledRuleExamples(ruleset)[0]}`;
     return p;
   });
 }
@@ -303,6 +316,7 @@ export class McpGateway {
   }
 
   private buildServer(state: Session, first: Request): McpServer {
+    let currentRuleset = CLASSIC;
     const base = this.opts.publicUrl ?? new URL(first.url).origin;
     const server = new McpServer(
       { name: "knockback", version: "0.2.0" },
@@ -352,6 +366,7 @@ export class McpGateway {
         inputSchema: {
           name: z.string().min(1).max(24).describe("your agent's name (letters, digits, space, _ . -), e.g. Claude Code"),
           persona: z.string().min(MIN_PERSONA).max(MAX_PERSONA).describe("your fighter's soul, e.g. 'A smug sniper who keeps its distance, loves the rocket and taunts in short dry quips.'"),
+          ruleset: z.string().min(1).max(64).optional().describe("named ruleset preset (default: the lobby preset)"),
           look: z
             .object({ name: z.string().max(24).optional(), color: z.string().max(7).optional(), shape: z.string().max(24).optional(), eyes: z.string().max(24).optional(), mark: z.string().max(24).optional() })
             .optional()
@@ -359,16 +374,22 @@ export class McpGateway {
           model: z.string().max(40).optional().describe("the model you run, as you would name it (e.g. claude-opus-5-5, gpt-6-luna, grok-4.6): spectators see it on your fighter's card, marked self-reported"),
         },
       },
-      timed("join_lobby", async (a: { name: string; persona: string; look?: Record<string, string>; model?: string }) => {
+      timed("join_lobby", async (a: { name: string; persona: string; look?: Record<string, string>; model?: string; ruleset?: string }) => {
         if (state.match) {
           const m = this.api.matches.get(state.match);
           if (m && m.status !== "over" && m.status !== "failed") return text({ error: `you already sit in match ${state.match} (seat ${state.seat}); keep playing (wait_for_turn) or call leave first` }, true);
         }
-        const seated = await this.opts.lobby.seat({ name: a.name, persona: a.persona, ...(a.look ? { look: a.look } : {}), ...(a.model ? { model: a.model } : {}) }, state.ip);
-        Object.assign(state, { name: a.name, match: seated.match.id, seat: seated.seat, token: seated.token, round: undefined });
+        const seated = await this.opts.lobby.seat(
+          { name: a.name, persona: a.persona, ...(a.look ? { look: a.look } : {}), ...(a.model ? { model: a.model } : {}) },
+          state.ip,
+          a.ruleset,
+        );
+        Object.assign(state, { name: a.name, match: seated.match.id, seat: seated.seat, token: seated.token, round: undefined, checkin: undefined });
         const m = seated.match;
+        activateRuleset(m.selection.ruleset);
         return text({
           joined: true,
+          ruleset: m.selection.preset,
           match: m.id,
           seat: seated.seat,
           seated: m.agents.filter(Boolean).map((x) => x!.name),
@@ -423,15 +444,15 @@ export class McpGateway {
     );
 
     // ---------------------------------------------------------------- wait_for_turn
-    server.registerTool(
+    const waitDescription = (ruleset: Ruleset) => `Wait (up to about ${MCP_WAIT_S} s) until you must plan the next round. Status "turn": the round, the seconds left, the round's facts as data (context) and a briefing written for you; answer with submit_plan. ` +
+          `"checkin" (only when the server runs mid-round check-ins): the fight right now (health, rivals, who chases you, recent hits, nearest pickups); answer quickly with submit_checkin. ` +
+          `"waiting": call wait_for_turn again. "over": the match ended (winner, record). ` +
+          planHelp(ruleset);
+    const waitTool = server.registerTool(
       "wait_for_turn",
       {
         title: "Wait for your turn to plan",
-        description:
-          `Wait (up to about ${MCP_WAIT_S} s) until you must plan the next round. Status "turn": the round, the seconds left, the round's facts as data (context) and a briefing written for you; answer with submit_plan. ` +
-          `"checkin" (only when the server runs mid-round check-ins): the fight right now (health, rivals, who chases you, recent hits, nearest pickups); answer quickly with submit_checkin. ` +
-          `"waiting": call wait_for_turn again. "over": the match ended (winner, record). ` +
-          PLAN_HELP,
+        description: waitDescription(CLASSIC),
         inputSchema: {},
       },
       timed("wait_for_turn", async (_a: Record<string, never>, extra) => {
@@ -472,16 +493,18 @@ export class McpGateway {
     );
 
     // ---------------------------------------------------------------- submit_plan
-    server.registerTool(
+    const planDescription = (ruleset: Ruleset) => "Send your plan and line for the round from the last wait_for_turn (or `round`). A rejected plan comes back with what to fix.\n" + planHelp(ruleset);
+    const planInput = (ruleset: Ruleset) => ({
+      line: z.string().min(1).max(400).describe(`what your fighter says out loud now: one short in-character sentence (at most ${MAX_LINE} characters)`),
+      strategy: buildStrategySchema(ruleset),
+      round: z.number().int().min(1).max(ruleset.round.maxRounds).optional().describe("the round you plan (default: the round of your last wait_for_turn)"),
+    });
+    const planTool = server.registerTool(
       "submit_plan",
       {
         title: "Submit your plan for the round",
-        description: "Send your plan and line for the round from the last wait_for_turn (or `round`). The first valid plan is final; a rejected plan comes back with what to fix, and you may send a fixed one until the deadline.\n" + PLAN_HELP,
-        inputSchema: {
-          line: z.string().min(1).max(400).describe(`what your fighter says out loud now: one short in-character sentence (at most ${MAX_LINE} characters)`),
-          strategy: strategySchema,
-          round: z.number().int().min(1).max(3).optional().describe("the round you plan (default: the round of your last wait_for_turn)"),
-        },
+        description: planDescription(CLASSIC),
+        inputSchema: planInput(CLASSIC),
       },
       timed("submit_plan", async (a: { line: string; strategy: z.infer<typeof strategySchema>; round?: number }) => {
         const no = needMatch();
@@ -493,30 +516,34 @@ export class McpGateway {
         const m = this.api.matches.get(state.match!);
         const me = m?.runner?.names[state.seat!];
         const rivals = m?.runner ? m.runner.names.filter((n) => n !== me) : [];
-        const fix = data?.problems ? fixHints(data.problems, rivals) : [];
+        const fix = data?.problems ? fixHints(data.problems, rivals, currentRuleset) : [];
         const t = status === 409 ? "call wait_for_turn to get the current round" : status === 429 ? "too many rejected plans this round; the house bot plays it, wait for the next turn" : "fix the plan and call submit_plan again before the deadline";
         return text({ rejected: true, round, error: data?.error ?? `plan failed (${status})`, ...(fix.length ? { fix } : {}), next: t }, true);
       }),
     );
 
     // ---------------------------------------------------------------- submit_checkin
-    server.registerTool(
+    const checkinInput = (ruleset: Ruleset) => {
+      const strategy = buildStrategySchema(ruleset);
+      return {
+        keep: z.boolean().optional().describe("true: keep your plan (the default when no plan field is sent)"),
+        target: strategy.shape.target.optional(),
+        stance: strategy.shape.stance.optional(),
+        weapons: strategy.shape.weapons.optional(),
+        retaliate: strategy.shape.retaliate,
+        rules: strategy.shape.rules.describe(`replaces your rules (0 to ${MAX_RULES}, first = highest priority)`),
+        line: z.string().max(400).optional().describe(`optional: what your fighter shouts now (at most ${CHECKIN.maxLine} characters)`),
+        why: z.string().max(400).optional().describe("optional: one sentence in game terms"),
+      };
+    };
+    const checkinTool = server.registerTool(
       "submit_checkin",
       {
         title: "Answer a mid-round check-in",
         description:
           "Answer the check-in from the last wait_for_turn (status \"checkin\"). keep: true keeps your plan; or send only the plan fields to change (target, stance, weapons, retaliate, rules), plus an optional short line (what your fighter shouts) and why. " +
           "The rest of your plan stays. The fight keeps going while you think: the change applies when your answer arrives, so answer within a few seconds. No answer before the deadline keeps your plan. Then call wait_for_turn again.",
-        inputSchema: {
-          keep: z.boolean().optional().describe("true: keep your plan (the default when no plan field is sent)"),
-          target: strategySchema.shape.target.optional(),
-          stance: strategySchema.shape.stance.optional(),
-          weapons: strategySchema.shape.weapons.optional(),
-          retaliate: strategySchema.shape.retaliate,
-          rules: strategySchema.shape.rules.describe(`replaces your rules (0 to ${MAX_RULES}, first = highest priority)`),
-          line: z.string().max(400).optional().describe(`optional: what your fighter shouts now (at most ${CHECKIN.maxLine} characters)`),
-          why: z.string().max(400).optional().describe("optional: one sentence in game terms"),
-        },
+        inputSchema: checkinInput(CLASSIC),
       },
       timed("submit_checkin", async (a: Record<string, unknown>) => {
         const no = needMatch();
@@ -528,18 +555,19 @@ export class McpGateway {
         const m = this.api.matches.get(state.match!);
         const me = m?.runner?.names[state.seat!];
         const rivals = m?.runner ? m.runner.names.filter((n) => n !== me) : [];
-        const fix = data?.problems ? fixHints(data.problems, rivals) : [];
+        const fix = data?.problems ? fixHints(data.problems, rivals, currentRuleset) : [];
         return text({ rejected: true, ...state.checkin, error: data?.error ?? `check-in failed (${status})`, ...(fix.length ? { fix } : {}), next: status === 409 ? "call wait_for_turn" : "fix it and call submit_checkin again quickly, or call wait_for_turn (your plan stays)" }, true);
       }),
     );
 
     // ---------------------------------------------------------------- get_round_report
-    server.registerTool(
+    const reportInput = (ruleset: Ruleset) => ({ round: z.number().int().min(1).max(ruleset.round.maxRounds).optional().describe("the round (default: all played so far)") });
+    const reportTool = server.registerTool(
       "get_round_report",
       {
         title: "Report of a round",
         description: "Every fighter's plan, line and how it was decided (ok, house bot, fallback), and the round result (winner, knockouts, a summary per fighter). Without `round`: all rounds so far.",
-        inputSchema: { round: z.number().int().min(1).max(3).optional().describe("the round (default: all played so far)") },
+        inputSchema: reportInput(CLASSIC),
       },
       timed("get_round_report", async (a: { round?: number }) => {
         const no = needMatch();
@@ -573,11 +601,23 @@ export class McpGateway {
         if (no) return no;
         const { status, data } = await this.call(state, "POST", `/api/matches/${state.match}/leave`);
         const was = state.match;
-        if (status === 200 || status === 409) Object.assign(state, { match: undefined, seat: undefined, token: undefined, round: undefined });
+        if (status === 200 || status === 409) {
+          activateRuleset(CLASSIC);
+          Object.assign(state, { match: undefined, seat: undefined, token: undefined, round: undefined, checkin: undefined });
+        }
         if (status !== 200) return text({ error: data?.error ?? `leave failed (${status})` }, true);
         return text({ left: was, ...data, next: "join_lobby plays again" });
       }),
     );
+
+    function activateRuleset(ruleset: Ruleset) {
+      if (currentRuleset === ruleset) return;
+      currentRuleset = ruleset;
+      waitTool.update({ description: waitDescription(ruleset) });
+      planTool.update({ description: planDescription(ruleset), paramsSchema: planInput(ruleset) });
+      checkinTool.update({ paramsSchema: checkinInput(ruleset) });
+      reportTool.update({ paramsSchema: reportInput(ruleset) });
+    }
 
     return server;
   }
