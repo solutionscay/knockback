@@ -340,7 +340,8 @@ export class ServerMatch {
     if (this.status !== "running" || !this.runner) return;
     a.autopilot = reason;
     this.remote[seat]?.setAutopilot(reason);
-    this.control({ seat, mode: "autopilot", ...(at ?? this.runner.position()), reason, line: pickLine(AUTOPILOT_LINES, this.fighter(seat)) });
+    // during the seat's open check-in: stamped at that check-in's tick (phase "checkin")
+    this.control({ seat, mode: "autopilot", ...(at ?? this.runner.checkinAt(seat) ?? this.runner.position()), reason, line: pickLine(AUTOPILOT_LINES, this.fighter(seat)) });
   }
 
   /** Any request from a seat: it is present; an agent on autopilot gets its fighter back from the next round it can still plan. */
@@ -376,7 +377,7 @@ export class ServerMatch {
     const seats: Seat[] = this.kinds.map((k, i) => {
       const rs = this.remote[i];
       // a check-in goes to the agent with the runner's check-in deadline
-      if (rs) return { providerName: "remote", provider: rs.provider, soul: souls[i]!, checkin: (prompt, st, signal) => rs.askCheckin(prompt, st, signal, runner.checkin?.deadlineMs) };
+      if (rs) return { providerName: "remote", provider: rs.provider, soul: souls[i]!, checkin: (prompt, st, signal) => rs.askCheckin(prompt, st, signal, runner.checkin?.capMs) };
       if (k === "remote" || k === "house") return { providerName: "house", provider: null, soul: souls[i]! };
       return { providerName: k, provider: PROVIDERS[k]!, soul: souls[i]! };
     });
@@ -540,7 +541,7 @@ export class ServerMatch {
         checkin: c.status,
         prompt: c.prompt,
         schema: checkinSchema(this.selection.ruleset),
-        submit: `POST /api/matches/${this.id}/checkin with {"round":${c.round},"tick":${c.tick},"keep":true} or {"round":${c.round},"tick":${c.tick}, ...only the plan fields to change, "line":"..."}; no answer in time = keep the plan`,
+        submit: `POST /api/matches/${this.id}/checkin with {"round":${c.round},"tick":${c.tick},"keep":true} or {"round":${c.round},"tick":${c.tick}, ...only the plan fields to change, "line":"..."}; the check-in waits for your answer and the change applies when it arrives (a slow answer applies late)`,
       };
     const t = this.remote[seat]?.turn;
     if (t)

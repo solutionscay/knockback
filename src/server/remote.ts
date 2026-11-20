@@ -288,10 +288,11 @@ export class RemoteSeat {
 
   /**
    * A mid-round check-in (#9): publish the status and wait for the agent's
-   * answer (the runner's deadline aborts it). The answer is returned as JSON
+   * answer: it stays open until the answer arrives, or the runner aborts it
+   * (the round ended, the hung-call cap passed). The answer is returned as JSON
    * text, which the runner parses with the same parser as submitCheckin.
    */
-  askCheckin(prompt: string, status: CheckinStatus, signal: AbortSignal, deadlineMs: number = CHECKIN.deadlineMs): Promise<string> {
+  askCheckin(prompt: string, status: CheckinStatus, signal: AbortSignal, capMs: number = CHECKIN.capMs): Promise<string> {
     if (!this.match) return Promise.reject(new Error("seat not bound to a match"));
     if (this.left) return Promise.reject(new Error("the agent left the match"));
     if (this.autopilot) return Promise.reject(new Error(`autopilot: ${this.autopilot}`));
@@ -307,13 +308,13 @@ export class RemoteSeat {
         status,
         prompt,
         startedAt: now,
-        deadlineAt: now + deadlineMs,
+        deadlineAt: now + capMs,
         attempts: 0,
         resolve: (text) => (end(), resolve(text)),
         reject: (e) => (end(), reject(e)),
       };
       this.checkinTurn = t;
-      signal.addEventListener("abort", () => this.checkinTurn === t && t.reject(new Error("deadline")), { once: true });
+      signal.addEventListener("abort", () => this.checkinTurn === t && t.reject(new Error("check-in closed")), { once: true });
       this.onChange();
     });
   }
@@ -338,7 +339,7 @@ export class RemoteSeat {
     if (problems.length) return { ok: false, status: 400, error: "malformed check-in answer", problems };
     if (!match) return { ok: false, status: 409, error: "the match has not started" };
     const t = this.checkinTurn;
-    if (!t) return { ok: false, status: 409, error: "no check-in is open now (it was answered, or its deadline passed); wait with GET /turn" };
+    if (!t) return { ok: false, status: 409, error: "no check-in is open now (it was answered, or the round ended); wait with GET /turn" };
     if (t.round !== body.round || t.tick !== body.tick) return { ok: false, status: 409, error: `wrong check-in: the open one is round ${t.round}, tick ${t.tick}` };
     if (++t.attempts > MAX_ATTEMPTS) return { ok: false, status: 429, error: `more than ${MAX_ATTEMPTS} invalid answers; your plan stays` };
     const fields: Record<string, unknown> = Object.fromEntries(Object.entries(body).filter(([k]) => k !== "round" && k !== "tick"));

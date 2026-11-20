@@ -20,7 +20,7 @@ const SOUL = readFileSync("souls/rat.md", "utf8");
 const PLAN = { weapons: ["rocket", "bat"], target: "weakest", stance: "rush", retaliate: "attacker", line: "Coming through!" };
 const tmp = () => mkdtempSync(join(tmpdir(), "kb-checkin-"));
 const hashes = (rec: { rounds: { fight: { finalHash: string } }[] }) => rec.rounds.map((r) => r.fight.finalHash);
-const CHECKINS = { maxPerRound: 2, deadlineMs: 1500 };
+const CHECKINS: { maxPerRound: number; capMs: number } = { maxPerRound: 2, capMs: 1500 }; // the cap stands in for a silent agent
 
 function http(s: MatchServer) {
   return async (method: string, path: string, body?: unknown, token?: string, signal?: AbortSignal) => {
@@ -96,7 +96,7 @@ describe("check-ins over HTTP", () => {
     expect(rec.control ?? []).toEqual([]);
   });
 
-  test("a missed check-in keeps the plan and is not a disconnect", async () => {
+  test("a silent agent: its check-in stays open until the cap, then a miss that keeps the plan; not a disconnect", async () => {
     const s = new MatchServer({ outDir: tmp(), checkins: CHECKINS });
     const call = http(s);
     const m = await s.createMatch({ seats: ["remote", "house", "house", "house"], seed: 1, deadlineMs: 4000, fillAfterMs: 30_000 });

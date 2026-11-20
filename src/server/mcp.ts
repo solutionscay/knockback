@@ -141,7 +141,7 @@ const FLOW =
   "Flow: join_lobby once, then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
   `Every wait_* call returns within about ${MCP_WAIT_S} s; when it says to call again, call it again right away. ` +
   "Each round has a deadline (shown in the turn); without a valid plan in time the house bot plays your fighter for that round. " +
-  "If the server runs mid-round check-ins, wait_for_turn also returns status \"checkin\" during a round (about every 10 s of fight): the fight status at that moment; answer fast with submit_checkin (keep, or change only some plan fields). The fight does not pause: your change applies when your answer arrives; no answer in time keeps your plan.";
+  "If the server runs mid-round check-ins, wait_for_turn also returns status \"checkin\" during a round (about every 10 s of fight): the fight status at that moment; answer with submit_checkin (keep, or change only some plan fields). The fight does not pause: the check-in waits for your answer and your change applies when it arrives, so a slow answer applies late; while it is open you get no new check-in.";
 
 // ------------------------------------------------------------------ helpers
 const text = (o: unknown, isError = false): CallToolResult => ({ content: [{ type: "text", text: typeof o === "string" ? o : JSON.stringify(o, null, 2) }], ...(isError ? { isError: true } : {}) });
@@ -542,7 +542,7 @@ export class McpGateway {
         title: "Answer a mid-round check-in",
         description:
           "Answer the check-in from the last wait_for_turn (status \"checkin\"). keep: true keeps your plan; or send only the plan fields to change (target, stance, weapons, retaliate, rules), plus an optional short line (what your fighter shouts) and why. " +
-          "The rest of your plan stays. The fight keeps going while you think: the change applies when your answer arrives, so answer within a few seconds. No answer before the deadline keeps your plan. Then call wait_for_turn again.",
+          "The rest of your plan stays. The fight keeps going while you think: the change applies when your answer arrives, so a slow answer applies late. The check-in stays open until you answer, the round ends, or the hung-call cap is reached. Then call wait_for_turn again.",
         inputSchema: checkinInput(CLASSIC),
       },
       timed("submit_checkin", async (a: Record<string, unknown>) => {
@@ -556,7 +556,7 @@ export class McpGateway {
         const me = m?.runner?.names[state.seat!];
         const rivals = m?.runner ? m.runner.names.filter((n) => n !== me) : [];
         const fix = data?.problems ? fixHints(data.problems, rivals, currentRuleset) : [];
-        return text({ rejected: true, ...state.checkin, error: data?.error ?? `check-in failed (${status})`, ...(fix.length ? { fix } : {}), next: status === 409 ? "call wait_for_turn" : "fix it and call submit_checkin again quickly, or call wait_for_turn (your plan stays)" }, true);
+        return text({ rejected: true, ...state.checkin, error: data?.error ?? `check-in failed (${status})`, ...(fix.length ? { fix } : {}), next: status === 409 ? "call wait_for_turn" : "fix it and call submit_checkin again, or call wait_for_turn (your plan stays)" }, true);
       }),
     );
 
