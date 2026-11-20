@@ -12,11 +12,13 @@ export interface TeaserOptions {
   fast: boolean;
   /** parallel browser pages for the capture */
   workers: number;
-  /** keep the captured frames (they are deleted after a successful encode) */
-  keepFrames: boolean;
+  /** where the scratch goes (default: os.tmpdir()); always a local disk is best */
+  work: string | null;
+  /** keep the scratch folder (frames, cues, WAV, plan) after the run */
+  keepWork: boolean;
 }
 
-export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <n> | --server <url>] [--out <dir>] [--sizes 1080,720] [--fps 30|60] [--fast] [--workers <n>] [--keep-frames]
+export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <n> | --server <url>] [--out <dir>] [--sizes 1080,720] [--fps 30|60] [--fast] [--workers <n>] [--work <dir>] [--keep-work]
   --record <file>   a saved match record (records/*.json)
   --seed <n>        a house-bot match with this seed (no AI calls)
   --best-of <n>     play n real AI matches headless (default providers), keep the one with the most action per second
@@ -26,7 +28,8 @@ export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <
   --fps 30|60       frame rate (default 60; --fast: 30)
   --fast            quick preview: 30 fps, 720p only, fast encode
   --workers <n>     parallel capture pages (default 6)
-  --keep-frames     keep the captured JPEG frames`;
+  --work <dir>      scratch folder for frames, sound and encodes (default: the system temp dir; keep it local)
+  --keep-work       keep the scratch folder after the run (--keep-frames does the same)`;
 
 export class OptionError extends Error {}
 
@@ -36,10 +39,10 @@ export function parseTeaserArgs(argv: string[], now = new Date()): TeaserOptions
     const a = argv[i]!;
     if (!a.startsWith("--")) throw new OptionError(`unexpected argument: ${a}`);
     const [k, inline] = a.slice(2).split("=", 2) as [string, string | undefined];
-    const boolean = k === "fast" || k === "keep-frames" || k === "help";
+    const boolean = k === "fast" || k === "keep-frames" || k === "keep-work" || k === "help";
     const v = boolean ? "true" : (inline ?? argv[++i]);
     if (v === undefined || (!boolean && v.startsWith("--"))) throw new OptionError(`--${k} needs a value`);
-    if (!["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "keep-frames", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
+    if (!["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "work", "keep-work", "keep-frames", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
     flags.set(k, v);
   }
   if (flags.has("help")) throw new OptionError(USAGE);
@@ -76,6 +79,7 @@ export function parseTeaserArgs(argv: string[], now = new Date()): TeaserOptions
     fps,
     fast,
     workers: flags.has("workers") ? int("workers", 1, 16) : 6,
-    keepFrames: flags.has("keep-frames"),
+    work: flags.get("work") ?? null,
+    keepWork: flags.has("keep-work") || flags.has("keep-frames"),
   };
 }
