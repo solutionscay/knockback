@@ -51,6 +51,8 @@ export class Game {
   shown!: Fight;
   readonly scene: Scene;
   flow!: FlowRunner;
+  /** hide the SUDDEN DEATH callout at this clock time */
+  private suddenUntil = 0;
   tally: Tally;
   /** points gained this match, per fighter */
   matchPoints = [0, 0, 0, 0];
@@ -448,6 +450,14 @@ export class Game {
 
   private onEvent(e: SimEvent) {
     this.scene.onEvent(e);
+    if (e.type === "suddenDeath") {
+      const h = this.hud;
+      h.callout.innerHTML = `<span>SUDDEN DEATH</span><span class="small">NOBODY'S FIGHTING · THE ZONE IS CLOSING</span>`;
+      restart(h.callout, "show sd");
+      this.suddenUntil = this.clock + 2.4;
+      this.scene.addShake(0.5);
+      this.moments.push({ time: this.clock, kind: "sudden", weight: 6 });
+    }
     if (e.type === "ko") {
       queueMicrotask(() => this.renderCamBar());
       this.hitPause = Math.max(this.hitPause, 0.14);
@@ -466,6 +476,8 @@ export class Game {
   // ------------------------------------------------------------- frame
 
   update(dt: number) {
+    // live mode: the ticker runs before the server's first message has built a match
+    if (!this.flow || !this.shown) return;
     this.clock += dt;
     let simDt = 0;
     if (this.hitPause > 0) {
@@ -482,6 +494,10 @@ export class Game {
 
     this.flow.update(dt, this.shown.over);
     const beat = this.flow.beat;
+    if (this.suddenUntil > 0 && (this.clock > this.suddenUntil || beat.kind !== "fight")) {
+      this.suddenUntil = 0;
+      if (this.hud.callout.classList.contains("sd")) this.hud.callout.className = "";
+    }
     const mode = simRuns(beat);
     if (mode !== "frozen") {
       this.acc += simDt;

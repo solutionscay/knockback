@@ -738,7 +738,8 @@ export class Scene {
     zg.clear();
     const zl = z.center - z.half;
     const zr = z.center + z.half;
-    const pulse = 0.5 + 0.5 * Math.sin(this.time * 4);
+    const sudden = this.sim.suddenDeath >= 0;
+    const pulse = sudden ? 0.9 + 0.6 * Math.sin(this.time * 9) : 0.5 + 0.5 * Math.sin(this.time * 4);
     const showZone = this.celebrateId < 0; // keep the celebrate screen clean
     if (showZone && zl > -60) {
       zg.rect(-80, -40, zl + 80, 60).fill({ color: C.zone, alpha: 0.12 + pulse * 0.05 });

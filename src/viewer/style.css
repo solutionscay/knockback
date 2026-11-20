@@ -301,6 +301,10 @@ body {
 #callout.show {
   animation: pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
+#callout.sd {
+  color: #ff2a4a;
+  font-size: 9vh;
+}
 
 /* ---------------------------------------------------------- celebrate */
 #celebrate {
