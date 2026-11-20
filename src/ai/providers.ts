@@ -175,6 +175,11 @@ export function registerStubs(delayMs = 30) {
     ask: async (prompt, signal) => {
       await wait(delayMs, signal);
       const me = /You are (\w+)/.exec(prompt)?.[1] ?? "someone";
+      // a mid-round check-in (#9): flip between rushing and keeping distance
+      if (prompt.startsWith("Knockback check-in")) {
+        const rushing = /^PLAN: target [^,]+, rush,/m.test(prompt);
+        return `{"stance":"${rushing ? "distance" : "rush"}","line":"${me} switches it up.","why":"stub check-in: flip the stance"}`;
+      }
       return `Sure! Here's my plan:\n\`\`\`json\n{"weapons":["rocket","bat"],"target":"weakest","stance":"rush","retaliate":"attacker","why":"stub plan: rush the weakest with rocket and bat","line":"${me} is coming for you."}\n\`\`\``;
     },
   });

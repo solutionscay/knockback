@@ -9,6 +9,7 @@ import type { DecisionMeta, Match } from "../sim/match";
 import { parseSoul, type Soul } from "../sim/soul";
 import { EXAMPLE_SOUL_ORDER } from "../sim/souls";
 import { houseBrain, type Decision } from "../sim/voice";
+import type { CheckinAsk } from "./checkin";
 import { checkFactsFromStats, checkLine } from "./factcheck";
 import { parseAnswer } from "./parse";
 import { buildRoundPrompts } from "./prompt";
@@ -21,6 +22,8 @@ export interface Seat {
   providerName: string;
   provider: Provider | null; // null = house bot
   soul: Soul;
+  /** how this seat answers a mid-round check-in (#9; default: the provider's ask with the check-in prompt) */
+  checkin?: CheckinAsk;
 }
 
 export interface LoadedSoul {

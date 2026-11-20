@@ -12,13 +12,15 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { formatSeconds } from "../format";
 import type { IdentityWish } from "../sim/identity";
-import { Match, type DecisionMeta, type MatchRecord } from "../sim/match";
+import { Match, type CheckinMeta, type DecisionMeta, type MatchRecord, type PlanUpdate } from "../sim/match";
 import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
 import { houseBrain, type Decision } from "../sim/voice";
 import { decideRound, type RoundAsk, type Seat } from "./decide";
-import { playbackAt, roundPlayback, type RoundPlayback } from "../flow/pacing";
+import { fightSecondsAt, playbackAt, roundPlayback, tickAtFightSeconds, type RoundPlayback } from "../flow/pacing";
 import { DEFAULT_TIMING } from "../flow/beats";
+import { applyTick, buildCheckinPrompt, CHECKIN, checkinStatus, checkinTicks, parseCheckin, type CheckinAsk, type CheckinConfig } from "./checkin";
+import { checkinSummaryLines, planChangeSummary } from "./checkin-log";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
@@ -26,7 +28,13 @@ export type RunnerEvent =
   | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[] }
   | { type: "round"; round: number; winner: number; seconds: number; reason: string; wins: number[]; kos: RoundFacts["stats"]["kos"]; summary: string[] }
   | { type: "done"; record: string | null; winner: number; wins: number[] }
-  | ({ type: "control" } & ControlEvent);
+  | ({ type: "control" } & ControlEvent)
+  /** a mid-round check-in started (#9): the seats asked; plan updates may follow until checkinEnd */
+  | { type: "checkin"; round: number; tick: number; seats: number[]; deadlineMs: number; leadTicks: number }
+  /** a check-in answer became a plan update (#8): it applies at update.tick */
+  | { type: "planUpdate"; round: number; update: PlanUpdate }
+  /** the check-in is over: no more updates from it */
+  | { type: "checkinEnd"; round: number; tick: number };
 
 /**
  * Who controls a fighter, as it changes (#22): the house bot takes over a
@@ -71,8 +79,8 @@ export interface RunnerOptions {
   onLog?: (line: string) => void;
   /** a round's decisions are in, before it is played (persist them here: the round can be replayed from them) */
   onDecided?: (round: number, ask: RoundAsk) => Promise<void> | void;
-  /** a round has been played */
-  onPlayed?: (round: number, finalHash: string) => Promise<void> | void;
+  /** a round has been played (with its mid-round plan updates, to store them) */
+  onPlayed?: (round: number, finalHash: string, planUpdates: PlanUpdate[]) => Promise<void> | void;
   /**
    * "broadcast" (#22): after a round is streamed, wait until viewers have seen
    * it (src/flow/pacing.ts) before asking for the next one. "fast" (default):
@@ -83,10 +91,18 @@ export interface RunnerOptions {
   shouldPace?: () => boolean;
   /** broadcast mode: scale the waits (tests only; default 1) */
   paceScale?: number;
+  /**
+   * Mid-round check-ins (#9): every AI seat (local provider or remote agent)
+   * gets a status every ~10 s of fight and may change its plan. Off by
+   * default; true = the CHECKIN defaults, or a partial config.
+   */
+  checkins?: boolean | Partial<CheckinConfig>;
+  /** a seat that is on autopilot gets no check-in (the server's remote seats) */
+  onAutopilot?: (seat: number) => boolean;
 }
 
 /** A stored round: what decideRound returned for it. */
-export type StoredRound = Pick<RoundAsk, "decisions" | "meta" | "prompts" | "raw"> & { finalHash?: string | null };
+export type StoredRound = Pick<RoundAsk, "decisions" | "meta" | "prompts" | "raw"> & { finalHash?: string | null; planUpdates?: PlanUpdate[] | null };
 
 /** Replaying stored rounds did not reproduce the match (a different engine, or a corrupt store). */
 export class ResumeError extends Error {}
@@ -115,12 +131,25 @@ export class MatchRunner {
   /** the round the viewers are watching: when its playback started and how long it runs */
   playback: { round: number; startedAt: number; p: RoundPlayback; ticks: number } | null = null;
   private startedAtMs = 0;
+  /** check-in settings (null: no check-ins) */
+  readonly checkin: CheckinConfig | null;
+  /** a round being fought with check-ins at broadcast pace: when viewers see its tick 0 */
+  private fighting: { round: number; fightAt: number } | null = null;
+  /** the check-in being asked now */
+  openCheckin: { round: number; tick: number } | null = null;
+  /** per seat: how it answers a check-in (null: no check-ins, e.g. the house bot) */
+  readonly checkinAsk: (CheckinAsk | null)[];
+  /** every check-in prompt and answer, for the .checkins.json file */
+  readonly checkinPrompts: { round: number; tick: number; seat: number; prompt: string; raw: string | null }[] = [];
 
   constructor(readonly opts: RunnerOptions) {
     const souls: Soul[] = opts.seats.map((s) => s.soul);
     this.match = new Match(opts.seed, { souls, ...(opts.identityWishes ? { identityWishes: opts.identityWishes } : {}) });
     this.labels = opts.labels ?? opts.seats.map((s) => s.provider?.label ?? "house");
     this.lineup = opts.lineup ?? opts.seats.map((s) => s.providerName);
+    this.checkin = opts.checkins ? { ...CHECKIN, ...(typeof opts.checkins === "object" ? opts.checkins : {}) } : null;
+    if (this.checkin && this.checkin.deadlineMs / 1000 + this.checkin.leadS >= this.checkin.everyS) throw new Error(`check-in deadline (${this.checkin.deadlineMs / 1000} s) plus lead must be shorter than the check-in interval (${this.checkin.everyS} s)`);
+    this.checkinAsk = opts.seats.map((s) => s.checkin ?? (s.provider ? (prompt, _st, signal) => s.provider!.ask(prompt, signal) : null));
   }
 
   get names(): string[] {
@@ -181,6 +210,12 @@ export class MatchRunner {
   /** Where the viewers are now: the round being asked, or a moment in the round being played back. */
   position(): { round: number; phase: ControlEvent["phase"]; tick: number | null } {
     if (this.asking !== null) return { round: this.asking, phase: "plan", tick: null };
+    if (this.openCheckin) return { round: this.openCheckin.round, phase: "checkin", tick: this.openCheckin.tick };
+    const fg = this.fighting;
+    if (fg) {
+      const now = Date.now();
+      return now < fg.fightAt ? { round: fg.round, phase: "plan", tick: null } : { round: fg.round, phase: "fight", tick: Math.min(this.match.fight?.sim.tick ?? 0, tickAtFightSeconds((now - fg.fightAt) / 1000)) };
+    }
     const pb = this.playback;
     if (!pb) return { round: this.match.round + 1, phase: "plan", tick: null };
     const at = playbackAt(pb.p, (Date.now() - pb.startedAt) / 1000, pb.ticks);
@@ -219,13 +254,13 @@ export class MatchRunner {
       // fallback-invalid keeps the AI's usable half of the answer, so only the others must equal the bot exactly
       if (m.outcome !== "fallback-invalid" && bot !== JSON.stringify(stored.decisions[me])) throw new ResumeError(`round ${round}, seat ${me}: the house bot's plan differs from the stored one`);
     });
-    const f = await this.applyRound(round, { decisions: stored.decisions, meta: stored.meta, prompts: stored.prompts, raw: stored.raw }, 0, true);
+    const f = await this.applyRound(round, { decisions: stored.decisions, meta: stored.meta, prompts: stored.prompts, raw: stored.raw }, 0, true, stored.planUpdates ?? []);
     const hash = match.record.rounds[round - 1]!.fight.finalHash;
     if (stored.finalHash && stored.finalHash !== hash) throw new ResumeError(`round ${round} replayed to ${hash}, stored ${stored.finalHash}`);
     return f;
   }
 
-  private async applyRound(round: number, ask: RoundAsk, askMs: number, replayed = false): Promise<RoundFacts> {
+  private async applyRound(round: number, ask: RoundAsk, askMs: number, replayed = false, storedUpdates: PlanUpdate[] = []): Promise<RoundFacts> {
     const match = this.match;
     const names = this.names;
     this.prompts.push({ round, prompts: ask.prompts, raw: ask.raw });
@@ -239,6 +274,13 @@ export class MatchRunner {
       this.say(`  ${" ".repeat(8)}  plan: ${this.stratText(d.strategy)}`);
     });
     match.prepareRound(ask.decisions, ask.meta);
+    if (replayed) {
+      // the stored round's plan updates, at their ticks (#8)
+      for (const u of storedUpdates) {
+        if (match.stepUntil(u.tick)) break;
+        match.addUpdate(u);
+      }
+    } else if (this.checkin) await this.fightWithCheckins(round, ask, decidedAt);
     while (!match.step()) {
       /* the engine plays the round */
     }
@@ -259,8 +301,117 @@ export class MatchRunner {
       p.total -= shown;
     }
     this.playback = { round, startedAt: decidedAt, p, ticks };
-    if (!replayed) await this.opts.onPlayed?.(round, match.record.rounds[round - 1]!.fight.finalHash);
+    if (!replayed) await this.opts.onPlayed?.(round, match.record.rounds[round - 1]!.fight.finalHash, match.record.rounds[round - 1]!.planUpdates ?? []);
     return f;
+  }
+
+  /** When viewers see the start of this round's fight (tick 0), at broadcast pace. */
+  private fightStartAt(round: number, lines: string[], decidedAt: number): number {
+    let pre = roundPlayback({ round, lines, fightTicks: 0, kos: 0, endsWithKo: false }).preFight;
+    if (round === 1) pre -= Math.min(DEFAULT_TIMING.level, (decidedAt - this.startedAtMs) / 1000);
+    return decidedAt + pre * 1000 * (this.opts.paceScale ?? 1);
+  }
+
+  /**
+   * Play the round up to each check-in tick and ask the AI seats (#9). At
+   * broadcast pace a check-in waits until viewers reach its tick, so agents
+   * react to what spectators see; an answer applies at the check-in tick
+   * plus its latency (plus a lead for the viewers). In fast mode the same
+   * rule simulates the latency. The sim waits at the check-in tick until
+   * every answer is in or late; the record keeps each update's tick.
+   */
+  private async fightWithCheckins(round: number, ask: RoundAsk, decidedAt: number) {
+    const cfg = this.checkin!;
+    const match = this.match;
+    const broadcast = this.opts.pace === "broadcast";
+    const fightAt = this.fightStartAt(round, ask.decisions.map((d) => d.line), decidedAt);
+    if (broadcast) this.fighting = { round, fightAt };
+    try {
+      for (const tick of checkinTicks(cfg)) {
+        if (match.stepUntil(tick)) break;
+        const fight = match.fight!;
+        if (fight.sim.alive().length < 2) break;
+        const seats = this.opts.seats.map((_, i) => i).filter((i) => this.checkinAsk[i] && fight.sim.fighters[i]!.alive && !(this.opts.onAutopilot?.(i) ?? false));
+        if (!seats.length) continue;
+        if (broadcast) {
+          const kos = fight.result().koLog.length;
+          const at = fightAt + fightSecondsAt(tick, kos) * 1000 * (this.opts.paceScale ?? 1);
+          while (Date.now() < at && (this.opts.shouldPace?.() ?? true)) await Bun.sleep(Math.min(250, at - Date.now()));
+        }
+        await this.askCheckin(round, tick, seats, broadcast);
+      }
+    } finally {
+      this.fighting = null;
+    }
+  }
+
+  /** One check-in: ask `seats` in parallel; each valid change becomes a plan update at its apply tick. */
+  private async askCheckin(round: number, tick: number, seats: number[], broadcast: boolean) {
+    const cfg = this.checkin!;
+    const match = this.match;
+    const leadTicks = broadcast ? Math.round(cfg.leadS * 60) : 0;
+    this.openCheckin = { round, tick };
+    this.emit({ type: "checkin", round, tick, seats, deadlineMs: cfg.deadlineMs, leadTicks });
+    const metas: CheckinMeta[] = [];
+    try {
+      await Promise.all(seats.map((seat) => this.askSeat(round, tick, seat, broadcast).then((m) => void metas.push(m))));
+    } finally {
+      this.openCheckin = null;
+      const rec = match.record.rounds[round - 1]!;
+      rec.checkins = [...(rec.checkins ?? []), ...metas.sort((a, b) => a.fighter - b.fighter)];
+      this.emit({ type: "checkinEnd", round, tick });
+    }
+  }
+
+  private async askSeat(round: number, tick: number, seat: number, broadcast: boolean): Promise<CheckinMeta> {
+    const cfg = this.checkin!;
+    const match = this.match;
+    const fight = match.fight!;
+    const names = this.names;
+    const st = checkinStatus(fight, seat, names, round);
+    const prompt = buildCheckinPrompt(st, this.opts.seats[seat]!.soul, cfg);
+    const provider = this.labels[seat]!;
+    const t0 = performance.now();
+    const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<"late">((resolve) => {
+      timer = setTimeout(() => (ctl.abort(), resolve("late")), cfg.deadlineMs);
+    });
+    let raw: string | null = null;
+    const meta: CheckinMeta = { tick, fighter: seat, provider, ms: 0, outcome: "missed", promptChars: prompt.length };
+    try {
+      const got = await Promise.race([this.checkinAsk[seat]!(prompt, st, ctl.signal), late]);
+      meta.ms = Math.round(performance.now() - t0);
+      if (got === "late") meta.detail = `no answer in ${cfg.deadlineMs / 1000} s`;
+      else {
+        raw = got;
+        meta.answerChars = got.length;
+        const current = fight.controllers[seat]!.strategy;
+        const a = parseCheckin(got, seat, names, current, cfg);
+        if (a.kind === "invalid") Object.assign(meta, { outcome: "invalid", detail: a.problems.join(", ").slice(0, 200) });
+        else if (a.kind === "keep") Object.assign(meta, { outcome: "keep", ...(a.line ? { detail: `line: ${a.line}` } : {}) });
+        else {
+          const at = applyTick(tick, meta.ms, cfg, broadcast);
+          if (fight.over || !fight.sim.fighters[seat]!.alive) Object.assign(meta, { outcome: "late", detail: `would apply at tick ${at}` });
+          else {
+            const u: PlanUpdate = { tick: at, fighter: seat, strategy: a.strategy, ...(a.line ? { line: a.line } : {}), ...(a.why ? { why: a.why } : {}), source: "checkin" };
+            match.addUpdate(u);
+            Object.assign(meta, { outcome: "update", applyTick: at, changed: a.changed, ...(a.ruleProblems ? { detail: `rules dropped: ${a.ruleProblems.join("; ").slice(0, 160)}` } : {}) });
+            this.emit({ type: "planUpdate", round, update: u });
+            this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${planChangeSummary(current, a.strategy, names)}, applies at ${(at / 60).toFixed(1)} s${a.line ? ` "${a.line}"` : ""}${a.why ? ` (${a.why})` : ""}`);
+          }
+        }
+      }
+    } catch (e) {
+      meta.ms = Math.round(performance.now() - t0);
+      const msg = e instanceof Error ? e.message : String(e);
+      Object.assign(meta, { outcome: /autopilot|left the match/.test(msg) ? "autopilot" : "error", detail: msg.slice(0, 200) });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (meta.outcome !== "update") this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${meta.outcome.toUpperCase()}${meta.detail ? ` (${meta.detail})` : ""}`);
+    this.checkinPrompts.push({ round, tick, seat, prompt, raw });
+    return meta;
   }
 
   /** Play the whole match (start() first if not started) and write the summary lines. */
@@ -286,6 +437,7 @@ export class MatchRunner {
         `  ${n.padEnd(12)} ${this.labels[i]!.padEnd(18)} ${okMs.map(formatSeconds).join(", ") || "-"}${okMs.length ? `  (avg ${formatSeconds(avg)})` : ""}  fallbacks: ${fb.length}${fb.length ? " " + fb.map((m) => `${m!.outcome}${m!.detail ? ` [${m!.detail}]` : ""}`).join("; ") : ""}`,
       );
     });
+    if (this.checkin) for (const l of checkinSummaryLines(match.record, this.labels)) this.say(l);
   }
 
   /** The record as saved: the match record plus labels, lineup and total time. */
@@ -304,6 +456,7 @@ export class MatchRunner {
     writeFileSync(join(outDir, file), JSON.stringify(this.savedRecord(), null, 2));
     writeFileSync(join(outDir, file.replace(/\.json$/, ".log.txt")), this.log.join("\n") + "\n");
     writeFileSync(join(outDir, file.replace(/\.json$/, ".prompts.json")), JSON.stringify(this.prompts, null, 2));
+    if (this.checkinPrompts.length) writeFileSync(join(outDir, file.replace(/\.json$/, ".checkins.json")), JSON.stringify(this.checkinPrompts, null, 2));
     this.recordFile = file;
     this.emit({ type: "done", record: `/records/${file}`, winner: this.match.winner, wins: this.match.wins.slice() });
     return file;

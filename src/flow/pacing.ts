@@ -71,3 +71,18 @@ export function playbackAt(p: RoundPlayback, elapsed: number, fightTicks: number
   if (elapsed < p.preFight + p.fight) return { phase: "fight", tick: Math.min(fightTicks, Math.max(0, Math.round(((elapsed - p.preFight) / p.fight) * fightTicks))) };
   return { phase: "roundEnd", tick: fightTicks };
 }
+
+/**
+ * Seconds from the start of a round's fight (the FIGHT! beat, sim tick 0)
+ * until viewers see `tick`: real time stretched like the viewer's fight, plus
+ * the slow motion of the knockouts before it. The mid-round check-ins (#9)
+ * ask at this moment at broadcast pace, so agents see the fight as viewers do.
+ */
+export function fightSecondsAt(tick: number, kosBefore: number): number {
+  return (tick / TICK_RATE) * VIEWER_FIGHT_STRETCH + kosBefore * VIEWER_KO_EXTRA_S;
+}
+
+/** The fight tick viewers are at `seconds` after the FIGHT! beat (the inverse of fightSecondsAt, ignoring slow motion). */
+export function tickAtFightSeconds(seconds: number): number {
+  return Math.max(0, Math.floor((seconds / VIEWER_FIGHT_STRETCH) * TICK_RATE));
+}

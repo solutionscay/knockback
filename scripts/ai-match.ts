@@ -6,12 +6,19 @@
  *   bun run ai-match --lineup claude,codex,grok,claude   (by seat; souls: brawler, sniper, rat, vulture)
  *   bun run ai-match --lineup sniper=house --souls ./souls --seed 42 --deadline 20
  *   bun run ai-match --headless            # no server: just play and print the log
+ *   bun run ai-match --checkins on         # mid-round check-ins (#9): each AI may change its plan every ~10 s of fight
+ *        --checkin-deadline 8 --checkin-every 10 --checkin-max 6   (seconds; max = check-ins per round)
  *
  * Before each round all four fighters are asked in parallel; the engine plays
  * the round headless at once (it is deterministic), and the decisions are
  * streamed to every connected viewer, which plays the same rounds in real
  * time. The record (seed + all decisions) is saved to records/ and replays
  * exactly in the viewer with ?record=/records/<file>.json.
+ *
+ * Check-ins run in fast mode here: the sim waits at each check-in tick for
+ * the answers (up to the deadline) and an answer applies at the check-in
+ * tick plus its measured latency in fight time, saved in the record as a
+ * plan update; the replay needs no AI.
  *
  * Providers: claude, codex, grok, house (built-in bot); stub/slow/junk/broken for testing.
  */
@@ -22,6 +29,7 @@ import { MatchRunner } from "../src/ai/runner";
 import { LiveStream } from "../src/server/live";
 import { PROVIDERS, registerStubs } from "../src/ai/providers";
 import { initPhysics } from "../src/sim";
+import { checkinFlags } from "../src/ai/checkin";
 import index from "../index.html";
 import { logLanUrls, serveRecord } from "./viewer-server";
 
@@ -53,6 +61,7 @@ const seed = flags.seed ? Number(flags.seed) >>> 0 : (Math.random() * 1e9) >>> 0
 const deadline = flags.deadline ? Number(flags.deadline) * 1000 : undefined;
 const deadlineText = deadline !== undefined ? `${deadline / 1000} s` : `per provider (${[...new Set(lineup.filter((p) => p !== "house"))].map((p) => `${p} ${(PROVIDERS[p]?.deadlineMs ?? DEFAULT_DEADLINE_MS) / 1000} s${PROVIDERS[p]?.hedgeAfterMs ? `, hedged at ${PROVIDERS[p]!.hedgeAfterMs! / 1000} s` : ""}`).join("; ")})`;
 const outDir = resolve(flags.out ?? "records");
+const checkins = checkinFlags(flags);
 const headless = flags.headless === "true";
 const hostname = flags.host ?? "localhost";
 const port = Number(flags.port ?? 5175);
@@ -85,9 +94,9 @@ if (!headless) {
 
 // ------------------------------------------------------------ the match
 await initPhysics();
-const runner = new MatchRunner({ seed, seats, deadlineMs: deadline, lineup, onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
+const runner = new MatchRunner({ seed, seats, deadlineMs: deadline, lineup, checkins, onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
 const { labels, match } = runner;
-console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}`);
+console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}${runner.checkin ? `  check-ins every ${runner.checkin.everyS} s (deadline ${runner.checkin.deadlineMs / 1000} s, at most ${runner.checkin.maxPerRound} a round)` : ""}`);
 match.identities.forEach((id, i) => console.log(`  ${id.name.padEnd(12)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}  (${id.shape} head, ${id.eyes} eyes, ${id.mark}, #${id.color.toString(16).padStart(6, "0")})`));
 runner.start();
 console.log(`  level: ${match.level.theme}, ${match.level.width} m, ${match.level.platforms} platforms\n`);
