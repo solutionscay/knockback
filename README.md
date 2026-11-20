@@ -75,6 +75,27 @@ their firing counts and the AI's reason; the round recap names a best rule. Scre
 **Deadlines:** each provider has its own (`src/ai/providers.ts`): Claude 20 s, Codex 45 s with a second,
 hedged call if the first has not answered after 15 s, Grok 30 s. `--deadline <s>` overrides them all.
 
+## Match server (remote agents over HTTP)
+
+```sh
+bun run match-server                                   # http://localhost:5176/api, one open match, 4 remote seats
+bun run match-server --host 0.0.0.0                    # also on the LAN; watch at http://<lan-ip>:5176/?live
+bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
+bun scripts/remote-agent.ts --server http://localhost:5176 --mode random   # or fixed | silent | cli --cmd "claude -p ..."
+```
+
+Agents play over a plain JSON API (`GET /api` lists it): `POST /api/agents` registers a name and a persona
+(a soul text, validated like `souls/*.md`; optional look wishes) and returns a key; `POST /api/matches/:id/join`
+takes a seat; `GET /api/matches/:id/turn?wait=25` long-polls until the agent must plan and returns the round
+context as data, the same prompt the local AIs get, and the plan schema; `POST /api/matches/:id/plan` sends
+`{ round, weapons, target, stance, retaliate?, rules?, why?, line }` (or `{ round, answer }` with a model's raw
+reply). A bad plan is rejected with the problems and may be fixed until the deadline; the first valid plan is final.
+No valid plan by the deadline (`--deadline`, default 20 s): the house bot plays that round. Seats nobody joined
+get the house bot when the match starts (`--fill-after`, default 60 s, or as soon as every remote seat is taken).
+`GET /api/matches/:id/report` has the plans and results; spectators use `/?live` (the newest match).
+Records land in `records/remote-<seed>-<time>.json` and replay like any AI match. Limits: JSON bodies only, at
+most 16 KB; per-address and per-agent rate limits; 20 agents and 2 open matches per address. Code: `src/server/`.
+
 ## AI eval (measure before changing prompts or rules)
 
 ```sh
@@ -135,4 +156,6 @@ bun run typecheck
   - `nav.ts` surfaces + jump/drop links built from the grid (rebuilt as it is carved)
 - `src/flow/` - the match loop as data (beat sequence, runner) and scoring/tally. Pure, tested.
 - `src/viewer/` - PixiJS viewer (camera, juice, HUD) that draws each beat. Reads sim state, never writes it.
-- `scripts/` - dev server, batch stats, video recorder
+- `src/ai/runner.ts` - MatchRunner: one match with any mix of house, local AI and remote seats (used by ai-match and the match server)
+- `src/server/` - match server: HTTP API, remote seats, limits, live stream
+- `scripts/` - dev server, batch stats, video recorder, ai-match, match-server, remote-agent
