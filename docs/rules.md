@@ -86,4 +86,17 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 
 **Match records are version 4.** They store fighter identities and plans, including rules. Rules store seat numbers in `who` and the action's item in `doItem`. The reader also accepts the version 2 and 3 schemas.
 
-Each round's final state hash is checked. If a replay diverges, the headless verifier refuses it and the viewer shows a divergence warning. The wall generation and combat changes in #28 and #29 and the breakable chains in #34 change the simulation hashes. Play records from before those changes with the commit that made them.
+### Engine version
+
+Every record carries `engine`: the engine version that made it (`ENGINE_VERSION` in `src/sim/engine-version.ts`). A record without the field counts as version 0.
+
+**The rule:** bump `ENGINE_VERSION` by 1 in the same commit as any change that changes the simulation hashes. Such changes include physics, level generation, controllers, combat and items. The field is not hashed, so the bump itself does not change any hash.
+
+Replay checks the engine version first, before any simulation:
+
+- **Same version:** the record replays, and each round's final state hash is still checked. If a replay diverges anyway, the headless verifier refuses it and the viewer shows a divergence warning. This check is the real safety net.
+- **Another version:** the record does not replay. The viewer shows a card, "Recorded with an older engine (vN). This replay can't be shown on the current physics.", with the line-up, the result and the lines from the record (none of these need the simulation). `replayMatch`, `ai-eval --rescore` and `replay-prompts` refuse it with a clear message.
+
+`GET /api/records` and the lobby show each record's engine version and mark old ones.
+
+Version 1 is the engine with the wall generation and combat of #28 and #29 and the breakable chains of #34. Records from before it (version 0) play only with the commit that made them.

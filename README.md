@@ -59,6 +59,10 @@ stops the match with a message). Before each round all four are asked in paralle
 falls back to the house bot for that fighter. The fights stay engine-driven.
 Records land in `records/` and replay exactly with `bun run dev` +
 `/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
+Each record carries the engine version that made it (`ENGINE_VERSION` in `src/sim/engine-version.ts`). A record
+from another engine version does not replay: the viewer shows its line-up, result and lines on a card instead.
+**Bump `ENGINE_VERSION` in any commit that changes the sim hashes** (physics, level generation, controllers, combat);
+see [docs/rules.md](docs/rules.md#engine-version).
 Providers live in `src/ai/providers.ts` (one entry each).
 
 **Plan rules:** a plan can also carry up to 4 conditional rules ("when someone holds the rocket, target them",
@@ -121,7 +125,7 @@ D1 or Durable Object storage). After a restart, open matches wait again and runn
 stored rounds replay (the sim is deterministic) and the match plays on, with the same seat tokens and the same
 hashes as if the server had never stopped (`tests/restart.test.ts` kills it with SIGKILL mid-match). Agents only
 need to retry their long poll. A viewer on `/?live` reconnects and replays the match from round 1.
-`GET /api/records` lists the saved records with their hashes.
+`GET /api/records` lists the saved records with their hashes and engine version (`old: true` = made by another engine).
 
 **Container deploy:** `docker compose up -d --build` runs the server behind Caddy (HTTPS) with the database and
 records on a volume; `deploy/deploy.sh` ships it to a VM over SSH, `deploy/backup.sh` / `deploy/restore.sh` handle
@@ -227,6 +231,8 @@ bun run typecheck
     on the other (rope joint to a pivot); all gone, it falls and crushes (credited to whoever broke the chain)
   - `sim.ts` world, fighters, weapons, objects, power-ups, explosions, damage, ring-outs, state hash
   - `match.ts` one continuous fight, result, match record (seed + strategies) and replay
+  - `engine-version.ts` `ENGINE_VERSION` (bump it when the sim hashes change), the record check and a record
+    summary that needs no simulation
   - `controller.ts` strategy -> frame-by-frame inputs (target picking, pathing, aiming, firing)
   - `soul.ts` soul parsing, validation, keyword mapping; `souls.ts` the bundled example souls
   - `voice.ts` the decision slot: house bot strategy from the soul + lines (soul lines, voice templates)
