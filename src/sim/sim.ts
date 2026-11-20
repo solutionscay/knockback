@@ -60,8 +60,17 @@ export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotg
  * (house bots now, an AI later). `loadout` is the two weapons it starts with
  * (first = favorite). `line` is what it says in its intro.
  */
+/**
+ * What to do when someone keeps hitting you from behind (see the reflex in controller.ts):
+ *   attacker  switch your target to them for a while
+ *   turn      turn and fight back briefly, then resume (default)
+ *   ignore    just glance back and keep going after your target
+ */
+export type Retaliate = "attacker" | "turn" | "ignore";
+
 export interface Strategy {
   target: TargetPref;
+  retaliate?: Retaliate;
   /** For target "grudge": the fighter to go after. */
   grudge?: number;
   stance: Stance;

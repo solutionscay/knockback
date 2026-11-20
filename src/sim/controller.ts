@@ -3,7 +3,7 @@
  * stance, loadout } into frame-by-frame inputs. The engine does all target
  * picking, weapon switching, aiming and movement.
  */
-import { FIGHTER, WEAPONS } from "./constants";
+import { FIGHTER, REFLEX, WEAPONS } from "./constants";
 import type { Link, Surface } from "./nav";
 import { clamp, zoneHalfAt, type Fighter, type Input, type Sim, type Strategy, type Weapon } from "./sim";
 
@@ -38,6 +38,33 @@ export class Controller {
   private noLos = 0;
   /** Effective target this tick. */
   targetId = -1;
+  /** recent hits taken (for the back-attack reflex) */
+  private hitLog: { src: number; tick: number; behind: boolean }[] = [];
+  /** active reflex: who to face/fight and until when */
+  reflex: { attacker: number; until: number; mode: "glance" | "fight" | "switch" } | null = null;
+  /** every reflex triggered this fight (for stats and tests) */
+  reflexLog: { tick: number; attacker: number; mode: "glance" | "fight" | "switch" }[] = [];
+
+  /**
+   * Called for every hit this fighter takes (from Fight, in event order: deterministic).
+   * Repeated hits from behind by a non-target trigger the reflex.
+   */
+  onHit(src: number, behind: boolean, _damage: number, tick: number) {
+    const log = this.hitLog;
+    if (!log.length || log[log.length - 1]!.src !== src || log[log.length - 1]!.tick !== tick) log.push({ src, tick, behind });
+    while (log.length && log[0]!.tick < tick - REFLEX.windowTicks) log.shift();
+    if (src === this.targetId) return;
+    if (this.reflex && this.reflex.attacker === src && tick < this.reflex.until) return;
+    const n = log.filter((h) => h.src === src && h.behind).length;
+    if (n < REFLEX.hits) return;
+    const rule = this.strategy.retaliate ?? "turn";
+    const mode = rule === "attacker" ? "switch" : rule === "turn" ? "fight" : "glance";
+    const span = mode === "switch" ? REFLEX.switchTicks : mode === "fight" ? REFLEX.fightTicks : REFLEX.glanceTicks;
+    this.reflex = { attacker: src, until: tick + span, mode };
+    this.reflexLog.push({ tick, attacker: src, mode });
+    this.hitLog = log.filter((h) => h.src !== src);
+    if (mode !== "glance") this.nextEval = 0; // re-plan movement toward the attacker now
+  }
 
   constructor(
     readonly fighterId: number,
@@ -227,7 +254,21 @@ export class Controller {
   think(sim: Sim): Input {
     const me = sim.fighters[this.fighterId]!;
     if (!me.alive) return NO_FIRE;
-    const target = this.resolveTarget(sim, me);
+    let target = this.resolveTarget(sim, me);
+    // the back-attack reflex overrides who we face (and, unless glancing, who we chase)
+    let aimTarget = target as Fighter;
+    const rf = this.reflex;
+    if (rf && sim.tick < rf.until) {
+      const a = sim.fighters[rf.attacker];
+      if (a && a.alive && !a.removed) {
+        aimTarget = a;
+        if (rf.mode !== "glance") {
+          target = a;
+          this.targetId = a.id;
+          this.nextRetarget = rf.until;
+        }
+      } else this.reflex = null;
+    } else if (rf) this.reflex = null;
     const mp = sim.pos(me);
     const mv = sim.vel(me);
     const input: Input = { move: 0, jump: false, aimX: me.aimX, aimY: me.aimY, weapon: null, fire: false };
@@ -320,15 +361,17 @@ export class Controller {
     } else this.stuck = 0;
 
     // ---------------------------------------------------------- weapon, aim, fire
-    const dx0 = tp.x - mp.x;
-    const dy0 = tp.y - mp.y;
+    const atp = sim.pos(aimTarget);
+    const atv = sim.vel(aimTarget);
+    const dx0 = atp.x - mp.x;
+    const dy0 = atp.y - mp.y;
     const dist = Math.sqrt(dx0 * dx0 + dy0 * dy0);
     const sight = dist > 0.1 ? sim.raycast(mp.x, mp.y + 0.25, dx0 / dist, (dy0 - 0.25) / dist, dist + 0.5, me.entity.collider) : null;
-    const los = !!sight && sight.entity === target.entity;
+    const los = !!sight && sight.entity === aimTarget.entity;
     this.noLos = los ? 0 : this.noLos + 1;
     const blocked = this.blocked(dist);
     if (sim.tick >= this.nextWeapon || !this.wanted || !me.weapons.includes(this.wanted)) {
-      this.wanted = this.chooseWeapon(sim, me, target, dist, los);
+      this.wanted = this.chooseWeapon(sim, me, aimTarget, dist, los);
       this.nextWeapon = sim.tick + 12;
     }
     const weapon = this.wanted;
@@ -340,8 +383,8 @@ export class Controller {
       const speed = weapon === "rocket" ? WEAPONS.rocket.speed : WEAPONS.grenade.speed;
       const g = weapon === "rocket" ? WEAPONS.rocket.gravity : 20;
       const t = dist / speed;
-      const lx = tp.x + tv.x * t * 0.6 - mp.x;
-      const ly = tp.y + Math.max(-2, tv.y * t * 0.3) - (mp.y + 0.25);
+      const lx = atp.x + atv.x * t * 0.6 - mp.x;
+      const ly = atp.y + Math.max(-2, atv.y * t * 0.3) - (mp.y + 0.25);
       // over a wall: the high arc
       const sol = ballisticAim(lx, ly, speed, g, blocked && weapon === "rocket");
       ax = sol.x;

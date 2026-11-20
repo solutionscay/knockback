@@ -17,6 +17,7 @@ import {
   type FighterRoundFacts,
   type RoundFacts,
 } from "../src/sim";
+import { StatsCollector } from "../src/sim/roundstats";
 
 setDefaultTimeout(240_000);
 beforeAll(async () => {
@@ -54,6 +55,7 @@ const facts = (round: number, fs: FighterRoundFacts[]): RoundFacts => ({
   chainReactions: 0,
   platformsFallen: 0,
   biggestHit: null,
+  stats: new StatsCollector().finish([]),
 });
 
 describe("best of 3", () => {

@@ -18,13 +18,27 @@ import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
 import type { SimEvent, Strategy } from "./sim";
-import { houseBrain, VoiceSession, type Brain, type Decision } from "./voice";
+import { houseBrain, VoiceSession, type Brain, type Decision, type DecideContext } from "./voice";
 
 export const ROUNDS_TO_WIN = 2;
 export const MAX_ROUNDS = 3;
 
+/** Who made a decision and how it went (AI matches). */
+export interface DecisionMeta {
+  /** e.g. "claude/haiku", or "house" */
+  provider: string;
+  ms: number;
+  outcome: "ok" | "fallback-timeout" | "fallback-invalid" | "fallback-error" | "house";
+  /** what was wrong, for the log */
+  detail?: string;
+  /** the AI's own line, when its plan was rejected but the line was usable */
+  aiLine?: string;
+}
+
 export interface RoundRecord {
   physicsSeed: number;
+  /** provider/timing per fighter, when decisions came from outside (AI) */
+  meta?: DecisionMeta[];
   phase: "intro" | "between";
   strategies: Strategy[];
   lines: string[];
@@ -112,28 +126,40 @@ export class Match {
    * Ask every fighter for { line, strategy } and set up the next round's fight.
    * Returns the decisions (the viewer shows the lines, one fighter at a time).
    */
-  prepareRound(): Decision[] {
+  /** What a fighter's brain gets to see before the next round (also what the AI prompt is built from). */
+  contextFor(me: number): DecideContext {
+    const round = this.round + 1;
+    return {
+      phase: round === 1 ? "intro" : "between",
+      round,
+      me,
+      names: this.names,
+      wins: this.wins.slice(),
+      morale: this.morale.map((m) => ({ ...m })),
+      last: this.facts[this.facts.length - 1] ?? null,
+      history: this.facts.slice(),
+      session: this.session,
+      lineRng: this.lineRng,
+      strategyRng: this.strategyRng,
+    };
+  }
+
+  /**
+   * Set up the next round. Decisions come from (in order): `decisions` passed
+   * in (e.g. AI answers gathered asynchronously), the replay record, or the
+   * brains (house bots by default).
+   */
+  prepareRound(external?: Decision[], meta?: DecisionMeta[]): Decision[] {
     if (this.phase === "over") throw new Error("match is over");
+    const rec = this.opts.recorded?.rounds[this.round];
+    const decisions: Decision[] = external
+      ? external.map((d) => ({ ...d, strategy: { ...d.strategy } }))
+      : rec
+        ? rec.strategies.map((s, i) => ({ line: rec.lines[i]!, strategy: { ...s } }))
+        : this.brains.map((brain, me) => brain(this.contextFor(me)));
+    if (!meta && rec?.meta) meta = rec.meta;
     this.round++;
     const phase = this.round === 1 ? "intro" : "between";
-    const rec = this.opts.recorded?.rounds[this.round - 1];
-    const decisions: Decision[] = rec
-      ? rec.strategies.map((s, i) => ({ line: rec.lines[i]!, strategy: { ...s } }))
-      : this.brains.map((brain, me) =>
-          brain({
-            phase,
-            round: this.round,
-            me,
-            names: this.names,
-            wins: this.wins.slice(),
-            morale: this.morale.map((m) => ({ ...m })),
-            last: this.facts[this.facts.length - 1] ?? null,
-            history: this.facts.slice(),
-            session: this.session,
-            lineRng: this.lineRng,
-            strategyRng: this.strategyRng,
-          }),
-        );
     this.decisions = decisions;
     const ps = physicsSeed(this.seed, this.round);
     this.moraleAtStart.push(this.morale.map((m) => ({ ...m })));
@@ -150,6 +176,7 @@ export class Match {
       lines: decisions.map((d) => d.line),
       fight: this.fight.record,
       winner: -1,
+      ...(meta ? { meta: meta.map((m) => ({ ...m })) } : {}),
     });
     this.phase = "fighting";
     return decisions;

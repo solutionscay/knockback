@@ -14,6 +14,7 @@
  *   rattled    otherwise                           (shaky aim)
  */
 import type { FightResult } from "./fight";
+import type { RoundStats } from "./roundstats";
 
 export type MoraleState = "cocky" | "confident" | "rattled" | "furious" | "desperate";
 export const MORALE_STATES: readonly MoraleState[] = ["cocky", "confident", "rattled", "furious", "desperate"];
@@ -56,6 +57,8 @@ export interface RoundFacts {
   platformsFallen: number;
   /** Biggest single launch of the round. */
   biggestHit: { by: number; target: number; kb: number; weapon: string } | null;
+  /** damage matrix, time near rivals, targets, pickups, one plain line per fighter */
+  stats: RoundStats;
 }
 
 export interface Morale {

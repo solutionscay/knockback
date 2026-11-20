@@ -1,0 +1,148 @@
+/**
+ * Round stats: who damaged whom, how, from which side and range; knockouts;
+ * pickups; time near each rival; who each fighter chased. Plus one plain
+ * sentence per fighter about its round. Built from engine events (no
+ * randomness), so fighters (and AIs) can look back and re-plan.
+ */
+import { CHARACTERS } from "./characters";
+
+export type Range = "close" | "mid" | "long";
+
+export interface HitStat {
+  /** distinct hits (one per tick: a shotgun blast is one hit) */
+  hits: number;
+  damage: number;
+  fromBehind: number;
+  byWeapon: Record<string, { hits: number; damage: number }>;
+  byRange: Record<Range, number>;
+}
+
+export interface RoundStats {
+  /** damage[attacker][victim] */
+  damage: HitStat[][];
+  /** seconds each pair spent within NEAR_M of each other (symmetric) */
+  nearSeconds: number[][];
+  /** seconds each fighter spent with each rival as its target: targetSeconds[me][them] */
+  targetSeconds: number[][];
+  pickups: string[][];
+  kos: { victim: number; by: number; weapon: string; cause: "ringout" | "hp" }[];
+  /** one plain line per fighter, second person */
+  summary: string[];
+}
+
+export const NEAR_M = 7;
+export const SAMPLE_TICKS = 30;
+
+export function rangeOf(d: number): Range {
+  return d < 4 ? "close" : d < 12 ? "mid" : "long";
+}
+
+const empty = (): HitStat => ({ hits: 0, damage: 0, fromBehind: 0, byWeapon: {}, byRange: { close: 0, mid: 0, long: 0 } });
+
+export class StatsCollector {
+  damage: HitStat[][] = [0, 1, 2, 3].map(() => [0, 1, 2, 3].map(empty));
+  nearSeconds = [0, 1, 2, 3].map(() => [0, 0, 0, 0]);
+  targetSeconds = [0, 1, 2, 3].map(() => [0, 0, 0, 0]);
+  pickups: string[][] = [[], [], [], []];
+  private lastHitTick = [0, 1, 2, 3].map(() => [-1, -1, -1, -1]);
+
+  hit(attacker: number, victim: number, damage: number, weapon: string, distance: number, fromBehind: boolean, tick: number) {
+    const s = this.damage[attacker]![victim]!;
+    s.damage += damage;
+    const w = (s.byWeapon[weapon] ??= { hits: 0, damage: 0 });
+    w.damage += damage;
+    if (this.lastHitTick[attacker]![victim] === tick) return;
+    this.lastHitTick[attacker]![victim] = tick;
+    s.hits++;
+    w.hits++;
+    if (fromBehind) s.fromBehind++;
+    s.byRange[rangeOf(distance)]++;
+  }
+
+  sample(positions: ({ x: number; y: number } | null)[], targets: number[]) {
+    const dt = SAMPLE_TICKS / 60;
+    for (let i = 0; i < 4; i++) {
+      const a = positions[i];
+      if (!a) continue;
+      const t = targets[i]!;
+      if (t >= 0 && t !== i) this.targetSeconds[i]![t]! += dt;
+      for (let j = i + 1; j < 4; j++) {
+        const b = positions[j];
+        if (!b) continue;
+        if (Math.hypot(a.x - b.x, a.y - b.y) < NEAR_M) {
+          this.nearSeconds[i]![j]! += dt;
+          this.nearSeconds[j]![i]! += dt;
+        }
+      }
+    }
+  }
+
+  finish(kos: RoundStats["kos"], names: string[] = CHARACTERS.map((c) => c.name)): RoundStats {
+    const st: RoundStats = { damage: this.damage, nearSeconds: this.nearSeconds, targetSeconds: this.targetSeconds, pickups: this.pickups, kos, summary: [] };
+    st.summary = [0, 1, 2, 3].map((i) => summarize(st, i, names));
+    return st;
+  }
+}
+
+const WEAPON_WORD: Record<string, string> = {
+  rocket: "the rocket",
+  shotgun: "the shotgun",
+  bat: "the bat",
+  grenade: "grenades",
+  grapple: "the hook",
+  barrel: "barrels",
+  tnt: "TNT",
+  gas: "a gas can",
+  impact: "walls",
+  crush: "falling junk",
+};
+
+function mainKey<T extends string>(rec: Record<T, number>): T | null {
+  let best: T | null = null;
+  for (const k of Object.keys(rec) as T[]) if (rec[k]! > 0 && (best === null || rec[k]! > rec[best]!)) best = k;
+  return best;
+}
+
+/** The headline about the fighter who hurt `me` most. */
+export function attackerLine(st: RoundStats, me: number, names: string[]): string | null {
+  let worst = -1;
+  for (let a = 0; a < 4; a++) if (a !== me && st.damage[a]![me]!.damage > (worst >= 0 ? st.damage[worst]![me]!.damage : 0)) worst = a;
+  if (worst < 0) return null;
+  const s = st.damage[worst]![me]!;
+  if (s.damage < 8) return null;
+  const weapons: Record<string, number> = {};
+  for (const [w, v] of Object.entries(s.byWeapon)) weapons[w] = v.damage;
+  const w = mainKey(weapons);
+  const r = mainKey(s.byRange);
+  const behind = s.hits > 0 && s.fromBehind * 2 >= s.hits ? " from behind" : "";
+  const chased = st.targetSeconds[me]![worst]!;
+  const total = st.targetSeconds[me]!.reduce((a, b) => a + b, 0);
+  const ignored = total > 4 && chased / total < 0.2 ? `, and you never turned on ${names[worst]}` : "";
+  return `${names[worst]} hit you ${s.hits} time${s.hits === 1 ? "" : "s"}${behind}${w ? ` with ${WEAPON_WORD[w] ?? w}` : ""}${r ? ` at ${r} range` : ""}, ${Math.round(s.damage)} damage${ignored}.`;
+}
+
+export function summarize(st: RoundStats, me: number, names: string[]): string {
+  const parts: string[] = [];
+  const tgt = st.targetSeconds[me]!;
+  const total = tgt.reduce((a, b) => a + b, 0);
+  let main = -1;
+  for (let j = 0; j < 4; j++) if (j !== me && (main < 0 || tgt[j]! > tgt[main]!)) main = j;
+  if (main >= 0 && total > 3) {
+    const dealt = st.damage[me]![main]!.damage;
+    const share = tgt[main]! / total;
+    const how = share > 0.7 ? "all round" : share > 0.45 ? "most of the round" : "for a while";
+    parts.push(dealt < 1 ? `You chased ${names[main]} ${how} and never landed a hit.` : `You went after ${names[main]} ${how} and dealt ${Math.round(dealt)} damage.`);
+  }
+  const hurt = attackerLine(st, me, names);
+  if (hurt) parts.push(hurt);
+  const ko = st.kos.find((k) => k.victim === me);
+  if (ko) {
+    const how = ko.cause === "ringout" ? "rung out" : "knocked out";
+    const by = ko.by >= 0 && ko.by !== me ? ` by ${names[ko.by]}${ko.weapon && WEAPON_WORD[ko.weapon] ? ` with ${WEAPON_WORD[ko.weapon]}` : ""}` : ko.weapon === "fall" ? " (you fell)" : "";
+    parts.push(`You were ${how}${by}.`);
+  }
+  const mine = st.kos.filter((k) => k.by === me && k.victim !== me);
+  if (mine.length) parts.push(`You knocked out ${mine.map((k) => names[k.victim]).join(" and ")}.`);
+  if (st.pickups[me]!.length) parts.push(`You picked up ${st.pickups[me]!.join(", ")}.`);
+  return parts.join(" ") || "A quiet round for you.";
+}

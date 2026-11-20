@@ -187,7 +187,20 @@ export function houseStrategy(ctx: DecideContext): Strategy {
       break;
   }
   if (ch.personality === "sniper" && m.state === "furious") loadout = ["rocket", "grapple"];
-  return { target, grudge, stance, loadout, line: "" };
+  // retaliation: the hothead switches to whoever jumps him; everyone else turns and fights back
+  let retaliate: Strategy["retaliate"] = ch.personality === "aggressive" ? "attacker" : "turn";
+  const st = ctx.last?.stats;
+  if (st) {
+    // learned from last round: someone I ignored hurt me badly
+    for (let a = 0; a < 4; a++) {
+      if (a === ctx.me) continue;
+      const dealt = st.damage[a]![ctx.me]!.damage;
+      const chased = st.targetSeconds[ctx.me]![a]!;
+      const total = st.targetSeconds[ctx.me]!.reduce((x, y) => x + y, 0);
+      if (dealt >= 35 && (total === 0 || chased / total < 0.2)) retaliate = "attacker";
+    }
+  }
+  return { target, grudge, stance, loadout, retaliate, line: "" };
 }
 
 export const houseBrain: Brain = (ctx) => {

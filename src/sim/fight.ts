@@ -12,6 +12,7 @@ import { AIM_NOISE, Controller } from "./controller";
 import type { LevelDef } from "./levelgen";
 import { MORALE_EFFECT, type FighterRoundFacts, type HumiliationKind, type MoraleState, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
+import { SAMPLE_TICKS, StatsCollector } from "./roundstats";
 import { NO_INPUT, Sim, type SimEvent, type Strategy } from "./sim";
 
 export interface FightOptions {
@@ -62,6 +63,7 @@ export class Fight {
   private crushed = [0, 0, 0, 0];
   private biggest: RoundFacts["biggestHit"] = null;
   private chains = 0;
+  readonly stats = new StatsCollector();
   /** Optional event sink (the viewer and stats use it). */
   onEvent: ((e: SimEvent) => void) | null = null;
 
@@ -93,6 +95,11 @@ export class Fight {
     sim.step(inputs);
     this.drain();
     if (sim.tick % CHECKPOINT_TICKS === 0) this.record.checkpoints.push(sim.hash());
+    if (sim.tick % SAMPLE_TICKS === 0)
+      this.stats.sample(
+        sim.fighters.map((f) => (f.alive && !f.removed ? sim.pos(f) : null)),
+        this.controllers.map((c, i) => (sim.fighters[i]!.alive ? c.targetId : -1)),
+      );
     if (this.finishLeft < 0 && sim.alive().length <= 1) this.finishLeft = FINISH_TICKS;
     if (this.finishLeft > 0) this.finishLeft--;
     if (this.finishLeft === 0 || sim.tick >= FIGHT_TICKS) {
@@ -117,7 +124,20 @@ export class Fight {
     if (evs.length === 0) return;
     for (const e of evs) {
       if (e.type === "ko") this.koLog.push({ fighter: e.fighter, by: e.by, cause: e.cause, weapon: e.weapon, tick: e.tick });
+      else if (e.type === "pickup") this.stats.pickups[e.fighter]!.push(e.item);
       else if (e.type === "hit") {
+        if (e.source >= 0 && e.source !== e.target) {
+          const a = this.sim.fighters[e.source]!;
+          const v = this.sim.fighters[e.target]!;
+          if (!a.removed && !v.removed) {
+            const ap = this.sim.pos(a);
+            const vp = this.sim.pos(v);
+            const behind = v.facing * (ap.x - vp.x) < 0;
+            const dist = Math.sqrt((ap.x - vp.x) * (ap.x - vp.x) + (ap.y - vp.y) * (ap.y - vp.y));
+            this.stats.hit(e.source, e.target, e.damage, e.cause, dist, behind, e.tick);
+            this.controllers[e.target]!.onHit(e.source, behind, e.damage, e.tick);
+          }
+        }
         if (e.source === e.target && (e.cause === "rocket" || e.cause === "grenade")) this.selfHit[e.target]! += e.damage;
         if (e.cause === "crush") this.crushed[e.target]! += e.damage;
         if (e.source >= 0 && e.source !== e.target && (!this.biggest || e.kb > this.biggest.kb)) this.biggest = { by: e.source, target: e.target, kb: e.kb, weapon: e.cause };
@@ -161,6 +181,7 @@ export class Fight {
       chainReactions: this.chains,
       platformsFallen: sim.stats.platformsFallen,
       biggestHit: this.biggest,
+      stats: this.stats.finish(this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause }))),
     };
   }
 

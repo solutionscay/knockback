@@ -90,6 +90,16 @@ export const WEAPONS = {
   },
 } as const;
 
+/**
+ * Back-attack reflex (house bots and AI fighters alike): being hit this many
+ * times from behind by someone who is not your target, within the window,
+ * makes you turn. Then the strategy's retaliate rule decides:
+ *   ignore    glance back (aim at them) for glanceTicks, keep moving to your target
+ *   turn      fight them for fightTicks, then resume (the default)
+ *   attacker  make them your target for switchTicks
+ */
+export const REFLEX = { windowTicks: 240, hits: 3, glanceTicks: 50, fightTicks: 180, switchTicks: 600 };
+
 /** Ticks to swap weapons (no firing meanwhile). */
 export const SWAP_TICKS = 10;
 
