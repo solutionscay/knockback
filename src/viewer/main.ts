@@ -147,9 +147,10 @@ if (params.has("live")) {
       game.newMatch(Number(msg.seed) >>> 0, { live: true, ruleset, souls: sanitizeSouls(msg.souls), identities: sanitizeIdentities(msg.identities), labels: viewerLabels(msg.labels) });
     } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta, msg.checkinTicks);
     else if (msg.type === "control") game.pushControl(msg); // an agent dropped or came back (#22)
-    else if (msg.type === "checkin") game.pushCheckin(msg.round, msg.tick, msg.leadTicks); // a mid-round check-in opened (#9)
+    else if (msg.type === "checkin") game.pushCheckin(msg.round, msg.tick, msg.seats); // a mid-round check-in opened (#9)
     else if (msg.type === "planUpdate") game.pushPlanUpdate(msg.round, msg.update); // ...and an answer changed a plan (#8)
-    else if (msg.type === "checkinEnd") game.pushCheckinEnd(msg.round, msg.tick);
+    else if (msg.type === "checkinEnd") game.pushCheckinEnd(msg.round, msg.tick, msg.seat);
+    else if (msg.type === "fightTick") game.pushFightTick(msg.round, msg.tick, msg.leadTicks); // how far the server's sim is
     else if (msg.type === "checkinsDone") game.pushCheckinsDone(msg.round);
     else if (msg.type === "done") {
       lastRecord = isRecordUrl(msg.record) ? msg.record : null;

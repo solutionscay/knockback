@@ -73,14 +73,19 @@ export class Game {
   /** live: plan updates (#8) for rounds not prepared yet */
   private liveUpdates = new Map<number, PlanUpdate[]>();
   /**
-   * live: the check-ins of each round that are not over yet (#9), by round,
-   * then tick; `at` is set when the check-in opened. The fight never runs past
-   * the earliest tick an answer could still apply at: before a check-in opens,
-   * its tick + 1 s (the minimum delay); once open, its tick + the time since
-   * it opened + the server's lead. So an update never arrives for a tick
-   * already shown, even for a viewer ahead of the server's pacing estimate.
+   * live: each round's check-in state (#9): its schedule, the seats whose
+   * check-in is open ("tick:seat"), and the server's last fightTick (the tick
+   * its sim has reached; no update applies before it + lead). The fight never
+   * runs past the earliest tick an update could still apply at:
+   *   - a check-in open: server tick + lead (an answer applies at the tick it
+   *     arrived at on the server + lead);
+   *   - none open: the next scheduled check-in + 1 s (the minimum delay).
+   * Viewers behind the server's pacing estimate (the normal case) never hold;
+   * one ahead of it (skipped dialogue, a fast clock) waits there. A slow
+   * answer never stalls the fight: the server keeps going and stamps it with
+   * the tick it has reached.
    */
-  private checkins = new Map<number, Map<number, { leadTicks: number; at: number | null }>>();
+  private checkins = new Map<number, { schedule: number[]; open: Set<string>; server: number; lead: number }>();
   /** live: seconds the fight was held waiting for a check-in (diagnostics) */
   heldSeconds = 0;
   /** sound (#12): set by main.ts; reads what the viewer shows, never the sim's state */
@@ -228,24 +233,32 @@ export class Game {
   pushDecisions(round: number, decisions: Decision[], meta: DecisionMeta[], checkinTicks?: unknown) {
     // the round's check-in schedule (#9): hold at each tick until the server has asked
     if (Array.isArray(checkinTicks) && !this.checkins.has(round))
-      this.checkins.set(round, new Map(checkinTicks.filter((t): t is number => Number.isInteger(t) && t > 0 && t < 1e5).slice(0, 20).map((t) => [t, { leadTicks: 0, at: null }])));
+      this.checkins.set(round, { schedule: checkinTicks.filter((t): t is number => Number.isInteger(t) && t > 0 && t < 1e5).slice(0, 20).sort((a, b) => a - b), open: new Set(), server: 0, lead: 0 });
     decisions = [0, 1, 2, 3].map((i) => sanitizeDecision(decisions?.[i], i));
     meta = (Array.isArray(meta) ? meta : []).slice(0, 4).map((m) => ({ ...m, provider: String(m?.provider ?? "?").slice(0, 80), ms: Number(m?.ms) || 0 }));
     this.liveQueue.set(round, { decisions, meta });
     if (this.waitingRound === round) this.startLiveRound(round);
   }
 
-  /** Live: a mid-round check-in opened (#9). */
-  pushCheckin(round: number, tick: number, leadTicks: number) {
-    if (!Number.isInteger(round) || !Number.isInteger(tick)) return;
-    const sched = this.checkins.get(round) ?? new Map();
-    sched.set(tick, { leadTicks: Number.isInteger(leadTicks) ? Math.max(0, Math.min(600, leadTicks)) : 0, at: this.clock });
-    this.checkins.set(round, sched);
+  /** Live: a mid-round check-in opened for these seats (#9). */
+  pushCheckin(round: number, tick: number, seats: unknown) {
+    const c = this.checkins.get(round);
+    if (!c || !Number.isInteger(tick) || !Array.isArray(seats)) return;
+    for (const seat of seats.slice(0, 4)) if (Number.isInteger(seat)) c.open.add(`${tick}:${seat}`);
+    c.server = Math.max(c.server, tick);
   }
 
-  /** Live: a check-in closed; no more updates from it. */
-  pushCheckinEnd(round: number, tick: number) {
-    this.checkins.get(round)?.delete(tick);
+  /** Live: a seat's check-in closed; no more updates from it. */
+  pushCheckinEnd(round: number, tick: number, seat: number) {
+    this.checkins.get(round)?.open.delete(`${tick}:${seat}`);
+  }
+
+  /** Live: the server's sim reached `tick`; no update will apply before tick + leadTicks. */
+  pushFightTick(round: number, tick: number, leadTicks: number) {
+    const c = this.checkins.get(round);
+    if (!c || !Number.isInteger(tick)) return;
+    c.server = Math.max(c.server, tick);
+    c.lead = Number.isInteger(leadTicks) ? Math.max(0, Math.min(600, leadTicks)) : 0;
   }
 
   /** Live: no more check-ins this round. */
@@ -274,13 +287,13 @@ export class Game {
 
   /** The last tick the live fight may show now (Infinity when this round has no check-in still to come). */
   private liveGate(): number {
-    let gate = Infinity;
-    for (const [tick, c] of this.checkins.get(this.match.round) ?? []) {
-      // an answer applies at tick + max(1 s, its latency + lead); keep 10 ticks of margin for the stream
-      const after = c.at === null ? 60 : Math.max(60, Math.floor((this.clock - c.at) * 60) + c.leadTicks);
-      gate = Math.min(gate, tick + after - 10);
-    }
-    return gate;
+    const c = this.checkins.get(this.match.round);
+    if (!c) return Infinity;
+    // 10 ticks of margin for the stream
+    const afterServer = c.server + c.lead - 10;
+    if (c.open.size) return afterServer;
+    const next = c.schedule.find((t) => t > c.server);
+    return next === undefined ? afterServer : Math.max(afterServer, next + 60 - 10);
   }
 
   private startLiveRound(round: number) {
