@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { RULE_RETALIATE, RULE_STANCES } from "../src/sim/rules";
+import { PICKUPS, RULE_RETALIATE, RULE_STANCES } from "../src/sim/rules";
 import { RULE_DO, RULE_WHEN, WEAPON_LIST } from "../src/sim/sim-types";
 import { LobbyQueue } from "../src/server/lobby-queue";
 import { MatchServer } from "../src/server/match-server";
@@ -87,6 +87,9 @@ describe("MCP tools", () => {
     expect(st.retaliate.enum).toEqual([...RULE_RETALIATE]);
     expect(st.rules.items.properties.when.enum).toEqual([...RULE_WHEN]);
     expect(st.rules.items.properties.do.enum).toEqual([...RULE_DO]);
+    expect(st.rules.items.properties.item.enum).toEqual([...PICKUPS]);
+    expect(st.rules.items.properties.do_item.enum).toContain("jetpack");
+    expect(st.weapons.items.enum).not.toContain("jetpack");
     expect(submit.description).toContain("Example call: submit_plan(");
     expect(tools.find((t) => t.name === "wait_for_turn")!.description).toContain("call wait_for_turn again");
     gw.close();

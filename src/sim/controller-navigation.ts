@@ -1,4 +1,4 @@
-import { FIGHTER } from "./constants";
+import { FIGHTER, POWER } from "./constants";
 import type { Controller } from "./controller";
 import { PATIENCE, PICKUP } from "./controller-tuning";
 import type { Link, Surface } from "./nav";
@@ -74,6 +74,7 @@ export class ControllerNavigation {
       for (const it of sim.items()) {
         if ((this.skipItems.get(it.id) ?? -1) > sim.tick) continue;
         const type = it.itemType!;
+        if (type === "jetpack" && me.power.jetpack > POWER.jetpack.fuelTicks / 2) continue;
         const sought = seeking.indexOf(type);
         const isWeapon = !(POWER_LIST as readonly string[]).includes(type);
         let limit: number;
@@ -88,7 +89,8 @@ export class ControllerNavigation {
           const rank = me.prefs.indexOf(type as Weapon);
           extra = Math.max(0, rank) * PICKUP.rankCost;
           limit = !armed ? PICKUP.unarmedLimit : stance === "item" ? PICKUP.itemStanceLimit : PICKUP.upgradeLimit;
-        } else if (stance === "item") limit = PICKUP.itemStanceLimit;
+        } else if (type === "jetpack") limit = PICKUP.jetpackLimit;
+        else if (stance === "item") limit = PICKUP.itemStanceLimit;
         else if (type === "health" && me.hp < PICKUP.healthBelowHp) limit = PICKUP.healthLimit;
         else continue;
         const t = it.body.translation();

@@ -7,6 +7,7 @@
  * strategy is never changed, so it comes back when a rule stops.
  */
 import type { Controller } from "./controller";
+import { isPickupWeapon } from "./sim-types";
 import type { Fighter, ItemType, Retaliate, Rule, Sim, Stance, Weapon } from "./sim";
 
 /**
@@ -57,7 +58,7 @@ export class RuleEngine {
     const pos = (f: Fighter) => sim.pos(f);
     switch (r.when) {
       case "holds":
-        return this.some(cand().filter((f) => f.weapons.includes(r.item as Weapon)));
+        return this.some(cand().filter((f) => r.item === "jetpack" ? f.power.jetpack > 0 : f.weapons.includes(r.item as Weapon)));
       case "my_health_below":
         return { on: me.hp < r.value!, who: [] };
       case "health_below":
@@ -170,8 +171,9 @@ export class RuleEngine {
     return this.first(["stance"])?.rule.stance ?? null;
   }
 
-  use(): Weapon | null {
-    return (this.first(["use"])?.rule.doItem as Weapon | undefined) ?? null;
+  use(): Weapon | "jetpack" | null {
+    const item = this.first(["use"])?.rule.doItem;
+    return item === "jetpack" || isPickupWeapon(item) ? item : null;
   }
 
   retaliate(): Retaliate | null {

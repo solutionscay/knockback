@@ -7,6 +7,7 @@
 import { length2D } from "./dmath";
 import { REFLEX } from "./constants";
 import { aimAndFire, inReach, sightTarget } from "./controller-aim";
+import { JetpackPilot } from "./controller-jetpack";
 import { ControllerNavigation } from "./controller-navigation";
 import { PATIENCE } from "./controller-tuning";
 import { attackWall, WallPursuit, WALL_PURSUIT } from "./controller-wall";
@@ -46,6 +47,7 @@ export class Controller {
   private noReach = 0;
   private readonly wallPursuit = new WallPursuit();
   private wallRoute = 0;
+  private readonly jetpack = new JetpackPilot();
 
   get goal() {
     return this.navigation.goal;
@@ -211,7 +213,7 @@ export class Controller {
     const mp = sim.pos(me);
     // an active use rule: that weapon, when it is carried and can reach
     const u = this.rules.use();
-    if (u && has(u) && inReach(u, dist, los)) return u;
+    if (u && u !== "jetpack" && has(u) && inReach(u, dist, los)) return u;
     if (this.blocked(dist)) {
       // a wall between us: lob over it, or break through it
       if (has("grenade")) return "grenade";
@@ -290,7 +292,8 @@ export class Controller {
       this.reflex = null;
     }
     const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= WALL_PURSUIT.routeTicks, flank);
-    if (wall && wallTicks >= WALL_PURSUIT.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
+    const flying = this.jetpack.steer(sim, me, target, mp, mv, input, this.stanceNow(sim) === "rush", this.rules.use() === "jetpack");
+    if (!flying && wall && wallTicks >= WALL_PURSUIT.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
 
     const sight = sightTarget(sim, me, aimTarget, mp);
     const { dx0, dy0, dist, los } = sight;
@@ -305,7 +308,7 @@ export class Controller {
       this.noReach = 0;
     }
     // digging out: hit the wall between us and the goal
-    if (this.navigation.dig && sim.tick < this.navigation.dig.until) {
+    if (!flying && this.navigation.dig && sim.tick < this.navigation.dig.until) {
       const dir = this.navigation.dig.dir;
       const wall = sim.raycast(mp.x, mp.y + 0.1, dir, 0, 1.6, me.entity.collider);
       if (wall && (wall.terrain || (wall.entity && wall.entity.kind !== "fighter" && wall.entity.kind !== "item"))) {
@@ -322,7 +325,7 @@ export class Controller {
     } else if (this.navigation.dig) this.navigation.dig = null;
     // breach: parked with a wall or floor between us and the target - go through it
     const breach = this.noLos > PATIENCE.breachAfter && Math.abs(mv.x) < 0.8;
-    if (!flank && (breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
+    if (!flying && !flank && (breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
       const has = (w: Weapon) => me.weapons.includes(w);
       const w: Weapon = dist < 1.3 && !has("bat") && !has("shotgun") ? "fist" : has("bat") && dist < 2.8 ? "bat" : has("shotgun") && dist < 7 ? "shotgun" : has("rocket") && dist >= 2 ? "rocket" : has("grenade") ? "grenade" : has("bat") ? "bat" : "fist";
       input.weapon = w;

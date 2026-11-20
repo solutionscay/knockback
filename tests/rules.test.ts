@@ -126,7 +126,7 @@ describe("stored rules and records (#5)", () => {
     expect(m.record.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     expect(sanitizeRecord(JSON.parse(JSON.stringify(m.record)))!.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     // The older schema still loads, replays to its recorded hashes and preserves identities. The fixture's engine
-    // outputs (hashes, checkpoints, ticks, winners) are re-recorded whenever the physics changes (#28, #29, #34);
+    // outputs (hashes, checkpoints, ticks, winners) are re-recorded whenever the physics changes (including #31 and #34);
     // its inputs (seed, souls, strategies, lines) stay as they were.
     const rec = JSON.parse(readFileSync(`${import.meta.dir}/fixtures/record-v2-match-1001.json`, "utf8"));
     expect(rec.version).toBe(2);

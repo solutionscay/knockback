@@ -175,7 +175,7 @@ export function rulesSection(examples: string[]): string {
   return [
     "RULES (optional, at most 4, first = highest priority): conditions the engine checks during the round; a rule acts while its trigger holds (at least 1 s). A rule that never fires does nothing.",
     'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two)',
-    'who: anyone | enemy | target | a name. do (+ its key): target (go for that fighter) | avoid (keep away) | seek item | use item (a weapon) | stance "stance": rush/distance/cover/item | retaliate "retaliate": attacker/turn/ignore. target/avoid need a trigger about a fighter; after holds or item_near give the action\'s item as "do_item".',
+    'who: anyone | enemy | target | a name. do (+ its key): target (go for that fighter) | avoid (keep away) | seek item | use item (weapon or jetpack) | stance "stance": rush/distance/cover/item | retaliate "retaliate": attacker/turn/ignore. target/avoid need a trigger about a fighter; after holds or item_near give the action\'s item as "do_item".',
     `Examples: ${examples.join(" ")}`,
   ].join("\n");
 }
@@ -262,6 +262,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       .map(([w, h]) => `${w} (${h})`)
       .join(", ")}; you grab the nearest one you want, and you fight with whatever you hold. Change your weapons if last round's pickups or knockouts say so. ` +
       `target = a fighter's name, or nearest | weakest | strongest | leader. ` +
+      `jetpack is a pickup with limited fuel for climbing, escaping and chasing. In rules, seek or use it as "jetpack", and check rivals with holds. ` +
       `stance = rush | distance | cover | item (detour for every pickup and power-up). ` +
       `retaliate = what you do when a fighter you are not chasing hits you from behind 3 times (default turn): attacker = chase that fighter for 10 s; for one rival who keeps hitting you. turn = fight back for 3 s, then resume; for hits that matter less than your target. ignore = glance back, stay on target; for a target that is almost down. ` +
       `why = one short sentence in game terms, not in character, under 100 characters: why this plan. ` +

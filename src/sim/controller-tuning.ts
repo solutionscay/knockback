@@ -21,4 +21,4 @@ export const PATIENCE = { calmTicks: 330, peekEvery: 240, peekFor: 90, stuckTick
  * for any weapon; armed ones detour only for a better one, or for anything
  * when their stance is "item".
  */
-export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, giveUpTicks: 100, skipTicks: 420, seekLimit: 60 };
+export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, jetpackLimit: 11, giveUpTicks: 100, skipTicks: 420, seekLimit: 60 };

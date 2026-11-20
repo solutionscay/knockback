@@ -34,7 +34,7 @@ The `rules` key is optional. Plans without rules work as before.
 - `target`: my current target;
 - a fighter's name, which is stored as that fighter's seat number. A name can't be your own.
 
-**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`.
+**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`, `jetpack`. The `holds` trigger also accepts `jetpack` and checks whether the fighter has fuel.
 
 ## Actions (`do`)
 
@@ -43,7 +43,7 @@ The `rules` key is optional. Plans without rules work as before.
 | `target` | none | target the fighter that made the trigger true (the closest one if more than one does) |
 | `avoid` | none | keep away from that fighter (distance stance relative to it); never target it |
 | `seek` | `item` (a pickup) | go for the item (the pickup hunt with a high limit) |
-| `use` | `item` (a weapon) | prefer this weapon in hand when it's carried |
+| `use` | `item` (a weapon or jetpack) | prefer the weapon when carried, or make the fighter more willing to spend jetpack fuel on a climb or chase |
 | `stance` | `stance`: rush, distance, cover or item | play that stance |
 | `retaliate` | `retaliate`: attacker, turn or ignore | use that retaliate setting |
 
