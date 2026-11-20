@@ -1,6 +1,7 @@
 /** Untrusted input (record files, the live stream) -> safe decisions and souls. Pure: no DOM, no Pixi. */
 import type { MatchRecord } from "../sim/match";
-import type { Strategy } from "../sim/sim";
+import { checkRule, MAX_RULE_LABEL } from "../sim/rules";
+import { MAX_RULES, type Rule, type Strategy } from "../sim/sim";
 import { SEAT_COLORS, type LineTemplate, type Soul } from "../sim/soul";
 import type { Decision } from "../sim/voice";
 
@@ -36,8 +37,33 @@ export function sanitizeDecision(d: unknown, fighter: number): Decision {
     retaliate: oneOf<NonNullable<Strategy["retaliate"]>>(s.retaliate, SAFE_RETALIATE, "turn"),
     line: "",
   };
+  const rules = sanitizeRules(s.rules, fighter);
+  if (rules.length) strategy.rules = rules;
   const line = str(o.line, 200);
   return { line, strategy: { ...strategy, line } };
+}
+
+/** Stored rules from a record or the stream: only rules that pass the same checks as the AI parser (#5). */
+export function sanitizeRules(v: unknown, fighter: number): Rule[] {
+  if (!Array.isArray(v)) return [];
+  const out: Rule[] = [];
+  for (const raw of v.slice(0, MAX_RULES)) {
+    if (!raw || typeof raw !== "object") continue;
+    const o = raw as Record<string, unknown>;
+    const r = {
+      when: o.when,
+      do: o.do,
+      ...(o.who !== undefined ? { who: o.who } : {}),
+      ...(o.item !== undefined ? { item: o.item } : {}),
+      ...(o.value !== undefined ? { value: o.value } : {}),
+      ...(o.doItem !== undefined ? { doItem: o.doItem } : {}),
+      ...(o.stance !== undefined ? { stance: o.stance } : {}),
+      ...(o.retaliate !== undefined ? { retaliate: o.retaliate } : {}),
+      label: typeof o.label === "string" ? o.label.slice(0, MAX_RULE_LABEL) : "",
+    } as Rule;
+    if (!checkRule(r, fighter)) out.push(r);
+  }
+  return out;
 }
 
 /** A soul from a record or the stream: known values only, strings clipped. */
@@ -75,17 +101,17 @@ export function sanitizeSouls(v: unknown): Soul[] | undefined {
 /** Sanitize a whole match record (replay files are untrusted). */
 export function sanitizeRecord(rec: unknown): MatchRecord | null {
   const r = rec as MatchRecord;
-  if (!r || typeof r !== "object" || !Number.isFinite(r.seed) || !Array.isArray(r.rounds) || r.rounds.length > 3) return null;
+  if (!r || typeof r !== "object" || !Number.isFinite(r.seed) || !Array.isArray(r.rounds) || r.rounds.length > 3 || (r.version !== 2 && r.version !== 3)) return null;
   const souls = sanitizeSouls(r.souls);
   if (!souls) return null;
   return {
     ...r,
-    version: 2,
+    version: r.version === 3 ? 3 : 2,
     seed: Number(r.seed) >>> 0,
     souls,
     rounds: r.rounds.map((rd) => {
       const ds = [0, 1, 2, 3].map((i) => sanitizeDecision({ line: rd.lines?.[i], strategy: rd.strategies?.[i] }, i));
-      const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
+      const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
       return { ...rd, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}) };
     }),
   };

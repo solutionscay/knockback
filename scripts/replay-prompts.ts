@@ -6,7 +6,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { buildPrompt } from "../src/ai/prompt";
-import { initPhysics, Match, type MatchRecord } from "../src/sim";
+import { checkRecordVersion, initPhysics, Match, type MatchRecord } from "../src/sim";
 
 const args = process.argv.slice(2);
 const file = args[0];
@@ -16,8 +16,10 @@ if (!file) {
 }
 await initPhysics();
 const rec = JSON.parse(await Bun.file(file).text()) as MatchRecord;
-if (rec.version !== 2 || !Array.isArray(rec.souls)) {
-  console.error(`${file}: not a version 2 match record (older records have no souls; they can't be rebuilt)`);
+try {
+  checkRecordVersion(rec);
+} catch (e) {
+  console.error(`${file}: ${e instanceof Error ? e.message : e}`);
   process.exit(1);
 }
 const m = new Match(rec.seed, { recorded: rec });

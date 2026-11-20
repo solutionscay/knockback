@@ -109,7 +109,17 @@ if (params.has("live")) {
   game.onNeedNewMatch = () => location.reload();
   const raw = await (await fetch(recordUrl)).json();
   const rec = sanitizeRecord(raw);
-  if (!rec) throw new Error("not a Knockback match record");
+  if (!rec) {
+    // refuse clearly, on screen
+    const why = raw && typeof raw === "object" && "version" in raw && raw.version !== 2 && raw.version !== 3 ? `record version ${JSON.stringify(raw.version)}; this viewer replays versions 2 and 3` : "not a Knockback match record";
+    seedEl.textContent = `can't replay: ${why}`;
+    const box = document.createElement("div");
+    box.id = "refused";
+    box.textContent = `Can't replay this record: ${why}.`;
+    box.style.cssText = "position:absolute;inset:40% 10% auto;text-align:center;font:600 3vh system-ui;color:#ffb347;background:#0b0d14cc;padding:3vh;border-radius:1vh";
+    document.body.appendChild(box);
+    throw new Error(`can't replay: ${why}`);
+  }
   const labels = Array.isArray(raw.labels) ? raw.labels.slice(0, 4).map((l: unknown) => String(l).slice(0, 40)) : undefined;
   seedEl.textContent = `seed ${rec.seed} · replay`;
   game.newMatch(rec.seed, { recorded: rec, labels });

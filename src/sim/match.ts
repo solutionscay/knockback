@@ -38,6 +38,8 @@ export interface DecisionMeta {
   why?: string;
   /** the line accuses someone in a way last round's facts don't support (#4; logged, never rejected) */
   factWarnings?: string[];
+  /** rules the parser dropped, and why (#5; the plan stays valid) */
+  ruleProblems?: string[];
 }
 
 export interface RoundRecord {
@@ -52,7 +54,8 @@ export interface RoundRecord {
 }
 
 export interface MatchRecord {
-  version: 2;
+  /** 3: plans may carry rules (#5). Version 2 records (no rules) still load. */
+  version: 2 | 3;
   /** the souls that played (identity, voice, lines): a replay needs no files */
   souls: Soul[];
   /** match seed: makes the level; round physics seeds derive from it */
@@ -118,6 +121,7 @@ export class Match {
     readonly opts: MatchOptions = {},
   ) {
     this.level = generateLevel(seed);
+    if (opts.recorded) checkRecordVersion(opts.recorded);
     this.souls = (opts.recorded?.souls ?? opts.souls ?? exampleSouls()).map(soulRecord);
     if (this.souls.length !== 4) throw new Error("a match needs 4 souls");
     this.brains = opts.brains ?? this.souls.map(() => houseBrain);
@@ -125,7 +129,7 @@ export class Match {
     this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]));
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { version: 2, seed, souls: this.souls.map(soulRecord), rounds: [], winner: -1, wins: this.wins };
+    this.record = { version: 3, seed, souls: this.souls.map(soulRecord), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
@@ -250,6 +254,13 @@ export class Match {
 }
 
 /** Replay a whole match from its record (recorded decisions, same seeds). */
+/** Match record versions this engine loads; anything else is refused with a clear message. */
+export const RECORD_VERSIONS = [2, 3] as const;
+export function checkRecordVersion(rec: { version?: unknown; souls?: unknown }) {
+  if (!(RECORD_VERSIONS as readonly unknown[]).includes(rec.version) || !Array.isArray(rec.souls))
+    throw new Error(`can't load this match record: version ${JSON.stringify(rec.version)}${Array.isArray(rec.souls) ? "" : " without souls"}; this engine loads versions ${RECORD_VERSIONS.join(" and ")} (version 1 records come from the classes engine)`);
+}
+
 export function replayMatch(record: MatchRecord): Match {
   const m = new Match(record.seed, { recorded: record });
   m.playToEnd();

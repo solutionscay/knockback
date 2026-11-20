@@ -4,7 +4,8 @@
  * choices. The plan and the line are judged separately, so a good line can
  * survive a bad plan (and vice versa).
  */
-import type { Retaliate, Stance, Strategy, TargetPref, Weapon } from "../sim/sim";
+import { autoLabel, checkRule, MAX_RULE_LABEL, PICKUPS, ruleKey, WHO_TRIGGERS } from "../sim/rules";
+import { MAX_RULES, RULE_DO, RULE_WHEN, type ItemType, type Retaliate, type Rule, type RuleWho, type Stance, type Strategy, type TargetPref, type Weapon } from "../sim/sim";
 
 const WEAPONS: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple"];
 const STANCES: readonly Stance[] = ["rush", "distance", "cover", "item"];
@@ -58,6 +59,76 @@ export function cleanWhy(v: unknown): string | null {
   return s.length > MAX_WHY ? s.slice(0, MAX_WHY - 1).replace(/\s+\S*$/, "") + "…" : s;
 }
 
+const ITEM_ALIAS: Record<string, ItemType> = { ...WEAPON_ALIAS, heal: "health", medkit: "health", hp: "health" };
+function itemOf(v: unknown): ItemType | undefined {
+  if (typeof v !== "string") return undefined;
+  const w = v.toLowerCase().trim();
+  return (PICKUPS as readonly string[]).includes(w) ? (w as ItemType) : ITEM_ALIAS[w];
+}
+
+/**
+ * The "rules" of an AI answer (#5). Each bad rule is dropped on its own,
+ * with a problem; the plan stays valid. More than MAX_RULES: the first ones
+ * are kept. In the AI's JSON, "item" belongs to the trigger for holds and
+ * item_near, and to the action otherwise; "do_item" (or "weapon") names the
+ * action's item when the trigger already uses "item".
+ */
+export function parseRules(raw: unknown, me: number, names: string[]): { rules: Rule[]; problems: string[] } {
+  const problems: string[] = [];
+  if (raw === undefined || raw === null) return { rules: [], problems };
+  if (!Array.isArray(raw)) return { rules: [], problems: [`rules: expected a list, got ${typeof raw}`] };
+  const rules: Rule[] = [];
+  const seen = new Set<string>();
+  raw.forEach((o: unknown, i) => {
+    const tag = `rule ${i + 1}`;
+    if (!o || typeof o !== "object" || Array.isArray(o)) return void problems.push(`${tag}: not an object`);
+    if (rules.length >= MAX_RULES) return void problems.push(`${tag}: more than ${MAX_RULES} rules, dropped`);
+    const x = o as Record<string, unknown>;
+    const when = typeof x.when === "string" ? x.when.toLowerCase().trim() : x.when;
+    const act = typeof x.do === "string" ? x.do.toLowerCase().trim() : x.do;
+    if (!(RULE_WHEN as readonly unknown[]).includes(when)) return void problems.push(`${tag}: unknown trigger ${JSON.stringify(x.when)}`);
+    if (!(RULE_DO as readonly unknown[]).includes(act)) return void problems.push(`${tag}: unknown action ${JSON.stringify(x.do)}`);
+    const r: Omit<Rule, "label"> = { when: when as Rule["when"], do: act as Rule["do"] };
+    if (WHO_TRIGGERS.includes(r.when)) {
+      const w = typeof x.who === "string" ? x.who.toLowerCase().trim() : "";
+      let who: RuleWho | undefined;
+      if (w === "anyone" || w === "enemy" || w === "target") who = w;
+      else if (w === "rival" || w === "anybody" || w === "any") who = w === "rival" ? "enemy" : "anyone";
+      else if (w) {
+        const id = names.findIndex((n) => n.toLowerCase() === w);
+        if (id === me) return void problems.push(`${tag}: "who" can't be yourself`);
+        if (id < 0) return void problems.push(`${tag}: no fighter named ${JSON.stringify(x.who)}`);
+        who = id;
+      }
+      if (who !== undefined) r.who = who;
+    }
+    if (x.value !== undefined) r.value = typeof x.value === "number" ? Math.round(x.value) : typeof x.value === "string" && x.value.trim() !== "" && !Number.isNaN(Number(x.value)) ? Math.round(Number(x.value)) : (NaN as number);
+    const triggerItem = r.when === "holds" || r.when === "item_near";
+    if (triggerItem) {
+      const ti = itemOf(x.item);
+      if (ti) r.item = ti;
+      else if (x.item !== undefined) return void problems.push(`${tag}: unknown item ${JSON.stringify(x.item)}`);
+    }
+    if (r.do === "seek" || r.do === "use") {
+      const src = triggerItem ? (x.do_item ?? x.weapon ?? (r.do === "seek" && r.when === "item_near" ? x.item : undefined)) : (x.item ?? x.do_item ?? x.weapon);
+      const di = itemOf(src);
+      if (di) r.doItem = di;
+      else if (src !== undefined) return void problems.push(`${tag}: unknown item ${JSON.stringify(src)}`);
+    }
+    if (r.do === "stance" && typeof x.stance === "string") r.stance = x.stance.toLowerCase().trim() as Stance;
+    if (r.do === "retaliate" && typeof x.retaliate === "string") r.retaliate = x.retaliate.toLowerCase().trim() as Retaliate;
+    const cl = cleanLine(x.label);
+    const rule: Rule = { ...r, label: cl ? (cl.length > MAX_RULE_LABEL ? cl.slice(0, MAX_RULE_LABEL).trim() : cl) : autoLabel(r, names) };
+    const bad = checkRule(rule, me);
+    if (bad) return void problems.push(`${tag}${cl ? ` ("${rule.label}")` : ""}: ${bad}`);
+    const key = ruleKey(rule);
+    if (seen.has(key)) return void problems.push(`${tag} ("${rule.label}"): duplicate rule, dropped`);
+    seen.add(key);
+    rules.push(rule);
+  });
+  return { rules, problems };
+}
+
 export interface Parsed {
   strategy: Strategy | null;
   line: string | null;
@@ -65,6 +136,8 @@ export interface Parsed {
   problems: string[];
   /** the AI's reason for its plan (optional, never makes a plan invalid) */
   why?: string;
+  /** rules dropped by validation (the plan stays valid) */
+  ruleProblems?: string[];
 }
 
 /**
@@ -113,7 +186,9 @@ export function parseAnswer(text: string, me: number, names: string[]): Parsed {
   for (const o of objs) {
     const v = validatePlan(o, me, names);
     const why = cleanWhy(o.why ?? o.reason);
-    const p: Parsed = { strategy: v.strategy, line: cleanLine(o.line ?? o.say), problems: v.problems, ...(why ? { why } : {}) };
+    const pr = parseRules(o.rules, me, names);
+    if (v.strategy && pr.rules.length) v.strategy.rules = pr.rules;
+    const p: Parsed = { strategy: v.strategy, line: cleanLine(o.line ?? o.say), problems: v.problems, ...(why ? { why } : {}), ...(pr.problems.length ? { ruleProblems: pr.problems } : {}) };
     if (p.strategy && p.line) return p;
     if (!best || (p.strategy && !best.strategy) || (p.line && !best.line)) best = p;
   }

@@ -67,6 +67,39 @@ export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotg
 export type Retaliate = "attacker" | "turn" | "ignore";
 
 /**
+ * Conditional plan rules (#5): data, not code. "When <trigger> (about
+ * <who>), do <action>" for as long as the trigger holds (with hysteresis).
+ * See docs/rules.md. Validated in src/ai/parse.ts (AI answers) and
+ * src/viewer/sanitize.ts (records, live stream); evaluated in controller.ts.
+ */
+export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with"] as const;
+export type RuleWhen = (typeof RULE_WHEN)[number];
+export const RULE_DO = ["target", "avoid", "seek", "use", "stance", "retaliate"] as const;
+export type RuleDo = (typeof RULE_DO)[number];
+/** anyone | enemy (not me) | target (my current target) | a seat number */
+export type RuleWho = "anyone" | "enemy" | "target" | number;
+export const MAX_RULES = 4;
+
+export interface Rule {
+  when: RuleWhen;
+  /** for triggers about a fighter */
+  who?: RuleWho;
+  /** for holds (a weapon) and item_near (any pickup) */
+  item?: ItemType;
+  /** for my_health_below / health_below (10-90 %) and on_streak (1-3 knockouts) */
+  value?: number;
+  do: RuleDo;
+  /** for seek (any pickup) and use (a weapon) */
+  doItem?: ItemType;
+  /** for do: stance */
+  stance?: Stance;
+  /** for do: retaliate */
+  retaliate?: Retaliate;
+  /** short name (at most 40 characters) */
+  label: string;
+}
+
+/**
  * A fighter's orders for one round, chosen before it (house bot or AI).
  * Nobody is handed weapons: `weapons` is which pickups to go for and use,
  * best first. `line` is what it says before the round.
@@ -78,6 +111,8 @@ export interface Strategy {
   grudge?: number;
   stance: Stance;
   weapons: Weapon[];
+  /** conditional rules, highest priority first (at most MAX_RULES; optional) */
+  rules?: Rule[];
   line: string;
 }
 
