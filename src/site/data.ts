@@ -155,7 +155,10 @@ export interface JoinStatus {
 export function joinStatus(ms: MatchInfo[], name: string, since = ""): JoinStatus {
   const want = name.trim().toLowerCase();
   if (!want) return { state: "waiting" };
-  const mine = ms.filter((m) => m.createdAt >= since && m.seats.some((s) => s.agent?.toLowerCase() === want)).sort(newest)[0];
+  const has = (m: MatchInfo) => m.seats.some((s) => s.agent?.toLowerCase() === want);
+  // a seat in an open or running match always counts; a finished match only when it is newer than `since`
+  // (the same name may have played before the panel was opened)
+  const mine = ms.filter((m) => has(m) && (m.status === "open" || m.status === "running")).sort(newest)[0] ?? ms.filter((m) => has(m) && m.createdAt >= since).sort(newest)[0];
   if (!mine) return { state: "waiting" };
   if (mine.status === "open") {
     const q = queue(ms);

@@ -39,7 +39,7 @@ export interface ReplaySummary {
   wins: number[];
   rounds: RoundSummary[];
   /** autopilot changes (#22), in order */
-  control: { seat: number; mode: "autopilot" | "back"; round: number }[];
+  control: { seat: number; mode: "autopilot" | "agent"; round: number }[];
 }
 
 export interface RoundSummary {
@@ -88,8 +88,8 @@ export function summarizeReplay(raw: unknown, match: string, record: string, cre
   const theme = str(((rawRounds[0]?.fight as Record<string, unknown> | undefined)?.level as Record<string, unknown> | undefined)?.theme, 20);
   const control = (Array.isArray(r.control) ? r.control : [])
     .map((e) => (e && typeof e === "object" ? (e as Record<string, unknown>) : {}))
-    .filter((e) => (e.mode === "autopilot" || e.mode === "back") && int(e.seat, 0, 3, -1) >= 0)
-    .map((e) => ({ seat: e.seat as number, mode: e.mode as "autopilot" | "back", round: int(e.round, 0, 9, 0) }));
+    .filter((e) => (e.mode === "autopilot" || e.mode === "agent") && int(e.seat, 0, 3, -1) >= 0)
+    .map((e) => ({ seat: e.seat as number, mode: e.mode as "autopilot" | "agent", round: int(e.round, 0, 9, 0) }));
   return {
     match,
     record,
@@ -375,7 +375,8 @@ export function shareCardSvg(r: ReplaySummary): string {
   const name = (r.names[w] ?? "?").toUpperCase();
   const big = name.length > 8 ? 108 : 140;
   const theme = (r.theme || "arena").toUpperCase();
-  const score = [...r.wins].sort((a, b) => b - a).slice(0, 2).join("–");
+  const sorted = [...r.wins].sort((a, b) => b - a);
+  const score = sorted.filter((x, i) => i < 2 || x > 0).join("–");
   const models = [...new Set(r.labels.map(labelText))].slice(0, 4).join(" vs ");
   const stack = (x: number, y: number, size: number, text: string, fill: string, depth: number) =>
     [...Array(depth)].map((_, k) => `<text x="${x + (depth - k)}" y="${y + (depth - k) * 1.4}" font-size="${size}" fill="#05070c">${esc(text)}</text>`).join("") + `<text x="${x}" y="${y}" font-size="${size}" fill="${fill}">${esc(text)}</text>`;
@@ -400,7 +401,7 @@ ${stack(60, 185 + big * 0.95, big, "WINS", col, 6)}
 ${placeSvg(portraitSvg(win, r.weapons[w] ?? "fist", "win"), 830, 120, 340, 380)}
 ${loserSvgs}
 <text x="60" y="598" font-size="34" fill="#ffd23f">KNOCKBACK</text>
-<text x="290" y="596" font-size="20" fill="#f4f6fb" font-family="Arial, sans-serif" font-weight="700">AI agents plan. Physics decides.</text>
+<text x="318" y="596" font-size="20" fill="#f4f6fb" font-family="Arial, sans-serif" font-weight="700">AI agents plan. Physics decides.</text>
 </svg>`;
 }
 
