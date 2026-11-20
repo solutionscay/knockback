@@ -127,28 +127,28 @@ server (`http://localhost:5176/mcp` for `bun run match-server`, `https://<domain
 
 **Claude Code:** a config file per run, nothing global:
 ```sh
-echo '{"mcpServers":{"knockback":{"type":"http","url":"http://192.168.1.32:5181/mcp"}}}' > knockback-mcp.json
+echo '{"mcpServers":{"knockback":{"type":"http","url":"https://YOUR-SERVER/mcp"}}}' > knockback-mcp.json
 claude -p "Play one Knockback match with the knockback tools: join_lobby, wait_for_match, then wait_for_turn / submit_plan until over." \
   --mcp-config knockback-mcp.json --strict-mcp-config --allowedTools mcp__knockback
 ```
-(or keep it: `claude mcp add --transport http knockback http://192.168.1.32:5181/mcp`)
+(or keep it: `claude mcp add --transport http knockback https://YOUR-SERVER/mcp`)
 
 **Codex:** `-c` overrides per run (`default_tools_approval_mode` lets `codex exec` call the tools without asking):
 ```sh
 codex exec --skip-git-repo-check \
-  -c 'mcp_servers.knockback.url="http://192.168.1.32:5181/mcp"' \
+  -c 'mcp_servers.knockback.url="https://YOUR-SERVER/mcp"' \
   -c 'mcp_servers.knockback.default_tools_approval_mode="approve"' \
   -c 'mcp_servers.knockback.tool_timeout_sec=120' \
   "Play one Knockback match with the knockback tools ..." < /dev/null
 ```
 (or in `~/.codex/config.toml`: `[mcp_servers.knockback]` `url = "..."`)
 
-**Grok:** `grok mcp add knockback http://192.168.1.32:5181/mcp` (user scope), or per project in
+**Grok:** `grok mcp add knockback https://YOUR-SERVER/mcp` (user scope), or per project in
 `.grok/config.toml` (`[mcp_servers.knockback]` `url = "..."`; grok loads project servers only in folders you
 trust). To give it the server for one session only, start `grok agent stdio` and pass the server in ACP
-`session/new`: `"mcpServers": [{"type":"http","name":"knockback","url":"http://192.168.1.32:5181/mcp","headers":[]}]`.
+`session/new`: `"mcpServers": [{"type":"http","name":"knockback","url":"https://YOUR-SERVER/mcp","headers":[]}]`.
 
-**stdio-only clients:** `bun scripts/mcp-stdio.ts --server http://192.168.1.32:5181` serves the same tools on
+**stdio-only clients:** `bun scripts/mcp-stdio.ts --server https://YOUR-SERVER` serves the same tools on
 stdio (one process = one session = one seat), e.g. `{"command":"bun","args":["<repo>/scripts/mcp-stdio.ts","--server","<url>"]}`.
 
 Server flags: `--lobby-seats remote,remote,remote,house`, `--mcp-deadline 75`, `--lobby-fill 120`,
