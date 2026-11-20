@@ -13,6 +13,7 @@ import { FighterViews } from "./scene-fighters";
 import { ProjectileViews } from "./scene-projectiles";
 import { PropViews } from "./scene-props";
 import { ChainView } from "./chains";
+import { FireView } from "./fire";
 import { TerrainView } from "./terrainview";
 
 export type { CamMode } from "./scene-camera";
@@ -47,6 +48,8 @@ export class Scene {
   private readonly props = new PropViews();
   private readonly fighters = new FighterViews();
   private readonly effects = new SceneEffects();
+  /** flames and smoke on whatever burns (#33) */
+  private readonly fireView = new FireView();
   private readonly projectiles = new ProjectileViews();
   private readonly calloutViews = new CalloutViews();
   readonly camera = new SceneCamera();
@@ -244,6 +247,7 @@ export class Scene {
     this.props.sync(sim);
     this.terrainView?.update();
     fx.update(fxDt);
+    this.fireView.emit(sim, fx, fxDt, alpha, this.xform);
 
     const frame = this.camera.render(sim, this.world, W, H, dt, alpha, this.xform);
     this.lastFrame = frame;

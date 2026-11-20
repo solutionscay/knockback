@@ -53,6 +53,14 @@ export function drawWeapon(g: ShapePen, kind: string, color: number, scale = 1) 
         .stroke({ width: 0.06 * s, color: 0xc8ccd6, cap: "round" });
       g.rect(0.1 * s, 0.08 * s, 0.1 * s, 0.16 * s).fill(color);
       break;
+    case "flamethrower":
+      // a red tank under a long nozzle, a pilot light at the tip
+      g.roundRect(-0.12 * s, 0.02 * s, 0.42 * s, 0.22 * s, 0.1 * s).fill(0xc8322a).stroke({ width: 0.035 * s, color: 0x15171d });
+      g.roundRect(-0.1 * s, -0.09 * s, 0.95 * s, 0.13 * s, 0.04 * s).fill(0x4a4f5a).stroke({ width: 0.035 * s, color: 0x15171d });
+      g.rect(0.7 * s, -0.12 * s, 0.12 * s, 0.19 * s).fill(0x2a2d35);
+      g.circle(0.92 * s, -0.03 * s, 0.06 * s).fill(0xffa21f);
+      g.rect(0.05 * s, 0.04 * s, 0.1 * s, 0.18 * s).fill(color);
+      break;
   }
 }
 
@@ -94,7 +102,8 @@ const OUT = { width: 0.06, color: INK, join: "round" as const };
 /**
  * Weapon pickup icon, about 0.8 m across, centered at 0,0 (y-down). Each weapon has its own silhouette:
  * rocket = fat tube and red warhead, shotgun = long thin barrel and stock, bat = steep tapered club,
- * grenade = round body with a lever, grapple = three-pronged hook on a rope.
+ * grenade = round body with a lever, grapple = three-pronged hook on a rope, flamethrower = red tank under a
+ * nozzle that spits a flame.
  */
 export function drawPickupWeapon(g: Graphics, kind: string) {
   switch (kind) {
@@ -140,6 +149,16 @@ export function drawPickupWeapon(g: Graphics, kind: string) {
       inkLine(g, [0, 0.12, 0.25, 0.02, 0.33, -0.2], 0.08, 0xc8ccd6);
       inkLine(g, [-0.12, -0.24, 0.12, -0.24], 0.07, 0xc8ccd6);
       break;
+    case "flamethrower": {
+      const a = -0.5;
+      // the flame first, behind the nozzle tip
+      g.poly(turn([0.22, -0.02, 0.36, -0.13, 0.47, -0.05, 0.43, 0.03, 0.47, 0.1, 0.34, 0.12], a)).fill(0xff7a1a).stroke(OUT);
+      g.poly(turn([0.26, 0.0, 0.36, -0.06, 0.41, 0.03, 0.34, 0.07], a)).fill(0xffd23a);
+      g.poly(bar(-0.3, 0.26, 0.06, a)).fill(0x4a4f5a).stroke(OUT);
+      g.poly(turn([-0.42, 0.06, -0.08, 0.06, -0.08, 0.3, -0.42, 0.3], a)).fill(0xd23a2a).stroke(OUT);
+      g.poly(turn([-0.36, 0.1, -0.3, 0.1, -0.3, 0.26, -0.36, 0.26], a)).fill({ color: 0xffffff, alpha: 0.45 });
+      break;
+    }
     default:
       drawWeapon(g, kind, 0xffb347, 0.6);
       break;

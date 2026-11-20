@@ -16,7 +16,7 @@ function recorder() {
   return { g: g as Graphics, calls };
 }
 
-const WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple"];
+const WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower"];
 
 describe("pickup icons (#15)", () => {
   test("the badge is at least twice the 0.5 m physics box, which stays unchanged", () => {

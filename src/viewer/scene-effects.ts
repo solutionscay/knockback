@@ -140,7 +140,10 @@ export class SceneEffects {
         v.recoil = e.weapon === "shotgun" ? 0.35 : 0.25;
         const mx = e.x + e.dx * 1.0;
         const my = e.y + e.dy * 1.0;
-        if (e.weapon !== "grenade") {
+        if (e.weapon === "flamethrower") {
+          v.recoil = 0.06;
+          this.fx.flameJet(e.x + e.dx * 0.9, e.y + e.dy * 0.9, e.dx, e.dy, 7);
+        } else if (e.weapon !== "grenade") {
           this.fx.add({ x: mx, y: my, kind: "flash", life: 0.07, size: 0.35, size1: 0.55, color: 0xffe9a0 });
           this.fx.sparks(mx, my, e.dx, e.dy, 0xffd27a, e.weapon === "shotgun" ? 8 : 4);
           this.fx.add({ x: mx, y: my, vx: e.dx * 2, vy: e.dy * 2 + 0.5, kind: "smoke", life: 0.6, size: 0.2, size1: 0.6, color: 0x8a8790, alpha: 0.5, drag: 3, back: true });

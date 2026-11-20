@@ -3,7 +3,7 @@
  * changed (material or crack stage) are redrawn.
  */
 import { Container, Graphics } from "pixi.js";
-import { CELL, F_ANCHOR, F_BRIDGE, Mat, MAT_HP, type Grid } from "../sim/grid";
+import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, Mat, MAT_HP, type Grid } from "../sim/grid";
 import type { PieceCell } from "../sim/terrain";
 import { shade, type Palette } from "./palette";
 
@@ -67,6 +67,11 @@ export function drawCell(g: Graphics, pal: Palette, x: number, y: number, mat: n
   if (exposedTop) g.rect(x, top, s, 0.09).fill(pal.top[mat] ?? shade(col, 1.35));
   if (exposedBottom && !deep) g.rect(x, top + s - 0.05, s, 0.05).fill({ color: 0x000000, alpha: 0.3 });
   if (flags & F_BRIDGE) g.rect(x, top + s - 0.06, s, 0.06).fill({ color: 0x000000, alpha: 0.35 });
+  if (flags & F_CHARRED) {
+    // burned out (#33): blackened, with a few embers' worth of grain
+    g.rect(x, top, s, s).fill({ color: 0x17110d, alpha: 0.72 });
+    g.rect(x + 0.06, top + 0.14 + h(cx, cy) * 0.2, s - 0.12, 0.025).fill({ color: 0x5a3a22, alpha: 0.6 });
+  }
   if (stage >= 1) g.moveTo(x + 0.1, top + 0.08).lineTo(x + 0.24, top + 0.26).lineTo(x + 0.18, top + 0.42).stroke({ width: 0.035, color: 0x0b0a10, alpha: 0.85 });
   if (stage >= 2) g.moveTo(x + 0.42, top + 0.1).lineTo(x + 0.28, top + 0.3).lineTo(x + 0.4, top + 0.46).stroke({ width: 0.035, color: 0x0b0a10, alpha: 0.85 });
 }
@@ -100,7 +105,7 @@ export class TerrainView {
       for (let cx = 0; cx < g.cols; cx++) {
         const i = cy * g.cols + cx;
         const m = g.mat[i]!;
-        const s = m === Mat.Empty ? 0 : m * 4 + crackStage(g.hp[i]!, m) + 1;
+        const s = m === Mat.Empty ? 0 : m * 4 + crackStage(g.hp[i]!, m) + 1 + (g.flags[i]! & F_CHARRED ? 64 : 0);
         if (s !== this.sig[i]) {
           this.sig[i] = s;
           const k = Math.floor(cy / CH) * this.cols + Math.floor(cx / CH);
@@ -146,12 +151,12 @@ export function drawPiece(gr: Graphics, pal: Palette, cells: PieceCell[]) {
   for (const c of cells) {
     const x = c.lx * CELL;
     const y = c.ly * CELL;
-    drawCell(gr, pal, x, y, c.mat, crackStage(c.hp, c.mat), !at.has((c.ly + 1) * 4096 + c.lx), !at.has((c.ly - 1) * 4096 + c.lx), false, 0, c.lx, c.ly);
+    drawCell(gr, pal, x, y, c.mat, crackStage(c.hp, c.mat), !at.has((c.ly + 1) * 4096 + c.lx), !at.has((c.ly - 1) * 4096 + c.lx), false, c.charred ? F_CHARRED : 0, c.lx, c.ly);
   }
 }
 
 export function pieceSig(cells: PieceCell[]): string {
   let s = "";
-  for (const c of cells) s += `${c.lx},${c.ly},${crackStage(c.hp, c.mat)};`;
+  for (const c of cells) s += `${c.lx},${c.ly},${crackStage(c.hp, c.mat)}${c.charred ? "c" : ""};`;
   return s;
 }

@@ -17,7 +17,7 @@ export interface Particle {
   alpha: number;
   gravity: number;
   drag: number;
-  kind: "dot" | "square" | "spark" | "smoke" | "ring" | "flash" | "beam" | "trail";
+  kind: "dot" | "square" | "spark" | "smoke" | "ring" | "flash" | "beam" | "trail" | "flame";
   rot: number;
   vr: number;
   /** ring/flash end radius, beam direction etc */
@@ -27,6 +27,17 @@ export interface Particle {
 }
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+
+/** A flame's color over its life: white-yellow, orange, then a dull red (#33). */
+function flameColor(t: number): number {
+  const stops = [0xfff2a8, 0xffa21f, 0xe0401a, 0x7a2416];
+  const k = Math.min(0.999, Math.max(0, t)) * (stops.length - 1);
+  const i = Math.floor(k);
+  const f = k - i;
+  const a = stops[i]!, b = stops[i + 1]!;
+  const ch = (s: number) => Math.round(((a >> s) & 255) * (1 - f) + ((b >> s) & 255) * f);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
 
 export class Fx {
   parts: Particle[] = [];
@@ -129,6 +140,23 @@ export class Fx {
     }
   }
 
+  /** One rising flame tongue (and now and then a wisp of smoke) at a burning spot. */
+  flame(x: number, y: number, spread: number, scale = 1) {
+    this.add({ x: x + rnd(-spread, spread), y: y + rnd(-0.05, 0.1), vx: rnd(-0.4, 0.4), vy: rnd(1.4, 2.6) * scale, life: rnd(0.3, 0.55), size: rnd(0.12, 0.2) * scale, size1: 0.03, alpha: 0.95, kind: "flame", drag: 1.5 });
+    if (Math.random() < 0.12) this.add({ x: x + rnd(-spread, spread), y: y + 0.3, vx: rnd(-0.3, 0.3), vy: rnd(0.8, 1.4), life: rnd(0.9, 1.5), size: 0.15, size1: 0.6, color: 0x3a3438, alpha: 0.35, kind: "smoke", drag: 0.8, back: true });
+  }
+
+  /** A flamethrower pulse: a fan of flame shooting out along (dx, dy) (#32). */
+  flameJet(x: number, y: number, dx: number, dy: number, n: number) {
+    for (let i = 0; i < n; i++) {
+      const a = rnd(-0.42, 0.42);
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const ux = dx * ca - dy * sa, uy = dx * sa + dy * ca;
+      const s = rnd(7.5, 11);
+      this.add({ x, y, vx: ux * s, vy: uy * s + 0.6, life: rnd(0.24, 0.36), size: rnd(0.08, 0.14), size1: rnd(0.32, 0.5), alpha: 0.9, kind: "flame", drag: 2.2 });
+    }
+  }
+
   sparks(x: number, y: number, dx: number, dy: number, color: number, n: number) {
     for (let i = 0; i < n; i++) {
       const s = rnd(4, 14);
@@ -184,6 +212,9 @@ export class Fx {
           break;
         case "smoke":
           g.circle(x, y, size).fill({ color: p.color, alpha: a });
+          break;
+        case "flame":
+          g.circle(x, y, size).fill({ color: flameColor(t), alpha: p.alpha * (1 - t * t) });
           break;
         case "square": {
           const c = Math.cos(p.rot) * size;
