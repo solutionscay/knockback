@@ -60,6 +60,7 @@ Providers live in `src/ai/providers.ts` (one entry each).
 bun test                       # determinism, fight flow, beats, scores, damage, explosions, ring-out
 bun run batch 200              # 200 headless bot fights + stats
 bun scripts/equal-batch.ts 200 # equal fighters: win spread per seat and soul, time to first weapon, pickups, kills per weapon
+bun scripts/stall-batch.ts 200 # stalemates: longest stretch without fighter damage per round, round lengths, time-outs, sudden deaths
 bun run record <outdir> 6 104  # 1080p WebM of full loops in "View all" (--camera auto|all|follow:N); needs the dev server
 bun scripts/crosscheck.ts      # Chromium vs Bun state hash check (needs the dev server)
 bun scripts/levels.ts out.jpg  # contact sheet of generated levels (needs the dev server)

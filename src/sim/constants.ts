@@ -92,6 +92,9 @@ export const WEAPONS = {
     knockback: 6.5,
     lift: 0.45,
     propImpulse: 3,
+    /** a punch chips terrain a little: enough to dig out of a pocket, slowly */
+    terrainRadius: 0.4,
+    terrainDamage: 14,
   },
   /** Hook: yanks a fighter (or a prop) toward the shooter. */
   grapple: {
@@ -188,6 +191,15 @@ export const ZONE = {
   shockY: 13,
   shockDamage: 4,
 };
+
+/**
+ * Anti-stalemate: when no fighter has damaged another for quietTicks (and 2+
+ * are alive), SUDDEN DEATH for the rest of the round: everyone goes for the
+ * nearest rival, the zone closes fast down to endHalf, and a weapon drops
+ * between the survivors every dropEvery ticks. Outside the zone the shocks
+ * come sooner, more often and harder (nobody waits it out in a hole).
+ */
+export const STALEMATE = { quietTicks: 7 * TICK_RATE, shrinkPerSec: 2.4, endHalf: 2.5, dropEvery: 3 * TICK_RATE, shockAfter: 60, shockEvery: 40, shockDamage: 8 };
 
 /** Supply drops: every interval an item (often a weapon) inside the zone, barrels every other drop. */
 export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 6 * TICK_RATE, weaponChance: 0.65, maxLooseWeapons: 8 };

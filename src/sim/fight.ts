@@ -138,6 +138,7 @@ export class Fight {
             const dist = Math.sqrt((ap.x - vp.x) * (ap.x - vp.x) + (ap.y - vp.y) * (ap.y - vp.y));
             this.stats.hit(e.source, e.target, e.damage, e.cause, dist, behind, e.tick);
             this.controllers[e.target]!.onHit(e.source, behind, e.damage, e.tick);
+            this.controllers[e.source]!.onDealt(e.tick);
           }
         }
         if (e.source === e.target && (e.cause === "rocket" || e.cause === "grenade")) this.selfHit[e.target]! += e.damage;

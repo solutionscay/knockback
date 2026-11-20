@@ -6,7 +6,7 @@
  */
 import { FIGHTER, REFLEX, WEAPONS } from "./constants";
 import type { Link, Surface } from "./nav";
-import { clamp, zoneHalfAt, type Fighter, type Input, type Sim, type Strategy, type Weapon } from "./sim";
+import { clamp, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
 
 export interface Goal {
   surface: number;
@@ -23,6 +23,21 @@ export const AIM_NOISE = 0.07;
  * for any weapon; armed ones detour only for a better one, or for anything
  * when their stance is "item".
  */
+/**
+ * Anti-stalemate behavior (see also STALEMATE in constants.ts):
+ *   calmTicks      cover/distance/item fighters who neither dealt nor took damage this long close in (rush)
+ *   peekEvery/For  cover fighters spend peekFor of every peekEvery ticks somewhere with a clear shot
+ *   stuckTicks     no progress toward the movement goal this long = stuck: drop the planned jump,
+ *                  avoid that surface for avoidTicks, and dig toward the goal for digTicks
+ *   linkTicks      a planned jump still "in flight" after this long is abandoned (bounce pads)
+ *   unreachTicks   a target with no path and no line of sight this long is skipped for skipTicks
+ *   breachAfter    standing still with no line of sight to a target within breachRange this long:
+ *                  blast/bash straight through the terrain between us (floors, walls)
+ *   pressAfter     in sudden death or the final duel, not having hurt anyone this long: press -
+ *                  circle to the target's other side every pressFlip ticks and fire straight at it
+ */
+export const PATIENCE = { calmTicks: 330, peekEvery: 240, peekFor: 90, stuckTicks: 110, avoidTicks: 300, digTicks: 90, linkTicks: 100, unreachTicks: 180, skipTicks: 360, breachAfter: 90, breachRange: 12, pressAfter: 240, pressFlip: 180 };
+
 export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, giveUpTicks: 100, skipTicks: 420 };
 
 const NO_FIRE: Input = { move: 0, jump: false, aimX: 1, aimY: 0, weapon: null, fire: false };
@@ -46,6 +61,41 @@ export class Controller {
   /** pickup being chased: give up on it if we stop getting closer (unreachable spots) */
   private chase: { id: number; best: number; since: number } | null = null;
   private skipItems = new Map<number, number>();
+  /** last ticks this fighter dealt / took fighter damage (cover patience) */
+  private lastDealt = 0;
+  private lastTaken = 0;
+  /** progress toward the current goal (stuck watchdog) */
+  private prog: { surface: number; x: number; best: number; since: number } | null = null;
+  private badSurfaces = new Map<number, number>();
+  private unreachable = new Map<number, number>();
+  private noReach = 0;
+  private linkSince = -1;
+  /** digging out of a pocket: hit the wall toward the goal */
+  dig: { until: number; dir: 1 | -1 } | null = null;
+  /** times the watchdog fired this fight (stats, tests) */
+  stuckCount = 0;
+
+  /** Called when this fighter damages another (from Fight, in event order). */
+  onDealt(tick: number) {
+    this.lastDealt = tick;
+  }
+
+  /**
+   * The stance actually played now: the strategy's, except that the last two
+   * fighters and everyone in sudden death close in, and a cover/distance/item
+   * fighter who has been quiet too long goes looking for a fight.
+   */
+  /** Sudden death or the final duel, and this fighter hasn't hurt anyone for a while. */
+  pressing(sim: Sim): boolean {
+    return (sim.suddenDeath >= 0 || sim.alive().length === 2) && sim.tick - this.lastDealt > PATIENCE.pressAfter;
+  }
+
+  stanceNow(sim: Sim): Stance {
+    if (sim.suddenDeath >= 0 || sim.alive().length === 2) return "rush";
+    const s = this.strategy.stance;
+    if (s !== "rush" && sim.tick - Math.max(this.lastDealt, this.lastTaken) > PATIENCE.calmTicks) return "rush";
+    return s;
+  }
   /** recent hits taken (for the back-attack reflex) */
   private hitLog: { src: number; tick: number; behind: boolean }[] = [];
   /** active reflex: who to face/fight and until when */
@@ -58,6 +108,7 @@ export class Controller {
    * Repeated hits from behind by a non-target trigger the reflex.
    */
   onHit(src: number, behind: boolean, _damage: number, tick: number) {
+    this.lastTaken = tick;
     const log = this.hitLog;
     if (!log.length || log[log.length - 1]!.src !== src || log[log.length - 1]!.tick !== tick) log.push({ src, tick, behind });
     while (log.length && log[0]!.tick < tick - REFLEX.windowTicks) log.shift();
@@ -91,7 +142,9 @@ export class Controller {
   /** Pick a target from the preference; sticky for a second so it does not flicker. */
   private resolveTarget(sim: Sim, me: Fighter): Fighter | null {
     const cur = this.targetId >= 0 ? sim.fighters[this.targetId] : undefined;
-    if (cur && cur.alive && cur.id !== me.id && sim.tick < this.nextRetarget) return cur;
+    const skip = (o: Fighter) => (this.unreachable.get(o.id) ?? -1) > sim.tick;
+    // a knocked-out (or skipped) target is replaced at once, never waited on
+    if (cur && cur.alive && !cur.removed && cur.id !== me.id && sim.tick < this.nextRetarget && !skip(cur)) return cur;
     this.nextRetarget = sim.tick + 60;
     const p = sim.pos(me);
     const foes = sim.fighters.filter((o) => o.alive && o.id !== me.id);
@@ -100,7 +153,8 @@ export class Controller {
       const q = sim.pos(o);
       return Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
     };
-    const pref = this.strategy.target;
+    // sudden death: everyone goes for the nearest rival (with two left, that is the duel)
+    const pref = sim.suddenDeath >= 0 ? "nearest" : this.strategy.target;
     let score: (o: Fighter) => number;
     switch (pref) {
       case "weakest":
@@ -122,10 +176,11 @@ export class Controller {
       default:
         score = dist;
     }
+    const scored = (o: Fighter) => score(o) + (skip(o) && foes.length > 1 ? 60 : 0);
     let best = foes[0]!;
-    let bs = score(best);
+    let bs = scored(best);
     for (const o of foes) {
-      const v = score(o);
+      const v = scored(o);
       if (v < bs) {
         bs = v;
         best = o;
@@ -135,7 +190,7 @@ export class Controller {
   }
 
   private zoneBounds(sim: Sim): [number, number] {
-    const half = zoneHalfAt(sim.tick + 120, sim.zone.startHalf);
+    const half = sim.zoneHalfAhead(120);
     const h = Math.max(1.5, half - 1.2);
     return [sim.zone.center - h, sim.zone.center + h];
   }
@@ -146,8 +201,8 @@ export class Controller {
     const tp = sim.pos(target);
     const [zl, zr] = this.zoneBounds(sim);
     const zonePenalty = (x: number) => (x < zl ? 40 + (zl - x) * 6 : x > zr ? 40 + (x - zr) * 6 : 0);
-    const fragilePenalty = (s: number) => (nav.surfaces[s]?.fragile ? 3 : 0);
-    let stance = this.strategy.stance;
+    const fragilePenalty = (s: number) => (nav.surfaces[s]?.fragile ? 3 : 0) + ((this.badSurfaces.get(s) ?? -1) > sim.tick ? 30 : 0);
+    let stance = this.stanceNow(sim);
     const close = me.weapons.includes("bat") || me.weapons.includes("shotgun");
 
     // arm up: go for the pickups this fighter wants (fists only = go far for anything)
@@ -172,7 +227,7 @@ export class Controller {
         else continue;
         const t = it.body.translation();
         const s = nav.surfaceAt(t.x, t.y + 0.3, 0.2);
-        if (!s || plan.cost[s.id] === Infinity) continue;
+        if (!s || plan.cost[s.id] === Infinity || (this.badSurfaces.get(s.id) ?? -1) > sim.tick) continue;
         const c = plan.cost[s.id]! + Math.abs(plan.arriveX[s.id]! - t.x) + zonePenalty(t.x);
         if (c > limit) continue;
         if (c + extra < bc) {
@@ -197,18 +252,29 @@ export class Controller {
       if (!armed) stance = "rush"; // nothing to grab: scrap with fists
     }
 
+    if (this.pressing(sim)) {
+      // pressing: get beside the target, switching sides now and then (breaks vertical and wall deadlocks)
+      const flip = Math.floor(sim.tick / PATIENCE.pressFlip) % 2 === 0 ? 1 : -1;
+      const gx = tp.x + flip * 2.2;
+      return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - gx) + Math.abs(py + 0.9 - tp.y) * 0.7 + zonePenalty(px) + fragilePenalty(sid));
+    }
+
     if (stance === "rush") {
       const side = mp.x < tp.x ? -1 : 1;
       const s = target.surface >= 0 ? nav.surfaces[target.surface] : undefined;
-      if (!s || plan.cost[s.id] === Infinity) {
+      if (!s || plan.cost[s.id] === Infinity || (this.badSurfaces.get(s.id) ?? -1) > sim.tick) {
         return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - tp.x) + Math.abs(py - tp.y) * 0.5 + zonePenalty(px) + fragilePenalty(sid));
       }
-      const x = clamp(tp.x + side * 1.1, Math.max(s.x0 + 0.3, zl), Math.min(s.x1 - 0.3, zr));
+      // explosives only: rush to blast range, not into your own blast
+      const gap = close || !me.weapons.some((w) => w === "rocket" || w === "grenade") ? 1.1 : 4;
+      const x = clamp(tp.x + side * gap, Math.max(s.x0 + 0.3, zl), Math.min(s.x1 - 0.3, zr));
       return { surface: s.id, x: clamp(x, s.x0 + 0.3, s.x1 - 0.3) };
     }
 
     const ideal = me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
     if (stance === "cover") {
+      // cover is not standing still: every so often, peek out somewhere with a clear shot
+      const peek = (sim.tick + this.fighterId * 61) % PATIENCE.peekEvery < PATIENCE.peekFor;
       return this.bestPoint(sim, plan, (px, py, sid) => {
         const dx = px - tp.x;
         const dy = py + 1 - tp.y;
@@ -216,7 +282,10 @@ export class Controller {
         let s = Math.abs(d - ideal) * 0.8 + zonePenalty(px) + fragilePenalty(sid);
         if (d > 0.5) {
           const hit = sim.raycast(tp.x, tp.y, dx / d, dy / d, d);
-          if (hit && hit.dist > d - 3.2 && (hit.terrain || (hit.entity && hit.entity.kind !== "fighter"))) s -= 7;
+          const hidden = !!hit && hit.dist > d - 3.2 && (hit.terrain || (!!hit.entity && hit.entity.kind !== "fighter"));
+          if (peek) {
+            if (!hit || hit.entity?.kind === "fighter") s -= 7;
+          } else if (hidden) s -= 7;
         }
         return s;
       });
@@ -336,6 +405,24 @@ export class Controller {
       const goal = this.goal;
       moveTarget = goal.x;
       if (me.grounded && this.activeLink && me.jumpCd === 0) this.activeLink = null;
+      // a jump still "in flight" for too long (bouncing on a pad, wedged): drop it
+      if (this.activeLink && sim.tick - this.linkSince > PATIENCE.linkTicks) this.activeLink = null;
+      // stuck watchdog: no progress toward the goal for a while
+      const gy = nav.surfaces[goal.surface]?.y ?? sim.feetY(me);
+      const gd = Math.abs(mp.x - goal.x) + Math.abs(sim.feetY(me) - gy) * 0.5;
+      const pr = this.prog;
+      if (!pr || pr.surface !== goal.surface || Math.abs(pr.x - goal.x) > 1.5) this.prog = { surface: goal.surface, x: goal.x, best: gd, since: sim.tick };
+      else if (gd < pr.best - 0.3) {
+        pr.best = gd;
+        pr.since = sim.tick;
+      } else if (gd > 1.2 && sim.tick - pr.since > PATIENCE.stuckTicks) {
+        this.stuckCount++;
+        if (goal.surface !== me.surface) this.badSurfaces.set(goal.surface, sim.tick + PATIENCE.avoidTicks);
+        this.dig = { until: sim.tick + PATIENCE.digTicks, dir: goal.x >= mp.x ? 1 : -1 };
+        this.activeLink = null;
+        this.prog = null;
+        this.nextEval = sim.tick;
+      }
       if (this.activeLink) {
         moveTarget = this.activeLink.landX;
       } else if (goal.surface !== me.surface) {
@@ -346,6 +433,7 @@ export class Controller {
             if (me.grounded && Math.abs(mp.x - link.takeoffX) < 0.4) {
               input.jump = true;
               this.activeLink = link;
+              this.linkSince = sim.tick;
               moveTarget = link.landX;
             }
           } else moveTarget = link.landX;
@@ -409,6 +497,45 @@ export class Controller {
     const sight = dist > 0.1 ? sim.raycast(mp.x, mp.y + 0.25, dx0 / dist, (dy0 - 0.25) / dist, dist + 0.5, me.entity.collider) : null;
     const los = !!sight && sight.entity === aimTarget.entity;
     this.noLos = los ? 0 : this.noLos + 1;
+    // a target with no path and no line of sight for long: pick someone else for a while
+    const tSurf = target.surface;
+    const reachable = surf && tSurf >= 0 ? nav.plan(me.surface, mp.x).cost[tSurf] !== Infinity : true;
+    this.noReach = !reachable && !los ? this.noReach + 1 : 0;
+    if (this.noReach > PATIENCE.unreachTicks && sim.alive().length > 2) {
+      this.unreachable.set(target.id, sim.tick + PATIENCE.skipTicks);
+      this.nextRetarget = 0;
+      this.noReach = 0;
+    }
+    // digging out: hit the wall between us and the goal
+    if (this.dig && sim.tick < this.dig.until) {
+      const dir = this.dig.dir;
+      const wall = sim.raycast(mp.x, mp.y + 0.1, dir, 0, 1.6, me.entity.collider);
+      if (wall && (wall.terrain || (wall.entity && wall.entity.kind !== "fighter" && wall.entity.kind !== "item"))) {
+        const order: Weapon[] = ["bat", "shotgun", "fist", "grenade", "rocket"];
+        const w = order.find((x) => x === "fist" || me.weapons.includes(x))!;
+        input.weapon = w;
+        input.move = dir * 0.6;
+        input.aimX = dir;
+        input.aimY = w === "grenade" ? 0.35 : 0.04;
+        input.fire = (sim.weapon(me) === w || w === "fist") && me.swap === 0 && me.cooldown[w] === 0 && me.stun === 0;
+        return input;
+      }
+      this.dig = null;
+    } else if (this.dig) this.dig = null;
+    // breach: parked with a wall or floor between us and the target - go through it
+    const breach = this.noLos > PATIENCE.breachAfter && Math.abs(mv.x) < 0.8;
+    if ((breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
+      const has = (w: Weapon) => me.weapons.includes(w);
+      const w: Weapon = dist < 1.3 && !has("bat") && !has("shotgun") ? "fist" : has("bat") && dist < 2.8 ? "bat" : has("shotgun") && dist < 7 ? "shotgun" : has("rocket") && dist >= 2 ? "rocket" : has("grenade") ? "grenade" : has("bat") ? "bat" : "fist";
+      input.weapon = w;
+      input.aimX = dx0 / dist;
+      input.aimY = (dy0 + (w === "grenade" ? 0.6 : 0)) / dist;
+      const al = Math.sqrt(input.aimX * input.aimX + input.aimY * input.aimY);
+      input.aimX /= al;
+      input.aimY /= al;
+      input.fire = (sim.weapon(me) === w || w === "fist") && me.swap === 0 && me.cooldown[w] === 0;
+      return input;
+    }
     const blocked = this.blocked(dist);
     if (sim.tick >= this.nextWeapon || !this.wanted || !me.weapons.includes(this.wanted)) {
       this.wanted = this.chooseWeapon(sim, me, aimTarget, dist, los);
@@ -436,7 +563,7 @@ export class Controller {
     input.aimX = ax / al;
     input.aimY = ay / al;
 
-    let canFire = sim.weapon(me) === weapon && me.swap === 0 && me.cooldown[weapon] === 0 && me.stun === 0;
+    let canFire = (sim.weapon(me) === weapon || weapon === "fist") && me.swap === 0 && me.cooldown[weapon] === 0 && me.stun === 0;
     switch (weapon) {
       case "shotgun":
         canFire &&= dist <= WEAPONS.shotgun.range - 0.6;

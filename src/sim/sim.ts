@@ -25,6 +25,7 @@ import {
   ARMORY,
   PAD,
   POWER,
+  STALEMATE,
   STEEL,
   SUPPLY,
   SWAP_TICKS,
@@ -227,7 +228,8 @@ export type SimEvent =
   | { type: "snap"; tick: number; entity: number }
   | { type: "zap"; tick: number; fighter: number; x: number; y: number; dir: number }
   | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number }
-  | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number };
+  | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number }
+  | { type: "suddenDeath"; tick: number; quietTicks: number };
 
 /**
  * How a seat looks: name, color and a cosmetic mark, from its soul. Purely
@@ -293,6 +295,11 @@ export class Sim {
   /** Sandbox switch (tests): when false the zone neither shrinks nor pushes. */
   zoneEnabled = true;
   private supplyCount = 0;
+  /** last tick a fighter damaged another fighter (anti-stalemate clock) */
+  lastClashTick = 0;
+  /** tick sudden death started this round, or -1 */
+  suddenDeath = -1;
+  private sdHalf = Infinity;
   readonly initialCells: number;
   stats = {
     blocksDestroyed: 0,
@@ -662,12 +669,46 @@ export class Sim {
     }
   }
 
+  // ------------------------------------------------------------- stalemates
+
+  /** Quiet too long with 2+ alive: sudden death (sticky for the round). */
+  private checkStalemate(tick: number) {
+    const z = this.zone;
+    const alive = this.alive();
+    if (this.suddenDeath < 0 && alive.length >= 2 && tick - this.lastClashTick >= STALEMATE.quietTicks) {
+      this.suddenDeath = tick;
+      this.sdHalf = z.half;
+      this.events.push({ type: "suddenDeath", tick, quietTicks: tick - this.lastClashTick });
+    }
+    if (this.suddenDeath < 0) return;
+    this.sdHalf = Math.max(STALEMATE.endHalf, this.sdHalf - (STALEMATE.shrinkPerSec * DT));
+    z.half = Math.min(z.half, this.sdHalf);
+    // a weapon between the survivors
+    if (alive.length >= 2 && (tick - this.suddenDeath) % STALEMATE.dropEvery === 0) {
+      let sx = 0;
+      for (const f of alive) sx += this.pos(f).x;
+      const x = clamp(sx / alive.length, z.center - z.half + 0.5, z.center + z.half - 0.5);
+      const e = this.spawnItem(this.rng.pick(WEAPON_LIST), x, 15);
+      this.events.push({ type: "itemSpawn", tick, entity: e.id, item: e.itemType!, x, y: 15 });
+    }
+  }
+
+  /** Zone half-width `ticks` from now (sudden death included): where to stand. */
+  zoneHalfAhead(ticks: number): number {
+    const base = zoneHalfAt(this.tick + ticks, this.zone.startHalf);
+    if (this.suddenDeath < 0) return base;
+    return Math.min(base, Math.max(STALEMATE.endHalf, this.sdHalf - STALEMATE.shrinkPerSec * (ticks / 60)));
+  }
+
   // -------------------------------------------------------------------- step
 
   step(inputs: readonly Input[]) {
     const tick = this.tick;
     const z = this.zone;
-    if (this.zoneEnabled) z.half = zoneHalfAt(tick, z.startHalf);
+    if (this.zoneEnabled) {
+      z.half = zoneHalfAt(tick, z.startHalf);
+      this.checkStalemate(tick);
+    }
     if (tick >= SUPPLY.firstTick && (tick - SUPPLY.firstTick) % SUPPLY.interval === 0) this.supplyDrop();
 
     for (const f of this.fighters) {
@@ -798,9 +839,12 @@ export class Sim {
     const dir = out > 0 ? 1 : -1;
     const depth = Math.abs(out);
     // stuck outside (behind a wall, in a hole): the zone flings you back in, over obstacles
-    if (++f.outsideTicks >= ZONE.shockAfter && (f.outsideTicks - ZONE.shockAfter) % ZONE.shockEvery === 0) {
+    const sd = this.suddenDeath >= 0;
+    const after = sd ? STALEMATE.shockAfter : ZONE.shockAfter;
+    const every = sd ? STALEMATE.shockEvery : ZONE.shockEvery;
+    if (++f.outsideTicks >= after && (f.outsideTicks - after) % every === 0) {
       const p2 = this.pos(f);
-      this.damageFighter(f, ZONE.shockDamage, -1, 0, 0, "zone", p2.x, p2.y);
+      this.damageFighter(f, sd ? STALEMATE.shockDamage : ZONE.shockDamage, -1, 0, 0, "zone", p2.x, p2.y);
       if (!f.alive) return;
       f.entity.body.setLinvel({ x: dir * ZONE.shockX, y: ZONE.shockY }, true);
       f.stun = Math.max(f.stun, 18);
@@ -864,7 +908,9 @@ export class Sim {
     if (f.aimX > 0.05) f.facing = 1;
     else if (f.aimX < -0.05) f.facing = -1;
 
-    if (inp.weapon && inp.weapon !== this.weapon(f)) {
+    // fists are always there: a jab needs no free slot and no weapon swap
+    const jab = inp.weapon === "fist" && !f.weapons.includes("fist");
+    if (inp.weapon && !jab && inp.weapon !== this.weapon(f)) {
       const slot = f.weapons.indexOf(inp.weapon);
       if (slot >= 0) {
         f.slot = slot as 0 | 1;
@@ -872,7 +918,7 @@ export class Sim {
         this.events.push({ type: "swap", tick: this.tick, fighter: f.id, weapon: inp.weapon });
       }
     }
-    if (inp.fire && f.swap === 0) this.fire(f, this.weapon(f));
+    if (inp.fire && f.swap === 0) this.fire(f, jab ? "fist" : this.weapon(f));
   }
 
   // ----------------------------------------------------------------- weapons
@@ -1039,6 +1085,12 @@ export class Sim {
         }
         hitAny = true;
       }
+    }
+    const chipped = this.terrain.carve(cx + dx * 0.2, cy + dy * 0.2, P.terrainRadius, P.terrainDamage);
+    if (chipped.length) {
+      this.stats.cellsDestroyed += chipped.length;
+      this.events.push({ type: "carve", tick: this.tick, cells: chipped });
+      hitAny = true;
     }
     this.events.push({ type: "swing", tick: this.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny, weapon: "fist" });
   }
@@ -1459,6 +1511,7 @@ export class Sim {
 
   damageFighter(f: Fighter, dmg: number, source: number, kbx: number, kby: number, cause: string, hx: number, hy: number) {
     if (!f.alive) return;
+    if (source >= 0 && source !== f.id && dmg > 0) this.lastClashTick = this.tick;
     const src = source >= 0 && source !== f.id ? this.fighters[source]! : null;
     if (src && src.power.damage > 0) {
       dmg *= POWER.damage.mul;
@@ -1659,6 +1712,8 @@ export class Sim {
       for (let i = 0; i < 8; i++) mix(buf.getUint8(i));
     };
     num(this.tick);
+    num(this.suddenDeath);
+    num(this.lastClashTick);
     for (const f of this.fighters) {
       num(f.hp);
       num(f.alive ? 1 : 0);
