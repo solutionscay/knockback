@@ -26,16 +26,9 @@
 import { readFileSync } from "node:fs";
 import { Rng } from "../src/sim/rng";
 
-const flags: Record<string, string> = {};
-{
-  const argv = process.argv.slice(2);
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (!a.startsWith("--")) continue;
-    const [k, v] = a.slice(2).split("=", 2) as [string, string | undefined];
-    flags[k] = v ?? (argv[i + 1] && !argv[i + 1]!.startsWith("--") ? argv[++i]! : "true");
-  }
-}
+import { parseFlags } from "./flags";
+
+const flags = parseFlags(process.argv.slice(2));
 const server = (flags.server ?? "http://localhost:5176").replace(/\/$/, "");
 const mode = flags.mode ?? "random";
 const name = flags.name ?? `${mode}-${Math.floor(Math.random() * 1000)}`;

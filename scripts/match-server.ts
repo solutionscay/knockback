@@ -57,16 +57,9 @@ import { initPhysics } from "../src/sim";
 import index from "../index.html";
 import { logLanUrls, serveRecord } from "./viewer-server";
 
-const flags: Record<string, string> = {};
-{
-  const argv = process.argv.slice(2);
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (!a.startsWith("--")) continue;
-    const [k, v] = a.slice(2).split("=", 2) as [string, string | undefined];
-    flags[k] = v ?? (argv[i + 1] && !argv[i + 1]!.startsWith("--") ? argv[++i]! : "true");
-  }
-}
+import { parseFlags } from "./flags";
+
+const flags = parseFlags(process.argv.slice(2));
 // environment: KB_FILL_AFTER -> --fill-after, PORT -> --port, HOST -> --host (command-line flags win)
 for (const [k, v] of Object.entries(process.env)) {
   if (v === undefined || v === "") continue;

@@ -25,16 +25,9 @@ import { PROVIDERS, registerStubs } from "../src/ai/providers";
 import { playAiMatch, type PlayedMatch } from "../src/ai/run";
 import { initPhysics, Match } from "../src/sim";
 
-const flags: Record<string, string> = {};
-{
-  const argv = process.argv.slice(2);
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (!a.startsWith("--")) continue;
-    const [k, v] = a.slice(2).split("=", 2) as [string, string | undefined];
-    flags[k] = v ?? (argv[i + 1] && !argv[i + 1]!.startsWith("--") ? argv[++i]! : "true");
-  }
-}
+import { parseFlags } from "./flags";
+
+const flags = parseFlags(process.argv.slice(2));
 const fail = (msg: string): never => {
   console.error(msg);
   process.exit(1);
