@@ -68,7 +68,8 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     crushCd: 0,
     outsideZone: false,
     outsideTicks: 0,
-    power: { shield: 0, shieldHits: 0, speed: 0, heavy: 0, damage: 0, jump: 0 },
+    power: { shield: 0, shieldHits: 0, speed: 0, heavy: 0, damage: 0, jump: 0, jetpack: 0 },
+    jetting: false,
     damageDealt: 0,
     damageTaken: 0,
     kos: 0,
@@ -97,6 +98,8 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   if (f.jumpCd > 0) f.jumpCd--;
   for (const w of ALL_WEAPONS) if (f.cooldown[w] > 0) f.cooldown[w]--;
   if (f.swap > 0) f.swap--;
+  const wasJetting = f.jetting;
+  f.jetting = false;
   if (f.stun > 0) {
     f.stun--;
     if (f.grounded) vx *= 0.9;
@@ -106,6 +109,8 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   let speed = FIGHTER.walkSpeed;
   if (f.power.speed > 0) speed *= POWER.speed.mul;
   if (f.power.heavy > 0) speed *= POWER.heavy.speedMul;
+  const thrust = inp.thrust && f.power.jetpack > 0;
+  if (thrust) speed *= POWER.jetpack.speedMul;
   const target = clamp(inp.move, -1, 1) * speed;
   const accel = (f.grounded ? FIGHTER.groundAccel : FIGHTER.airAccel) * DT * (f.power.speed > 0 ? 1.3 : 1);
   vx += clamp(target - vx, -accel, accel);
@@ -121,6 +126,13 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
       f.jumpCd = 10;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: true });
     }
+  }
+  if (thrust) {
+    // Thrust adds acceleration below the flight cap, preserving faster knockback.
+    vy += clamp(POWER.jetpack.riseSpeed - vy, 0, POWER.jetpack.thrust * DT);
+    f.jetting = true;
+    if (!wasJetting) sim.events.push({ type: "jetpack", tick: sim.tick, fighter: f.id });
+    if (--f.power.jetpack === 0) sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power: "jetpack", on: false });
   }
   body.setLinvel({ x: vx, y: vy }, true);
 

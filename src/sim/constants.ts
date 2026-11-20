@@ -175,6 +175,7 @@ export const POWER = {
   heavy: { ticks: 10 * 60, kbMul: 0.5, speedMul: 0.82, densityMul: 3 },
   damage: { ticks: 8 * 60, mul: 2, kbMul: 1.25 },
   jump: { ticks: 12 * 60 },
+  jetpack: { fuelTicks: 90, thrust: 44, riseSpeed: 9, speedMul: 1.35 },
 };
 
 /** Loose terrain pieces this small are cleared after this long (keeps body count down). */
@@ -229,4 +230,4 @@ export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 6 * TICK_RATE, weapo
  * fists only: one weapon a few meters from each spawn (toward the middle, so
  * neighbours can contest it) and a few more in the middle and up high.
  */
-export const ARMORY = { nearSpawn: 1, spawnOffset: 3.5, middle: 3, minGap: 1.5, high: 1, crateWeaponChance: 0.55, pickupGraceTicks: 45 };
+export const ARMORY = { nearSpawn: 1, spawnOffset: 3.5, middle: 3, minGap: 1.5, high: 1, jetpackOffset: 1.2, crateWeaponChance: 0.55, pickupGraceTicks: 45 };

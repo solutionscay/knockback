@@ -12,9 +12,10 @@ const POWER_WEIGHTS: [PowerUp, number][] = [
   ["heavy", 1.5],
   ["damage", 2],
   ["jump", 2],
+  ["jetpack", 2],
 ];
 
-/** Weapons waiting at the start: near each spawn (toward the middle), in the middle, up high. */
+/** Starting weapons near each spawn, in the middle and up high, plus a central jetpack. */
 export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
   const nav = sim.nav;
   const c = sim.zone.center;
@@ -48,6 +49,8 @@ export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
       if (q) sim.spawnItem(next(), q.x, q.y + 0.4);
     }
   }
+  const pack = near(c + ARMORY.jetpackOffset, 0, 4);
+  if (pack) sim.spawnItem("jetpack", pack.x, pack.y + 0.4);
   for (let n = 0; n < ARMORY.middle; n++) {
     const q = near(c + (n % 2 ? 2.5 : -2.5) * (1 + (n >> 1)), 0, 30);
     if (q) sim.spawnItem(next(), q.x, q.y + 0.4);
@@ -172,6 +175,7 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
     const half = FIGHTER.halfHeight + FIGHTER.radius;
     if (dx > ITEM.pickupRange * 0.85 || dy < -half - ITEM.reachBelow || dy > half + 0.3) continue;
     const it = e.itemType!;
+    if (it === "jetpack" && f.power.jetpack > POWER.jetpack.fuelTicks / 2) continue;
     if (isPickupWeapon(it)) {
       // the one who just dropped it can't grab it straight back
       if (e.owner === f.id && sim.tick - e.born < ARMORY.pickupGraceTicks) continue;
@@ -208,6 +212,9 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType) {
     case "jump":
       f.power.jump = POWER.jump.ticks;
       return on("jump");
+    case "jetpack":
+      f.power.jetpack = POWER.jetpack.fuelTicks;
+      return on("jetpack");
     default: {
       // a weapon: fill an empty (fists) slot, else replace the one not in hand and drop it
       if (f.weapons.includes(it)) return;

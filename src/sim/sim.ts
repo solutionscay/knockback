@@ -326,6 +326,8 @@ export class Sim {
       num(ALL_WEAPONS.indexOf(f.weapons[0]) * 10 + ALL_WEAPONS.indexOf(f.weapons[1]));
       for (const w of ALL_WEAPONS) num(f.cooldown[w]);
       num(f.power.shield + f.power.speed * 1e3 + f.power.heavy * 1e6 + f.power.damage * 1e9 + f.power.jump * 1e12);
+      num(f.power.jetpack);
+      num(f.jetting ? 1 : 0);
       num(f.aimX);
       num(f.aimY);
     }

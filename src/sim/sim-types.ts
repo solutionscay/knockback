@@ -13,8 +13,8 @@ export function isPickupWeapon(value: unknown): value is Exclude<Weapon, "fist">
   return WEAPON_LIST.includes(value as Weapon);
 }
 
-export type PowerUp = "health" | "shield" | "speed" | "heavy" | "damage" | "jump";
-export const POWER_LIST: readonly PowerUp[] = ["health", "shield", "speed", "heavy", "damage", "jump"];
+export const POWER_LIST = ["health", "shield", "speed", "heavy", "damage", "jump", "jetpack"] as const;
+export type PowerUp = (typeof POWER_LIST)[number];
 export type ItemType = PowerUp | Weapon;
 export type Stance = "rush" | "distance" | "cover" | "item";
 export type EntityKind = PropKind | "fighter" | "chunk" | "item" | "grenade";
@@ -50,12 +50,12 @@ export interface Rule {
   when: RuleWhen;
   /** for triggers about a fighter */
   who?: RuleWho;
-  /** for holds (a weapon) and item_near (any pickup) */
+  /** for holds (a weapon or jetpack) and item_near (any pickup) */
   item?: ItemType;
   /** for my_health_below / health_below (10-90 %) and on_streak (1-3 knockouts) */
   value?: number;
   do: RuleDo;
-  /** for seek (any pickup) and use (a weapon) */
+  /** for seek (any pickup) and use (a weapon or jetpack) */
   doItem?: ItemType;
   /** for do: stance */
   stance?: Stance;
@@ -85,6 +85,8 @@ export interface Strategy {
 export interface Input {
   move: number; // -1..1
   jump: boolean;
+  /** Burn one tick of jetpack fuel while steering with move. */
+  thrust?: boolean;
   aimX: number;
   aimY: number;
   /** Weapon the controller wants in hand (switches if carried). */
@@ -138,6 +140,7 @@ export interface Powers {
   heavy: number;
   damage: number;
   jump: number;
+  jetpack: number; // fuel ticks remaining
 }
 
 export interface Fighter {
@@ -176,6 +179,7 @@ export interface Fighter {
   outsideZone: boolean;
   outsideTicks: number;
   power: Powers;
+  jetting: boolean;
   // stats
   damageDealt: number;
   damageTaken: number;
@@ -217,6 +221,7 @@ export type SimEvent =
   | { type: "ko"; tick: number; fighter: number; cause: "ringout" | "hp"; by: number; weapon: string; x: number; y: number }
   | { type: "break"; tick: number; entity: number; kind: EntityKind; x: number; y: number; hw: number; hh: number }
   | { type: "pickup"; tick: number; fighter: number; item: ItemType; x: number; y: number }
+  | { type: "jetpack"; tick: number; fighter: number }
   | { type: "power"; tick: number; fighter: number; power: PowerUp; on: boolean }
   | { type: "shieldPop"; tick: number; fighter: number; x: number; y: number }
   | { type: "impact"; tick: number; fighter: number; damage: number; x: number; y: number }
