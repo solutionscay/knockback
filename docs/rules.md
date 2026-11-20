@@ -84,6 +84,6 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 
 ## Records
 
-**Match records are version 3:** plans can carry `rules`, in the stored form with seat numbers in `who` and the action's item in `doItem`. Version 2 records (no rules) still load and replay. Other versions are refused with a clear message.
+**Match records are version 4.** They store fighter identities and plans, including rules. Rules store seat numbers in `who` and the action's item in `doItem`. The reader also accepts the version 2 and 3 schemas.
 
-A record from a different engine version doesn't replay to its recorded state. Such a replay is refused, or flagged in the viewer: every round's final state hash is checked.
+Each round's final state hash is checked. If a replay diverges, the headless verifier refuses it and the viewer shows a divergence warning. The wall generation and combat changes in #28 and #29 change the simulation hashes. Play records from before those changes with the commit that made them.

@@ -192,6 +192,7 @@ bun test                       # determinism, fight flow, beats, scores, damage,
 bun run batch 200              # 200 headless bot fights + stats
 bun scripts/equal-batch.ts 200 # equal fighters: win spread per seat and soul, time to first weapon, pickups, kills per weapon
 bun scripts/stall-batch.ts 200 # stalemates: longest stretch without fighter damage per round, round lengths, time-outs, sudden deaths
+bun scripts/wall-batch.ts 200 1 1 # wall-stalled pursuit by seat and round, plus round and checkpoint hashes
 bun run record <outdir> 6 104  # 1080p WebM of full loops in "View all" (--camera auto|all|follow:N); needs the dev server
 bun scripts/crosscheck.ts      # Chromium vs Bun state hash check (needs the dev server)
 bun scripts/levels.ts out.jpg  # contact sheet of generated levels (needs the dev server)
@@ -203,7 +204,7 @@ bun run typecheck
 
 - `src/sim/` - pure TypeScript simulation (Rapier 2D deterministic build). No
   rendering, no wall clock, no `Math.random`. Runs in Bun and the browser.
-  - `levelgen.ts` seeded level generator + validation; `grid.ts` the cell grid
+  - `levelgen.ts` seeded level generator + validation; `level-walls.ts` jumpable, cracked barricades and route checks; `grid.ts` the cell grid
   - `terrain.ts` destructible terrain physics (chunked colliders, support check, loose pieces)
   - `sim.ts` world, fighters, weapons, objects, power-ups, explosions, damage, ring-outs, state hash
   - `match.ts` one continuous fight, result, match record (seed + strategies) and replay
