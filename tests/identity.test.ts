@@ -12,22 +12,22 @@ import {
   luminance,
   MARKS,
   Match,
-  MIN_HUE_GAP,
+  familyOf,
+  MAJOR_MARKS,
+  MIN_COLOR_DISTANCE,
+  MINOR_MARKS,
   NAME_MAX,
   NAME_POOL_SIZE,
   SHAPES,
   validName,
 } from "../src/sim";
+import { oklabDistance } from "../src/sim/color";
 import { PALETTES } from "../src/viewer/palette";
 
 beforeAll(async () => {
   await initPhysics();
 });
 
-const hueGap = (a: number, b: number) => {
-  const d = Math.abs(hueLight(a).h - hueLight(b).h);
-  return Math.min(d, 360 - d);
-};
 const contrast = (a: number, b: number) => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi! + 0.05) / (lo! + 0.05);
@@ -51,38 +51,46 @@ describe("generated identities (#17)", () => {
     expect(a.map((i) => i.shape)).not.toEqual(b.map((i) => i.shape));
     expect(a.map((i) => i.color)).not.toEqual(b.map((i) => i.color));
     // over many seeds the four seats see many different looks
-    const seen = { name: new Set<string>(), shape: new Set<string>(), mark: new Set<string>(), eyes: new Set<string>() };
-    for (let s = 0; s < 300; s++) for (const id of generateIdentities(s)) for (const k of ["name", "shape", "mark", "eyes"] as const) seen[k].add(id[k]);
+    const seen = { name: new Set<string>(), shape: new Set<string>(), mark: new Set<string>(), eyes: new Set<string>(), minor: new Set<string>() };
+    for (let s = 0; s < 300; s++) for (const id of generateIdentities(s)) for (const k of ["name", "shape", "mark", "eyes", "minor"] as const) seen[k].add(String(id[k]));
     expect(seen.shape.size).toBe(SHAPES.length);
-    expect(seen.mark.size).toBe(MARKS.length);
+    expect(seen.mark.size).toBe(MAJOR_MARKS.length);
+    expect(seen.minor.size).toBe(MINOR_MARKS.length + 1); // and "none"
     expect(seen.eyes.size).toBe(EYES.length);
     expect(seen.name.size).toBeGreaterThan(300);
   });
 
-  test("in every match: distinct names, shapes and marks; colors apart and readable on every theme", () => {
+  test("in every match: distinct name starts, silhouette families and major marks; colors apart and readable on every theme", () => {
     const backgrounds = Object.values(PALETTES).flatMap((p) => [...p.sky, ...p.hills]);
     for (let s = 0; s < 1000; s++) {
       const ids = generateIdentities(s * 7919 + 13);
       expect(ids.length).toBe(4);
       expect(new Set(ids.map((i) => i.name.slice(0, 3).toLowerCase())).size).toBe(4);
-      expect(new Set(ids.map((i) => i.shape)).size).toBe(4);
+      expect(new Set(ids.map((i) => familyOf(i.shape))).size).toBe(4);
       expect(new Set(ids.map((i) => i.mark)).size).toBe(4);
+      for (const id of ids) expect((MAJOR_MARKS as readonly string[]).includes(id.mark)).toBe(true);
+      for (const id of ids) expect(["none", ...MINOR_MARKS]).toContain(id.minor!);
       for (const id of ids) {
         expect(validName(id.name)).toBe(true);
         expect(id.name.length).toBeLessThanOrEqual(NAME_MAX);
         for (const bg of backgrounds) expect(contrast(id.color, bg)).toBeGreaterThanOrEqual(3);
       }
-      for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) expect(hueGap(ids[i]!.color, ids[j]!.color)).toBeGreaterThanOrEqual(MIN_HUE_GAP - 1);
+      for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) expect(oklabDistance(ids[i]!.color, ids[j]!.color)).toBeGreaterThanOrEqual(MIN_COLOR_DISTANCE);
     }
   });
 
   test("wishes (#19): a valid, unclaimed wish is kept; an invalid or taken one is replaced", () => {
     const base = generateIdentities(5);
     const free = SHAPES.find((s) => !base.some((b) => b.shape === s))!;
-    const got = assignIdentities(5, [{ name: "Captain", shape: free, eyes: "plus", mark: "halo", color: 0xff5ab4 }]);
-    expect(got[0]).toEqual({ name: "Captain", shape: free, eyes: "plus", mark: "halo", color: 0xff5ab4 });
-    const bad = assignIdentities(5, [{ name: "x", shape: "blob", eyes: 7, mark: "jetpack", color: "red" }]);
+    const freeFamily = SHAPES.find((s) => !base.some((b) => familyOf(b.shape) === familyOf(s)))!;
+    const got = assignIdentities(5, [{ name: "Captain", shape: freeFamily, eyes: "plus", mark: "halo", minor: "scarf", color: 0xff5ab4 }]);
+    expect(got[0]).toEqual({ name: "Captain", shape: freeFamily, eyes: "plus", mark: "halo", minor: "scarf", color: 0xff5ab4 });
+    expect(free).toBeDefined();
+    const bad = assignIdentities(5, [{ name: "x", shape: "blob", eyes: 7, mark: "jetpack", minor: "crown", color: "red" }]);
     expect(bad[0]).toEqual(base[0]!);
+    // a minor mark is not a major one, and a pool word is not a name
+    expect(assignIdentities(5, [{ mark: "scratch", name: "Pebble" }])[0]!.mark).toBe(base[0]!.mark);
+    expect(assignIdentities(5, [{ name: "Pebble" }])[0]!.name).toBe(base[0]!.name);
     // seat 1 asks for seat 0's shape and name: seat 0 keeps them, seat 1 gets others
     const clash = assignIdentities(5, [undefined, { name: base[0]!.name, shape: base[0]!.shape }]);
     expect(clash[0]).toEqual(base[0]!);
@@ -90,7 +98,38 @@ describe("generated identities (#17)", () => {
     expect(clash[1]!.name).not.toBe(base[0]!.name);
     // a too-dark or too-close color is refused
     expect(assignIdentities(5, [{ color: 0x101010 }])[0]!.color).toBe(base[0]!.color);
-    expect(assignIdentities(5, [undefined, { color: base[0]!.color }])[1]!.color).not.toBe(base[0]!.color);
+    // colors are settled for the whole match: a wished color wins over a generated one, the others draw around it
+    const wished = assignIdentities(5, [undefined, { color: base[0]!.color }]);
+    expect(wished[1]!.color).toBe(base[0]!.color);
+    expect(wished[0]!.color).not.toBe(base[0]!.color);
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) expect(oklabDistance(wished[i]!.color, wished[j]!.color)).toBeGreaterThanOrEqual(MIN_COLOR_DISTANCE);
+    // two wishes for the same color: the first seat keeps it
+    const twice = assignIdentities(5, [{ color: 0xff5ab4 }, { color: 0xff5ab4 }]);
+    expect(twice[0]!.color).toBe(0xff5ab4);
+    expect(twice[1]!.color).not.toBe(0xff5ab4);
+  });
+
+  test("colors cover the whole hue circle, evenly for every seat (blues included)", () => {
+    const N = 3000;
+    const bins = Array.from({ length: 4 }, () => new Array(12).fill(0));
+    for (let k = 0; k < N; k++) generateIdentities((k * 2654435761) >>> 0).forEach((id, s) => bins[s]![Math.floor(hueLight(id.color).h / 30) % 12]++);
+    for (let b = 0; b < 12; b++) {
+      const all = bins.reduce((a, s) => a + s[b]!, 0) / (4 * N);
+      expect(all).toBeGreaterThan(0.045); // every 30° band, blue (240-270°) too
+      for (let s = 0; s < 4; s++) expect(Math.abs(bins[s]![b]! / N - all)).toBeLessThan(0.035); // no seat leans to leftover hues
+    }
+  });
+
+  test("names never equal a shape, eye or mark word; most names are syllable names", () => {
+    const words = new Set([...SHAPES, ...EYES, ...MARKS].flatMap((w) => [w, w.replace(/s$/, ""), `${w}s`]));
+    let n = 0;
+    for (let s = 0; s < 500; s++) for (const id of generateIdentities(s)) {
+      expect(words.has(id.name.toLowerCase())).toBe(false);
+      n++;
+    }
+    expect(validName("Pebble")).toBe(false);
+    expect(validName("Bolt")).toBe(false);
+    expect(n).toBe(2000);
   });
 
   test("old records keep their names and colors; their marks pick familiar head shapes", () => {
@@ -105,6 +144,7 @@ describe("generated identities (#17)", () => {
     expect(ids.map((i) => i.color)).toEqual([0xff4f4f, 0x47a3ff, 0x4fdc6a, 0xffc733]);
     expect(ids.map((i) => i.shape)).toEqual(["keystone", "dome", "bun", "shield"]);
     expect(ids.map((i) => i.mark)).toEqual(["headband", "antenna", "ears", "crown"]);
+    expect(ids.map((i) => i.minor)).toEqual(["none", "none", "none", "none"]);
   });
 
   test("identity is display data: it never changes a fight", () => {
