@@ -739,13 +739,13 @@ body.capture #controls {
   gap: 1vh;
   align-items: center;
 }
-.pips.small {
+.pips.pips-small {
   display: flex;
   justify-content: center;
   margin-top: 0.5vh;
   font-size: 1.2vh;
 }
-.pips.big {
+.pips.pips-big {
   display: flex;
   justify-content: center;
   gap: 2.4vh;
@@ -795,4 +795,10 @@ body.capture #controls {
   letter-spacing: 0.3em;
   color: #fff3c4;
   text-shadow: 0 0.5vh 0 #000;
+}
+#celebrate .winner .pips.pips-big {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  max-width: 44vw;
+  margin-left: 0.4vw;
 }

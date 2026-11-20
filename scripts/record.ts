@@ -111,7 +111,7 @@ for (const [mi, seed] of seeds.entries()) {
         pendingShots.push({ at: frame + 6, name: `${tag}-round${st.round}-countdown` });
       }
       if (st.beat === "go") pendingShots.push({ at: frame + 5, name: `${tag}-round${st.round}-fight` });
-      if (st.beat === "roundEnd") pendingShots.push({ at: frame + 20, name: `${tag}-round${st.round}-result` });
+      if (st.beat === "roundEnd") pendingShots.push({ at: frame + 20, name: `${tag}-round${st.wins.reduce((a, b) => a + b, 0)}-result` });
       if (st.beat === "celebrate") pendingShots.push({ at: frame + 85, name: `${tag}-celebrate` });
     }
     for (const p of pendingShots.filter((p) => p.at === frame)) await page.screenshot({ path: join(shotsDir, `${p.name}.png`) });

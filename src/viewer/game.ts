@@ -190,6 +190,7 @@ export class Game {
     this.shown = f;
     this.scene.load(f.sim, f.controllers);
     this.scene.morale = this.match.morale.map((m) => m.state);
+    this.renderCamBar(); // everyone is back for the new round
   }
 
   // ------------------------------------------------------------- beats
@@ -286,7 +287,7 @@ export class Game {
       const dots = Array.from({ length: ROUNDS_TO_WIN }, (_, k) => `<b class="${k < w ? "on" : ""}"></b>`).join("");
       return `<span class="pip" style="--c:${hex(c.color)}"><i></i>${size === "big" ? esc(c.name) : ""}${dots}</span>`;
     }).join("");
-    return `<span class="pips ${size}">${pips}</span>`;
+    return `<span class="pips pips-${size}">${pips}</span>`;
   }
 
   private dialogueHtml(b: Extract<Beat, { kind: "dialogue" }>): string {
