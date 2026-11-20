@@ -15,12 +15,13 @@
  *
  * Providers: claude, codex, grok, house (built-in bot); stub/slow/junk/broken for testing.
  */
-import { formatSeconds } from "../src/format";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { decideRound, DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
+import { DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai/decide";
+import { MatchRunner } from "../src/ai/runner";
+import { LiveStream } from "../src/server/live";
 import { PROVIDERS, registerStubs } from "../src/ai/providers";
-import { initPhysics, Match } from "../src/sim";
+import { initPhysics } from "../src/sim";
 import index from "../index.html";
 import { logLanUrls, serveRecord } from "./viewer-server";
 
@@ -58,20 +59,7 @@ const port = Number(flags.port ?? 5175);
 mkdirSync(outDir, { recursive: true });
 
 // ------------------------------------------------------------ live stream (SSE)
-const history: string[] = [];
-const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
-const enc = new TextEncoder();
-function broadcast(msg: unknown) {
-  const line = `data: ${JSON.stringify(msg)}\n\n`;
-  history.push(line);
-  for (const c of clients) {
-    try {
-      c.enqueue(enc.encode(line));
-    } catch {
-      clients.delete(c);
-    }
-  }
-}
+const live = new LiveStream();
 
 if (!headless) {
   const server = Bun.serve({
@@ -82,20 +70,7 @@ if (!headless) {
     routes: { "/": index },
     fetch(req) {
       const url = new URL(req.url);
-      if (url.pathname === "/api/live") {
-        let ctl: ReadableStreamDefaultController<Uint8Array>;
-        const stream = new ReadableStream<Uint8Array>({
-          start(c) {
-            ctl = c;
-            for (const h of history) c.enqueue(enc.encode(h)); // late joiners catch up
-            clients.add(c);
-          },
-          cancel() {
-            clients.delete(ctl);
-          },
-        });
-        return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
-      }
+      if (url.pathname === "/api/live") return live.response();
       return serveRecord(url.pathname, outDir) ?? new Response("Not found", { status: 404 });
     },
   });
@@ -110,70 +85,14 @@ if (!headless) {
 
 // ------------------------------------------------------------ the match
 await initPhysics();
-const labels = seats.map((s) => s.provider?.label ?? "house");
-const t0 = performance.now();
-const match = new Match(seed, { souls });
-const names = match.names;
+const runner = new MatchRunner({ seed, seats, deadlineMs: deadline, lineup, onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
+const { labels, match } = runner;
 console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}`);
 match.identities.forEach((id, i) => console.log(`  ${id.name.padEnd(12)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}  (${id.shape} head, ${id.eyes} eyes, ${id.mark}, #${id.color.toString(16).padStart(6, "0")})`));
-broadcast({ type: "match", seed, labels, names, souls: match.souls, identities: match.identities, theme: match.level.theme });
+runner.start();
 console.log(`  level: ${match.level.theme}, ${match.level.width} m, ${match.level.platforms} platforms\n`);
-const log: string[] = [];
-const say = (s: string) => {
-  console.log(s);
-  log.push(s);
-};
-const promptLog: { round: number; prompts: string[]; raw: (string | null)[] }[] = [];
-const stratText = (s: { stance: string; weapons: string[]; target: string; grudge?: number; retaliate?: string }) =>
-  `${s.stance}, wants ${s.weapons.join(" > ")} -> ${s.target === "grudge" && s.grudge !== undefined ? names[s.grudge] : s.target}, retaliate ${s.retaliate ?? "turn"}`;
-
-while (!match.over) {
-  const round = match.round + 1;
-  const askStart = performance.now();
-  const ask = await decideRound(match, seats, deadline);
-  const askMs = Math.round(performance.now() - askStart);
-  promptLog.push({ round, prompts: ask.prompts, raw: ask.raw });
-  broadcast({ type: "decisions", round, decisions: ask.decisions, meta: ask.meta });
-  say(`ROUND ${round} plans (${formatSeconds(askMs)} to decide)`);
-  ask.decisions.forEach((d, i) => {
-    const m = ask.meta[i]!;
-    const tag = m.outcome === "ok" ? `${m.provider} ${formatSeconds(m.ms)}` : `${m.provider} ${formatSeconds(m.ms)} ${m.outcome.toUpperCase()}${m.detail ? ` (${m.detail})` : ""}`;
-    say(`  ${names[i]!.padEnd(12)} [${tag}] "${d.line}"`);
-    say(`  ${" ".repeat(8)}  plan: ${stratText(d.strategy)}`);
-  });
-  match.prepareRound(ask.decisions, ask.meta);
-  while (!match.step()) {
-    /* the engine plays the round */
-  }
-  const f = match.finishRound();
-  say(`  -> ${names[f.winner]} wins round ${round} after ${f.seconds.toFixed(0)} s (wins ${match.wins.join("-")})`);
-  for (const k of f.stats.kos) say(`     ${names[k.victim]} ${k.cause === "ringout" ? "rung out" : "knocked out"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]}` : ""} (${k.weapon})`);
-  f.stats.summary.forEach((s, i) => say(`     ${names[i]}: ${s}`));
-  const reflexes = match.fight!.controllers.flatMap((c, i) => c.reflexLog.map((r) => `${names[i]} turned on ${names[r.attacker]} (${r.mode}) at ${(r.tick / 60).toFixed(0)} s`));
-  if (reflexes.length) say(`     reflexes: ${reflexes.join("; ")}`);
-  say("");
-}
-const totalMs = performance.now() - t0;
-say(`MATCH: ${names[match.winner]} wins ${match.wins.join("-")} (${match.decidedBy()}), ${match.round} rounds, ${formatSeconds(totalMs)} total`);
-
-// response times + fallbacks
-say(`\nResponse times and fallbacks:`);
-names.forEach((n, i) => {
-  const ms = match.record.rounds.map((r) => r.meta?.[i]).filter((m) => m && m.outcome !== "house");
-  const okMs = ms.filter((m) => m!.outcome === "ok").map((m) => m!.ms);
-  const fb = ms.filter((m) => m!.outcome.startsWith("fallback"));
-  const avg = okMs.length ? okMs.reduce((a, b) => a + b, 0) / okMs.length : 0;
-  say(
-    `  ${n.padEnd(12)} ${labels[i]!.padEnd(18)} ${okMs.map(formatSeconds).join(", ") || "-"}${okMs.length ? `  (avg ${formatSeconds(avg)})` : ""}  fallbacks: ${fb.length}${fb.length ? " " + fb.map((m) => `${m!.outcome}${m!.detail ? ` [${m!.detail}]` : ""}`).join("; ") : ""}`,
-  );
-});
-
-const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-const file = `ai-${seed}-${stamp}.json`;
-writeFileSync(join(outDir, file), JSON.stringify({ ...match.record, labels, lineup, totalMs: Math.round(totalMs) }, null, 2));
-writeFileSync(join(outDir, file.replace(/\.json$/, ".log.txt")), log.join("\n") + "\n");
-writeFileSync(join(outDir, file.replace(/\.json$/, ".prompts.json")), JSON.stringify(promptLog, null, 2));
-broadcast({ type: "done", record: `/records/${file}` });
-say(`\nrecord: ${join(outDir, file)}  (replay: ${headless ? "bun run dev, then " : ""}?record=/records/${file})`);
+await runner.run();
+const file = runner.save(outDir);
+runner.say(`\nrecord: ${join(outDir, file)}  (replay: ${headless ? "bun run dev, then " : ""}?record=/records/${file})`);
 if (headless) process.exit(0);
 console.log("viewer still serving; Ctrl+C to stop");
