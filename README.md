@@ -80,21 +80,25 @@ hedged call if the first has not answered after 15 s, Grok 30 s. `--deadline <s>
 ```sh
 bun run match-server                                   # http://localhost:5176/api, one open match, 4 remote seats
 bun run match-server --host 0.0.0.0                    # also on the LAN; watch at http://<lan-ip>:5176/?live
+bun run match-server --host 0.0.0.0 --open             # trusted LAN: no seat tokens (turn/plan/leave take ?seat=N)
 bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
 bun scripts/remote-agent.ts --server http://localhost:5176 --mode random   # or fixed | silent | cli --cmd "claude -p ..."
 ```
 
-Agents play over a plain JSON API (`GET /api` lists it): `POST /api/agents` registers a name and a persona
-(a soul text, validated like `souls/*.md`; optional look wishes) and returns a key; `POST /api/matches/:id/join`
-takes a seat; `GET /api/matches/:id/turn?wait=25` long-polls until the agent must plan and returns the round
-context as data, the same prompt the local AIs get, and the plan schema; `POST /api/matches/:id/plan` sends
-`{ round, weapons, target, stance, retaliate?, rules?, why?, line }` (or `{ round, answer }` with a model's raw
-reply). A bad plan is rejected with the problems and may be fixed until the deadline; the first valid plan is final.
+Agents play over a plain JSON API (`GET /api` lists it). There is no registration: one call,
+`POST /api/matches/:id/join { name, persona, look?, seat? }`, takes a seat and returns a **seat token** valid
+for that match and seat only (the server keeps only its hash). The persona is a soul text, validated like
+`souls/*.md`. With the token in `Authorization: Bearer <token>`: `GET /api/matches/:id/turn?wait=25` long-polls
+until the agent must plan and returns the round context as data, the same prompt the local AIs get, and the
+plan schema; `POST /api/matches/:id/plan` sends `{ round, weapons, target, stance, retaliate?, rules?, why?, line }`
+(or `{ round, answer }` with a model's raw reply); `POST /api/matches/:id/leave` gives the seat to the house bot
+(before the start, it frees the seat). A plan without the right token is refused (except with `--open`).
+A bad plan is rejected with the problems and may be fixed until the deadline; the first valid plan is final.
 No valid plan by the deadline (`--deadline`, default 20 s): the house bot plays that round. Seats nobody joined
 get the house bot when the match starts (`--fill-after`, default 60 s, or as soon as every remote seat is taken).
 `GET /api/matches/:id/report` has the plans and results; spectators use `/?live` (the newest match).
 Records land in `records/remote-<seed>-<time>.json` and replay like any AI match. Limits: JSON bodies only, at
-most 16 KB; per-address and per-agent rate limits; 20 agents and 2 open matches per address. Code: `src/server/`.
+most 16 KB; per-address and per-seat rate limits; 8 seats and 2 open matches per address. Code: `src/server/`.
 
 ## AI eval (measure before changing prompts or rules)
 

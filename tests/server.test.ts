@@ -77,52 +77,70 @@ describe("rate limiter", () => {
   });
 });
 
+type Call = ReturnType<typeof client>;
+const joinBody = (name: string, extra: Record<string, unknown> = {}) => ({ name, persona: SOUL, ...extra });
+
+/** Long-poll and answer every turn with `answer(turn)` (null: stay silent for that turn) until the match is over. */
+async function playSeat(call: Call, mid: string, token: string | undefined, answer: (t: any) => Record<string, unknown> | null, q = "") {
+  for (;;) {
+    const r = await call("GET", `/api/matches/${mid}/turn?${q}wait=5`, undefined, token);
+    if (r.status !== 200) throw new Error(`turn: ${r.status} ${JSON.stringify(r.data)}`);
+    const t = r.data;
+    if (t.status === "over" || t.status === "left") return t;
+    if (t.status !== "turn") continue;
+    const body = answer(t);
+    if (!body) await Bun.sleep(t.msLeft + 50); // never answer: wait the turn out
+    else expect((await call("POST", `/api/matches/${mid}/plan?${q}`, { round: t.round, ...body }, token)).status).toBe(200);
+  }
+}
+
 describe("match server API", () => {
   test("rejects bad input with clear errors", async () => {
     const s = new MatchServer({ outDir: tmp() });
     const call = client(s);
-    expect((await call("POST", "/api/agents", { name: "", persona: SOUL })).data.problems.join()).toContain("name");
-    expect((await call("POST", "/api/agents", { name: "Ok", persona: "short" })).data.problems.join()).toContain("persona");
-    expect((await call("POST", "/api/agents", { name: "Ok", persona: SOUL, look: { hat: "big" } })).data.problems.join()).toContain("look.hat");
-    expect((await call("POST", "/api/agents", { name: "Ok", persona: SOUL, admin: true })).status).toBe(400);
-    expect((await call("POST", "/api/agents", undefined, undefined, { text: "{nope" })).status).toBe(400);
-    expect((await call("POST", "/api/agents", undefined, undefined, { type: "text/plain", text: "{}" })).status).toBe(415);
-    expect((await call("POST", "/api/agents", undefined, undefined, { text: JSON.stringify({ name: "Big", persona: "x".repeat(20_000) }) })).status).toBe(413);
-    expect((await call("POST", "/api/agents", undefined, undefined, { text: "[1,2]" })).status).toBe(400);
-    expect((await call("GET", "/api/agents")).status).toBe(405);
+    const m = await call("POST", "/api/matches", { fillAfterSec: 300 });
+    const J = `/api/matches/${m.data.id}/join`;
+    expect((await call("POST", J, { name: "", persona: SOUL })).data.problems.join()).toContain("name");
+    expect((await call("POST", J, { name: "Ok", persona: "short" })).data.problems.join()).toContain("persona");
+    expect((await call("POST", J, joinBody("Ok", { look: { hat: "big" } }))).data.problems.join()).toContain("look.hat");
+    expect((await call("POST", J, joinBody("Ok", { admin: true }))).status).toBe(400);
+    expect((await call("POST", J, joinBody("Ok", { seat: 9 }))).status).toBe(400);
+    expect((await call("POST", J, undefined, undefined, { text: "{nope" })).status).toBe(400);
+    expect((await call("POST", J, undefined, undefined, { type: "text/plain", text: "{}" })).status).toBe(415);
+    expect((await call("POST", J, undefined, undefined, { text: JSON.stringify({ name: "Big", persona: "x".repeat(20_000) }) })).status).toBe(413);
+    expect((await call("POST", J, undefined, undefined, { text: "[1,2]" })).status).toBe(400);
+    expect((await call("POST", "/api/agents", joinBody("Old"))).status).toBe(410); // registration is gone
     expect((await call("POST", "/api/matches", { seats: ["house", "house", "house", "house"] })).data.problems.join()).toContain("remote");
     expect((await call("POST", "/api/matches", { seats: ["remote", "claude", "house", "house"] })).status).toBe(400); // no local AI over HTTP
     expect((await call("POST", "/api/matches", { deadlineSec: 999 })).data.problems.join()).toContain("deadlineSec");
     expect((await call("GET", "/api/matches/m_nope")).status).toBe(404);
     expect((await call("GET", "/api/nope")).status).toBe(404);
-    const m = await call("POST", "/api/matches", { fillAfterSec: 300 });
-    expect((await call("POST", `/api/matches/${m.data.id}/join`, {}, "kb_wrong")).status).toBe(401);
-    const a = await call("POST", "/api/agents", { name: "Agent 1", persona: SOUL, look: { color: "#ff8800" } });
+    const a = await call("POST", J, joinBody("Agent 1", { look: { color: "#ff8800" } }));
     expect(a.status).toBe(201);
-    expect(a.data.look).toEqual({ color: 0xff8800 });
-    expect((await call("GET", `/api/matches/${m.data.id}/turn?wait=0`, undefined, a.data.key)).status).toBe(403);
-    expect((await call("POST", `/api/matches/${m.data.id}/join`, { seat: 9 }, a.data.key)).status).toBe(400);
-    expect((await call("GET", "/api")).data.endpoints["POST /api/agents"]).toBeDefined();
+    expect(a.data.token).toMatch(/^st_[0-9a-f]{48}$/);
+    expect(s.matches.get(m.data.id)!.agents[a.data.seat]!.tokenHash).not.toContain(a.data.token.slice(3)); // only the hash is kept
+    expect((await call("GET", `/api/matches/${m.data.id}/turn?wait=0`)).status).toBe(401); // no token
+    expect((await call("GET", `/api/matches/${m.data.id}/turn?wait=0&seat=0`)).status).toBe(401); // ?seat only in open mode
+    expect((await call("GET", `/api/matches/${m.data.id}/turn?wait=0`, undefined, "st_wrong")).status).toBe(401);
+    expect((await call("GET", `/api/matches/${m.data.id}/turn?wait=0`, undefined, a.data.token)).data.status).toBe("open");
+    expect((await call("GET", "/api")).data.endpoints["POST /api/matches/:id/leave"]).toBeDefined();
     s.matches.get(m.data.id)!.start(); // don't leave the fill timer running
   });
 
   test("rate limits per address", async () => {
     const s = new MatchServer({ outDir: tmp() });
     const call = client(s, "9.9.9.9");
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) ids.push(s.createMatch({ fillAfterMs: 300_000 }).id);
     const codes: number[] = [];
-    for (let i = 0; i < 15; i++) codes.push((await call("POST", "/api/agents", { name: `A${i}`, persona: SOUL })).status);
-    expect(codes.slice(0, 10).every((c) => c === 201)).toBe(true);
-    expect(codes.at(-1)).toBe(429);
+    for (let i = 0; i < 12; i++) codes.push((await call("POST", `/api/matches/${ids[i % 4]}/join`, joinBody(`A${i}`))).status);
+    expect(codes.slice(0, 8).every((c) => c === 201)).toBe(true);
+    expect(codes[8]).toBe(429); // 8 seats per address
+    for (const m of s.matches.values()) m.start();
   });
 
-  test("per-address caps: agents (idle ones expire) and open matches", async () => {
+  test("per-address cap on open matches", async () => {
     const s = new MatchServer({ outDir: tmp() });
-    for (let i = 0; i < 20; i++) s.register({ name: `A${i}`, persona: SOUL }, "5.5.5.5");
-    expect(() => s.register({ name: "A21", persona: SOUL }, "5.5.5.5")).toThrow(/per address/);
-    s.register({ name: "Other", persona: SOUL }, "6.6.6.6");
-    for (const a of s.agents.values()) a.lastSeen -= 31 * 60_000;
-    s.register({ name: "A21", persona: SOUL }, "5.5.5.5"); // the idle ones were pruned
-    expect(s.agents.size).toBe(1);
     const call = client(s, "7.7.7.7");
     expect((await call("POST", "/api/matches", { fillAfterSec: 300 })).status).toBe(201);
     expect((await call("POST", "/api/matches", { fillAfterSec: 300 })).status).toBe(201);
@@ -130,63 +148,47 @@ describe("match server API", () => {
     for (const m of s.matches.values()) m.start();
   });
 
-  test("a full match: 2 agents plan, 1 never answers, 1 house bot; plans are validated; the record replays", async () => {
+  test("a full match: 2 agents plan, 1 never answers, 1 house bot; tokens and plans are checked; the record replays", async () => {
     const out = tmp();
     const s = new MatchServer({ outDir: out });
     const call = client(s);
     const m = (await call("POST", "/api/matches", { seats: ["remote", "remote", "remote", "house"], seed: 31337, deadlineSec: 2, fillAfterSec: 30 })).data;
-    const keys: string[] = [];
-    for (const n of ["Planner", "Answerer", "Silent"]) {
-      const a = await call("POST", "/api/agents", { name: n, persona: SOUL });
-      keys.push(a.data.key);
-    }
-    expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`, undefined, keys[0])).status).toBe(403);
-    for (const k of keys) expect((await call("POST", `/api/matches/${m.id}/join`, {}, k)).status).toBe(200);
-    expect((await call("POST", `/api/matches/${m.id}/join`, {}, keys[0])).status).toBe(409);
+    const other = s.createMatch({ seats: ["remote", "remote", "house", "house"], fillAfterMs: 300_000 });
+    const otherToken = (await call("POST", `/api/matches/${other.id}/join`, joinBody("Elsewhere"))).data.token;
+    const tokens: string[] = [];
+    for (const n of ["Planner", "Answerer", "Silent"]) tokens.push((await call("POST", `/api/matches/${m.id}/join`, joinBody(n))).data.token);
+    expect((await call("POST", `/api/matches/${m.id}/join`, joinBody("Late"))).status).toBe(409);
     const seen = { rejected: [] as number[], rounds: 0 };
     const planner = async () => {
       for (;;) {
-        const t = (await call("GET", `/api/matches/${m.id}/turn?wait=5`, undefined, keys[0])).data;
+        const t = (await call("GET", `/api/matches/${m.id}/turn?wait=5`, undefined, tokens[0])).data;
         if (t.status === "over") return t;
         if (t.status !== "turn") continue;
         expect(t.context.you.seat).toBe(0);
         expect(t.prompt).toContain(`You are ${t.context.you.name}`);
         expect(t.schema.stance.values).toContain("rush");
         if (t.round > 1) expect(t.context.lastRound.whatHappenedToYou.length).toBeGreaterThan(0);
-        // bad plans first: unknown stance, a bad rule, the wrong round; then a good one
-        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN, stance: "dance" }, keys[0])).status);
-        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN, rules: [{ when: "moon", do: "seek" }] }, keys[0])).status);
-        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round + 1, ...PLAN }, keys[0])).status);
-        const ok = await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN, target: t.context.targets[0] }, keys[0]);
+        // a plan with no token, another seat's token, or another match's token is refused
+        expect((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN })).status).toBe(401);
+        expect((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN }, otherToken)).status).toBe(401);
+        // bad plans: unknown stance, a bad rule, the wrong round; then a good one
+        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN, stance: "dance" }, tokens[0])).status);
+        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN, rules: [{ when: "moon", do: "seek" }] }, tokens[0])).status);
+        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round + 1, ...PLAN }, tokens[0])).status);
+        const ok = await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN, target: t.context.targets[0] }, tokens[0]);
         expect(ok.status).toBe(200);
         expect(ok.data.plan.target).toBe(t.context.targets[0]);
-        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN }, keys[0])).status); // already planned
+        seen.rejected.push((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN }, tokens[0])).status); // already planned
         seen.rounds++;
       }
     };
-    const answerer = async () => {
-      for (;;) {
-        const t = (await call("GET", `/api/matches/${m.id}/turn?wait=5`, undefined, keys[1])).data;
-        if (t.status === "over") return t;
-        if (t.status !== "turn") continue;
-        const r = await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, answer: 'Sure:\n```json\n{"weapons":["shotgun"],"target":"nearest","stance":"cover","line":"Raw reply works."}\n```' }, keys[1]);
-        expect(r.status).toBe(200);
-      }
-    };
-    const silent = async () => {
-      for (;;) {
-        const t = (await call("GET", `/api/matches/${m.id}/turn?wait=5`, undefined, keys[2])).data;
-        if (t.status === "over") return t;
-        if (t.status === "turn") await Bun.sleep(t.msLeft + 50); // never answer: wait the turn out
-      }
-    };
-    const [a, , c] = await Promise.all([planner(), answerer(), silent()]);
+    const raw = 'Sure:\n```json\n{"weapons":["shotgun"],"target":"nearest","stance":"cover","line":"Raw reply works."}\n```';
+    const [a, , c] = await Promise.all([planner(), playSeat(call, m.id, tokens[1], () => ({ answer: raw })), playSeat(call, m.id, tokens[2], () => null)]);
     expect(a.record).toMatch(/^\/records\/remote-31337-/);
     expect(c.winner).toBe(a.winner);
-    expect(seen.rejected.filter((x, i) => i % 4 === 0)).toEqual(Array(seen.rounds).fill(422));
-    expect(seen.rejected.filter((x, i) => i % 4 === 1)).toEqual(Array(seen.rounds).fill(422));
-    expect(seen.rejected.filter((x, i) => i % 4 === 2)).toEqual(Array(seen.rounds).fill(409));
-    expect(seen.rejected.filter((x, i) => i % 4 === 3)).toEqual(Array(seen.rounds).fill(409));
+    for (let k = 0; k < 4; k++) expect(seen.rejected.filter((_, i) => i % 4 === k)).toEqual(Array(seen.rounds).fill([422, 422, 409, 409][k]));
+    // after the end the token still reads the result
+    expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`, undefined, tokens[0])).data.status).toBe("over");
 
     const rep = (await call("GET", `/api/matches/${m.id}/report`)).data;
     expect(rep.status).toBe("over");
@@ -197,12 +199,57 @@ describe("match server API", () => {
       expect(r.plans[1].line).toBe("Raw reply works.");
     }
     expect((await call("GET", `/api/matches/${m.id}/report?round=1`)).data.rounds.length).toBe(1);
-
-    // the saved record replays with no network, hash for hash
     const rec = JSON.parse(readFileSync(join(out, a.record.replace("/records/", "")), "utf8"));
     expect(hashes(replayMatch(rec).record)).toEqual(hashes(rec));
     expect(rec.labels).toEqual(["remote/Planner", "remote/Answerer", "remote/Silent", "house"]);
     expect(rec.souls[0].id).toBe("planner");
+    other.start();
+  });
+
+  test("open mode: no token needed, the seat is named with ?seat=N; a token still works", async () => {
+    const s = new MatchServer({ outDir: tmp(), open: true });
+    const call = client(s);
+    const m = s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 8, deadlineMs: 2000, fillAfterMs: 30_000 });
+    const a = (await call("POST", `/api/matches/${m.id}/join`, joinBody("NoToken"))).data;
+    const b = (await call("POST", `/api/matches/${m.id}/join`, joinBody("WithToken"))).data;
+    expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`)).status).toBe(400); // which seat?
+    const [x] = await Promise.all([playSeat(call, m.id, undefined, () => PLAN, `seat=${a.seat}&`), playSeat(call, m.id, b.token, () => PLAN)]);
+    expect(x.status).toBe("over");
+    expect(m.runner!.match.record.rounds.every((r) => r.meta!.slice(0, 2).every((mm) => mm.outcome === "ok"))).toBe(true);
+  });
+
+  test("leave: before the start the seat is free again; mid-match the house bot plays it from the next turn", async () => {
+    const s = new MatchServer({ outDir: tmp() });
+    const call = client(s);
+    const m = s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 21, deadlineMs: 3000, fillAfterMs: 30_000 });
+    const early = (await call("POST", `/api/matches/${m.id}/join`, joinBody("Early"))).data;
+    expect((await call("POST", `/api/matches/${m.id}/leave`, undefined, early.token)).data).toEqual({ seat: 0, status: "open", houseFromRound: null });
+    expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`, undefined, early.token)).status).toBe(401); // token gone
+    const stay = (await call("POST", `/api/matches/${m.id}/join`, joinBody("Stayer"))).data;
+    const quit = (await call("POST", `/api/matches/${m.id}/join`, joinBody("Quitter"))).data;
+    expect(stay.seat).toBe(0); // the freed seat
+    const quitter = async () => {
+      for (;;) {
+        const t = (await call("GET", `/api/matches/${m.id}/turn?wait=5`, undefined, quit.token)).data;
+        if (t.status !== "turn") continue;
+        if (t.round === 1) {
+          expect((await call("POST", `/api/matches/${m.id}/plan`, { round: 1, ...PLAN }, quit.token)).status).toBe(200);
+          continue;
+        }
+        const l = await call("POST", `/api/matches/${m.id}/leave`, undefined, quit.token); // during round 2's turn
+        expect(l.data).toEqual({ seat: 1, status: "running", houseFromRound: 2 });
+        expect((await call("POST", `/api/matches/${m.id}/plan`, { round: 2, ...PLAN }, quit.token)).status).toBe(409);
+        expect((await call("GET", `/api/matches/${m.id}/turn?wait=0`, undefined, quit.token)).data.status).toBe("left");
+        return;
+      }
+    };
+    const t0 = Date.now();
+    await Promise.all([playSeat(call, m.id, stay.token, () => PLAN), quitter()]);
+    const meta = m.runner!.match.record.rounds.map((r) => r.meta![1]!);
+    expect(meta[0]!.outcome).toBe("ok");
+    expect(meta.slice(1).every((x) => x.outcome === "fallback-error" && x.detail === "the agent left the match")).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(3000 * meta.length); // leaving doesn't wait out the deadline
+    expect(m.info().seats[1]).toMatchObject({ agent: "Quitter", houseFromRound: 2 });
   });
 
   test("a remote plan plays exactly like the same answer from a local provider", async () => {
@@ -210,17 +257,12 @@ describe("match server API", () => {
     registerProvider("fixedplan", { label: "fixed/test", ask: async () => answer });
     const s = new MatchServer({ outDir: tmp() });
     const call = client(s);
-    const m = (await call("POST", "/api/matches", { seats: ["house", "remote", "house", "house"], seed: 99, deadlineSec: 5, fillAfterSec: 30 })).data;
-    const a = (await call("POST", "/api/agents", { name: "Same", persona: SOUL })).data;
-    await call("POST", `/api/matches/${m.id}/join`, {}, a.key);
-    for (;;) {
-      const t = (await call("GET", `/api/matches/${m.id}/turn?wait=5`, undefined, a.key)).data;
-      if (t.status === "over") break;
-      if (t.status === "turn") expect((await call("POST", `/api/matches/${m.id}/plan`, { round: t.round, ...PLAN }, a.key)).status).toBe(200);
-    }
-    const remote = s.matches.get(m.id)!.runner!.match.record;
+    const m = s.createMatch({ seats: ["house", "remote", "house", "house"], seed: 99, deadlineMs: 5000, fillAfterMs: 30_000 });
+    const a = (await call("POST", `/api/matches/${m.id}/join`, joinBody("Same"))).data;
+    await playSeat(call, m.id, a.token, () => PLAN);
+    const remote = m.runner!.match.record;
     const souls = exampleSouls();
-    souls[1] = s.matches.get(m.id)!.runner!.match.opts.souls![1]!;
+    souls[1] = m.runner!.match.opts.souls![1]!;
     const local = new MatchRunner({ seed: 99, seats: seatsFor(["house", "fixedplan", "house", "house"], souls) });
     await local.run();
     expect(hashes(remote)).toEqual(hashes(local.match.record));

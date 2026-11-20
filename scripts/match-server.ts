@@ -7,6 +7,7 @@
  *   bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
  *   bun run match-server --seats remote,claude,house,house   # local providers allowed from the CLI
  *   bun run match-server --no-match                   # matches only via POST /api/matches
+ *   bun run match-server --host 0.0.0.0 --open        # trusted LAN: no seat token checks (?seat=N instead)
  *
  * Watch: http://<host>:5176/?live (the newest match). Records land in
  * records/ and replay with ?record=/records/<file>.json.
@@ -38,6 +39,7 @@ const secs = (s: string | undefined, dflt: number) => (s !== undefined ? Math.ro
 
 const api = new MatchServer({
   outDir,
+  open: flags.open === "true",
   defaultDeadlineMs: secs(flags.deadline, 20_000),
   defaultFillAfterMs: secs(flags["fill-after"], 60_000),
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
@@ -57,7 +59,7 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (watch: /?live)`);
+console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (watch: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
 logLanUrls(hostname, server.port, "/?live");
 if (flags["no-match"] !== "true") {
   const m = api.createMatch({

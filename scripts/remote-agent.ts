@@ -1,6 +1,7 @@
 /**
- * A small HTTP client for the match server (#20): registers, joins a match,
- * long-polls for turns and sends plans. Also the reference for writing an agent.
+ * A small HTTP client for the match server (#20, #25): joins a match (one
+ * call: name + persona -> seat token), long-polls for turns and sends plans.
+ * Also the reference for writing an agent.
  *
  *   bun scripts/remote-agent.ts --server http://localhost:5176 --name Rando --mode random
  *   bun scripts/remote-agent.ts --mode fixed  --soul souls/sniper.md
@@ -10,6 +11,8 @@
  *
  * --match <id> joins that match; without it, the first open match.
  * --seed <n> makes the random plans repeatable.
+ * --leave-after <round> leaves the match when that round's turn comes (the house bot takes over).
+ * --no-token: don't send the seat token (works only against a server started with --open).
  */
 import { readFileSync } from "node:fs";
 import { Rng } from "../src/sim/rng";
@@ -82,12 +85,7 @@ async function cliAnswer(prompt: string, msLeft: number): Promise<string> {
   }
 }
 
-// ------------------------------------------------------------ register, join, play
-const reg = await call("POST", "/api/agents", { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}) });
-if (reg.status !== 201) throw new Error(`register failed: ${reg.status} ${JSON.stringify(reg.data)}`);
-const key: string = reg.data.key;
-log(`registered ${reg.data.id}${reg.data.warnings?.length ? ` (soul warnings: ${reg.data.warnings.join("; ")})` : ""}`);
-
+// ------------------------------------------------------------ join, play
 let matchId = flags.match;
 for (let tries = 0; !matchId; tries++) {
   const list = await call("GET", "/api/matches");
@@ -97,12 +95,17 @@ for (let tries = 0; !matchId; tries++) {
     await Bun.sleep(1000);
   }
 }
-const join = await call("POST", `/api/matches/${matchId}/join`, flags.seat ? { seat: Number(flags.seat) } : {}, key);
-if (join.status !== 200) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
-log(`joined match ${matchId}, seat ${join.data.seat}, mode ${mode}`);
+const join = await call("POST", `/api/matches/${matchId}/join`, { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.seat ? { seat: Number(flags.seat) } : {}) });
+if (join.status !== 201) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
+const seat: number = join.data.seat;
+// the seat token: sent on turn, plan and leave; in --open mode the seat number can stand in for it
+const key: string | undefined = flags["no-token"] === "true" ? undefined : join.data.token;
+const q = key ? "" : `seat=${seat}&`;
+log(`joined match ${matchId}, seat ${seat}, mode ${mode}${key ? "" : " (no token: open mode)"}${join.data.warnings?.length ? ` (soul warnings: ${join.data.warnings.join("; ")})` : ""}`);
+const leaveAfter = flags["leave-after"] ? Number(flags["leave-after"]) : Infinity;
 
 for (;;) {
-  const r = await call("GET", `/api/matches/${matchId}/turn?wait=25`, undefined, key);
+  const r = await call("GET", `/api/matches/${matchId}/turn?${q}wait=25`, undefined, key);
   if (r.status !== 200) {
     log(`turn: ${r.status} ${JSON.stringify(r.data)}`);
     await Bun.sleep(1000);
@@ -113,7 +116,16 @@ for (;;) {
     log(`match over: ${t.winner} wins ${t.wins?.join("-")}${t.youWon ? " (that's me)" : ""}; record ${t.record}`);
     break;
   }
+  if (t.status === "left") {
+    log(t.message);
+    break;
+  }
   if (t.status !== "turn") continue;
+  if (t.round >= leaveAfter) {
+    const l = await call("POST", `/api/matches/${matchId}/leave?${q}`, undefined, key);
+    log(`left: ${JSON.stringify(l.data)}`);
+    break;
+  }
   log(`round ${t.round}: I am ${t.context.you.name}; ${Math.round(t.msLeft / 1000)} s to plan`);
   if (mode === "silent") {
     // never answer: wait out the turn
@@ -121,7 +133,7 @@ for (;;) {
     continue;
   }
   const body = mode === "fixed" ? fixedPlan(t) : mode === "cli" ? { round: t.round, answer: (await cliAnswer(t.prompt, t.msLeft)).slice(0, 8000) } : randomPlan(t);
-  const p = await call("POST", `/api/matches/${matchId}/plan`, body, key);
+  const p = await call("POST", `/api/matches/${matchId}/plan?${q}`, body, key);
   if (p.status === 200) log(`plan accepted: ${p.data.plan.stance}, ${p.data.plan.weapons.join(">")} -> ${p.data.plan.target}: "${p.data.plan.line}"${p.data.warnings.length ? ` (warnings: ${p.data.warnings.join("; ")})` : ""}`);
   else log(`plan rejected: ${p.status} ${p.data?.error}${p.data?.problems ? `: ${p.data.problems.join("; ")}` : ""}`);
 }

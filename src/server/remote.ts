@@ -111,6 +111,7 @@ export interface Turn {
   deadlineAt: number;
   attempts: number;
   resolve: (text: string) => void;
+  reject: (e: Error) => void;
 }
 
 export type SubmitResult =
@@ -156,8 +157,14 @@ export class RemoteSeat {
   turn: Turn | null = null;
   /** rounds this seat has a plan for (accepted, or timed out) */
   readonly done = new Set<number>();
+  /** the agent left: the house bot plays this seat from now on */
+  left = false;
   /** called when the turn appears or ends */
   onChange: () => void = () => {};
+  /** a plan already accepted for this round (e.g. stored before a restart), returned at once */
+  stored: (round: number) => Promise<string | null> = async () => null;
+  /** called with each accepted plan before the turn ends (to persist it) */
+  onAccept: (round: number, raw: string) => Promise<void> | void = () => {};
 
   constructor(
     readonly agentName: string,
@@ -174,6 +181,11 @@ export class RemoteSeat {
   private ask(prompt: string, signal: AbortSignal): Promise<string> {
     const match = this.match;
     if (!match) return Promise.reject(new Error("seat not bound to a match"));
+    if (this.left) return Promise.reject(new Error("the agent left the match"));
+    return this.stored(match.round + 1).then((raw) => (raw !== null ? raw : this.waitForPlan(match, prompt, signal)));
+  }
+
+  private waitForPlan(match: Match, prompt: string, signal: AbortSignal): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       const now = Date.now();
       const round = match.round + 1;
@@ -193,6 +205,10 @@ export class RemoteSeat {
           end();
           resolve(text);
         },
+        reject: (e) => {
+          end();
+          reject(e);
+        },
       };
       signal.addEventListener(
         "abort",
@@ -207,12 +223,18 @@ export class RemoteSeat {
     });
   }
 
+  /** The agent leaves: a pending turn ends now (the house bot plays it), and every later one too. */
+  leave() {
+    this.left = true;
+    this.turn?.reject(new Error("the agent left the match"));
+  }
+
   /**
    * Validate a plan for the current turn. A valid plan ends the turn (the
    * first valid plan is final); an invalid one is rejected with the
    * problems, and the agent may try again until the deadline.
    */
-  submit(body: Record<string, unknown>): SubmitResult {
+  async submit(body: Record<string, unknown>): Promise<SubmitResult> {
     const match = this.match;
     const shape = checkPlanShape(body);
     if (shape.length) return { ok: false, status: 400, error: "malformed plan", problems: shape };
@@ -242,6 +264,8 @@ export class RemoteSeat {
       line: p.line!,
     };
     // decideRound parses this same text with the same parser, so it gets exactly this plan
+    await this.onAccept(round, raw);
+    if (this.turn !== turn) return { ok: false, status: 409, error: `round ${round} ended while the plan was being saved` };
     turn.resolve(raw);
     return { ok: true, plan, warnings: p.ruleProblems ?? [] };
   }

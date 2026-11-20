@@ -1,22 +1,26 @@
 /**
- * The match server (#20): Knockback matches with remote agents as players,
- * over a plain JSON HTTP API. Empty or silent seats get the house bot.
+ * The match server (#20, #25): Knockback matches with remote agents as
+ * players, over a plain JSON HTTP API. Empty or silent seats get the house bot.
  *
- *   POST /api/agents                  register: { name, persona, look? } -> { id, key }
  *   POST /api/matches                 create: { seats?, seed?, deadlineSec?, fillAfterSec? }
  *   GET  /api/matches                 list
  *   GET  /api/matches/:id             status and seats
- *   POST /api/matches/:id/join        (agent key) take a remote seat: { seat? }
- *   GET  /api/matches/:id/turn        (agent key) long poll: ?wait=0-30 s -> open | turn | waiting | over
- *   POST /api/matches/:id/plan        (agent key) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
+ *   POST /api/matches/:id/join        { name, persona, look?, seat? } -> { seat, token }
+ *   GET  /api/matches/:id/turn        (seat token) long poll: ?wait=0-30 s -> open | turn | waiting | over
+ *   POST /api/matches/:id/plan        (seat token) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
+ *   POST /api/matches/:id/leave       (seat token) the house bot takes the seat
  *   GET  /api/matches/:id/report      plans and results so far (?round=n for one round)
  *   GET  /api/live?match=:id          spectator stream (SSE); without ?match: the newest match
  *
- * Agent keys go in `Authorization: Bearer <key>`. Every body is JSON, at
- * most MAX_BODY bytes; requests are rate limited per address and per agent.
- * The match itself runs in MatchRunner, exactly like a local AI match.
+ * Joining returns a seat token valid for that match and seat only; turn, plan
+ * and leave need it in `Authorization: Bearer <token>`. The server keeps only
+ * its sha256. With `open: true` (the CLI's --open, for a trusted LAN) tokens
+ * are not checked: those calls name the seat with ?seat=N instead.
+ * Every body is JSON, at most MAX_BODY bytes; requests are rate limited per
+ * address and per seat. The match itself runs in MatchRunner, exactly like a
+ * local AI match.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { DEFAULT_DEADLINE_MS, type Seat } from "../ai/decide";
 import { MatchRunner, type RunnerEvent } from "../ai/runner";
 import { PROVIDERS } from "../ai/providers";
@@ -30,25 +34,26 @@ import { planSchema, RemoteSeat } from "./remote";
 export const MAX_PERSONA = 8_000;
 export const MIN_PERSONA = 40;
 export const MAX_WAIT_S = 30;
-/** per address: registered agents, and open or running matches created over HTTP */
-export const AGENTS_PER_IP = 20;
+/** per address: seats held in open or running matches, and open or running matches created over HTTP */
+export const SEATS_PER_IP = 8;
 export const MATCHES_PER_IP = 2;
-/** an agent with no seat in an open or running match is dropped after this long without a request */
-export const AGENT_IDLE_MS = 30 * 60_000;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 const LOOK_KEYS = ["name", "shape", "eyes", "mark", "minor", "color"] as const;
+const JOIN_KEYS = ["name", "persona", "look", "seat"];
 
-export interface Agent {
-  id: string;
-  key: string;
+/** Who sits in a remote seat. */
+export interface SeatAgent {
   name: string;
   persona: string;
   soulId: string;
-  look?: IdentityWish;
-  createdAt: number;
-  /** last authenticated request (idle agents without a live seat are pruned) */
-  lastSeen: number;
-  /** registering address (per-address cap) */
+  look: IdentityWish | null;
+  /** sha256 (hex) of the seat token */
+  tokenHash: string;
+  joinedAt: number;
+  leftAt: number | null;
+  /** the first round the house bot plays for this seat (null: still here, or left before the start) */
+  leftRound: number | null;
+  /** joining address (per-address cap; not persisted) */
   ip: string;
   /** long polls in flight */
   polls: number;
@@ -69,7 +74,8 @@ export interface CreateMatch {
 export interface ServerOptions {
   /** where records are written */
   outDir: string;
-  maxAgents?: number;
+  /** trusted LAN mode: no seat token checks (turn, plan and leave take ?seat=N) */
+  open?: boolean;
   /** open or running matches at once */
   maxMatches?: number;
   defaultDeadlineMs?: number;
@@ -78,18 +84,37 @@ export interface ServerOptions {
   log?: (s: string) => void;
 }
 
-const id = (bytes: number) => randomBytes(bytes).toString("hex");
+const hex = (bytes: number) => randomBytes(bytes).toString("hex");
+export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+/** Validate a join body: name, persona (a soul text), optional look wishes and seat. */
+export function checkJoin(body: Record<string, unknown>): { name: string; persona: string; look: IdentityWish | null; seat?: number; soulId: string; warnings: string[] } {
+  const problems: string[] = [];
+  const extra = Object.keys(body).filter((k) => !JOIN_KEYS.includes(k));
+  if (extra.length) problems.push(`unknown fields: ${extra.join(", ")} (allowed: ${JOIN_KEYS.join(", ")})`);
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!NAME_RE.test(name)) problems.push("name: 1-24 characters: letters, digits, space, _ . - (starting with a letter or digit)");
+  const persona = body.persona;
+  if (typeof persona !== "string" || persona.length < MIN_PERSONA || persona.length > MAX_PERSONA) problems.push(`persona: a soul text of ${MIN_PERSONA}-${MAX_PERSONA} characters (format: docs/souls.md)`);
+  const look = body.look === undefined ? null : (checkLook(body.look, problems) ?? null);
+  const seat = body.seat;
+  if (seat !== undefined && !(Number.isInteger(seat) && (seat as number) >= 0 && (seat as number) <= 3)) problems.push("seat: 0-3");
+  if (problems.length) throw new HttpError(400, "invalid join", problems);
+  const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
+  const parsed = parseSoul(persona as string, 0, soulId);
+  if (parsed.errors.length) throw new HttpError(422, "invalid persona", parsed.errors);
+  return { name, persona: persona as string, look, soulId, warnings: parsed.warnings, ...(seat !== undefined ? { seat: seat as number } : {}) };
+}
 
 export class ServerMatch {
   status: "open" | "running" | "over" | "failed" = "open";
   readonly remote: (RemoteSeat | null)[];
-  readonly agents: (Agent | null)[] = [null, null, null, null];
+  readonly agents: (SeatAgent | null)[] = [null, null, null, null];
   readonly live = new LiveStream();
-  readonly createdAt = Date.now();
+  readonly createdAt: number;
   startsAt: number;
   runner: MatchRunner | null = null;
   error: string | null = null;
-  private version = 0;
   private waiters = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -98,20 +123,26 @@ export class ServerMatch {
     readonly seed: number,
     readonly kinds: SeatKind[],
     readonly deadlineMs: number,
-    fillAfterMs: number,
-    private server: MatchServer,
+    readonly fillAfterMs: number,
+    protected server: MatchServer,
     /** the address that created it over HTTP (none for CLI matches) */
-    readonly creator?: string,
+    readonly creator: string | null = null,
+    createdAt = Date.now(),
   ) {
     this.remote = kinds.map(() => null);
-    this.startsAt = this.createdAt + fillAfterMs;
-    if (!kinds.includes("remote")) queueMicrotask(() => this.start());
-    else this.timer = setTimeout(() => this.start(), fillAfterMs);
+    this.createdAt = createdAt;
+    this.startsAt = createdAt + fillAfterMs;
+  }
+
+  /** Start now if there is nobody to wait for, else when the fill timer ends. */
+  armFillTimer() {
+    const wait = this.startsAt - Date.now();
+    if (!this.kinds.includes("remote") || wait <= 0 || this.kinds.every((k, i) => k !== "remote" || this.agents[i])) queueMicrotask(() => this.start());
+    else this.timer = setTimeout(() => this.start(), wait);
   }
 
   /** Wake every long poll on this match. */
   changed() {
-    this.version++;
     const ws = [...this.waiters];
     this.waiters.clear();
     for (const w of ws) w();
@@ -131,32 +162,57 @@ export class ServerMatch {
     });
   }
 
-  seatOf(agent: Agent): number {
-    return this.agents.findIndex((a) => a?.id === agent.id);
-  }
-
-  join(agent: Agent, want?: number): number {
-    if (this.status !== "open") throw new HttpError(409, `match ${this.id} is ${this.status}; join an open match`);
-    if (this.seatOf(agent) >= 0) throw new HttpError(409, `you already sit in seat ${this.seatOf(agent)}`);
-    const free = this.kinds.map((k, i) => (k === "remote" && !this.agents[i] ? i : -1)).filter((i) => i >= 0);
-    if (want !== undefined && !free.includes(want)) throw new HttpError(409, `seat ${want} is not a free remote seat (free: ${free.join(", ") || "none"})`);
-    const seat = want ?? free[0];
-    if (seat === undefined) throw new HttpError(409, "no free remote seat");
-    this.agents[seat] = agent;
+  private remoteSeat(seat: number, agent: SeatAgent): RemoteSeat {
     const rs = new RemoteSeat(agent.name, this.deadlineMs);
     rs.onChange = () => this.changed();
     this.remote[seat] = rs;
+    return rs;
+  }
+
+  /** Seat an agent; returns the seat and its token (shown once, stored hashed). */
+  join(j: ReturnType<typeof checkJoin>, ip: string): { seat: number; token: string } {
+    if (this.status !== "open") throw new HttpError(409, `match ${this.id} is ${this.status}; join an open match`);
+    const free = this.kinds.map((k, i) => (k === "remote" && !this.agents[i] ? i : -1)).filter((i) => i >= 0);
+    if (j.seat !== undefined && !free.includes(j.seat)) throw new HttpError(409, `seat ${j.seat} is not a free remote seat (free: ${free.join(", ") || "none"})`);
+    const seat = j.seat ?? free[0];
+    if (seat === undefined) throw new HttpError(409, "no free remote seat");
+    const token = `st_${hex(24)}`;
+    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0 };
+    this.agents[seat] = agent;
+    this.remoteSeat(seat, agent);
+    this.server.tokens.set(agent.tokenHash, { match: this.id, seat });
     this.server.log(`match ${this.id}: ${agent.name} joined seat ${seat}`);
     this.changed();
     if (this.kinds.every((k, i) => k !== "remote" || this.agents[i])) queueMicrotask(() => this.start());
-    return seat;
+    return { seat, token };
   }
 
-  /** Build the seats (souls, providers) and play the match in the background. */
-  start() {
-    if (this.status !== "open") return;
-    clearTimeout(this.timer);
-    this.status = "running";
+  /** The agent in `seat` leaves: before the start the seat is free again; after it, the house bot plays it. */
+  leave(seat: number): { seat: number; status: string; houseFromRound: number | null } {
+    const a = this.agents[seat];
+    if (!a || a.leftAt !== null) throw new HttpError(409, `seat ${seat} has no agent`);
+    if (this.status === "open") {
+      this.agents[seat] = null;
+      this.remote[seat] = null;
+      this.server.tokens.delete(a.tokenHash);
+      this.server.log(`match ${this.id}: ${a.name} left seat ${seat} before the start`);
+      this.changed();
+      return { seat, status: "open", houseFromRound: null };
+    }
+    if (this.status !== "running") throw new HttpError(409, `match ${this.id} is ${this.status}`);
+    const m = this.runner!.match;
+    const rs = this.remote[seat]!;
+    // a turn still open is the first round the house bot plays; otherwise the next one
+    a.leftRound = rs.turn ? rs.turn.round : m.round + 1;
+    a.leftAt = Date.now();
+    rs.leave();
+    this.server.log(`match ${this.id}: ${a.name} left seat ${seat}; the house bot plays it from round ${a.leftRound}`);
+    this.changed();
+    return { seat, status: "running", houseFromRound: a.leftRound };
+  }
+
+  /** Build the seats (souls, providers) and the runner. */
+  protected buildRunner(): MatchRunner {
     const souls = this.souls();
     const seats: Seat[] = this.kinds.map((k, i) => {
       const rs = this.remote[i];
@@ -164,34 +220,50 @@ export class ServerMatch {
       if (k === "remote" || k === "house") return { providerName: "house", provider: null, soul: souls[i]! };
       return { providerName: k, provider: PROVIDERS[k]!, soul: souls[i]! };
     });
-    const wishes = this.agents.map((a) => a?.look);
+    const wishes = this.agents.map((a) => a?.look ?? undefined);
+    const runner = new MatchRunner({
+      seed: this.seed,
+      seats,
+      ...(wishes.some(Boolean) ? { identityWishes: wishes } : {}),
+      onEvent: (e) => this.onEvent(e),
+    });
+    this.remote.forEach((rs, i) => rs?.bind(runner.match, i));
+    return runner;
+  }
+
+  /** Play the match in the background. */
+  start() {
+    if (this.status !== "open") return;
+    clearTimeout(this.timer);
+    this.status = "running";
     try {
-      this.runner = new MatchRunner({
-        seed: this.seed,
-        seats,
-        ...(wishes.some(Boolean) ? { identityWishes: wishes } : {}),
-        onEvent: (e) => this.onEvent(e),
-      });
+      this.runner = this.buildRunner();
     } catch (e) {
       this.fail(e);
       return;
     }
-    this.remote.forEach((rs, i) => rs?.bind(this.runner!.match, i));
     this.server.log(`match ${this.id}: started, seed ${this.seed}, seats ${this.runner.labels.join(", ")}`);
     this.runner.start();
     this.changed();
-    this.runner
+    this.play();
+  }
+
+  protected play() {
+    this.runner!
       .run()
-      .then(() => {
-        this.runner!.save(this.server.opts.outDir, "remote");
-        this.status = "over";
-        this.server.log(`match ${this.id}: ${this.runner!.names[this.runner!.match.winner]} wins ${this.runner!.match.wins.join("-")}; record ${this.runner!.recordFile}`);
-        this.changed();
-      })
+      .then(() => this.finish())
       .catch((e) => this.fail(e));
   }
 
-  private fail(e: unknown) {
+  protected finish() {
+    const r = this.runner!;
+    r.save(this.server.opts.outDir, "remote");
+    this.status = "over";
+    this.server.log(`match ${this.id}: ${r.names[r.match.winner]} wins ${r.match.wins.join("-")}; record ${r.recordFile}`);
+    this.changed();
+  }
+
+  protected fail(e: unknown) {
     this.status = "failed";
     this.error = e instanceof Error ? e.message : String(e);
     this.server.log(`match ${this.id}: failed: ${this.error}`);
@@ -205,7 +277,7 @@ export class ServerMatch {
   }
 
   /** One soul per seat: the agent's persona, or the example soul of that seat; ids made unique. */
-  private souls(): Soul[] {
+  protected souls(): Soul[] {
     const base = exampleSouls();
     const used = new Set<string>();
     return this.kinds.map((_, i) => {
@@ -219,14 +291,14 @@ export class ServerMatch {
     });
   }
 
-  /** What `agent` should do now. */
-  turnFor(agent: Agent) {
-    const seat = this.seatOf(agent);
+  /** What the agent in `seat` should do now. */
+  turnFor(seat: number) {
     const base = { match: this.id, seat, status: this.status as string };
     if (this.status === "open") return { ...base, status: "open", startsInSec: Math.max(0, Math.ceil((this.startsAt - Date.now()) / 1000)), message: "waiting for players; empty seats get the house bot when the match starts" };
     if (this.status === "failed") return { ...base, status: "over", error: this.error };
     const m = this.runner!.match;
     if (this.status === "over") return { ...base, status: "over", winner: m.names[m.winner], wins: m.wins.slice(), youWon: m.winner === seat, record: this.runner!.recordFile ? `/records/${this.runner!.recordFile}` : null, report: `/api/matches/${this.id}/report` };
+    if (this.agents[seat]?.leftAt) return { ...base, status: "left", message: `you left; the house bot plays this seat from round ${this.agents[seat]!.leftRound}` };
     const t = this.remote[seat]?.turn;
     if (t)
       return {
@@ -253,13 +325,17 @@ export class ServerMatch {
       deadlineSec: this.deadlineMs / 1000,
       createdAt: new Date(this.createdAt).toISOString(),
       ...(this.status === "open" ? { startsInSec: Math.max(0, Math.ceil((this.startsAt - Date.now()) / 1000)) } : {}),
-      seats: this.kinds.map((k, i) => ({
-        seat: i,
-        kind: k === "remote" && !this.agents[i] && this.status !== "open" ? "house" : k,
-        agent: this.agents[i]?.name ?? null,
-        fighter: r?.names[i] ?? null,
-        label: r?.labels[i] ?? null,
-      })),
+      seats: this.kinds.map((k, i) => {
+        const a = this.agents[i];
+        return {
+          seat: i,
+          kind: k === "remote" && !a && this.status !== "open" ? "house" : k,
+          agent: a?.name ?? null,
+          ...(a?.leftRound ? { houseFromRound: a.leftRound } : {}),
+          fighter: r?.names[i] ?? null,
+          label: r?.labels[i] ?? null,
+        };
+      }),
       round: r ? r.match.round : 0,
       wins: r ? r.match.wins.slice() : null,
       winner: r && r.match.over ? r.names[r.match.winner] : null,
@@ -304,86 +380,72 @@ export class ServerMatch {
 }
 
 export class MatchServer {
-  readonly agents = new Map<string, Agent>();
-  private byKey = new Map<string, Agent>();
   readonly matches = new Map<string, ServerMatch>();
-  private newest: ServerMatch | null = null;
+  /** sha256(seat token) -> its match and seat (dropped when the match leaves memory) */
+  readonly tokens = new Map<string, { match: string; seat: number }>();
+  protected newest: ServerMatch | null = null;
   readonly opts: Required<Omit<ServerOptions, "log">>;
   readonly log: (s: string) => void;
-  // per address: all requests; registrations and match creation are scarcer
+  // per address: all requests; joins and match creation are scarcer
   readonly ipLimit = new RateLimiter(60, 10);
-  readonly registerLimit = new RateLimiter(10, 1 / 6);
+  readonly joinLimit = new RateLimiter(10, 1 / 6);
   readonly createLimit = new RateLimiter(5, 1 / 12);
-  readonly agentLimit = new RateLimiter(30, 5);
+  readonly seatLimit = new RateLimiter(30, 5);
 
   constructor(opts: ServerOptions) {
-    this.opts = { maxAgents: 500, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, ...opts } as MatchServer["opts"];
+    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, ...opts } as MatchServer["opts"];
     this.log = opts.log ?? (() => {});
   }
 
-  // ------------------------------------------------------------ agents
-  register(body: Record<string, unknown>, ip = "local"): { agent: Agent; warnings: string[] } {
-    const problems: string[] = [];
-    const extra = Object.keys(body).filter((k) => !["name", "persona", "look"].includes(k));
-    if (extra.length) problems.push(`unknown fields: ${extra.join(", ")} (allowed: name, persona, look)`);
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!NAME_RE.test(name)) problems.push("name: 1-24 characters: letters, digits, space, _ . - (starting with a letter or digit)");
-    const persona = body.persona;
-    if (typeof persona !== "string" || persona.length < MIN_PERSONA || persona.length > MAX_PERSONA) problems.push(`persona: a soul text of ${MIN_PERSONA}-${MAX_PERSONA} characters (format: docs/souls.md)`);
-    const look = body.look === undefined ? undefined : checkLook(body.look, problems);
-    if (problems.length) throw new HttpError(400, "invalid registration", problems);
-    const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
-    const parsed = parseSoul(persona as string, 0, soulId);
-    if (parsed.errors.length) throw new HttpError(422, "invalid persona", parsed.errors);
-    this.pruneAgents();
-    if ([...this.agents.values()].filter((a) => a.ip === ip).length >= AGENTS_PER_IP) throw new HttpError(429, `at most ${AGENTS_PER_IP} agents per address; idle ones expire after ${AGENT_IDLE_MS / 60_000} min`);
-    if (this.agents.size >= this.opts.maxAgents) throw new HttpError(503, "agent limit reached; try later");
-    const now = Date.now();
-    const agent: Agent = { id: `a_${id(6)}`, key: `kb_${id(24)}`, name, persona: persona as string, soulId, ...(look ? { look } : {}), createdAt: now, lastSeen: now, ip, polls: 0 };
-    this.agents.set(agent.id, agent);
-    this.byKey.set(agent.key, agent);
-    this.log(`agent ${agent.id} registered: ${name}`);
-    return { agent, warnings: parsed.warnings };
-  }
-
-  authAgent(req: Request): Agent {
+  /**
+   * The seat a turn/plan/leave call acts for: from the seat token, or in
+   * open mode from ?seat=N when no token is sent. Throws 401/403 otherwise.
+   */
+  seatFor(req: Request, url: URL, match: ServerMatch): number {
     const m = /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "");
-    const agent = m ? this.byKey.get(m[1]!) : undefined;
-    if (!agent) throw new HttpError(401, "missing or unknown agent key: send Authorization: Bearer <key> from POST /api/agents");
-    this.agentLimit.take(agent.id);
-    agent.lastSeen = Date.now();
-    return agent;
-  }
-
-  /** Drop agents idle for AGENT_IDLE_MS that hold no seat in an open or running match. */
-  pruneAgents(now = Date.now()) {
-    const seated = new Set<string>();
-    for (const m of this.matches.values()) if (m.status === "open" || m.status === "running") for (const a of m.agents) if (a) seated.add(a.id);
-    for (const [aid, a] of this.agents)
-      if (!seated.has(aid) && a.polls === 0 && now - a.lastSeen > AGENT_IDLE_MS) {
-        this.agents.delete(aid);
-        this.byKey.delete(a.key);
-      }
+    let seat: number;
+    if (m) {
+      const t = this.tokens.get(hashToken(m[1]!));
+      if (!t || t.match !== match.id) throw new HttpError(401, `wrong seat token for match ${match.id}: use the token from POST /api/matches/${match.id}/join`);
+      seat = t.seat;
+    } else if (this.opts.open) {
+      const s = Number(url.searchParams.get("seat"));
+      if (!Number.isInteger(s) || s < 0 || s > 3 || !url.searchParams.has("seat")) throw new HttpError(400, "open mode: name your seat with ?seat=0-3 (or send the seat token)");
+      if (!match.agents[s]) throw new HttpError(403, `seat ${s} has no agent; POST /api/matches/${match.id}/join first`);
+      seat = s;
+    } else throw new HttpError(401, `missing seat token: send Authorization: Bearer <token> from POST /api/matches/${match.id}/join`);
+    this.seatLimit.take(`${match.id}:${seat}`);
+    return seat;
   }
 
   // ------------------------------------------------------------ matches
-  /** From code (the CLI) any provider is allowed; over HTTP only remote and house (see handle). */
+  /** From code (the CLI) any provider is allowed; over HTTP only remote and house (see checkCreate). */
   createMatch(c: CreateMatch = {}): ServerMatch {
     const kinds = c.seats ?? ["remote", "remote", "remote", "remote"];
     if (kinds.length !== 4) throw new HttpError(400, "seats: exactly 4");
     for (const k of kinds) if (k !== "remote" && k !== "house" && !PROVIDERS[k]) throw new HttpError(400, `seats: unknown seat kind "${k}" (remote, house${Object.keys(PROVIDERS).length ? `, ${Object.keys(PROVIDERS).join(", ")}` : ""})`);
-    const active = [...this.matches.values()].filter((m) => m.status === "open" || m.status === "running").length;
-    if (active >= this.opts.maxMatches) throw new HttpError(503, `${active} matches are open or running (at most ${this.opts.maxMatches}); try later`);
-    if (c.ip !== undefined && [...this.matches.values()].filter((m) => m.creator === c.ip && (m.status === "open" || m.status === "running")).length >= MATCHES_PER_IP)
-      throw new HttpError(429, `at most ${MATCHES_PER_IP} open or running matches per address`);
+    const active = [...this.matches.values()].filter((m) => m.status === "open" || m.status === "running");
+    if (active.length >= this.opts.maxMatches) throw new HttpError(503, `${active.length} matches are open or running (at most ${this.opts.maxMatches}); try later`);
+    if (c.ip !== undefined && active.filter((m) => m.creator === c.ip).length >= MATCHES_PER_IP) throw new HttpError(429, `at most ${MATCHES_PER_IP} open or running matches per address`);
     const seed = c.seed !== undefined ? c.seed >>> 0 : randomBytes(4).readUInt32LE(0);
-    const m = new ServerMatch(`m_${id(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this, c.ip);
-    this.matches.set(m.id, m);
-    this.newest = m;
+    const m = new ServerMatch(`m_${hex(4)}`, seed, kinds, c.deadlineMs ?? this.opts.defaultDeadlineMs, c.fillAfterMs ?? this.opts.defaultFillAfterMs, this, c.ip ?? null);
+    this.add(m);
     this.log(`match ${m.id} created: seed ${seed}, seats ${kinds.join(",")}, deadline ${m.deadlineMs / 1000} s, starts in ${(m.startsAt - m.createdAt) / 1000} s at the latest`);
-    // keep finished matches for a while, but not forever
-    if (this.matches.size > 200) for (const [k, old] of this.matches) if (old.status === "over" || old.status === "failed") { this.matches.delete(k); if (this.matches.size <= 150) break; }
+    m.armFillTimer();
     return m;
+  }
+
+  protected add(m: ServerMatch) {
+    this.matches.set(m.id, m);
+    if (!this.newest || m.createdAt >= this.newest.createdAt) this.newest = m;
+    // keep finished matches for a while, but not forever
+    if (this.matches.size > 200)
+      for (const [k, old] of this.matches)
+        if (old.status === "over" || old.status === "failed") {
+          this.matches.delete(k);
+          for (const a of old.agents) if (a) this.tokens.delete(a.tokenHash);
+          if (this.matches.size <= 150) break;
+        }
   }
 
   private matchOr404(mid: string): ServerMatch {
@@ -407,13 +469,13 @@ export class MatchServer {
     }
   }
 
-  private async route(req: Request, url: URL, ip: string): Promise<Response> {
+  protected async route(req: Request, url: URL, ip: string): Promise<Response> {
     const path = url.pathname.replace(/\/+$/, "");
     const method = req.method;
     const allow = (want: string) => {
       if (method !== want) throw new HttpError(405, `use ${want} for ${path}`, undefined, { allow: want });
     };
-    if (path === "/api") return json(apiIndex());
+    if (path === "/api") return json(apiIndex(this.opts.open));
     if (path === "/api/live") {
       allow("GET");
       const mid = url.searchParams.get("match");
@@ -421,12 +483,7 @@ export class MatchServer {
       if (!m) throw new HttpError(404, "no match yet");
       return m.live.response();
     }
-    if (path === "/api/agents") {
-      allow("POST");
-      this.registerLimit.take(ip, "registrations");
-      const { agent, warnings } = this.register(await readJson(req, MAX_BODY), ip);
-      return json({ id: agent.id, key: agent.key, name: agent.name, soul: agent.soulId, ...(agent.look ? { look: agent.look } : {}), warnings }, 201);
-    }
+    if (path === "/api/agents") throw new HttpError(410, "registration is gone (#25): POST /api/matches/:id/join with { name, persona } returns a seat token");
     if (path === "/api/matches") {
       if (method === "GET") return json({ matches: [...this.matches.values()].map((m) => m.info()) });
       allow("POST");
@@ -434,7 +491,7 @@ export class MatchServer {
       const b = await readJson(req, 2048);
       return json(this.createMatch({ ...checkCreate(b), ip }).info(), 201);
     }
-    const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|report))?$/.exec(path);
+    const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|leave|report))?$/.exec(path);
     if (!mm) throw new HttpError(404, `no such endpoint: ${method} ${path} (see GET /api)`);
     const match = this.matchOr404(mm[1]!);
     switch (mm[2]) {
@@ -448,26 +505,44 @@ export class MatchServer {
       }
       case "join": {
         allow("POST");
-        const agent = this.authAgent(req);
-        const b = req.headers.get("content-length") === "0" || !req.body ? {} : await readJson(req, 1024);
-        const want = b.seat;
-        if (want !== undefined && !(Number.isInteger(want) && (want as number) >= 0 && (want as number) <= 3)) throw new HttpError(400, "seat: 0-3");
-        const seat = match.join(agent, want as number | undefined);
-        return json({ match: match.id, seat, status: match.status, turn: `/api/matches/${match.id}/turn` });
+        this.joinLimit.take(ip, "joins");
+        const j = checkJoin(await readJson(req, MAX_BODY));
+        const held = [...this.matches.values()].filter((m) => m.status === "open" || m.status === "running").reduce((n, m) => n + m.agents.filter((a) => a?.ip === ip && a.leftAt === null).length, 0);
+        if (held >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} seats per address in open or running matches`);
+        const { seat, token } = await this.join(match, j, ip);
+        return json(
+          {
+            match: match.id,
+            seat,
+            token,
+            auth: "Authorization: Bearer <token> on turn, plan and leave (valid for this match and seat only)",
+            status: match.status,
+            warnings: j.warnings,
+            turn: `/api/matches/${match.id}/turn`,
+            plan: `/api/matches/${match.id}/plan`,
+            leave: `/api/matches/${match.id}/leave`,
+          },
+          201,
+        );
+      }
+      case "leave": {
+        allow("POST");
+        const seat = this.seatFor(req, url, match);
+        return json(await this.leave(match, seat));
       }
       case "turn": {
         allow("GET");
-        const agent = this.authAgent(req);
-        if (match.seatOf(agent) < 0) throw new HttpError(403, `you have no seat in match ${match.id}; POST /api/matches/${match.id}/join first`);
+        const seat = this.seatFor(req, url, match);
+        const agent = match.agents[seat]!;
         const w = Number(url.searchParams.get("wait") ?? "25");
         if (!Number.isFinite(w) || w < 0 || w > MAX_WAIT_S) throw new HttpError(400, `wait: 0-${MAX_WAIT_S} seconds`);
-        if (agent.polls >= 2) throw new HttpError(429, "at most 2 long polls at once per agent");
+        if (agent.polls >= 2) throw new HttpError(429, "at most 2 long polls at once per seat");
         agent.polls++;
         try {
           const until = Date.now() + w * 1000;
           for (;;) {
-            const t = match.turnFor(agent);
-            if (t.status === "turn" || t.status === "over" || Date.now() >= until || req.signal.aborted) return json(t);
+            const t = match.turnFor(seat);
+            if (t.status === "turn" || t.status === "over" || t.status === "left" || Date.now() >= until || req.signal.aborted) return json(t);
             await match.nextChange(until - Date.now(), req.signal);
           }
         } finally {
@@ -476,20 +551,27 @@ export class MatchServer {
       }
       case "plan": {
         allow("POST");
-        const agent = this.authAgent(req);
-        const seat = match.seatOf(agent);
-        if (seat < 0) throw new HttpError(403, `you have no seat in match ${match.id}`);
+        const seat = this.seatFor(req, url, match);
         const body = await readJson(req, MAX_BODY);
-        const rs = match.remote[seat]!;
-        const res = rs.submit(body);
+        const rs = match.remote[seat];
+        if (!rs || match.agents[seat]?.leftAt) throw new HttpError(409, "you left this match");
+        const res = await rs.submit(body);
         if (!res.ok) {
-          this.log(`match ${match.id}: ${agent.name} plan rejected (${res.status}): ${res.error}${res.problems ? `: ${res.problems.join("; ")}` : ""}`);
+          this.log(`match ${match.id}: seat ${seat} plan rejected (${res.status}): ${res.error}${res.problems ? `: ${res.problems.join("; ")}` : ""}`);
           throw new HttpError(res.status, res.error, res.problems);
         }
         return json({ accepted: true, round: body.round, plan: res.plan, warnings: res.warnings });
       }
     }
     throw new HttpError(404, "no such endpoint");
+  }
+
+  /** Hooks a storage-backed server overrides. */
+  protected async join(match: ServerMatch, j: ReturnType<typeof checkJoin>, ip: string) {
+    return match.join(j, ip);
+  }
+  protected async leave(match: ServerMatch, seat: number) {
+    return match.leave(seat);
   }
 }
 
@@ -534,22 +616,24 @@ function checkCreate(b: Record<string, unknown>): CreateMatch {
   return c;
 }
 
-function apiIndex() {
+function apiIndex(open: boolean) {
   return {
     name: "Knockback match server",
-    auth: "Authorization: Bearer <key> (from POST /api/agents) for join, turn and plan",
+    auth: open
+      ? "open mode: no seat tokens needed; turn, plan and leave take ?seat=N (a token still works)"
+      : "Authorization: Bearer <seat token> (from POST /api/matches/:id/join) for turn, plan and leave",
     endpoints: {
-      "POST /api/agents": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color } } -> { id, key }",
       "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-300) } -> match',
       "GET /api/matches": "all matches",
       "GET /api/matches/:id": "status and seats",
-      "POST /api/matches/:id/join": "{ seat? } -> { seat }",
-      "GET /api/matches/:id/turn?wait=25": "long poll -> { status: open | turn | waiting | over, ... }; a turn carries context, prompt and schema",
+      "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat? } -> { seat, token }",
+      "GET /api/matches/:id/turn?wait=25": "long poll -> { status: open | turn | waiting | left | over, ... }; a turn carries context, prompt and schema",
       "POST /api/matches/:id/plan": "{ round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer } -> { accepted, plan }",
+      "POST /api/matches/:id/leave": "the house bot takes your seat (before the start: the seat is free again)",
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
       "GET /api/live?match=:id": "spectator event stream (SSE)",
     },
-    limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s` },
+    limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },
     schema: planSchema(),
   };
 }
