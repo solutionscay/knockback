@@ -1,4 +1,4 @@
-import { CLASSIC, resolveRuleset, RulesetError, type Ruleset } from "../sim/ruleset";
+import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, RulesetError, type Ruleset } from "../sim/ruleset";
 import { HttpError } from "./limits";
 import type { MatchRow, MatchStore } from "./store";
 
@@ -30,6 +30,6 @@ export async function selectRuleset(store: MatchStore, selection?: unknown): Pro
 
 /** Legacy rows were created before matches had a stored ruleset. */
 export function storedRuleset(row: MatchRow): MatchRuleset {
-  if (!row.ruleset) return { ruleset: CLASSIC, preset: "Classic", presetVersion: 1 };
+  if (!row.ruleset) return { ruleset: CLOSE_QUARTERS, preset: "Classic", presetVersion: 1 };
   return { ruleset: row.ruleset, preset: row.preset, presetVersion: row.presetVersion };
 }

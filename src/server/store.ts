@@ -9,7 +9,7 @@
  * types) so a Cloudflare backend (#26: D1, or a Durable Object's own SQLite)
  * can implement it; SqliteStore is the bun:sqlite one for local and LAN use.
  */
-import { CLASSIC, resolveRuleset, type Ruleset } from "../sim/ruleset";
+import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, type Ruleset } from "../sim/ruleset";
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
@@ -213,11 +213,24 @@ export const MIGRATIONS: string[] = [
      CHECK (is_default = 0 OR body IS NOT NULL)
    );
    CREATE UNIQUE INDEX one_default_ruleset ON ruleset_presets(is_default) WHERE is_default = 1;
-   INSERT INTO ruleset_presets (name, body, is_default) VALUES ('Classic', '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', 1);
+   INSERT INTO ruleset_presets (name, body, is_default) VALUES ('Classic', '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}', 1);
    INSERT INTO ruleset_presets (name) VALUES ('Sniper Alley'), ('Close Quarters'), ('Chaos');
    ALTER TABLE matches ADD COLUMN ruleset_body TEXT;
    ALTER TABLE matches ADD COLUMN ruleset_preset TEXT;
    ALTER TABLE matches ADD COLUMN ruleset_version INTEGER;`,
+  // 7 (#37): fill the new layout keys in existing snapshots before changing the built-in Classic.
+  `UPDATE matches SET ruleset_body = json_set(ruleset_body,
+       '$.arena.spawns.spread', json('${JSON.stringify(CLOSE_QUARTERS.arena.spawns.spread)}'),
+       '$.pickups.armory.spread', json('${JSON.stringify(CLOSE_QUARTERS.pickups.armory.spread)}'),
+       '$.pickups.supply.avoidDistance', 0)
+     WHERE ruleset_body IS NOT NULL AND json_type(ruleset_body, '$.arena.spawns.spread') IS NULL;
+   UPDATE ruleset_presets SET body = json_set(body,
+       '$.arena.spawns.spread', json('${JSON.stringify(CLOSE_QUARTERS.arena.spawns.spread)}'),
+       '$.pickups.armory.spread', json('${JSON.stringify(CLOSE_QUARTERS.pickups.armory.spread)}'),
+       '$.pickups.supply.avoidDistance', 0)
+     WHERE body IS NOT NULL AND json_type(body, '$.arena.spawns.spread') IS NULL;
+   UPDATE ruleset_presets SET body = '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', version = version + 1 WHERE name = 'Classic';
+   UPDATE ruleset_presets SET body = '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}' WHERE name = 'Close Quarters' AND body IS NULL;`,
 ];
 
 type Row = Record<string, unknown>;
