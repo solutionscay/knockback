@@ -3,7 +3,8 @@ import { FIGHTER } from "../sim/constants";
 import type { Fighter, Sim } from "../sim/sim";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
-import { drawArm, drawBody, drawHand, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, hash, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
+import { CELL } from "../sim/grid";
+import { drawArm, drawBody, drawFeet, drawHand, FEET_Y, FOOT_X, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, hash, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
 import { POWER_COLOR } from "./palette";
 import { pixiPen } from "./pixiPen";
 import { drawWeapon } from "./props";
@@ -19,6 +20,11 @@ interface FighterView {
   face: Graphics;
   faceKey: string;
   arm: Graphics;
+  /** the feet, in their own layer: each foot stands on the ground under it */
+  feet: Graphics;
+  feetKey: string;
+  /** a soft contact shadow on the ground while standing */
+  shadow: Graphics;
   /** the identity's hash: its blink rhythm */
   h: number;
   /** the "> <" face after a hit */
@@ -49,7 +55,10 @@ export class FighterViews {
   celebrateId = -1;
 
   clear() {
-    for (const v of this.fighters) v.root.destroy({ children: true });
+    for (const v of this.fighters) {
+      v.root.destroy({ children: true });
+      v.shadow.destroy();
+    }
     this.fighters = [];
   }
 
@@ -63,15 +72,17 @@ export class FighterViews {
     const body = new Graphics();
     const face = new Graphics();
     const arm = new Graphics();
+    const feet = new Graphics();
+    const shadow = new Graphics();
     const gun = new Graphics();
     const flash = new Graphics();
     const aura = new Graphics();
     const over = new Graphics();
     drawSilhouette(pixiPen(flash), f.look);
     flash.alpha = 0;
-    root.addChild(aura, body, face, arm, gun, flash, over);
-    this.layer.addChild(root);
-    return { f, root, body, bodyKey: "", face, faceKey: "", arm, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
+    root.addChild(aura, feet, body, face, arm, gun, flash, over);
+    this.layer.addChild(shadow, root);
+    return { f, root, body, bodyKey: "", face, faceKey: "", arm, feet, feetKey: "", shadow, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
   }
 
   private drawGun(v: FighterView, kind: string) {
@@ -148,7 +159,7 @@ export class FighterViews {
       if (bodyKey !== v.bodyKey) {
         v.bodyKey = bodyKey;
         v.body.clear();
-        drawBody(pixiPen(v.body), f.look, { t: time, air: !f.grounded && f.alive, aiming });
+        drawBody(pixiPen(v.body), f.look, { t: time, air: !f.grounded && f.alive, aiming, feet: false });
       }
       if (v.flashT > v.lastFlash) v.hitT = 0.42;
       v.lastFlash = v.flashT;
@@ -225,6 +236,28 @@ export class FighterViews {
       }
       v.root.scale.x *= pw.heavy > 0 ? 1.12 : 1;
       v.root.scale.y *= pw.heavy > 0 ? 1.1 : 1;
+      // feet on the ground (view only): while standing, squash, stretch and the heavy scale grow from the feet, not
+      // from the capsule's middle, and each foot is set on the ground under it (a step edge, stairs of cells)
+      const standing = f.alive && f.grounded && Math.abs(rot) < 0.05 && this.celebrateId !== f.id;
+      const ky = v.root.scale.y;
+      if (standing) v.root.position.y = -p.y + FEET_Y * (1 - ky);
+      let dl = 0, dr = 0;
+      if (standing) {
+        const kx = v.root.scale.x;
+        const bottom = p.y - FEET_Y;
+        [dl, dr] = FOOT_X.map((lx) => {
+          const top = groundTop(sim, p.x + lx * kx, bottom);
+          return top === null ? 0 : -(top - bottom) / ky; // local y grows downward
+        }) as [number, number];
+      }
+      const feetKey = `${!f.grounded && f.alive ? 1 : 0}|${dl.toFixed(3)}|${dr.toFixed(3)}`;
+      if (feetKey !== v.feetKey) {
+        v.feetKey = feetKey;
+        v.feet.clear();
+        drawFeet(pixiPen(v.feet), f.look, { air: !f.grounded && f.alive, dl, dr });
+      }
+      v.shadow.clear();
+      if (standing) v.shadow.ellipse(p.x, -(p.y - FEET_Y) + 0.02, 0.44 * Math.abs(v.root.scale.x), 0.075).fill({ color: 0x000000, alpha: 0.3 });
       // hit flash
       v.flashT = Math.max(0, v.flashT - dt);
       v.flash.alpha = v.flashT > 0 ? 0.85 : f.outsideZone && Math.floor(time * 8) % 2 === 0 ? 0.25 : 0;
@@ -288,4 +321,31 @@ export class FighterViews {
       }
     }
   }
+}
+
+/**
+ * The top of the ground under a foot at world x, near the capsule's bottom
+ * (within 0.3 m up or down): a terrain cell or an upright prop (crate, steel,
+ * barrel...), whichever is higher. Null when there is none (a foot over a
+ * gap): then the foot stays at the capsule's bottom. Reads the sim only.
+ */
+export function groundTop(sim: Sim, x: number, bottom: number): number | null {
+  let best: number | null = null;
+  const take = (top: number) => {
+    if (Math.abs(top - bottom) <= 0.3 && (best === null || top > best)) best = top;
+  };
+  const grid = sim.grid;
+  const cx = grid.cx(x);
+  for (let cy = grid.cy(bottom + 0.3); cy >= grid.cy(bottom - 0.3); cy--) {
+    if (!grid.solid(cx, cy)) continue;
+    take(grid.wy(cy) + CELL);
+    break;
+  }
+  for (const e of sim.entities.values()) {
+    if (e.kind === "fighter" || e.dead) continue; // destroyed props leave sim.entities (sim-entities.ts)
+    const q = e.body.translation();
+    if (Math.abs(x - q.x) > e.hw || Math.abs(e.body.rotation()) > 0.15) continue;
+    take(q.y + e.hh);
+  }
+  return best;
 }

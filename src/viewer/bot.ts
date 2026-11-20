@@ -294,6 +294,27 @@ export interface BotState {
   air?: boolean;
   /** aiming: the antenna lights */
   aiming?: boolean;
+  /** false: leave the feet out (the game draws them in their own layer, set on the ground under each foot) */
+  feet?: boolean;
+}
+
+/** The bottom of the feet: the capsule's bottom (0.84 m below its center), where the sim's body touches the ground. */
+export const FEET_Y = 0.84;
+/** Where the feet sit across the body (local x of each foot's middle, facing right). */
+export const FOOT_X: readonly [number, number] = [-0.205, 0.205];
+
+/**
+ * The two feet. `dl` / `dr` move the left / right foot down (or up, if
+ * negative) in local meters, so each foot can stand on the ground under it
+ * (a step edge, a slope of cells). The feet are 0.16 m tall and overlap the
+ * torso's rounded bottom, so no gap shows between body and feet.
+ */
+export function drawFeet(pen: ShapePen, look: Identity, s: { air?: boolean; dl?: number; dr?: number } = {}) {
+  const air = s.air ? 1 : 0;
+  const fy = FEET_Y - 0.16 - air * 0.07;
+  pen.roundRect(-0.34 - air * 0.03, fy + (s.dl ?? 0), 0.27, 0.16, 0.07);
+  pen.roundRect(0.07 + air * 0.03, fy + air * 0.03 + (s.dr ?? 0), 0.27, 0.16, 0.07);
+  pen.fill(colors(look).feet);
 }
 
 /** Marks that move in steps (their layer is redrawn when the step changes). */
@@ -305,7 +326,7 @@ export const flapStep = (look: Identity, t: number) => (marksOf(look).some((m) =
 
 export const ledColor = (look: Identity) => mix(0xffffff, look.color, 0.22);
 /** The torso, feet and dark-detail colors of a body color (exported for tests). */
-export const darkPartsOf = (c: number) => ({ torso: darkenKeepChroma(c, 0.16), feet: darkenKeepChroma(c, 0.3), dark: darkenKeepChroma(c, 0.3) });
+export const darkPartsOf = (c: number) => ({ torso: darkenKeepChroma(c, 0.16), feet: darkenKeepChroma(c, 0.24), dark: darkenKeepChroma(c, 0.3) });
 const colors = (look: Identity) => {
   const c = look.color;
   // the head keeps Skiff's color x 0.85; the darker parts drop OKLCH lightness and keep chroma (a yellow stays gold, not khaki)
@@ -321,7 +342,7 @@ function headSpace(pen: Pen) {
 
 /** Everything but the visor and the weapon arm: drawn once, again only when the feet or a flapping mark change. */
 export function drawBody(pen: Pen, look: Identity, s: BotState) {
-  const { c, body, torso, feet, dark } = colors(look);
+  const { c, body, torso, dark } = colors(look);
   const air = s.air ? 1 : 0;
   const flap = flapStep(look, s.t);
   const H = HEADS[look.shape] ?? HEADS.squircle;
@@ -334,10 +355,7 @@ export function drawBody(pen: Pen, look: Identity, s: BotState) {
   pen.moveTo(-0.14, 0.16);
   pen.lineTo(-0.3 - air * 0.06, 0.38 - air * 0.14);
   pen.stroke({ width: 0.11, color: torso, cap: "round" });
-  const fy = 0.7 - air * 0.07;
-  pen.roundRect(-0.34 - air * 0.03, fy, 0.27, 0.14, 0.07);
-  pen.roundRect(0.07 + air * 0.03, fy + air * 0.03, 0.27, 0.14, 0.07);
-  pen.fill(feet);
+  if (s.feet !== false) drawFeet(pen, look, { air: s.air });
   pen.roundRect(-0.27, -0.08, 0.54, 0.8, 0.15);
   pen.fill(torso);
   // chest plate: three status lights in the visor's LED color
