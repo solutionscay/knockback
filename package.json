@@ -7,7 +7,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "batch": "bun scripts/batch.ts",
-    "record": "bun scripts/record.ts"
+    "record": "bun scripts/record.ts",
+    "ai-match": "bun scripts/ai-match.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-deterministic-compat": "0.21.0",
