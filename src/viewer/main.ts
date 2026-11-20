@@ -17,6 +17,8 @@ declare global {
       callouts: () => { visible: { kind: string; fighter: number; text: string }[]; peak: number; shown: { kind: string; fighter: number; text: string }[] };
       /** the HUD plan chip lines (plain text) */
       planChips: () => string[];
+      /** the feet-contact check: one layer group's alpha as drawn this frame (base64, one byte per pixel) */
+      mask: (kind: "surface" | "feet") => { width: number; height: number; alpha: string };
     };
   }
 }
@@ -176,6 +178,13 @@ if (capture) {
       peak: game.callouts.peak,
       shown: game.callouts.shownLog.map((c) => ({ kind: c.kind, fighter: c.fighter, text: c.text })),
     }),
+    // the feet-contact check: one layer group's alpha as drawn this frame (base64, one byte per pixel)
+    mask: (kind: "surface" | "feet") => {
+      const m = game.scene.maskAlpha(kind);
+      let s = "";
+      for (let i = 0; i < m.alpha.length; i += 0x8000) s += String.fromCharCode(...m.alpha.subarray(i, i + 0x8000));
+      return { width: m.width, height: m.height, alpha: btoa(s) };
+    },
     planChips: () => [...document.querySelectorAll<HTMLElement>("#lineup .chip .plan")].map((e) => e.textContent ?? ""),
     drainMoments() {
       const m = game.moments;

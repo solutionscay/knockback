@@ -2,7 +2,7 @@
  * The PixiJS scene: terrain, props, fighters, effects, camera, health bars.
  * World units are meters with y up; the world container maps (x, y) to (x, -y).
  */
-import { Container, Graphics, type Application } from "pixi.js";
+import { Container, Graphics, Rectangle, type Application } from "pixi.js";
 import type { Entity, Sim, SimEvent } from "../sim/sim";
 import type { Callout } from "./callouts";
 import { PALETTES } from "./palette";
@@ -55,6 +55,28 @@ export class Scene {
     app.stage.addChild(this.sky, this.hills, this.world, this.overlay, this.effects.flashScreen);
     this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.props.marks, this.fighters.layer, this.projectiles.graphics, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
+  }
+
+  /**
+   * Capture-mode check (feet contact; view only): the alpha of one group of
+   * layers exactly as drawn this frame, full screen, one byte per pixel.
+   * "surface" = terrain cells, platforms and props; "feet" = only the bots'
+   * feet. Everything is restored afterwards.
+   */
+  maskAlpha(kind: "surface" | "feet"): { width: number; height: number; alpha: Uint8Array } {
+    const keep: Container[] = kind === "surface" ? [this.terrainLayer, this.props.layer] : [this.fighters.layer];
+    const stageSaved = this.app.stage.children.map((c) => [c, c.visible] as const);
+    const worldSaved = this.world.children.map((c) => [c, c.visible] as const);
+    for (const c of this.app.stage.children) c.visible = c === this.world;
+    for (const c of this.world.children) c.visible = keep.includes(c);
+    const restoreFeet = kind === "feet" ? this.fighters.feetOnly() : () => {};
+    const { pixels, width, height } = this.app.renderer.extract.pixels({ target: this.app.stage, frame: new Rectangle(0, 0, this.W, this.H), antialias: true });
+    restoreFeet();
+    for (const [c, v] of worldSaved) c.visible = v;
+    for (const [c, v] of stageSaved) c.visible = v;
+    const alpha = new Uint8Array(width * height);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = pixels[i * 4 + 3]!;
+    return { width, height, alpha };
   }
 
   get W() {

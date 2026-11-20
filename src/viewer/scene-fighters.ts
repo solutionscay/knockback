@@ -93,6 +93,20 @@ export class FighterViews {
     if (kind !== "fist") drawHand(v.gun, v.f.look); // the fist's glove is the hand
   }
 
+  /** For the capture-mode feet check: show only the feet (no body, no shadow); returns a function that restores everything. */
+  feetOnly(): () => void {
+    const saved: [{ visible: boolean }, boolean][] = [];
+    for (const v of this.fighters) {
+      for (const c of [...v.root.children, v.shadow]) {
+        saved.push([c, c.visible]);
+        c.visible = c === v.feet;
+      }
+    }
+    return () => {
+      for (const [c, vis] of saved) c.visible = vis;
+    };
+  }
+
   get(id: number) {
     return this.fighters[id]!;
   }
