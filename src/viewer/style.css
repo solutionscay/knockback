@@ -1148,3 +1148,10 @@ body.capture #controls {
 #intro .lvmodels > span > b {
   color: var(--c);
 }
+
+/* site pages (#22): the viewer in an iframe (?embed) keeps the fight HUD, without the seed line and match buttons */
+body.embed #seed,
+body.embed #reset,
+body.embed #new {
+  display: none;
+}

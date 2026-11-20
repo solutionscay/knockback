@@ -9,6 +9,7 @@ import { Game } from "./game";
 import { liveStreamUrl } from "./live-url";
 import { enableVideoMode, setVideoCaption, setVideoTag, TimelineLog, type Timeline } from "./video";
 import { sanitizeIdentities, sanitizeRecord, sanitizeRuleset, sanitizeSouls } from "./sanitize";
+import { EmbedBridge, posOfBeat } from "./embed";
 
 declare global {
   interface Window {
@@ -55,6 +56,10 @@ await app.init({
 });
 document.getElementById("app")!.appendChild(app.canvas);
 if (capture) document.body.classList.add("capture");
+// Site pages (#22) show the viewer in an iframe with ?embed: no seed line or match buttons, playback reported to the page
+const embedded = params.has("embed") && !capture;
+if (embedded) document.body.classList.add("embed");
+let replayAgain: (() => void) | null = null;
 
 const el = (id: string) => document.getElementById(id)!;
 const game = new Game(app, {
@@ -93,6 +98,19 @@ if (video) {
   game.scene.camera.camMode = { kind: "all" }; // not saved: the viewer's own choice stays as it was
 }
 const timeline = new TimelineLog();
+let mutedSound: SoundDirector | null = null;
+const bridge = embedded
+  ? new EmbedBridge({
+      pos: () => (game.flow && game.shown ? posOfBeat(game.flow.beat, game.shown.sim.tick, game.match.results.length) : null),
+      step: (dt) => game.update(dt),
+      restart: () => replayAgain?.(),
+      // no sounds while fast-forwarding (the player's own mute setting stays as it is)
+      mute: (on) => {
+        if (on) mutedSound = game.sound ?? mutedSound;
+        game.sound = on ? null : mutedSound;
+      },
+    })
+  : null;
 
 const seedEl = document.getElementById("seed")!;
 function start(seed: number) {
@@ -135,11 +153,12 @@ if (params.has("live")) {
   // Live AI match: the ai-match server streams each round's decisions.
   game.autoNext = null;
   game.onNeedNewMatch = () => {
-    if (lastRecord) location.href = `/?record=${encodeURIComponent(lastRecord)}`;
+    if (lastRecord && !embedded) location.href = `/?record=${encodeURIComponent(lastRecord)}`; // embedded: the page picks what comes next
   };
   const es = new EventSource(liveStreamUrl(params));
   es.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
+    bridge?.live(msg);
     if (msg.type === "match") {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
       const ruleset = sanitizeRuleset(msg.ruleset);
@@ -181,6 +200,7 @@ if (params.has("live")) {
     const labels = viewerLabels(raw.labels);
     seedEl.textContent = `seed ${rec.seed} · replay`;
     game.newMatch(rec.seed, { recorded: rec, labels, control: raw.control });
+    replayAgain = () => game.newMatch(rec.seed, { recorded: rec, labels, control: raw.control });
   }
 } else start(seedParam !== null && seedParam !== "" ? Number(seedParam) >>> 0 : randomSeed());
 
@@ -254,5 +274,9 @@ if (capture) {
     },
   };
 } else {
-  app.ticker.add((t) => game.update(Math.min(0.1, t.deltaMS / 1000)));
+  app.ticker.add((t) => {
+    const dt = Math.min(0.1, t.deltaMS / 1000);
+    const d = bridge ? bridge.frame(dt) : dt;
+    if (d > 0) game.update(d);
+  });
 }
