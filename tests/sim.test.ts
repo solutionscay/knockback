@@ -10,7 +10,6 @@ import {
   Fight,
   POWER,
   replayFight,
-  SUPPLY,
   SWAP_TICKS,
   TNT,
   WEAPONS,
@@ -61,16 +60,14 @@ describe("determinism and replay", () => {
   test("different strategies give different states; interleaving matches changes nothing", () => {
     const seed = 2;
     const plans = new Fight(seed).strategies;
-    // The opening aim changes as soon as the bot targets a different rival.
+    // The revised rival changes how the fight plays out after the opening.
     plans[0] = { ...plans[0]!, target: "grudge", grudge: 2 };
     const a = new Fight(seed, plans);
     a.playToEnd();
     const rec = structuredClone(a.record);
     rec.strategies[0]!.grudge = 1;
     const revised = replayFight(rec);
-    expect(a.record.checkpoints[0]).toBeDefined();
-    expect(revised.checkpoints[0]).toBeDefined();
-    expect(revised.checkpoints[0]).not.toBe(a.record.checkpoints[0]);
+    expect(revised.finalHash).not.toBe(a.record.finalHash);
 
     const x = new Fight(seed, plans);
     const y = new Fight(6);
@@ -122,16 +119,16 @@ describe("fight flow", () => {
     }
   });
 
-  test("fighters start close and meet in the first seconds", () => {
+  test("fighters start apart and still meet without reaching the time limit", () => {
     for (const seed of [31, 32, 33]) {
       const m = new Fight(seed);
       const xs = m.sim.fighters.map((f) => m.sim.pos(f).x);
-      expect(Math.max(...xs) - Math.min(...xs)).toBeLessThanOrEqual(24.5);
+      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(m.sim.level.width / 2);
       let first = -1;
       m.onEvent = (e) => {
         if (first < 0 && e.type === "hit" && e.source >= 0 && e.source !== e.target) first = e.tick;
       };
-      for (let i = 0; i < 600 && first < 0; i++) m.step();
+      for (let i = 0; i < 1200 && first < 0; i++) m.step();
       expect(first).toBeGreaterThan(0);
     }
   });
@@ -159,7 +156,8 @@ describe("fight flow", () => {
 
   test("supply drops bring in barrels/TNT and items during the fight", () => {
     const sim = sandbox();
-    const evs = stepN(sim, SUPPLY.firstTick + SUPPLY.interval + 2 - sim.tick);
+    const supply = sim.ruleset.pickups.supply;
+    const evs = stepN(sim, supply.firstTick + supply.interval + 2 - sim.tick);
     expect(evs.filter((e) => e.type === "propDrop").length).toBeGreaterThanOrEqual(1);
     expect(evs.filter((e) => e.type === "itemSpawn").length).toBeGreaterThanOrEqual(2);
   });

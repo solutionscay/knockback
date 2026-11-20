@@ -1,3 +1,4 @@
+import { ordinaryWeapons } from "./spread-armory";
 import { DT } from "./constants";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
@@ -29,7 +30,7 @@ export class SimZone {
       let sx = 0;
       for (const f of alive) sx += sim.pos(f).x;
       const x = clamp(sx / alive.length, z.center - z.half + 0.5, z.center + z.half - 0.5);
-      const e = sim.spawnItem(sim.rng.pick(sim.ruleset.weapons.enabled), x, 15);
+      const e = sim.spawnItem(sim.rng.pick(ordinaryWeapons(sim)), x, 15);
       sim.events.push({ type: "itemSpawn", tick, entity: e.id, item: e.itemType!, x, y: 15 });
     }
   }

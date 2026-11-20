@@ -1,6 +1,8 @@
-import { RULESET_DEFAULTS } from "./ruleset-defaults";
+import { SUPPLY } from "./constants";
+import { CLOSE_ARMORY, RULESET_DEFAULTS } from "./ruleset-defaults";
+import { CLOSE_SPAWNS } from "./level-config";
 import { Mat } from "./grid";
-import { isPickupWeapon, type ItemType, type Weapon } from "./sim-types";
+import { isPickupWeapon, WEAPON_LIST, type ItemType, type Weapon } from "./sim-types";
 
 type Wide<T> = T extends number ? number : T extends boolean ? boolean
   : T extends readonly unknown[] ? { readonly [K in keyof T]: Wide<T[K]> }
@@ -18,6 +20,7 @@ export class RulesetError extends Error {
 
 const lists: Readonly<Record<string, readonly (string | number)[]>> = {
   "weapons.enabled": RULESET_DEFAULTS.weapons.enabled,
+  "pickups.armory.spread.powerWeapons": WEAPON_LIST,
   "pickups.enabled": RULESET_DEFAULTS.pickups.enabled,
   "arena.enabledThemes": RULESET_DEFAULTS.arena.enabledThemes,
   "fire.materials": [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Brick],
@@ -26,7 +29,7 @@ const lists: Readonly<Record<string, readonly (string | number)[]>> = {
 const signed = new Set(["ringOutY", "bottom", "minHeight", "groundMin", "desperateBelow", "confidentAt"]);
 const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density"]);
 const ranges = new Set(["halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
-const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "holdTicks", "firstTick"]);
+const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "zoneCaches", "holdTicks", "firstTick"]);
 const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "interval", "chargeTicks", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
 const integral = /(?:ticks|cells|attempts|^hits$|^minOnTicks$|^minOffTicks$|^fuse(?:Min|Max)?$|^chainFuse$|^burnMin$|^burnMax$|^rows$|^maxLife$)/i;
@@ -69,6 +72,9 @@ function canonical(base: unknown, value: unknown, path = ""): unknown {
     let high = 36_000;
     if (fractions.test(leaf) || path === "fire.spread") high = 1;
     if (/Attempts$/.test(leaf)) high = 500;
+    if (path === "arena.spawns.spread.jitter" || path === "arena.spawns.spread.innerOutset" || path === "arena.spawns.spread.outerOutset") high = 0.49;
+    if (leaf === "zoneCaches") high = 4;
+    if (path === "pickups.supply.avoidDistance") high = 40;
     if (path === "arena.layout.attempts") high = 100;
     if (path.includes(".themes.") && path.includes(".props.") || ["towers", "platforms", "extraPits", "coverStacks", "coverColumns", "coverRows"].includes(member)) high = 64;
     if (path === "arena.navigation.headroomCells") high = 16;
@@ -102,6 +108,13 @@ export function validateRuleset(input: unknown): Ruleset {
   require(r.arena.layout.groundRun[0] >= 0.5 && r.arena.layout.platformLength[0] >= 1, "arena.layout", "ground runs and platforms must cover at least one cell");
   require(r.arena.walls.approach % 0.5 === 0 && r.arena.walls.heights.every(h => h > 0 && h % 0.5 === 0), "arena.walls", "approach and positive heights must align to the half-meter grid");
   require(r.arena.spawns.centerWindow > 0 && r.arena.spawns.maxSpread >= r.arena.spawns.minXGap, "arena.spawns", "spawn window and spread must permit separation");
+  const spread = r.arena.spawns.spread;
+  if (spread.enabled) {
+    require(spread.minDistance > 0 && spread.minDistance * 2 <= r.arena.layout.halfWidth[0], "arena.spawns.spread.minDistance", "expected a positive distance at most half the smallest arena half-width");
+    require(spread.zoneMargin > 0 && spread.zoneMargin + r.zone.boundary.edgeInset < r.arena.layout.halfWidth[0] / 2, "arena.spawns.spread.zoneMargin", "the safe start must reach both outer quarters");
+    require(spread.heightDifference > 0 && spread.ledgeHeight > 0, "arena.spawns.spread", "heightDifference and ledgeHeight must be positive");
+    require(r.arena.spawns.maxSpread > r.arena.layout.halfWidth[1], "arena.spawns.maxSpread", "must reach across both outer quarters");
+  }
   require(r.arena.walls.regularHp >= r.arena.walls.crackedHp, "arena.walls.regularHp", "must be at least crackedHp");
   require(Object.values(r.arena.propHalf).every(extent => extent.every(n => n > 0)), "arena.propHalf", "prop sizes must be positive");
   require(r.pickups.item.size > 0, "pickups.item.size", "must be positive");
@@ -111,7 +124,13 @@ export function validateRuleset(input: unknown): Ruleset {
 }
 
 export const CLASSIC = validateRuleset({});
-const prepared = new WeakSet<object>([CLASSIC]);
+/** Same placement and drop behavior as before the spread-out Classic. */
+export const CLOSE_QUARTERS = validateRuleset({
+  arena: { spawns: CLOSE_SPAWNS },
+  pickups: { armory: CLOSE_ARMORY, supply: { avoidDistance: 0, firstTick: SUPPLY.firstTick } },
+});
+
+const prepared = new WeakSet<object>([CLASSIC, CLOSE_QUARTERS]);
 export function resolveRuleset(input?: unknown): Ruleset {
   if (input === undefined) return CLASSIC;
   if (typeof input === "object" && input !== null && prepared.has(input)) return input as Ruleset;

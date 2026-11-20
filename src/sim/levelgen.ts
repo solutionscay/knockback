@@ -16,7 +16,8 @@ import { NavGraph, type Surface } from "./nav";
 import { Rng } from "./rng";
 
 import { type PropKind, type Theme } from "./level-config";
-import { CLASSIC, type Ruleset } from "./ruleset";
+import { CLASSIC, RulesetError, type Ruleset } from "./ruleset";
+import { spreadSpawns, spreadSpawnProblems } from "./level-spawns";
 export { PROP_HALF, THEMES, type PropKind, type Theme } from "./level-config";
 
 export interface PropSpec {
@@ -65,12 +66,18 @@ export function themeFor(seed: number, ruleset: Ruleset = CLASSIC): Theme {
 
 export function generateLevel(seed: number, maxAttempts?: number, ruleset: Ruleset = CLASSIC): LevelDef {
   let last: LevelDef | null = null;
+  let reasons: string[] = [];
   for (let attempt = 0; attempt < (maxAttempts ?? ruleset.arena.layout.attempts); attempt++) {
     const lv = buildCandidate(seed, attempt, ruleset);
     last = lv;
-    if (validateLevel(lv, ruleset).ok) return lv;
+    const validation = validateLevel(lv, ruleset);
+    if (validation.ok) return lv;
+    reasons = validation.reasons;
   }
-  // Practically unreachable (see tests); fall back to the last candidate.
+  if (ruleset.arena.spawns.spread.enabled) {
+    throw new RulesetError("arena.spawns", `seed ${seed} has no playable spread-out layout (${reasons.join(", ")})`);
+  }
+  // The original layout keeps its fallback for Close Quarters.
   return last!;
 }
 
@@ -214,20 +221,34 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     x0 >= s.x0 + L.propClearance && x1 <= s.x1 - L.propClearance && occupied.every((o) => o.s !== s.id || x1 < o.x0 || x0 > o.x1);
   const headroom = (x0: number, x1: number, y: number, h: number) => grid.emptyRect(grid.cx(x0 + 0.01), grid.cy(y + 0.01), grid.cx(x1 - 0.01), grid.cy(y + h - 0.01));
 
-  // spawns: near the center, apart, not on fragile surfaces or right at a drop
-  const spawns: { x: number; y: number }[] = [];
-  const cands: { s: Surface; x: number }[] = [];
-  for (const s of nav.surfaces) {
-    if (s.fragile || s.x1 - s.x0 < S.minSurfaceWidth) continue;
-    for (let x = s.x0 + S.ledgeMargin; x <= s.x1 - S.ledgeMargin; x += 0.5) if (x > -S.centerWindow && x < S.centerWindow) cands.push({ s, x });
-  }
-  rng.shuffle(cands);
-  for (const c of cands) {
-    if (spawns.length >= 4) break;
-    if (spawns.some((p) => Math.abs(p.x - c.x) < S.minXGap && Math.abs(p.y - c.s.y) < S.minYGap)) continue;
-    if (!free(c.s, c.x - S.bodyClearance, c.x + S.bodyClearance)) continue;
-    spawns.push({ x: c.x, y: c.s.y });
-    occupied.push({ s: c.s.id, x0: c.x - S.propClearance, x1: c.x + S.propClearance });
+  // Tight layouts draw their zone at the original point in the RNG sequence.
+  const chooseZoneCenter = () => {
+    const near = pits.filter(p => Math.abs((p.x0 + p.x1) / 2) < L.zonePitReach);
+    return near.length ? q((near[0]!.x0 + near[0]!.x1) / 2) : q(rng.range(-L.zoneCenterJitter, L.zoneCenterJitter));
+  };
+  const spreadCenter = S.spread.enabled ? chooseZoneCenter() : undefined;
+  const spawns = spreadCenter === undefined ? [] : spreadSpawns(nav, W, spreadCenter, groundAt, rng, ruleset,
+    (s, x) => free(s, x - S.bodyClearance, x + S.bodyClearance) && headroom(x - S.bodyClearance, x + S.bodyClearance, s.y,
+      (ruleset.combat.fighter.radius + ruleset.combat.fighter.halfHeight) * 2));
+  if (spreadCenter !== undefined) {
+    for (const p of spawns) {
+      const s = nav.surfaceAt(p.x, p.y + 0.05, 0)!;
+      occupied.push({ s: s.id, x0: p.x - S.propClearance, x1: p.x + S.propClearance });
+    }
+  } else {
+    const cands: { s: Surface; x: number }[] = [];
+    for (const s of nav.surfaces) {
+      if (s.fragile || s.x1 - s.x0 < S.minSurfaceWidth) continue;
+      for (let x = s.x0 + S.ledgeMargin; x <= s.x1 - S.ledgeMargin; x += 0.5) if (x > -S.centerWindow && x < S.centerWindow) cands.push({ s, x });
+    }
+    rng.shuffle(cands);
+    for (const c of cands) {
+      if (spawns.length >= 4) break;
+      if (spawns.some((p) => Math.abs(p.x - c.x) < S.minXGap && Math.abs(p.y - c.s.y) < S.minYGap)) continue;
+      if (!free(c.s, c.x - S.bodyClearance, c.x + S.bodyClearance)) continue;
+      spawns.push({ x: c.x, y: c.s.y });
+      occupied.push({ s: c.s.id, x0: c.x - S.propClearance, x1: c.x + S.propClearance });
+    }
   }
 
   const props: PropSpec[] = [];
@@ -288,8 +309,7 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
   }
 
   // zone center: near a pit close to the middle (ring-outs), else near 0
-  const near = pits.filter((p) => Math.abs((p.x0 + p.x1) / 2) < L.zonePitReach);
-  const zoneCenter = near.length ? q((near[0]!.x0 + near[0]!.x1) / 2) : q(rng.range(-L.zoneCenterJitter, L.zoneCenterJitter));
+  const zoneCenter = spreadCenter ?? chooseZoneCenter();
 
   return {
     seed,
@@ -333,6 +353,7 @@ export function validateLevel(lv: LevelDef, ruleset: Ruleset = CLASSIC): Validat
     const xs = lv.spawns.map((s) => s.x);
     if (Math.max(...xs) - Math.min(...xs) > S.maxSpread) reasons.push("spawns too spread");
   }
+  if (S.spread.enabled && lv.spawns.length === 4) reasons.push(...spreadSpawnProblems(lv.spawns, lv.width, lv.zoneCenter, ruleset));
   for (const wall of lv.walls ?? []) if (!hasWallRoute(g, nav, wall, ruleset)) reasons.push(`wall at ${wall.x0} has no route`);
   const cover = lv.props.filter((p) => p.kind === "block").length;
   if (cover < L.minimumCover) reasons.push(`cover ${cover}`);

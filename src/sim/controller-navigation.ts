@@ -1,3 +1,4 @@
+import { arenaQuarter } from "./level-spawns";
 import type { Controller } from "./controller";
 import type { Link, Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
@@ -64,6 +65,9 @@ export class ControllerNavigation {
 
     // arm up: go for the pickups this fighter wants (fists only = go far for anything)
     const armed = me.weapons.some((w) => w !== "fist");
+    const opening = sim.ruleset.pickups.armory.spread;
+    const preferLocal = opening.enabled && !armed && sim.tick < opening.preferLocalTicks;
+    const quarter = (x: number) => arenaQuarter(sim.level.minX, sim.level.width, x);
     {
       let best: Goal | null = null;
       let bc = Infinity;
@@ -92,6 +96,7 @@ export class ControllerNavigation {
         else if (type === "health" && me.hp < sim.ruleset.tactics.pickup.healthBelowHp) limit = sim.ruleset.tactics.pickup.healthLimit;
         else continue;
         const t = it.body.translation();
+        if (preferLocal && isWeapon && sought < 0 && quarter(mp.x) !== quarter(t.x)) extra += opening.otherQuarterCost;
         const s = nav.surfaceAt(t.x, t.y + 0.3, 0.2);
         if (!s || plan.cost[s.id] === Infinity || (this.badSurfaces.get(s.id) ?? -1) > sim.tick) continue;
         const c = plan.cost[s.id]! + Math.abs(plan.arriveX[s.id]! - t.x) + zonePenalty(t.x);

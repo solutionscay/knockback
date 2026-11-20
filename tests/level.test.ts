@@ -1,3 +1,4 @@
+import { CLASSIC } from "../src/sim/ruleset";
 import { describe, expect, test } from "bun:test";
 import { CELL, Mat } from "../src/sim/grid";
 import { generateLevel, THEMES, themeFor, validateLevel, type LevelDef } from "../src/sim/levelgen";
@@ -28,12 +29,21 @@ describe("level generator", () => {
     expect(worst).toBeLessThan(30);
   });
 
-  test("validation: 4 spawns close together, on solid ground, all connected", () => {
+  test("validation: 4 spawns across the arena, on solid ground, all connected", () => {
     for (let seed = 100; seed < 140; seed++) {
       const lv = generateLevel(seed);
       expect(lv.spawns.length).toBe(4);
       const xs = lv.spawns.map((s) => s.x);
-      expect(Math.max(...xs) - Math.min(...xs)).toBeLessThanOrEqual(24);
+      const quarters = xs.map(x => Math.floor((x - lv.minX) * 4 / lv.width)).sort();
+      expect(quarters).toEqual([0, 1, 2, 3]);
+      const half = lv.width / 2 - CLASSIC.zone.boundary.edgeInset;
+      const spawn = CLASSIC.arena.spawns.spread;
+      const ys = lv.spawns.map(p => p.y);
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThanOrEqual(spawn.heightDifference);
+      for (const [i, a] of lv.spawns.entries()) {
+        expect(Math.abs(a.x - lv.zoneCenter)).toBeLessThanOrEqual(half - spawn.zoneMargin);
+        for (const b of lv.spawns.slice(i + 1)) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(spawn.minDistance);
+      }
       const nav = NavGraph.fromGrid(lv.grid);
       const surf = lv.spawns.map((s) => nav.surfaceAt(s.x, s.y + 0.05, 0)!);
       for (const s of surf) expect(s).toBeTruthy();

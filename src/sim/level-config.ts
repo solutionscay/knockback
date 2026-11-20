@@ -110,11 +110,14 @@ export const LEVEL = {
   minimumCover: 6, minimumProps: 18, minimumPlatforms: 7, centerDropReach: 16,
 } as const;
 
-export const SPAWNS = {
+export const CLOSE_SPAWNS = {
   centerWindow: 12, minSurfaceWidth: 2.5, ledgeMargin: 1.2, minXGap: 3.5,
   minYGap: 2, bodyClearance: 0.7, propClearance: 1.4, minHeight: -1.5,
   maxSpread: 24, minDropMargin: 1,
+  spread: { enabled: false, jitter: 0.16, innerOutset: 0, outerOutset: 0.18, minDistance: 14, zoneMargin: 2, heightDifference: 1.5, ledgeHeight: 1.5 },
 };
+
+export const SPAWNS = { ...CLOSE_SPAWNS, maxSpread: 150, spread: { ...CLOSE_SPAWNS.spread, enabled: true } };
 
 export const WALLS = {
   approach: 1.5, clearance: 5.5, attemptsPerWall: 50, widthCells: [1, 3],

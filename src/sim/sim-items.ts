@@ -1,6 +1,7 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { G, groups } from "./constants";
 import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
+import { ordinaryWeapons, stockSpreadArmory } from "./spread-armory";
 import type { Sim } from "./sim";
 import { isPickupWeapon, usesAmmo, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { clamp } from "./dmath";
@@ -8,6 +9,7 @@ import type { Rng } from "./rng";
 
 /** Starting weapons near each spawn, in the middle and up high, plus a central jetpack. */
 export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
+  if (sim.ruleset.pickups.armory.spread.enabled) return stockSpreadArmory(sim, spawns);
   const nav = sim.nav;
   const c = sim.zone.center;
   const placed: { x: number; y: number }[] = [];
@@ -101,7 +103,8 @@ export function randomPower(rng: Rng, ruleset: Ruleset = CLASSIC): PowerUp | nul
 }
 
 export function randomDrop(sim: Sim, weaponChance: number): ItemType {
-  return sim.rng.chance(weaponChance) ? sim.rng.pick(sim.ruleset.weapons.enabled) : randomPower(sim.rng, sim.ruleset) ?? sim.rng.pick(sim.ruleset.weapons.enabled);
+  const weapons = ordinaryWeapons(sim);
+  return sim.rng.chance(weaponChance) ? sim.rng.pick(weapons) : randomPower(sim.rng, sim.ruleset) ?? sim.rng.pick(weapons);
 }
 
 function looseWeapons(sim: Sim): number {
@@ -113,6 +116,21 @@ function dropX(sim: Sim): number {
   const z = sim.zone;
   const lo = Math.max(sim.level.minX + 3, z.center - z.half + 1.5);
   const hi = Math.min(sim.level.maxX - 3, z.center + z.half - 1.5);
+  const avoid = sim.ruleset.pickups.supply.avoidDistance;
+  if (avoid > 0) {
+    const obstacles = [
+      ...sim.alive().map(f => sim.pos(f).x),
+      ...sim.items().map(e => e.body.translation().x),
+    ];
+    const points = [...new Set(sim.nav.points.filter(p => p.x >= lo && p.x <= hi).map(p => p.x))];
+    if (points.length) {
+      const nearest = (x: number) => obstacles.reduce((d, other) => Math.min(d, Math.abs(x - other)), Infinity);
+      const clear = points.filter(x => nearest(x) >= avoid);
+      if (clear.length) return sim.rng.pick(clear);
+      // The closing zone may leave no clear landing. Prefer the least crowded column.
+      return points.reduce((best, x) => nearest(x) > nearest(best) ? x : best);
+    }
+  }
   // land on something: pick among nav surfaces inside the zone
   const surf = sim.nav.surfaces.filter((s) => s.x1 > lo + 0.5 && s.x0 < hi - 0.5 && s.x1 - s.x0 > 1.5);
   if (surf.length === 0) return sim.rng.range(lo, hi);

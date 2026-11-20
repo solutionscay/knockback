@@ -2,7 +2,7 @@ import * as C from "./constants";
 import { AIM_NOISE, PATIENCE, PICKUP, RULE_EVAL, WALL_PURSUIT } from "./controller-tuning";
 import { MAT_DENSITY, MAT_HP, Mat } from "./grid";
 import { LEVEL, LEVEL_THEMES, PROP_HALF, SPAWNS, THEMES, WALLS } from "./level-config";
-import { POWER_LIST, WEAPON_LIST } from "./sim-types";
+import { POWER_LIST, WEAPON_LIST, type Weapon } from "./sim-types";
 
 export const MORALE_EFFECT = {
   cocky: { aim: 1.12 }, confident: { aim: 0.94 }, rattled: { aim: 1.3 },
@@ -22,6 +22,14 @@ const { startHalf: _legacyStartHalf, ...boundary } = C.ZONE;
 const { size: _blockSize, ...block } = C.BLOCK;
 const { size: _crateSize, ...crate } = C.CRATE;
 
+export const CLOSE_ARMORY = {
+  ...C.ARMORY,
+  spread: {
+    enabled: false, zoneCaches: 1, minSpawnDistance: 9, starterRise: 2.5, preferLocalTicks: 7 * C.TICK_RATE, otherQuarterCost: 26,
+    powerWeapons: ["railgun"] as readonly Exclude<Weapon, "fist">[], powerMinDistance: 10, powerMinHeight: 4,
+  },
+};
+
 export const RULESET_DEFAULTS = {
   schemaVersion: 1,
   combat: { gravity: C.GRAVITY, fighter: { ...fighter, ringOutMargin: 6 }, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, blastCarveScale: 1.12, attributionTicks: 120 },
@@ -32,8 +40,8 @@ export const RULESET_DEFAULTS = {
   },
   pickups: {
     enabled: POWER_LIST as readonly (typeof POWER_LIST)[number][],
-    item: C.ITEM, power: C.POWER, armory: C.ARMORY,
-    supply: { ...C.SUPPLY, itemHeight: 16, propEvery: 2, tntChance: 0.3, propHeight: 15, extraBarrelHeight: 16.4, barrelOffset: 0.75 },
+    item: C.ITEM, power: C.POWER, armory: { ...CLOSE_ARMORY, spawnOffset: 11, spread: { ...CLOSE_ARMORY.spread, enabled: true } },
+    supply: { ...C.SUPPLY, firstTick: 8 * C.TICK_RATE, itemHeight: 16, propEvery: 2, tntChance: 0.3, propHeight: 15, extraBarrelHeight: 16.4, barrelOffset: 0.75, avoidDistance: 7 },
     weights: { health: 3, shield: 2.5, speed: 2, heavy: 1.5, damage: 2, jump: 2, jetpack: 2 },
   },
   arena: {
