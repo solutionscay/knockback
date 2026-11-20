@@ -233,7 +233,7 @@ export class FighterViews {
       v.trailT -= fxDt;
       if (speed > 11 && v.trailT <= 0 && f.alive) {
         v.trailT = 0.025;
-        fx.add({ x: p.x, y: p.y, kind: "trail", life: 0.22, size: FIGHTER.halfHeight + FIGHTER.radius, aux: FIGHTER.radius, color: f.color, back: true });
+        fx.add({ x: p.x, y: p.y, kind: "trail", life: 0.22, size: 0.78, aux: 0.3, color: f.color, back: true });
       }
       if (f.outsideZone && Math.random() < 0.3) fx.add({ x: p.x + (Math.random() - 0.5) * 0.8, y: p.y + (Math.random() - 0.5) * 1.4, vy: 2, life: 0.4, size: 0.08, color: 0xff4060 });
 
