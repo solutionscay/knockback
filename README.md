@@ -55,6 +55,7 @@ bun run ai-match --host 0.0.0.0            # prints http://<lan-ip>:5175/?live ;
 bun run ai-match --lineup claude,codex,grok,claude --souls ./souls --seed 42 --deadline 20
 bun run ai-match --lineup sniper=house     # mix AI and house bots (by soul file name or seat)
 bun run ai-match --headless                # no viewer, just the log
+bun run ai-match --checkins on             # mid-round check-ins: each AI may change its plan every ~10 s of fight
 ```
 
 Default lineup, by seat: claude (haiku), codex (gpt-6-luna, low effort),
@@ -84,6 +85,13 @@ their firing counts and the AI's reason; the round recap names a best rule. Scre
 
 **Deadlines:** each provider has its own (`src/ai/providers.ts`): Claude 20 s, Codex 45 s with a second,
 hedged call if the first has not answered after 15 s, Grok 30 s. `--deadline <s>` overrides them all.
+
+**Mid-round check-ins (#8, #9):** with `--checkins on` every AI seat gets a short status of the fight every
+10 s (its health, who chases it, rivals, recent hits, nearest pickups, fire and jetpack) and may answer with
+a plan change. The fight never pauses: the change applies at the check-in tick plus the answer's latency in
+fight time, and is saved in the record as a plan update with its tick, so replays are exact and need no AI.
+A missed or invalid answer keeps the plan. Off by default; the log ends with calls, updates, miss rate,
+latency and estimated tokens per provider. Details: [docs/checkins.md](docs/checkins.md).
 
 ## Match server (remote agents over HTTP)
 
@@ -124,6 +132,12 @@ still plan ("Zapbit's agent is back. Probably hiding behind the barrels."); the 
 on autopilot". Each change is recorded with its round and fight tick (`control` in the record), so replays
 show the same callouts at the same moment and replay with identical hashes.
 
+**Check-ins (#9):** `bun run match-server --checkins on` gives agents a mid-round check-in every 10 s of
+fight, when viewers reach that moment: `GET /turn` returns `status: "checkin"` with the fight status, and
+`POST /api/matches/:id/checkin { round, tick, keep: true }` (or only the plan fields to change) answers it.
+The change applies when the answer arrives; a missed check-in keeps the plan; a connection that drops during
+one is an autopilot takeover at that tick. See [docs/checkins.md](docs/checkins.md).
+
 **Storage and restarts:** the server writes matches, seats (token hashes only), every round's decisions and
 final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, default `<out>/match-server.db`;
 schema and migrations in `src/server/store.ts`, behind a `MatchStore` interface meant to also fit Cloudflare
@@ -140,8 +154,9 @@ backups. Runbook: `docs/deploy.md`.
 ## Bring your agent (MCP)
 
 Any MCP client can join and fight. The match server serves MCP at `/mcp` (Streamable HTTP); your agent
-plans with its own model, and the server makes no AI calls. Six tools: `join_lobby(name, persona, look?)`,
-`wait_for_match`, `wait_for_turn`, `submit_plan(line, strategy)`, `get_round_report(round?)` and `leave`.
+plans with its own model, and the server makes no AI calls. Seven tools: `join_lobby(name, persona, look?)`,
+`wait_for_match`, `wait_for_turn`, `submit_plan(line, strategy)`, `submit_checkin(keep? | fields to change,
+line?)` (mid-round check-ins, when the server runs them), `get_round_report(round?)` and `leave`.
 The MCP session holds your seat token, so the agent never handles it. The tool descriptions teach the plan
 format (built from the same schema the server's parser uses) with examples, and a rejected plan comes back
 with what to fix. `wait_for_*` return within about 25 s and say "call again". Lobby matches have 3 agent
@@ -250,5 +265,6 @@ bun run typecheck
   - `audio/` sound (#12): sfxr-style synthesis, the sound book (recipes as data), event mapping, voice limiting,
     WebAudio engine with an optional sample pack, the offline mix for videos
 - `src/ai/runner.ts` - MatchRunner: one match with any mix of house, local AI and remote seats (used by ai-match and the match server)
+- `src/ai/checkin.ts` - mid-round check-ins: schedule, status, prompt, answer parser, apply tick (#9)
 - `src/server/` - match server: HTTP API, remote seats, seat tokens, storage (SQLite) and resume, limits, live stream, MCP gateway (`mcp.ts`) and lobby queue
 - `scripts/` - dev server, batch stats, video recorder, ai-match, match-server, remote-agent
