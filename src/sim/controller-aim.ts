@@ -65,6 +65,9 @@ export function aimAndFire(
     case "grapple":
       canFire &&= los && dist >= 3.5 && dist <= WEAPONS.grapple.range - 0.5;
       break;
+    case "flamethrower":
+      canFire &&= dist <= WEAPONS.flamethrower.range - 0.3;
+      break;
   }
   if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && !(blocked && weapon === "shotgun")) {
     const hit = sim.raycast(mp.x, mp.y + 0.25, input.aimX, input.aimY, weapon === "shotgun" ? Math.min(dist, 6) : 2.2, me.entity.collider);
@@ -95,6 +98,8 @@ export function inReach(w: Weapon, dist: number, los: boolean): boolean {
       return dist > 2.5 && dist < 14;
     case "grapple":
       return los && dist >= 3.5 && dist <= WEAPONS.grapple.range - 0.5;
+    case "flamethrower":
+      return los && dist <= WEAPONS.flamethrower.range - 0.3;
     default:
       return dist < 1.5;
   }

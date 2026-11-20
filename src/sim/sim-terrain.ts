@@ -27,11 +27,13 @@ export function chipTerrain(sim: Sim, x: number, y: number, dx: number, dy: numb
   if (m !== Mat.Empty) damageTerrainCell(sim, cx, cy, m, dmg);
 }
 
-function damageTerrainCell(sim: Sim, cx: number, cy: number, mat: Mat, damage: number) {
-  if (!sim.terrain.damageCell(cx, cy, damage)) return;
+/** Damage one static cell; returns true when it broke (with stats and a carve event). */
+export function damageTerrainCell(sim: Sim, cx: number, cy: number, mat: Mat, damage: number): boolean {
+  if (!sim.terrain.damageCell(cx, cy, damage)) return false;
   sim.stats.cellsDestroyed++;
   const g = sim.grid;
   sim.events.push({ type: "carve", tick: sim.tick, cells: [{ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL / 2, mat }] });
+  return true;
 }
 
 /** Rebuild changed terrain colliders and drop whatever lost its support. */
@@ -128,6 +130,14 @@ export function damagePiece(sim: Sim, e: Entity, x: number, y: number, r: number
   if (!changed) return;
   sim.stats.cellsDestroyed += broken.length;
   sim.events.push({ type: "carve", tick: sim.tick, cells: broken });
+  prunePiece(sim, e);
+}
+
+/** Drop a piece's cells with no hit points left, splitting what remains into new pieces. */
+export function prunePiece(sim: Sim, e: Entity) {
+  const t = e.body.translation();
+  const a = e.body.rotation();
+  const cells = e.cells!;
   const left = cells.filter((c) => c.hp > 0);
   const v = e.body.linvel();
   const w = e.body.angvel();

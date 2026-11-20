@@ -23,6 +23,12 @@ export const MAT_DENSITY: readonly number[] = [0, 1.6, 2.4, 0.7, 3.2, 2.2, 0.8, 
 
 export const F_ANCHOR = 1; // holds up whatever is connected to it (hanging platforms)
 export const F_BRIDGE = 2;
+export const F_CHARRED = 4; // burned out (#33): blackened, never catches fire again
+
+/** Materials that burn (#33): planks and rotten planks. */
+export function flammable(m: number): boolean {
+  return m === Mat.Wood || m === Mat.Crumble;
+}
 
 export class Grid {
   readonly mat: Uint8Array;

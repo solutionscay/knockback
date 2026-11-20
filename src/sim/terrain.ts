@@ -24,6 +24,10 @@ export interface PieceCell {
   chain?: number;
   /** chain id of a broken chain whose stub stays on this cell (drawn by the viewer; not game state) */
   stub?: number;
+  /** fire (#33): fire-steps left burning, who lit it; charred cells don't catch again */
+  burn?: number;
+  burnBy?: number;
+  charred?: boolean;
 }
 
 export class Terrain {

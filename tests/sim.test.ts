@@ -14,6 +14,7 @@ import {
   SWAP_TICKS,
   TNT,
   WEAPONS,
+  WEAPON_LIST,
   ZONE,
   zoneHalfAt,
   type Input,
@@ -106,7 +107,7 @@ describe("fight flow", () => {
         expect(f.weapons).toEqual(["fist", "fist"]);
         expect(s.weapons.length).toBeGreaterThanOrEqual(1);
         expect(f.prefs.slice(0, s.weapons.length)).toEqual(s.weapons);
-        expect(f.prefs.length).toBe(5);
+        expect(f.prefs.length).toBe(WEAPON_LIST.length);
       }
       expect(Object.keys(m.sim.fighters[0]!).includes("personality")).toBe(false);
       expect(Object.keys(m.sim.fighters[0]!).includes("speed")).toBe(false);

@@ -62,7 +62,7 @@ export class ControllerNavigation {
       return this.bestPoint(sim, plan, (x, y, sid) => Math.abs(x - tp.x) + Math.abs(y + 0.84 - tp.y) + zonePenalty(x) + fragilePenalty(sid));
     }
     let stance = this.controller.stanceNow(sim);
-    const close = me.weapons.includes("bat") || me.weapons.includes("shotgun");
+    const close = me.weapons.includes("bat") || me.weapons.includes("shotgun") || me.weapons.includes("flamethrower");
 
     // arm up: go for the pickups this fighter wants (fists only = go far for anything)
     const armed = me.weapons.some((w) => w !== "fist");
@@ -147,7 +147,7 @@ export class ControllerNavigation {
       return { surface: s.id, x: clamp(x, s.x0 + 0.3, s.x1 - 0.3) };
     }
 
-    const ideal = me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
+    const ideal = me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
     if (stance === "cover") {
       // cover is not standing still: every so often, peek out somewhere with a clear shot
       const peek = (sim.tick + this.controller.fighterId * 61) % PATIENCE.peekEvery < PATIENCE.peekFor;

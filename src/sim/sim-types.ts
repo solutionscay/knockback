@@ -4,9 +4,9 @@ import type { PieceCell } from "./terrain";
 import { generateIdentities, type Look } from "./identity";
 
 /** "fist" is what everyone starts with; the rest are picked up in the arena. */
-export type Weapon = "rocket" | "shotgun" | "bat" | "grenade" | "grapple" | "fist";
+export type Weapon = "rocket" | "shotgun" | "bat" | "grenade" | "grapple" | "flamethrower" | "fist";
 /** Weapons that exist as pickups. */
-export const WEAPON_LIST: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple"];
+export const WEAPON_LIST: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower"];
 export const ALL_WEAPONS: readonly Weapon[] = [...WEAPON_LIST, "fist"];
 
 export function isPickupWeapon(value: unknown): value is Exclude<Weapon, "fist"> {
@@ -126,6 +126,9 @@ export interface Entity {
   ay?: number;
   // terrain piece
   cells?: PieceCell[];
+  // fire (#33): fire-steps left burning (crates, barrels, TNT, gas), and who lit it
+  burn?: number;
+  burnBy?: number;
   // item
   itemType?: ItemType;
   // grenade
@@ -176,6 +179,12 @@ export interface Fighter {
   shieldTick: number;
   padCd: number;
   crushCd: number;
+  /** on fire (#33): ticks left, who lit it, and what to credit ("flamethrower" or "fire") */
+  burning: number;
+  burnBy: number;
+  burnCause: string;
+  /** flamethrower fuel (#32): pulses left in the tank */
+  fuel: number;
   outsideZone: boolean;
   outsideTicks: number;
   power: Powers;
@@ -235,6 +244,12 @@ export type SimEvent =
   | { type: "itemSpawn"; tick: number; entity: number; item: ItemType; x: number; y: number }
   | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number }
   | { type: "suddenDeath"; tick: number; quietTicks: number }
+  /** something caught fire from a flame or a blast (#33; spreading fire is read from the state, not evented) */
+  | { type: "ignite"; tick: number; what: "cell" | "prop" | "piece"; x: number; y: number; source: string; by: number }
+  /** a fighter caught fire */
+  | { type: "burn"; tick: number; fighter: number; by: number; cause: string }
+  /** a flamethrower ran dry and was dropped (#32) */
+  | { type: "fuelOut"; tick: number; fighter: number }
   /** a platform chain snapped (#34); by = who damaged it last, or -1 */
   | { type: "chainBreak"; tick: number; chain: number; x: number; y: number; cause: string; by: number }
   /** a platform lost a chain and now hangs from its last one */

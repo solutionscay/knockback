@@ -21,6 +21,7 @@ import { addFighter, applyInput, checkGrounded } from "./sim-movement";
 import { addProp, dangers, updateObjects } from "./sim-objects";
 import { crumbleUnder, flushTerrain } from "./sim-terrain";
 import { buildChains, updateChains, type Chain } from "./sim-chains";
+import { updateFire, type CellFire } from "./sim-fire";
 import { ALL_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type Look, type Rocket, type SimEvent, type Weapon } from "./sim-types";
 import { updateRockets } from "./sim-weapons";
 import { SimZone, zoneHalfAt, zonePush } from "./sim-zone";
@@ -59,6 +60,8 @@ export class Sim {
   readonly chains: Chain[];
   /** static anchor cell index -> its chain */
   readonly chainByCell = new Map<number, Chain>();
+  /** burning static cells (#33): grid index -> fire */
+  readonly fires = new Map<number, CellFire>();
   events: SimEvent[] = [];
   zone: { center: number; half: number; startHalf: number };
   /** Sandbox switch (tests): when false the zone neither shrinks nor pushes. */
@@ -90,6 +93,14 @@ export class Sim {
     chainsBroken: 0,
     platformsSwung: 0,
     platformsDropped: 0,
+    firesStarted: 0,
+    cellsIgnited: 0,
+    cellsBurnedDown: 0,
+    cellsBurnedOut: 0,
+    propsIgnited: 0,
+    propsBurnedOff: 0,
+    fightersIgnited: 0,
+    flamePulses: 0,
   };
 
   constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS) {
@@ -227,6 +238,7 @@ export class Sim {
     updateRockets(this);
     updateObjects(this);
     updateChains(this);
+    updateFire(this);
     flushTerrain(this);
 
     const pre: { x: number; y: number }[] = this.fighters.map((f) => (f.removed ? { x: 0, y: 0 } : this.vel(f)));
@@ -330,6 +342,9 @@ export class Sim {
       num(f.jetting ? 1 : 0);
       num(f.aimX);
       num(f.aimY);
+      num(f.burning);
+      num(f.burnBy);
+      num(f.fuel);
     }
     for (const r of this.rockets) {
       num(r.x);
@@ -342,8 +357,15 @@ export class Sim {
       num(e.hp);
       num(e.fuse ?? -1);
       num(e.thrust ?? -1);
-      if (e.cells) for (const c of e.cells) num(c.hp);
+      num(e.burn ?? 0);
+      if (e.cells) for (const c of e.cells) num(c.hp + (c.burn ?? 0) * 1e3 + (c.charred ? 1e6 : 0));
     }
+    for (const [i, fire] of [...this.fires.entries()].sort((a, b) => a[0] - b[0])) {
+      num(i);
+      num(fire.burn);
+      num(fire.by);
+    }
+    for (let i = 0; i < g.flags.length; i++) if (g.flags[i]) num(i * 8 + g.flags[i]!);
     for (const ch of this.chains) {
       num(ch.hp);
       num(ch.piece);

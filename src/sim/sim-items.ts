@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { ARMORY, FIGHTER, FIGHTER_DENSITY, G, ITEM, POWER, SUPPLY, SWAP_TICKS, groups } from "./constants";
+import { ARMORY, FIGHTER, FIGHTER_DENSITY, G, ITEM, POWER, SUPPLY, SWAP_TICKS, WEAPONS, groups } from "./constants";
 import type { Sim } from "./sim";
 import { isPickupWeapon, WEAPON_LIST, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { clamp } from "./dmath";
@@ -227,6 +227,7 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType) {
         d.owner = f.id;
       }
       f.weapons[other] = it;
+      if (it === "flamethrower") f.fuel = WEAPONS.flamethrower.fuel; // a full tank
       f.slot = other;
       f.swap = SWAP_TICKS;
       f.cooldown[it] = 0;

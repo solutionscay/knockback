@@ -196,7 +196,8 @@ function shatter(sim: Sim, e: Entity) {
   sim.entityStore.remove(e);
 }
 
-function light(sim: Sim, e: Entity, owner: number, depth: number, cause: string) {
+/** Light a barrel or TNT fuse, or launch a gas can (cause: what set it off). */
+export function light(sim: Sim, e: Entity, owner: number, depth: number, cause: string) {
   if (e.dead) return;
   if (e.kind === "tnt") {
     const fuse = cause === "shotgun" || cause === "bat" || cause === "grapple" ? TNT.fuse : TNT.chainFuse;

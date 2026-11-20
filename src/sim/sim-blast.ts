@@ -6,6 +6,7 @@ import { clamp, length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { damagePiece } from "./sim-terrain";
 import { blastChains } from "./sim-chains";
+import { blastIgnite } from "./sim-fire";
 
 export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: ExplosionKind, owner: number, depth: number, chainFrom: string | null) {
   sim.stats.explosions++;
@@ -62,4 +63,6 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
     e.body.applyImpulse({ x: nx * imp, y: (ny + 0.3) * imp }, true);
     e.body.applyTorqueImpulse((nx >= 0 ? -1 : 1) * imp * 0.08, true);
   }
+  // what is left standing near the blast may catch fire (#33)
+  blastIgnite(sim, x, y, spec.radius, owner);
 }

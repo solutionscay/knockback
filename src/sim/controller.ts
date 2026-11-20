@@ -5,7 +5,7 @@
  * and movement. Every fighter gets the same controller and the same aim.
  */
 import { length2D } from "./dmath";
-import { REFLEX } from "./constants";
+import { REFLEX, WEAPONS } from "./constants";
 import { aimAndFire, inReach, sightTarget } from "./controller-aim";
 import { JetpackPilot } from "./controller-jetpack";
 import { ControllerNavigation } from "./controller-navigation";
@@ -222,6 +222,8 @@ export class Controller {
       if (has("shotgun")) return "shotgun";
     }
     if (has("bat") && dist < 2.4) return "bat";
+    // flamethrower (#32): up close with a clear line, it outdamages everything else
+    if (has("flamethrower") && los && dist < WEAPONS.flamethrower.range - 0.4) return "flamethrower";
     if (dist < 1.5 && !has("shotgun")) return "fist";
     if (ready("grapple") && los && dist > 3.5 && dist < 14 && (this.onLedge(sim, target, mp.x, mp.y) || has("bat") || has("shotgun"))) return "grapple";
     if (has("shotgun") && dist < 6.5) return "shotgun";

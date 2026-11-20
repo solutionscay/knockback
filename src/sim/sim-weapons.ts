@@ -7,6 +7,7 @@ import { hitProp } from "./sim-objects";
 import { chipTerrain } from "./sim-terrain";
 import { CHAIN } from "./constants";
 import { shootChains, swingChains } from "./sim-chains";
+import { fireFlamethrower } from "./sim-fire";
 
 export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
   if (f.cooldown[weapon] > 0) return;
@@ -48,6 +49,10 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
     case "grapple":
       f.cooldown.grapple = WEAPONS.grapple.cooldown;
       fireGrapple(sim, f, ox, oy, dx, dy);
+      break;
+    case "flamethrower":
+      f.cooldown.flamethrower = WEAPONS.flamethrower.cooldown;
+      fireFlamethrower(sim, f, ox, oy, dx, dy);
       break;
   }
 }

@@ -98,6 +98,23 @@ export const WEAPONS = {
     terrainRadius: 0.65,
     terrainDamage: 24,
   },
+  /**
+   * Flamethrower (#32): a short cone of fire, fired in pulses while the
+   * trigger is held. Each pulse casts 5 fixed rays across the cone (no trig:
+   * the spread is fixed rotation coefficients), hurts and lightly pushes
+   * fighters it reaches, sets them and anything flammable alight, and uses one
+   * pulse of fuel. Empty: the weapon is dropped (gone).
+   */
+  flamethrower: {
+    cooldown: 4,
+    range: 3.8,
+    damage: 0.9,
+    push: 1.6,
+    fuel: 60,
+    /** chance per pulse that a ray sets the flammable cell or prop it reaches alight */
+    igniteChance: 0.45,
+    chainDamage: 1.2,
+  },
   /** Hook: yanks a fighter (or a prop) toward the shooter. */
   grapple: {
     cooldown: 110,
@@ -161,6 +178,38 @@ export const CHAIN = {
   heavyMinSpeed: 6,
   heavyPerUnit: 1.2,
 };
+/**
+ * Fire (#33, sim-fire.ts). Updated every `step` ticks; times are in fire
+ * steps. Burning cells and props lose hit points, spread to flammable
+ * neighbours by chance (seeded RNG), then burn out (charred) or are destroyed.
+ * Barrels, TNT and gas cans light their fuse when they catch. Burning anchor
+ * cells eat their chain. Fighters touching fire catch it for fighterTicks.
+ */
+export const FIRE = {
+  step: 6,
+  burnMin: 25,
+  burnMax: 45,
+  /** hit points per fire step lost by a burning cell (wood has 20, crumble 24) */
+  cellDamage: 0.5,
+  /** chance per step that a burning cell lights each flammable 4-neighbour */
+  spread: 0.09,
+  /** props: hit points per step, and the reach of their flames (m) */
+  propDamage: 0.5,
+  propReach: 0.7,
+  /** chain hit points per step while its anchor cell burns */
+  chainDamage: 1.6,
+  /** a blast lights flammable cells (out to the rim its carve leaves) and props within this share of its radius, each by chance */
+  blastReach: 1.3,
+  blastChance: 0.45,
+  /** fighters: ticks on fire after touching it, damage per second while burning */
+  fighterTicks: 150,
+  fighterDps: 4,
+  /** how close (m) a fighter's body must be to a burning cell to catch */
+  touch: 0.25,
+  /** chance per step that a burning fighter lights the flammable cell under its feet */
+  feetChance: 0.12,
+};
+
 /** Crumbling cells lose this many hit points per second while stood on. */
 export const CRUMBLE_DPS = 20;
 
