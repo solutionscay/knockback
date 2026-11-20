@@ -37,3 +37,7 @@ export function dsin(x: number): number {
 export function dcos(x: number): number {
   return dsin(x + HALF_PI);
 }
+
+export function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}

@@ -1,0 +1,96 @@
+import { FIGHTER, G, POWER, groups } from "./constants";
+import type { Sim } from "./sim";
+import { type Fighter } from "./sim-types";
+import { clamp } from "./dmath";
+import { dropWeapons } from "./sim-items";
+
+export function kbMult(hp: number): number {
+  return 1 + (clamp(FIGHTER.maxHp - hp, 0, FIGHTER.maxHp) / 100) * FIGHTER.kbGrowth;
+}
+
+export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number, kbx: number, kby: number, cause: string, hx: number, hy: number) {
+  if (!f.alive) return;
+  if (source >= 0 && source !== f.id && dmg > 0) sim.lastClashTick = sim.tick;
+  const src = source >= 0 && source !== f.id ? sim.fighters[source]! : null;
+  if (src && src.power.damage > 0) {
+    dmg *= POWER.damage.mul;
+    kbx *= POWER.damage.kbMul;
+    kby *= POWER.damage.kbMul;
+  }
+  let shielded = false;
+  if (f.power.shield > 0 && cause !== "impact") {
+    shielded = true;
+    dmg *= POWER.shield.damageMul;
+    kbx *= POWER.shield.kbMul;
+    kby *= POWER.shield.kbMul;
+    if (f.shieldTick !== sim.tick) {
+      f.shieldTick = sim.tick;
+      if (++f.power.shieldHits >= POWER.shield.hits) {
+        f.power.shield = 0;
+        const p = sim.pos(f);
+        sim.events.push({ type: "shieldPop", tick: sim.tick, fighter: f.id, x: p.x, y: p.y });
+      }
+    }
+  }
+  if (f.power.heavy > 0) {
+    kbx *= POWER.heavy.kbMul;
+    kby *= POWER.heavy.kbMul;
+  }
+  f.hp -= dmg;
+  f.damageTaken += dmg;
+  if (src) {
+    src.damageDealt += dmg;
+    f.lastHitBy = src.id;
+    // slamming into a wall after a hit is credited to the weapon that launched you
+    if (cause !== "impact") {
+      f.lastHitTick = sim.tick;
+      f.lastHitCause = cause;
+    }
+  } else if (source < 0 && cause !== "impact") {
+    f.lastHitCause = cause;
+  }
+  let kb = 0;
+  if (kbx !== 0 || kby !== 0) {
+    const m = sim.kbMult(Math.max(0, f.hp));
+    const body = f.entity.body;
+    const v = body.linvel();
+    const stack = f.kbTick === sim.tick;
+    const nvx = (stack ? v.x : v.x * 0.3) + kbx * m;
+    const nvy = (stack ? v.y : Math.max(v.y * 0.3, 0)) + kby * m;
+    f.kbTick = sim.tick;
+    body.setLinvel({ x: nvx, y: nvy }, true);
+    kb = Math.sqrt(kbx * kbx + kby * kby) * m;
+    f.stun = Math.max(f.stun, Math.round(clamp(kb * 1.7, 6, 55)));
+    f.grounded = false;
+  }
+  if (cause !== "impact") sim.events.push({ type: "hit", tick: sim.tick, target: f.id, source, damage: dmg, kb, x: hx, y: hy, cause, shielded });
+  if (f.hp <= 0) {
+    f.hp = 0;
+    const p = sim.pos(f);
+    knockOut(sim, f, "hp", p.x, p.y);
+  }
+}
+
+export function knockOut(sim: Sim, f: Fighter, cause: "ringout" | "hp", x: number, y: number) {
+  if (!f.alive) return;
+  f.alive = false;
+  f.koTick = sim.tick;
+  f.koCause = cause;
+  const by = sim.tick - f.lastHitTick < 300 ? f.lastHitBy : -1;
+  f.koBy = by;
+  if (by >= 0 && by !== f.id) sim.fighters[by]!.kos++;
+  const weapon = by >= 0 ? f.lastHitCause || "unknown" : cause === "ringout" ? "fall" : f.lastHitCause || "crush";
+  sim.events.push({ type: "ko", tick: sim.tick, fighter: f.id, cause, by, weapon, x, y });
+  // a knocked-out fighter drops its weapons: up for grabs
+  if (cause === "hp") dropWeapons(sim, f, x, y);
+  f.entity.collider.setCollisionGroups(groups(G.PROP, G.TERRAIN));
+  f.entity.body.lockRotations(false, true);
+  f.entity.body.setAngvel(f.facing * -6, true);
+  if (cause === "ringout") removeFighterBody(sim, f);
+}
+
+export function removeFighterBody(sim: Sim, f: Fighter) {
+  if (f.removed) return;
+  f.removed = true;
+  sim.entityStore.remove(f.entity);
+}

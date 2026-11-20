@@ -9,6 +9,8 @@ export const FIGHT_TICKS = FIGHT_SECONDS * TICK_RATE;
 /** Once one fighter is left, the fight runs this many more ticks, then it ends. */
 export const FINISH_TICKS = 90;
 
+export const FIGHTER_DENSITY = 2.2;
+
 export const FIGHTER = {
   radius: 0.42,
   halfHeight: 0.42, // capsule half segment; total height = 2*(hh+r) = 1.68 m
