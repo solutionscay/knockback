@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { EYES, generateIdentities, MARKS, SHAPES, type Identity } from "../src/sim/identity";
-import { ALL_FACES, blinkClosed, COLS, drawBody, drawSilhouette, drawVisor, EYE_CELLS, faceFor, hash, HEADS, koFace, lodFor, ROWS } from "../src/viewer/bot";
+import { oklch } from "../src/sim/color";
+import { EYES, generateIdentities, MAJOR_MARKS, MARKS, MINOR_MARKS, SHAPES, type Identity } from "../src/sim/identity";
+import { ALL_FACES, blinkClosed, COLS, darkPartsOf, drawBody, drawSilhouette, drawVisor, EYE_CELLS, faceFor, hash, HEADS, koFace, lodFor, ROWS } from "../src/viewer/bot";
 import { portraitSvg } from "../src/viewer/portrait";
 import { SvgPen } from "../src/viewer/svgPen";
 
@@ -79,5 +80,31 @@ describe("bot fighters (#18)", () => {
         expect(svg).not.toMatch(/NaN|undefined/);
       }
     expect(portraitSvg(id, "bat", "fight", "tiny")).toContain('viewBox="-0.66');
+  });
+
+  test("a major and a minor mark draw together, for every pair", () => {
+    for (const mark of MAJOR_MARKS)
+      for (const minor of MINOR_MARKS) {
+        const id: Identity = { name: `${mark}+${minor}`, shape: "squircle", eyes: "tall", mark, minor, color: 0xe2ca5d };
+        const pen = new SvgPen();
+        drawBody(pen, id, { t: 0.2 });
+        drawVisor(pen, id, faceFor("confident", 1, 7, id.eyes), "game");
+        const solo = new SvgPen();
+        drawBody(solo, { ...id, minor: "none" }, { t: 0.2 });
+        drawVisor(solo, { ...id, minor: "none" }, faceFor("confident", 1, 7, id.eyes), "game");
+        expect(pen.toSvg()).not.toMatch(/NaN|undefined/);
+        expect(pen.toSvg().length).toBeGreaterThan(solo.toSvg().length); // the minor mark adds shapes
+      }
+  });
+
+  test("torso and feet darken in OKLCH: hue and chroma stay (a yellow stays gold, not khaki)", () => {
+    for (const c of [0xe2ca5d, 0xeedc58, 0x7be451, 0x8a9bff, 0xf357cf]) {
+      const { torso, feet } = darkPartsOf(c);
+      const a = oklch(c), t1 = oklch(torso), f1 = oklch(feet);
+      expect(t1.L).toBeLessThan(a.L - 0.1);
+      expect(f1.L).toBeLessThan(t1.L);
+      expect(t1.C).toBeGreaterThan(a.C * 0.8);
+      expect(Math.abs(t1.h - a.h)).toBeLessThan(0.12);
+    }
   });
 });

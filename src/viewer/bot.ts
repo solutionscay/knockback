@@ -13,6 +13,7 @@
  * 0.84 x 1.68 m. The head is drawn in a Skipper's own 32-unit grid.
  * Pure: no DOM, no Pixi. View only: nothing here touches the sim.
  */
+import { darkenKeepChroma } from "../sim/color";
 import type { Eyes, Identity, Mark, Shape } from "../sim/identity";
 
 export type FillStyle = number | { color: number; alpha?: number };
@@ -297,12 +298,18 @@ export interface BotState {
 
 /** Marks that move in steps (their layer is redrawn when the step changes). */
 export const FLAPPING_MARKS: readonly Mark[] = ["headband", "cape", "scarf", "propeller"];
-export const flapStep = (look: Identity, t: number) => (FLAPPING_MARKS.includes(look.mark) ? Math.floor(t * 6) % 2 : 0);
+/** The marks a fighter wears: its major mark and its minor mark, if any. */
+export const marksOf = (look: Identity): Mark[] => [look.mark, look.minor ?? "none"].filter((m) => m !== "none");
+export const hasMark = (look: Identity, m: Mark) => look.mark === m || look.minor === m;
+export const flapStep = (look: Identity, t: number) => (marksOf(look).some((m) => FLAPPING_MARKS.includes(m)) ? Math.floor(t * 6) % 2 : 0);
 
 export const ledColor = (look: Identity) => mix(0xffffff, look.color, 0.22);
+/** The torso, feet and dark-detail colors of a body color (exported for tests). */
+export const darkPartsOf = (c: number) => ({ torso: darkenKeepChroma(c, 0.16), feet: darkenKeepChroma(c, 0.3), dark: darkenKeepChroma(c, 0.3) });
 const colors = (look: Identity) => {
   const c = look.color;
-  return { c, body: shade(c, 0.85), torso: shade(c, 0.62), feet: shade(c, 0.4), dark: shade(c, 0.45) };
+  // the head keeps Skiff's color x 0.85; the darker parts drop OKLCH lightness and keep chroma (a yellow stays gold, not khaki)
+  return { c, body: shade(c, 0.85), ...darkPartsOf(c) };
 };
 
 /** Into the head's 32-unit grid: grid y 3.5 is the capsule's top. */
@@ -318,10 +325,10 @@ export function drawBody(pen: Pen, look: Identity, s: BotState) {
   const air = s.air ? 1 : 0;
   const flap = flapStep(look, s.t);
   const H = HEADS[look.shape] ?? HEADS.squircle;
-  if (look.mark === "cape") {
+  if (hasMark(look, "cape")) {
     const fl = flap ? 0.06 : 0;
     pen.poly([-0.2, -0.06, 0.18, -0.06, 0.02, 0.62, -0.5 - fl, 0.66 + fl * 0.5]);
-    pen.fill(shade(c, 0.5));
+    pen.fill(darkenKeepChroma(c, 0.28));
   }
   // back arm, feet, torso: behind the head
   pen.moveTo(-0.14, 0.16);
@@ -338,7 +345,7 @@ export function drawBody(pen: Pen, look: Identity, s: BotState) {
   pen.fill(VISOR);
   for (let i = 0; i < 3; i++) pen.circle(-0.075 + i * 0.075, 0.27, 0.024);
   pen.fill({ color: ledColor(look), alpha: 0.85 });
-  if (look.mark === "scarf") {
+  if (hasMark(look, "scarf")) {
     const fl = flap ? 0.05 : 0;
     pen.roundRect(-0.29, -0.06, 0.58, 0.13, 0.06);
     pen.poly([-0.18, 0.0, -0.5 - fl, 0.12 - fl, -0.46 - fl, 0.24 - fl, -0.12, 0.07]);
@@ -346,19 +353,19 @@ export function drawBody(pen: Pen, look: Identity, s: BotState) {
   }
   // ---- the head, in the Skipper grid
   headSpace(pen);
-  marksBehind(pen, look, H, flap);
+  for (const m of marksOf(look)) marksBehind(pen, m, look, H, flap);
   pen.svgPath(H.d);
   pen.fill(body);
   pen.stroke({ width: 3, color: body, join: "round" }); // Skiff: a round 3-unit stroke softens every corner
   pen.ellipse(11.5, Math.max(H.top + 2.5, H.eye - 6.5), 3.4, 1.7);
   pen.fill({ color: 0xffffff, alpha: 0.14 }); // a soft top-left light, a nod to Skiff's gummy finish
-  marksFront(pen, look, H, flap, !!s.aiming, dark);
+  for (const m of marksOf(look)) marksFront(pen, m, look, H, flap, !!s.aiming, dark);
   pen.restore();
 }
 
-function marksBehind(pen: Pen, look: Identity, H: Head, flap: number) {
+function marksBehind(pen: Pen, mark: Mark, look: Identity, H: Head, flap: number) {
   const top = H.top, tw = H.tw;
-  switch (look.mark) {
+  switch (mark) {
     case "headband": {
       const y = top + 2.2, fl = flap ? 1.2 : 0, x = 16 - tw - 1;
       pen.poly([x + 1, y + 0.6, x - 7, y - 2.5 - fl, x - 6, y + 1.5 - fl]);
@@ -370,11 +377,11 @@ function marksBehind(pen: Pen, look: Identity, H: Head, flap: number) {
       for (const s of [-1, 1]) pen.poly([16 + s * tw * 0.55, top + 2.2, 16 + s * (tw + 3.2), top - 4.2, 16 + s * (tw * 0.95), top + 2.6]);
       pen.fill(0xf2e6c8);
       break;
-    case "ears":
-      for (const s of [-1, 1]) pen.circle(16 + s * tw * 0.85, top + 1, 3.2);
+    case "ears": // a major mark: big enough to clear the head's outline at 720p
+      for (const s of [-1, 1]) pen.circle(16 + s * (tw * 0.8 + 0.6), top + 0.2, 4.3);
       pen.fill(shade(look.color, 0.85));
-      for (const s of [-1, 1]) pen.circle(16 + s * tw * 0.85, top + 1, 1.7);
-      pen.fill(shade(look.color, 0.55));
+      for (const s of [-1, 1]) pen.circle(16 + s * (tw * 0.8 + 0.6), top + 0.2, 2.3);
+      pen.fill(darkenKeepChroma(look.color, 0.3));
       break;
     case "catears":
       for (const s of [-1, 1]) pen.poly([16 + s * (tw * 0.3), top + 1.8, 16 + s * (tw + 1.2), top - 4.5, 16 + s * (tw + 0.6), top + 3.5]);
@@ -385,9 +392,9 @@ function marksBehind(pen: Pen, look: Identity, H: Head, flap: number) {
   }
 }
 
-function marksFront(pen: Pen, look: Identity, H: Head, flap: number, aiming: boolean, dark: number) {
+function marksFront(pen: Pen, mark: Mark, look: Identity, H: Head, flap: number, aiming: boolean, dark: number) {
   const top = H.top, tw = H.tw, hw = H.hw;
-  switch (look.mark) {
+  switch (mark) {
     case "headband":
       pen.roundRect(16 - tw - 1, top + 2.2, 2 * tw + 2, 3, 1);
       pen.fill(0x2a0d0d);
@@ -422,11 +429,12 @@ function marksFront(pen: Pen, look: Identity, H: Head, flap: number, aiming: boo
       pen.fill(0xff5a5a);
       break;
     }
-    case "mohawk": {
-      const pts: number[] = [16 - 4.5, top + 1.2];
-      for (let i = 0; i < 5; i++) pts.push(16 - 4.5 + i * 2.25 + 1.1, top - 3.8 - (i === 2 ? 1 : 0), 16 - 4.5 + (i + 1) * 2.25, top + 0.6);
+    case "mohawk": { // a major mark: tall spikes in a darker tone of the body color
+      const x0 = 16 - 5.5, sw = 2.75;
+      const pts: number[] = [x0, top + 1.6];
+      for (let i = 0; i < 4; i++) pts.push(x0 + i * sw + sw / 2, top - 6 - (i === 1 || i === 2 ? 1.2 : 0), x0 + (i + 1) * sw, top + 0.8);
       pen.poly(pts);
-      pen.fill(shade(look.color, 0.5));
+      pen.fill(darkenKeepChroma(look.color, 0.24));
       break;
     }
     case "halo":
@@ -454,20 +462,20 @@ function marksFront(pen: Pen, look: Identity, H: Head, flap: number, aiming: boo
       break;
     }
     case "bow": {
-      const x = 16 + tw * 0.55, y = top + 0.4;
-      pen.poly([x, y, x - 3.6, y - 2.4, x - 3.6, y + 2.4]);
-      pen.poly([x, y, x + 3.6, y - 2.4, x + 3.6, y + 2.4]);
+      const x = 16 + tw * 0.45, y = top - 0.4; // a major mark: a big bow
+      pen.poly([x, y, x - 5, y - 3.4, x - 5, y + 3.4]);
+      pen.poly([x, y, x + 5, y - 3.4, x + 5, y + 3.4]);
       pen.fill(0xff6fa8);
-      pen.circle(x, y, 1.1);
+      pen.circle(x, y, 1.5);
       pen.fill(0xd94a85);
       break;
     }
     case "sprout":
-      pen.moveTo(16, top + 0.5);
-      pen.quadraticCurveTo(15.5, top - 2.5, 16.5, top - 4.5);
-      pen.stroke({ width: 0.9, color: 0x3f9a3a, cap: "round" });
-      pen.ellipse(14, top - 4.6, 2.4, 1.2);
-      pen.ellipse(19, top - 5.4, 2.4, 1.2);
+      pen.moveTo(16, top + 0.5); // a major mark: a tall sprout with two big leaves
+      pen.quadraticCurveTo(15.3, top - 3.5, 16.5, top - 6.5);
+      pen.stroke({ width: 1.3, color: 0x3f9a3a, cap: "round" });
+      pen.ellipse(13.4, top - 6.4, 3.4, 1.7);
+      pen.ellipse(19.6, top - 7.6, 3.4, 1.7);
       pen.fill(0x6fdc5a);
       break;
     case "tophat":
@@ -544,7 +552,7 @@ export function drawVisor(pen: Pen, look: Identity, face: Face, lod: Lod) {
       pen.fill({ color: 0xffffff, alpha: 0.5 * a }); // a hot center
     }
   }
-  if (look.mark === "bandage") {
+  if (hasMark(look, "bandage")) {
     // a crossed plaster on the top corner, over the glass
     const x = vx + vw / 2 - 2.2, y = vy - VH / 2 + 0.6;
     for (const a of [0.6, -0.6]) {
@@ -556,7 +564,7 @@ export function drawVisor(pen: Pen, look: Identity, face: Face, lod: Lod) {
       pen.restore();
     }
   }
-  if (look.mark === "scratch") {
+  if (hasMark(look, "scratch")) {
     const x0 = vx + vw * 0.12, y0 = vy - VH / 2 + 0.4;
     pen.moveTo(x0, y0);
     pen.lineTo(x0 + 1.6, y0 + 3.2);
