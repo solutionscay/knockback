@@ -62,6 +62,7 @@ export const POWER_COLOR: Record<string, number> = {
   heavy: 0xa0a8b8,
   damage: 0xff4d5e,
   jump: 0xffffff,
+  jetpack: 0x60f4d1,
 };
 
 /** Light page grounds the name ink is checked against (none in the game today: websites, light themes, printed sheets). */

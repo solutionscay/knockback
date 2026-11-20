@@ -170,6 +170,12 @@ function powerIcon(g: Graphics, it: string) {
       g.poly(P([-0.16, 0.12, -0.02, -0.15, 0.04, -0.15, -0.1, 0.12])).fill(0xc8102a).stroke(OUT);
       g.poly(P([0.0, 0.12, 0.14, -0.15, 0.2, -0.15, 0.06, 0.12])).fill(0xc8102a).stroke(OUT);
       break;
+    case "jetpack":
+      for (const x of [-0.12, 0.015]) {
+        g.roundRect(x * k, -0.19 * k, 0.11 * k, 0.25 * k, 0.04 * k).fill(0x168778).stroke(OUT);
+        g.poly(P([x, 0.08, x + 0.11, 0.08, x + 0.055, 0.22])).fill(0xe86722).stroke(OUT);
+      }
+      break;
     case "jump":
       g.poly(P([0, -0.2, 0.16, 0, 0.06, 0, 0.06, 0.18, -0.06, 0.18, -0.06, 0, -0.16, 0])).fill(0x5a6a8a).stroke(OUT);
       break;

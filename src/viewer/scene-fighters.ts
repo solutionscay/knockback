@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import { FIGHTER } from "../sim/constants";
+import { FIGHTER, POWER } from "../sim/constants";
 import type { Entity, Fighter, Sim } from "../sim/sim";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
@@ -246,6 +246,7 @@ export class FighterViews {
       au.clear();
       ov.clear();
       if (f.alive) {
+        if (pw.jetpack > 0 || f.jetting) drawJetpack(au, f.jetting, time);
         if (pw.damage > 0) {
           const pr = 0.85 + 0.12 * Math.sin(time * 10);
           au.circle(0, 0, pr).fill({ color: POWER_COLOR.damage!, alpha: 0.28 });
@@ -394,14 +395,33 @@ export class FighterViews {
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / 100, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / 100, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
         for (let i = 1; i < 4; i++) bars.rect(bx + (bw * i) / 4 - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
+        if (f.power.jetpack > 0 || f.jetting) {
+          const fuel = f.power.jetpack / POWER.jetpack.fuelTicks;
+          const fy = by + bh + 4 * ui;
+          bars.roundRect(bx - 2 * ui, fy - 1 * ui, bw + 4 * ui, 6 * ui, 2 * ui).fill(0x07080d);
+          bars.rect(bx, fy, bw, 4 * ui).fill(0x183a3b);
+          if (fuel > 0) bars.rect(bx, fy, bw * fuel, 4 * ui).fill(f.jetting ? 0xffae4f : POWER_COLOR.jetpack!);
+        }
         let pi = 0;
         for (const k of ["shield", "speed", "heavy", "damage", "jump"] as const) {
           if (f.power[k] <= 0) continue;
-          bars.circle(bx + 6 * ui + pi * 13 * ui, by + bh + 10 * ui, 5 * ui).fill(POWER_COLOR[k]!).stroke({ width: 1.5 * ui, color: 0x07080d });
+          bars.circle(bx + 6 * ui + pi * 13 * ui, by + bh + (f.power.jetpack > 0 || f.jetting ? 16 : 10) * ui, 5 * ui).fill(POWER_COLOR[k]!).stroke({ width: 1.5 * ui, color: 0x07080d });
           pi++;
         }
       }
     }
+  }
+}
+
+function drawJetpack(g: Graphics, burning: boolean, time: number) {
+  for (const [x, y] of [[-0.83, -0.31], [-0.58, -0.22]] as const) {
+    if (burning) {
+      const length = 0.92 + 0.15 * Math.sin(time * 45 + x * 7);
+      g.poly([x, y + 0.47, x + 0.24, y + 0.47, x + 0.11, y + 0.49 + length]).fill(0xff802b);
+      g.poly([x + 0.05, y + 0.47, x + 0.19, y + 0.47, x + 0.11, y + 0.47 + length * 0.67]).fill(0xffefae);
+    }
+    g.roundRect(x, y, 0.25, 0.51, 0.08).fill(0x187d77).stroke({ color: 0x093331, width: 0.05 });
+    g.rect(x + 0.04, y + 0.15, 0.17, 0.08).fill(POWER_COLOR.jetpack!);
   }
 }
 
