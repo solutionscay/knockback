@@ -6,7 +6,7 @@ import { Container, Graphics, type Application } from "pixi.js";
 import type { Entity, Sim, SimEvent } from "../sim/sim";
 import type { Callout } from "./callouts";
 import { PALETTES } from "./palette";
-import { SceneCamera } from "./scene-camera";
+import { SceneCamera, type CameraFrame } from "./scene-camera";
 import { CalloutViews } from "./scene-callouts";
 import { SceneEffects } from "./scene-effects";
 import { FighterViews } from "./scene-fighters";
@@ -32,6 +32,8 @@ export class Scene {
   private hills = new Graphics();
   private world = new Container();
   private terrainView: TerrainView | null = null;
+  /** the camera of the last rendered frame (capture-mode screenshot scripts read it) */
+  lastFrame: CameraFrame | null = null;
   private terrainLayer = new Container();
   private pal = PALETTES.warehouse;
   private abyss = new Graphics();
@@ -202,6 +204,7 @@ export class Scene {
     fx.update(fxDt);
 
     const frame = this.camera.render(sim, this.world, W, H, dt, alpha, this.xform);
+    this.lastFrame = frame;
     this.drawSky();
     this.drawZone();
     const projectiles = this.projectiles.graphics;
