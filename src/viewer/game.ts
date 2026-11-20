@@ -69,6 +69,8 @@ export class Game {
   private waitingRound = 0;
   /** sound (#12): set by main.ts; reads what the viewer shows, never the sim's state */
   sound: SoundDirector | null = null;
+  /** video mode (?capture&video): no zoom on the talking bot or the winner, no K.O. slow motion (docs/video.md) */
+  videoMode = false;
 
   constructor(
     app: Application,
@@ -257,7 +259,7 @@ export class Game {
         h.intro.className = "";
         h.callout.className = "";
         h.clock.className = "";
-        this.scene.camera.focus = { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
+        if (!this.videoMode) this.scene.camera.focus = { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
         this.scene.blam(b.fighter);
         h.lineup.querySelector(`[data-id="${b.fighter}"]`)?.classList.add("in");
         h.dialogue.innerHTML = dialogueHtml(this.match, this.decisions[b.fighter]!, this.labels, b);
@@ -320,7 +322,7 @@ export class Game {
       case "celebrate": {
         h.callout.className = "";
         const wid = this.match.winner;
-        this.scene.camera.focus = { id: wid, offsetX: -0.24, heightM: 8 };
+        if (!this.videoMode) this.scene.camera.focus = { id: wid, offsetX: -0.24, heightM: 8 };
         this.scene.celebrateId = wid;
         h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed, this.ap.on);
         restart(h.celebrate, "show");
@@ -363,7 +365,7 @@ export class Game {
     if (e.type === "ko") {
       queueMicrotask(() => this.renderCamBar());
       this.hitPause = Math.max(this.hitPause, 0.14);
-      this.slow = SLOW_TIME;
+      if (!this.videoMode) this.slow = SLOW_TIME;
       const f = this.shown.sim.fighters[e.fighter]!;
       const p = e.cause === "ringout" ? { x: Math.max(-28, Math.min(28, e.x)), y: Math.max(-2, e.y) } : { x: e.x, y: e.y };
       if (!f.removed || e.cause === "ringout") this.scene.koPunch(p.x, p.y);

@@ -6,13 +6,21 @@ import { SoundDirector } from "./audio/director";
 import { AudioEngine, type LoggedCue } from "./audio/engine";
 import { mountSoundControls } from "./audio/ui";
 import { Game } from "./game";
+import { enableVideoMode, setVideoCaption, setVideoTag, TimelineLog, type Timeline } from "./video";
 import { sanitizeIdentities, sanitizeRecord, sanitizeSouls } from "./sanitize";
 
 declare global {
   interface Window {
     __kb?: {
       ready: boolean;
-      advance: (dt: number, frames?: number) => void;
+      /** step the game; render = false skips drawing (fast-forward) */
+      advance: (dt: number, frames?: number, render?: boolean) => void;
+      /** video mode: every beat change and the sim tick at every frame since load */
+      timeline: () => Timeline;
+      /** video mode: the caption box (null hides it) */
+      caption: (c: { kind: "start" | "end"; title?: string; text: string } | null) => void;
+      /** video mode: the "2×" tag over a sped-up quiet stretch */
+      tag: (on: boolean) => void;
       newMatch: (seed: number) => void;
       loadRecord: (url: string) => Promise<void>;
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
@@ -76,6 +84,14 @@ audio.unlockOn(window);
 mountSoundControls(audio, document.getElementById("controls"));
 // After the celebrate beat the next match starts by itself; ?hold waits for the button.
 game.autoNext = params.has("hold") || capture ? null : 6;
+// Video mode (bun run teaser, docs/video.md): View all the whole time, no zooms, no slow motion, a clean screen.
+const video = capture && params.has("video");
+if (video) {
+  enableVideoMode();
+  game.videoMode = true;
+  game.scene.camera.camMode = { kind: "all" }; // not saved: the viewer's own choice stays as it was
+}
+const timeline = new TimelineLog();
 
 const seedEl = document.getElementById("seed")!;
 function start(seed: number) {
@@ -165,10 +181,16 @@ if (capture) {
   app.ticker.stop();
   window.__kb = {
     ready: true,
-    advance(dt, frames = 1) {
-      for (let i = 0; i < frames; i++) game.update(dt);
-      app.renderer.render(app.stage);
+    advance(dt, frames = 1, render = true) {
+      for (let i = 0; i < frames; i++) {
+        game.update(dt);
+        if (game.flow && game.shown) timeline.record(game.flow.beat as { kind: string; value?: number; fighter?: number }, game.flow.index, game.match.round, game.shown.sim.tick);
+      }
+      if (render) app.renderer.render(app.stage);
     },
+    timeline: () => timeline,
+    caption: (c) => setVideoCaption(c),
+    tag: (on) => setVideoTag(on),
     newMatch: (seed) => start(seed),
     loadRecord: async (url: string) => {
       if (!isRecordUrl(url)) throw new Error("records must be /records/<file>.json");
