@@ -963,3 +963,68 @@ body.capture #controls {
 #callout .recap .best b {
   color: var(--c);
 }
+
+/* ---------------------------------------------------------- top HUD layout: chips never cover the clock */
+/*
+ * The fight chips sit in a grid with a lane kept free for the clock: two chips left of it, two right.
+ * They no longer slide there from the centered intro row (that slide swept them across the clock for
+ * half a second after FIGHT!); they fade in place. Long plan text is cut with an ellipsis instead of
+ * pushing the chips into the clock. On a portrait screen the chips go in a 2 x 2 grid under the clock.
+ */
+:root {
+  --clock-lane: 30vh;
+}
+#lineup:not(.fight) {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100vw - 3.2vh);
+}
+#lineup.fight {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content)) minmax(var(--clock-lane), 1fr) repeat(2, minmax(0, max-content));
+  gap: 1vh;
+  transition: opacity 0.4s;
+  animation: chips-in 0.3s ease-out;
+}
+@keyframes chips-in {
+  from {
+    opacity: 0;
+  }
+}
+#lineup.fight .chip:nth-child(2),
+#lineup.fight .chip:nth-child(3) {
+  margin: 0;
+}
+#lineup.fight .chip:nth-child(3) {
+  grid-column: 4;
+}
+#lineup.fight .chip {
+  min-width: 0;
+  font-size: max(1.7vh, 11px);
+}
+#lineup.fight .chip svg {
+  flex: none;
+}
+#lineup.fight .chip .nm {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#lineup.fight .chip .plan {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: max(1.45vh, 10px);
+}
+#lineup.fight.out {
+  transform: translateY(-6vh);
+}
+@media (max-aspect-ratio: 1/1) {
+  #lineup.fight {
+    top: 11vh; /* the clock box ends at about 9.5vh */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #lineup.fight .chip:nth-child(3) {
+    grid-column: auto;
+  }
+}
