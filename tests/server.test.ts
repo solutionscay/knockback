@@ -314,7 +314,14 @@ describe("match server API", () => {
 
     const c = new MatchServer({ outDir: dir, store: new SqliteStore(db) });
     expect(await c.resume()).toEqual({ open: [], running: [] });
-    const rep = (await client(c)("GET", `/api/matches/${m.id}/report`)).data;
+    // three requests at once load (replay) the finished match once
+    const loads: string[] = [];
+    const orig = c.store.listRounds.bind(c.store);
+    c.store.listRounds = (id: string) => (loads.push(id), orig(id));
+    const reps = await Promise.all([0, 1, 2].map(() => client(c)("GET", `/api/matches/${m.id}/report`)));
+    expect(reps.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect(loads).toEqual([m.id]);
+    const rep = reps[0]!.data;
     expect(rep.status).toBe("over");
     expect(rep.rounds.map((r: any) => r.result.finalHash)).toEqual(hashes(played));
     expect(rep.record).toMatch(/^\/records\/remote-61-/);

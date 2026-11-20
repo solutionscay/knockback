@@ -464,6 +464,9 @@ export class MatchServer {
   readonly joinLimit = new RateLimiter(10, 1 / 6);
   readonly createLimit = new RateLimiter(5, 1 / 12);
   readonly seatLimit = new RateLimiter(30, 5);
+  // rebuilding a finished match from storage replays its physics: scarce per address, one load per match at a time
+  readonly loadLimit = new RateLimiter(5, 1 / 5);
+  private loading = new Map<string, Promise<ServerMatch>>();
 
   constructor(opts: ServerOptions) {
     const { store, log, ...rest } = opts;
@@ -554,16 +557,30 @@ export class MatchServer {
         }
   }
 
-  /** A match in memory, or a finished one loaded from storage. */
-  private async matchOr404(mid: string): Promise<ServerMatch> {
+  /** A match in memory, or a finished one loaded from storage (deduplicated and rate limited: it replays the physics). */
+  private async matchOr404(mid: string, ip = "local"): Promise<ServerMatch> {
     const m = this.matches.get(mid);
     if (m) return m;
-    const row = /^m_[0-9a-f]{8}$/.test(mid) ? await this.store.getMatch(mid) : null;
+    const pending = this.loading.get(mid);
+    if (pending) return pending;
+    if (!/^m_[0-9a-f]{8}$/.test(mid)) throw new HttpError(404, `no match ${mid}`);
+    const row = await this.store.getMatch(mid);
     if (!row || (row.status !== "over" && row.status !== "failed")) throw new HttpError(404, `no match ${mid}`);
-    const loaded = await this.restore(row);
-    const rec = (await this.store.listRecords(1000)).find((r) => r.matchId === mid);
-    await loaded.loadFinished(row, await this.store.listRounds(mid), rec?.path ?? null);
-    return loaded;
+    if (this.loading.has(mid)) return this.loading.get(mid)!;
+    this.loadLimit.take(ip, "loads of old matches");
+    const load = (async () => {
+      const loaded = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt);
+      for (const s of await this.store.listSeats(row.id)) loaded.restoreSeat(s);
+      await loaded.loadFinished(row, await this.store.listRounds(mid), (await this.store.getRecord(mid))?.path ?? null);
+      this.add(loaded);
+      return loaded;
+    })();
+    this.loading.set(mid, load);
+    try {
+      return await load;
+    } finally {
+      this.loading.delete(mid);
+    }
   }
 
   // ------------------------------------------------------------ HTTP
@@ -591,7 +608,7 @@ export class MatchServer {
     if (path === "/api/live") {
       allow("GET");
       const mid = url.searchParams.get("match");
-      const m = mid ? await this.matchOr404(mid) : this.newest;
+      const m = mid ? await this.matchOr404(mid, ip) : this.newest;
       if (!m) throw new HttpError(404, "no match yet");
       return m.live.response();
     }
@@ -609,7 +626,7 @@ export class MatchServer {
     }
     const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|leave|report))?$/.exec(path);
     if (!mm) throw new HttpError(404, `no such endpoint: ${method} ${path} (see GET /api)`);
-    const match = await this.matchOr404(mm[1]!);
+    const match = await this.matchOr404(mm[1]!, ip);
     switch (mm[2]) {
       case undefined:
         allow("GET");

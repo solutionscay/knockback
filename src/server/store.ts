@@ -99,6 +99,7 @@ export interface MatchStore {
   insertPlan(p: PlanRow): Promise<void>;
   getPlan(matchId: string, round: number, seat: number): Promise<PlanRow | null>;
   insertRecord(r: RecordRow): Promise<void>;
+  getRecord(matchId: string): Promise<RecordRow | null>;
   listRecords(limit?: number): Promise<RecordRow[]>;
   close(): Promise<void>;
 }
@@ -284,17 +285,23 @@ export class SqliteStore implements MatchStore {
   async insertRecord(r: RecordRow) {
     this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt);
   }
+  async getRecord(matchId: string) {
+    const r = this.db.query("SELECT * FROM records WHERE match_id = ?").get(matchId) as Row | null;
+    return r ? recordOf(r) : null;
+  }
   async listRecords(limit = 100) {
-    return (this.db.query("SELECT * FROM records ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map((r) => ({
-      matchId: r.match_id as string,
-      path: r.path as string,
-      seed: r.seed as number,
-      hashes: p<string[]>(r.hashes),
-      winner: r.winner as number,
-      createdAt: r.created_at as number,
-    }));
+    return (this.db.query("SELECT * FROM records ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map(recordOf);
   }
   async close() {
     this.db.close();
   }
 }
+
+const recordOf = (r: Row): RecordRow => ({
+  matchId: r.match_id as string,
+  path: r.path as string,
+  seed: r.seed as number,
+  hashes: p<string[]>(r.hashes),
+  winner: r.winner as number,
+  createdAt: r.created_at as number,
+});
