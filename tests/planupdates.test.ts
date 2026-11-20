@@ -2,11 +2,13 @@
  * Mid-round plan updates in the engine (#8): applied at their tick, in
  * fighter order, recorded, hashed, replayed exactly.
  */
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { CHECKPOINT_TICKS, Fight, initPhysics, Match, replayFight, replayMatch, ReplayDivergedError, type MatchRecord, type PlanUpdate, type SimEvent, type Strategy } from "../src/sim";
 import { sanitizeRecord } from "../src/viewer/sanitize";
 
+// several whole matches per test: room for a loaded machine
+setDefaultTimeout(60_000);
 beforeAll(async () => {
   await initPhysics();
 });
