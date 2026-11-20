@@ -62,6 +62,7 @@ bun run ai-eval --matches 3 --tag baseline                        # 3 real match
 bun run ai-eval --seeds 100-119 --concurrency 3 --yes             # 20 matches (more than 40 AI calls needs --yes)
 bun run ai-eval --matches 3 --compare evals/<old run>/report.json # print the change for each metric
 bun run ai-eval --rescore evals/<run>                             # recompute a run's report from its records (no AI calls)
+bun scripts/replay-prompts.ts <record.json> --print 0 3           # rebuild a record's prompts with the current prompt code
 ```
 
 Runs N AI matches with no viewer and writes one folder (default `evals/<time>-<tag>/`)
@@ -71,7 +72,8 @@ with every record, the prompts with raw answers, a log, `report.json` and `repor
 - **change:** plan changes between rounds, per field and per fighter;
 - **rules:** n/a until conditional plans exist;
 - **follows the stats:** did the AI target its killer, the round winner or its top damager, and did the killer's weapon enter its wish list, compared with house bots (house seats, or with no house seats, the house bot's plan in the AI's place);
-- **facts:** heuristic: lines like "X knocked me out" that the round facts don't support;
+- **facts:** heuristic: lines like "X knocked me out" or "X's rocket" that the round facts don't support (the same check runs on every live answer and logs `factWarnings` in the decision meta);
+- **why:** how many AI plans gave their optional one-sentence reason, with samples;
 - **reliability:** response times and fallbacks per provider;
 - **results:** AI seats against house seats.
 

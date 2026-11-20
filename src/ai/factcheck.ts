@@ -24,7 +24,8 @@ export const CLAIMS: { kind: ClaimKind; re: RegExp }[] = [
   { kind: "knockout", re: /\b(knock(?:ed)? me (?:out|off)|took me out|finished me|ko'?d me|killed me|r[au]ng me out|threw me off|sent me (?:flying|off))\b/i },
   { kind: "back", re: /\b(in the back|from behind|back-?(?:shot|stab|hook)s?|my back|behind my back|sneak(?:ed|ing)? up on me)\b/i },
   { kind: "hit", re: /\b((?:shot|hit|blasted|hooked|batted|smacked|whacked|nailed|bonked|grenaded|rocketed|peppered|pelted|stung) (?:me|my)|owes? me)\b/i },
-  { kind: "weapon", re: /\b(?:that|'s) (hook|grapple|bat|rockets?|shotgun|grenades?)\b/i },
+  // only a possessive ("Brick's bat") claims who used a weapon; "grab that bat" is a wish, not an accusation
+  { kind: "weapon", re: /(?:'s|’s) (hook|grapple|bat|rockets?|shotgun|grenades?)\b/i },
 ];
 
 const WEAPON_WORD: Record<string, string> = { hook: "grapple", grapple: "grapple", bat: "bat", rocket: "rocket", rockets: "rocket", shotgun: "shotgun", grenade: "grenade", grenades: "grenade" };

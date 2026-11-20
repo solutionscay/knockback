@@ -74,7 +74,11 @@ describe("WHAT HAPPENED TO YOU (#4)", () => {
     expect(ko.mismatches.length).toBe(1);
     expect(ko.mismatches[0]!.facts).toContain("knocked out by Pike (rocket)");
     expect(checkLine("Pike knocked me out with that rocket.", 0, NAMES, f).mismatches).toEqual([]);
-    expect(checkLine("Goldie, that rocket was cheap!", 0, NAMES, f).mismatches[0]!.claim).toBe("weapon (rocket) by Goldie");
+    expect(checkLine("Goldie's rocket was cheap!", 0, NAMES, f).mismatches[0]!.claim).toBe("weapon (rocket) by Goldie");
+    expect(checkLine("Goldie's bat still rattles my helmet!", 0, NAMES, f).mismatches).toEqual([]);
+    // wishes are not accusations (the two false positives of the first 10-match run)
+    expect(checkLine("Oh, Goldie, my lucky foot says grab that rocket!", 0, NAMES, f).checked).toBe(false);
+    expect(checkLine("Goldie's bat still rattles my helmet, find me that shotgun!", 0, NAMES, f).mismatches).toEqual([]);
     expect(checkLine("Round three, here I come!", 0, NAMES, f).checked).toBe(false);
   });
 });
