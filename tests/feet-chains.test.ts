@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { FIGHTER, initPhysics, Match } from "../src/sim";
+import { CLOSE_QUARTERS, FIGHTER, initPhysics, Match } from "../src/sim";
 import { drawFeet, FEET_OVERLAP_PX, FEET_Y, HEAD_TOPS, HEADS, headTopAt } from "../src/viewer/bot";
 import { ChainView } from "../src/viewer/chains";
 import { groundTop } from "../src/viewer/scene-fighters";
@@ -21,7 +21,8 @@ describe("feet on the ground and chains to the top (viewer only)", () => {
   });
 
   test("groundTop finds the floor under a standing fighter, and nothing over a gap", () => {
-    const m = new Match(7);
+    // Keep the same busy ground-contact scenario as the original test.
+    const m = new Match(7, { ruleset: CLOSE_QUARTERS });
     m.prepareRound();
     const sim = m.fight!.sim;
     let checked = 0, found = 0;
@@ -40,6 +41,17 @@ describe("feet on the ground and chains to the top (viewer only)", () => {
     expect(checked).toBeGreaterThan(20);
     expect(found / checked).toBeGreaterThan(0.8); // chunks, tilted props and other bots' heads count as ground now
     expect(groundTop(sim, 0, 300)).toBeNull(); // high in the air: no ground near
+  });
+
+  test("groundTop finds the support under Classic floor and ledge spawns", () => {
+    const m = new Match(23);
+    m.prepareRound();
+    const sim = m.fight!.sim;
+    for (const fighter of sim.fighters) {
+      const p = sim.pos(fighter);
+      const spawn = m.level.spawns.find(s => Math.abs(s.x - p.x) < 0.01)!;
+      expect(groundTop(sim, p.x, p.y - FEET_Y, undefined, fighter.id)).toBeCloseTo(spawn.y, 3);
+    }
   });
 
   test("the chains' top is above the view at every zoom, with the shake's offset", () => {
