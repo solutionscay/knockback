@@ -1,10 +1,11 @@
-import { WEAPONS } from "./constants";
 import { length2D } from "./dmath";
 import type { Fighter, Input, Sim, Weapon } from "./sim";
 
 type Point = { x: number; y: number };
 
-export const WALL_PURSUIT = { routeTicks: 48, attackTicks: 88, retargetTicks: 175, flankTicks: 174, flankPeriod: 150, flankFor: 85 };
+import { WALL_PURSUIT } from "./controller-tuning";
+export { WALL_PURSUIT } from "./controller-tuning";
+
 
 export class WallPursuit {
   private tracking: { target: number; best: number; since: number; lastSeen: number } | null = null;
@@ -42,9 +43,9 @@ export function attackWall(sim: Sim, me: Fighter, p: Point, wall: Point, input: 
   let weapon: Weapon;
   if (distance < 1.7 && me.grounded && has("hammer") && me.cooldown.hammer < 15) weapon = "hammer";
   else if (distance < 1.6 && has("bat")) weapon = "bat";
-  else if (distance < WEAPONS.shotgun.range - 0.3 && has("shotgun")) weapon = "shotgun";
+  else if (distance < sim.ruleset.weapons.table.shotgun.range - 0.3 && has("shotgun")) weapon = "shotgun";
   else if (distance < 1.45) weapon = "fist";
-  else if (distance >= WEAPONS.rocket.minRange + 0.5 && distance <= 10 && has("rocket")) weapon = "rocket";
+  else if (distance >= sim.ruleset.weapons.table.rocket.minRange + 0.5 && distance <= 10 && has("rocket")) weapon = "rocket";
   else if (distance >= 2.2 && distance < 5 && has("grenade")) weapon = "grenade";
   else return false;
 

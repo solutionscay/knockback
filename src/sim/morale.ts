@@ -13,6 +13,7 @@
  *   confident  score >= 0
  *   rattled    otherwise                           (shaky aim)
  */
+import { CLASSIC, type Ruleset } from "./ruleset";
 import { clamp } from "./dmath";
 import type { FightResult } from "./fight";
 import type { RoundStats } from "./roundstats";
@@ -24,13 +25,7 @@ export const MORALE_STATES: readonly MoraleState[] = ["cocky", "confident", "rat
  * Behavior nudges. Kept small on purpose (batch stats check they do not
  * dominate win rates). aim multiplies the fighter's aim noise.
  */
-export const MORALE_EFFECT: Record<MoraleState, { aim: number }> = {
-  cocky: { aim: 1.12 },
-  confident: { aim: 0.94 },
-  rattled: { aim: 1.3 },
-  furious: { aim: 1.15 },
-  desperate: { aim: 0.92 },
-};
+export { MORALE_EFFECT } from "./ruleset-defaults";
 
 export type HumiliationKind = "own-explosive" | "bat-ringout" | "hook-ringout" | "crushed" | "barrel";
 
@@ -75,80 +70,80 @@ export interface Morale {
   reasons: string[];
 }
 
-export function moraleState(m: Pick<Morale, "score" | "anger">, myWins: number, bestOtherWins: number): MoraleState {
-  if (m.anger >= 50) return "furious";
-  if (myWins === 0 && bestOtherWins >= 1 && m.score < -20) return "desperate";
-  if (m.score >= 45) return "cocky";
-  if (m.score >= 0) return "confident";
+export function moraleState(m: Pick<Morale, "score" | "anger">, myWins: number, bestOtherWins: number, C: Ruleset["morale"] = CLASSIC.morale): MoraleState {
+  if (m.anger >= C.furiousAt) return "furious";
+  if (myWins === 0 && bestOtherWins >= 1 && m.score < C.desperateBelow) return "desperate";
+  if (m.score >= C.cockyAt) return "cocky";
+  if (m.score >= C.confidentAt) return "confident";
   return "rattled";
 }
 
-export function initialMorale(baselines: readonly number[]): Morale[] {
+export function initialMorale(baselines: readonly number[], C: Ruleset["morale"] = CLASSIC.morale): Morale[] {
   return baselines.map((b) => {
     const m: Morale = { score: b, anger: 0, grudge: -1, state: "confident", baseline: b, streak: 0, comeback: false, reasons: [] };
-    m.state = moraleState(m, 0, 0);
+    m.state = moraleState(m, 0, 0, C);
     return m;
   });
 }
 
 /** Morale after a round, given its facts and the round wins so far (including this round). */
-export function updateMorale(prev: readonly Morale[], facts: RoundFacts, wins: readonly number[]): Morale[] {
+export function updateMorale(prev: readonly Morale[], facts: RoundFacts, wins: readonly number[], C: Ruleset["morale"] = CLASSIC.morale): Morale[] {
   return prev.map((p, i) => {
     const f = facts.fighters[i]!;
     const reasons: string[] = [];
     // drift back toward character baseline, anger cools
-    let score = p.baseline + (p.score - p.baseline) * 0.8;
-    let anger = p.anger * 0.5;
-    let grudge = anger < 20 ? -1 : p.grudge;
+    let score = p.baseline + (p.score - p.baseline) * C.scoreRetention;
+    let anger = p.anger * C.angerRetention;
+    let grudge = anger < C.grudgeAnger ? -1 : p.grudge;
     let streak = p.streak;
     let comeback = false;
     if (f.won) {
       const lostBefore = p.streak === 0 && facts.round > 1;
       streak++;
-      score += 30;
+      score += C.win;
       reasons.push("won the round");
       if (streak >= 2) {
-        score += 12;
+        score += C.streak;
         reasons.push("on a streak");
       }
       if (lostBefore) {
-        score += 15;
+        score += C.comeback;
         comeback = true;
         reasons.push("comeback");
       }
-      if (f.hpEnd >= 70) {
-        score += 8;
+      if (f.hpEnd >= C.highHealth) {
+        score += C.highHealthBonus;
         reasons.push("barely scratched");
       }
     } else {
       streak = 0;
-      score -= 8;
+      score -= C.loss;
     }
     if (f.kosDealt.length) {
-      score += 10 * f.kosDealt.length;
+      score += C.knockout * f.kosDealt.length;
       reasons.push(`${f.kosDealt.length} knockout${f.kosDealt.length > 1 ? "s" : ""}`);
     }
     if (f.koBy) {
-      score -= f.outOrder === 1 ? 26 : 18;
+      score -= f.outOrder === 1 ? C.firstOut : C.out;
       reasons.push(f.outOrder === 1 ? "first one out" : "knocked out");
       if (f.koBy.by >= 0 && f.koBy.by !== i) {
-        anger += 15;
+        anger += C.knockoutAnger;
         grudge = f.koBy.by;
       }
     } else if (!f.won) {
-      score += (f.hpEnd - 50) * 0.2;
+      score += (f.hpEnd - C.surviveHealthCenter) * C.surviveHealthWeight;
     }
     for (const h of f.humiliations) {
-      score -= 14;
-      anger += h.by === i ? 12 : 40; // a self-own rattles more than it enrages
+      score -= C.humiliation;
+      anger += h.by === i ? C.selfAnger : C.rivalAnger; // a self-own rattles more than it enrages
       if (h.by >= 0 && h.by !== i) grudge = h.by;
       reasons.push(`humiliated (${h.kind})`);
     }
-    score = clamp(score, -100, 100);
-    anger = clamp(anger, 0, 100);
+    score = clamp(score, -C.scoreLimit, C.scoreLimit);
+    anger = clamp(anger, 0, C.angerLimit);
     const best = Math.max(...wins.filter((_, j) => j !== i));
     const m: Morale = { score, anger, grudge, state: "confident", baseline: p.baseline, streak, comeback, reasons };
-    m.state = moraleState(m, wins[i]!, best);
+    m.state = moraleState(m, wins[i]!, best, C);
     return m;
   });
 }

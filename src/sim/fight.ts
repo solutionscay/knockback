@@ -11,15 +11,19 @@
  * same plans at the same ticks and needs no AI.
  */
 import { neutralStrategy } from "./bots";
-import { FIGHT_TICKS, FINISH_TICKS, TICK_RATE } from "./constants";
-import { AIM_NOISE, Controller } from "./controller";
+import { TICK_RATE } from "./constants";
+import { resolveRuleset, type Ruleset } from "./ruleset";
+import { Controller } from "./controller";
 import type { LevelDef } from "./levelgen";
-import { MORALE_EFFECT, type FighterRoundFacts, type HumiliationKind, type MoraleState, type RoundFacts } from "./morale";
+import { type FighterRoundFacts, type HumiliationKind, type MoraleState, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
 import { SAMPLE_TICKS, StatsCollector } from "./roundstats";
 import { NO_INPUT, SEAT_LOOKS, Sim, type Look, type SimEvent, type Strategy } from "./sim";
 
 export interface FightOptions {
+  ruleset?: Ruleset;
+  /** A containing MatchRecord already holds the snapshot. */
+  embedRuleset?: boolean;
   /** Level to fight on (default: generated from the seed). Rounds of a match share one. */
   level?: LevelDef;
   /** Morale at the start of this round, per fighter (nudges aim; see morale.ts). */
@@ -48,6 +52,7 @@ export interface PlanUpdate {
 }
 
 export interface FightRecord {
+  ruleset?: Ruleset;
   /** 5: carries plan updates (`updates`); 4: none. Both replay. */
   version: 4 | 5;
   /** The seed makes the level too (levelgen.ts); theme/attempt are informational. */
@@ -116,19 +121,19 @@ export class Fight {
     readonly opts: FightOptions = {},
     updates: readonly PlanUpdate[] = [],
   ) {
-    this.sim = new Sim(seed, opts.level, opts.looks ?? SEAT_LOOKS);
+    this.sim = new Sim(seed, opts.level, opts.looks ?? SEAT_LOOKS, opts.ruleset);
     const botRng = new Rng((seed ^ 0x5bd1e995) >>> 0);
     this.strategies = recorded ? recorded.map((s) => ({ ...s, weapons: (s.weapons ?? []).slice() })) : this.sim.fighters.map(() => neutralStrategy(botRng));
     this.controllers = this.sim.fighters.map((f) => {
       const m = opts.morale?.[f.id];
-      const k = m && !opts.noMoraleEffect ? MORALE_EFFECT[m].aim : 1;
-      return new Controller(f.id, AIM_NOISE * k);
+      const k = m && !opts.noMoraleEffect ? this.sim.ruleset.morale.aim[m].aim : 1;
+      return new Controller(f.id, this.sim.ruleset.tactics.aimNoise * k);
     });
     for (const [i, c] of this.controllers.entries()) {
       c.peers = this.controllers;
       c.setStrategy(this.strategies[i]!, this.sim);
     }
-    this.record = { version: 4, seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), checkpoints: [], finalHash: "", ticks: 0 };
+    this.record = { version: 4, ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), checkpoints: [], finalHash: "", ticks: 0 };
     for (const u of updates) this.addUpdate(u);
   }
 
@@ -188,9 +193,9 @@ export class Fight {
         sim.fighters.map((f) => (f.alive && !f.removed ? sim.pos(f) : null)),
         this.controllers.map((c, i) => (sim.fighters[i]!.alive ? c.targetId : -1)),
       );
-    if (this.finishLeft < 0 && sim.alive().length <= 1) this.finishLeft = FINISH_TICKS;
+    if (this.finishLeft < 0 && sim.alive().length <= 1) this.finishLeft = sim.ruleset.round.finishTicks;
     if (this.finishLeft > 0) this.finishLeft--;
-    if (this.finishLeft === 0 || sim.tick >= FIGHT_TICKS) {
+    if (this.finishLeft === 0 || sim.tick >= sim.ruleset.round.fightTicks) {
       this.over = true;
       this.record.ticks = sim.tick;
       this.record.finalHash = this.hash();
@@ -227,7 +232,7 @@ export class Fight {
             const dist = Math.sqrt((ap.x - vp.x) * (ap.x - vp.x) + (ap.y - vp.y) * (ap.y - vp.y));
             this.stats.hit(e.source, e.target, e.damage, e.cause, dist, behind, e.tick);
             this.hitLog.push({ tick: e.tick, by: e.source, target: e.target, damage: e.damage, weapon: e.cause });
-            this.controllers[e.target]!.onHit(e.source, behind, e.damage, e.tick);
+            this.controllers[e.target]!.onHit(e.source, behind, e.damage, e.tick, this.sim.ruleset);
             this.controllers[e.source]!.onDealt(e.tick);
           }
         }
@@ -320,7 +325,7 @@ export class Fight {
 
 /** Replay a record from its seed, strategies and plan updates. */
 export function replayFight(record: FightRecord): { finalHash: string; checkpoints: string[]; match: Fight } {
-  const m = new Fight(record.seed, record.strategies, {}, record.updates ?? []);
+  const m = new Fight(record.seed, record.strategies, { ruleset: resolveRuleset(record.ruleset) }, record.updates ?? []);
   m.playToEnd();
   return { finalHash: m.record.finalHash, checkpoints: m.record.checkpoints, match: m };
 }

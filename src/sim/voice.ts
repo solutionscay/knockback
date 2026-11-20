@@ -11,11 +11,14 @@
  * session; strategy from the soul's fields, bent by morale and last round.
  */
 import type { Morale, MoraleState, RoundFacts } from "./morale";
+import { allowedWeapon, CLASSIC, type Ruleset } from "./ruleset";
 import type { Rng } from "./rng";
 import { isPickupWeapon, type Rule, type Strategy, type Weapon } from "./sim-types";
+import { availableRule } from "./rules";
 import type { LineTemplate, Soul, Voice } from "./soul";
 
 export interface DecideContext {
+  ruleset?: Ruleset;
   /** "intro" before round 1, "between" after a round */
   phase: "intro" | "between";
   /** the round about to be played (1..3) */
@@ -299,7 +302,10 @@ export function houseStrategy(ctx: DecideContext): Strategy {
       if (dealt >= 35 && (total === 0 || chased / total < 0.2)) retaliate = "attacker";
     }
   }
-  const rules = ctx.houseRules === false ? [] : houseRulesFor(soul);
+  const ruleset = ctx.ruleset ?? CLASSIC;
+  weapons = weapons.filter(w => allowedWeapon(ruleset, w));
+  if (!weapons.length) weapons = [ruleset.weapons.enabled[0]!];
+  const rules = ctx.houseRules === false ? [] : houseRulesFor(soul).filter(r => availableRule(r, ruleset));
   return { target, grudge, stance, weapons, retaliate, ...(rules.length ? { rules } : {}), line: "" };
 }
 

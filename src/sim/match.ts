@@ -14,6 +14,7 @@
  */
 import { checkRecordEngine, ENGINE_VERSION } from "./engine-version";
 import { Fight, type FightRecord, type FightResult, type PlanUpdate } from "./fight";
+import { CLASSIC, resolveRuleset, type Ruleset } from "./ruleset";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
@@ -84,6 +85,10 @@ export interface RoundRecord {
 }
 
 export interface MatchRecord {
+  /** Absent on legacy engine-v4 records, which play with Classic. */
+  ruleset?: Ruleset;
+  preset?: string;
+  presetVersion?: number;
   /**
    * 4: generated identities (#17); souls have no name or look.
    * 3: plans may carry rules (#5). 2: no rules. Versions 2 and 3 still load:
@@ -104,6 +109,9 @@ export interface MatchRecord {
 }
 
 export interface MatchOptions {
+  ruleset?: Ruleset;
+  preset?: string;
+  presetVersion?: number;
   /** one soul per seat (default: the four example souls in souls/) */
   souls?: Soul[];
   /** identity wishes per seat (#19: an AI picks its own name or look); the rest comes from the seed */
@@ -122,10 +130,10 @@ export interface MatchOptions {
 export type MatchPhase = "planning" | "fighting" | "between" | "over";
 
 /** Who has won the match so far (or -1 if it continues). Pure. */
-export function matchWinner(wins: readonly number[], roundWinners: readonly number[]): number {
+export function matchWinner(wins: readonly number[], roundWinners: readonly number[], rules: Ruleset["round"] = CLASSIC.round): number {
   const top = Math.max(...wins);
-  if (top >= ROUNDS_TO_WIN) return wins.indexOf(top);
-  if (roundWinners.length >= MAX_ROUNDS) return roundWinners[roundWinners.length - 1]!; // the decider
+  if (top >= rules.winsToTake) return wins.indexOf(top);
+  if (roundWinners.length >= rules.maxRounds) return roundWinners[roundWinners.length - 1]!; // the decider
   return -1;
 }
 
@@ -135,6 +143,7 @@ export function physicsSeed(seed: number, round: number): number {
 
 export class Match {
   readonly level: LevelDef;
+  readonly ruleset: Ruleset;
   readonly brains: Brain[];
   readonly session: VoiceSession;
   readonly record: MatchRecord;
@@ -164,17 +173,18 @@ export class Match {
     readonly seed: number,
     readonly opts: MatchOptions = {},
   ) {
-    this.level = generateLevel(seed);
+    this.ruleset = resolveRuleset(opts.recorded ? opts.recorded.ruleset : opts.ruleset);
+    this.level = generateLevel(seed, undefined, this.ruleset);
     if (opts.recorded) checkRecordVersion(opts.recorded);
     this.souls = (opts.recorded?.souls ?? opts.souls ?? exampleSouls()).map(soulRecord);
     if (this.souls.length !== 4) throw new Error("a match needs 4 souls");
     this.identities = matchIdentities(seed, opts);
     this.brains = opts.brains ?? this.souls.map(() => houseBrain);
     this.session = opts.session ?? new VoiceSession();
-    this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]));
+    this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]), this.ruleset.morale);
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { version: 4, engine: ENGINE_VERSION, seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), rounds: [], winner: -1, wins: this.wins };
+    this.record = { version: 4, engine: ENGINE_VERSION, ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
@@ -205,6 +215,7 @@ export class Match {
       session: this.session,
       lineRng: this.lineRng,
       strategyRng: this.strategyRng,
+      ruleset: this.ruleset,
       houseRules: this.opts.houseRules ?? true,
     };
   }
@@ -233,7 +244,7 @@ export class Match {
     this.fight = new Fight(
       ps,
       decisions.map((d) => d.strategy),
-      { level: this.level, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities },
+      { level: this.level, ruleset: this.ruleset, embedRuleset: false, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities },
       updates,
     );
     this.fight.onEvent = (e) => this.onEvent?.(e);
@@ -297,11 +308,12 @@ export class Match {
       this.kos[i]! += res.kos[i]!;
       this.damage[i]! += res.damage[i]!;
     }
-    this.morale = updateMorale(this.morale, facts, this.wins);
+    this.morale = updateMorale(this.morale, facts, this.wins, this.ruleset.morale);
     this.record.rounds[this.round - 1]!.winner = res.winner;
     this.winner = matchWinner(
       this.wins,
       this.results.map((r) => r.winner),
+      this.ruleset.round,
     );
     if (this.winner >= 0) {
       this.phase = "over";
@@ -324,7 +336,7 @@ export class Match {
 
   /** How the match was decided. */
   decidedBy(): "two-wins" | "decider" {
-    return Math.max(...this.wins) >= ROUNDS_TO_WIN ? "two-wins" : "decider";
+    return Math.max(...this.wins) >= this.ruleset.round.winsToTake ? "two-wins" : "decider";
   }
 }
 

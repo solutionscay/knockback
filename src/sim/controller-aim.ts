@@ -1,5 +1,5 @@
 import { length2D } from "./dmath";
-import { GRAVITY, WEAPONS } from "./constants";
+import { CLASSIC, type Ruleset } from "./ruleset";
 import { traceRail } from "./rail-terrain";
 import type { Fighter, Input, Sim, Weapon } from "./sim";
 
@@ -18,10 +18,10 @@ export function railCanReach(sim: Sim, p: ReturnType<Sim["pos"]>, target: Return
   const y = p.y + 0.25;
   const dx = target.atp.x - p.x, dy = target.atp.y - y;
   const distance = length2D(dx, dy);
-  if (distance < 0.1 || distance > WEAPONS.railgun.range) return false;
+  if (distance < 0.1 || distance > sim.ruleset.weapons.table.railgun.range) return false;
   if (target.los) return true;
   if (target.sight && !target.sight.terrain && target.sight.entity?.kind !== "fighter") return false;
-  return traceRail(sim.grid, p.x, y, dx / distance, dy / distance, distance) >= distance;
+  return traceRail(sim.grid, p.x, y, dx / distance, dy / distance, distance, undefined, sim.ruleset.weapons.table.railgun.terrainPenetration) >= distance;
 }
 
 export function aimAndFire(
@@ -40,8 +40,8 @@ export function aimAndFire(
   let ax = dx0;
   let ay = dy0;
   if (weapon === "rocket" || weapon === "grenade" || weapon === "mine") {
-    const speed = WEAPONS[weapon].speed;
-    const g = weapon === "grenade" ? GRAVITY : WEAPONS[weapon].gravity;
+    const speed = sim.ruleset.weapons.table[weapon].speed;
+    const g = weapon === "grenade" ? sim.ruleset.combat.gravity : sim.ruleset.weapons.table[weapon].gravity;
     const t = dist / speed;
     const lx = atp.x + atv.x * t * 0.6 - mp.x;
     const ly = atp.y + Math.max(-2, atv.y * t * 0.3) - (mp.y + 0.25);
@@ -59,23 +59,23 @@ export function aimAndFire(
   let canFire = (sim.weapon(me) === weapon || weapon === "fist") && me.swap === 0 && me.cooldown[weapon] === 0 && me.stun === 0;
   switch (weapon) {
     case "mine":
-      canFire &&= dist > 2.4 && dist <= WEAPONS.mine.range;
+      canFire &&= dist > 2.4 && dist <= sim.ruleset.weapons.table.mine.range;
       break;
     case "railgun":
-      canFire &&= (dist >= WEAPONS.railgun.minRange || me.railCharge > 0) && railCanReach(sim, mp, target);
+      canFire &&= (dist >= sim.ruleset.weapons.table.railgun.minRange || me.railCharge > 0) && railCanReach(sim, mp, target);
       break;
     case "hammer":
-      canFire &&= me.grounded && Math.abs(dx0) < WEAPONS.hammer.range && Math.abs(dy0) < 1.4;
+      canFire &&= me.grounded && Math.abs(dx0) < sim.ruleset.weapons.table.hammer.range && Math.abs(dy0) < 1.4;
       if (canFire) {
         input.jump = false;
         input.thrust = false;
       }
       break;
     case "shotgun":
-      canFire &&= dist <= WEAPONS.shotgun.range - 0.6;
+      canFire &&= dist <= sim.ruleset.weapons.table.shotgun.range - 0.6;
       break;
     case "rocket":
-      canFire &&= dist <= 34 && dist >= WEAPONS.rocket.minRange;
+      canFire &&= dist <= 34 && dist >= sim.ruleset.weapons.table.rocket.minRange;
       break;
     case "grenade":
       canFire &&= dist <= 14 && dist > 2.5;
@@ -87,10 +87,10 @@ export function aimAndFire(
       canFire &&= dist <= 1.45 && Math.abs(dy0) < 1.3;
       break;
     case "grapple":
-      canFire &&= los && dist >= 3.5 && dist <= WEAPONS.grapple.range - 0.5;
+      canFire &&= los && dist >= 3.5 && dist <= sim.ruleset.weapons.table.grapple.range - 0.5;
       break;
     case "flamethrower":
-      canFire &&= dist <= WEAPONS.flamethrower.range - 0.3;
+      canFire &&= dist <= sim.ruleset.weapons.table.flamethrower.range - 0.3;
       break;
   }
   if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && weapon !== "railgun" && weapon !== "hammer" && !(blocked && weapon === "shotgun")) {
@@ -98,7 +98,7 @@ export function aimAndFire(
     if (hit && hit.terrain) canFire = false;
   }
   if (canFire) {
-    const n = weapon === "railgun" && me.railCharge + 1 < WEAPONS.railgun.chargeTicks ? 0 :
+    const n = weapon === "railgun" && me.railCharge + 1 < sim.ruleset.weapons.table.railgun.chargeTicks ? 0 :
       aimNoise * sim.rng.gauss() * (weapon === "rocket" || weapon === "grenade" ? 1 : weapon === "railgun" ? 0.25 : 0.5);
     const nx = input.aimX - input.aimY * n;
     const ny = input.aimY + input.aimX * n;
@@ -111,26 +111,26 @@ export function aimAndFire(
 }
 
 /** Can this weapon reach a target at this distance (rough ranges, for use rules)? */
-export function inReach(w: Weapon, dist: number, los: boolean): boolean {
+export function inReach(w: Weapon, dist: number, los: boolean, ruleset: Ruleset = CLASSIC): boolean {
   switch (w) {
     case "mine":
-      return dist > 2.4 && dist <= WEAPONS.mine.range;
+      return dist > 2.4 && dist <= ruleset.weapons.table.mine.range;
     case "railgun":
-      return los && dist >= WEAPONS.railgun.minRange && dist <= WEAPONS.railgun.range;
+      return los && dist >= ruleset.weapons.table.railgun.minRange && dist <= ruleset.weapons.table.railgun.range;
     case "hammer":
-      return dist <= WEAPONS.hammer.range;
+      return dist <= ruleset.weapons.table.hammer.range;
     case "bat":
       return dist < 2.4;
     case "shotgun":
-      return dist < WEAPONS.shotgun.range - 0.6;
+      return dist < ruleset.weapons.table.shotgun.range - 0.6;
     case "rocket":
-      return dist >= WEAPONS.rocket.minRange && dist <= 34;
+      return dist >= ruleset.weapons.table.rocket.minRange && dist <= 34;
     case "grenade":
       return dist > 2.5 && dist < 14;
     case "grapple":
-      return los && dist >= 3.5 && dist <= WEAPONS.grapple.range - 0.5;
+      return los && dist >= 3.5 && dist <= ruleset.weapons.table.grapple.range - 0.5;
     case "flamethrower":
-      return los && dist <= WEAPONS.flamethrower.range - 0.3;
+      return los && dist <= ruleset.weapons.table.flamethrower.range - 0.3;
     default:
       return dist < 1.5;
   }

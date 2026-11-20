@@ -1,3 +1,4 @@
+import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
 /**
  * Plan rules (#5): checks and labels on the stored form (seat numbers,
  * resolved items). Shared by the AI parser (src/ai/parse.ts), the viewer's
@@ -18,8 +19,12 @@ export const SUBJECT_TRIGGERS: readonly RuleWhen[] = [...WHO_TRIGGERS, "alone_wi
 /** Value ranges by trigger. */
 export const RULE_VALUE: Partial<Record<RuleWhen, [number, number]>> = { my_health_below: [10, 90], health_below: [10, 90], on_streak: [1, 3] };
 
+export function availableRule(rule: Pick<Rule, "item" | "doItem">, ruleset: Ruleset): boolean {
+  return (!rule.item || availableItem(ruleset, rule.item)) && (!rule.doItem || availableItem(ruleset, rule.doItem));
+}
+
 /** Problem with a stored rule (null = fine). `me` is the rule owner's seat. */
-export function checkRule(r: Rule, me: number): string | null {
+export function checkRule(r: Rule, me: number, ruleset: Ruleset = CLASSIC): string | null {
   if (!r || typeof r !== "object") return "not a rule";
   if (!(RULE_WHEN as readonly string[]).includes(r.when)) return `unknown trigger ${JSON.stringify(r.when)}`;
   if (!(RULE_DO as readonly string[]).includes(r.do)) return `unknown action ${JSON.stringify(r.do)}`;
@@ -42,6 +47,7 @@ export function checkRule(r: Rule, me: number): string | null {
   if (r.do === "use" && r.doItem !== "jetpack" && !isPickupWeapon(r.doItem)) return `"use" needs a weapon or jetpack, got ${JSON.stringify(r.doItem)}`;
   if (r.do === "stance" && !(RULE_STANCES as readonly string[]).includes(r.stance as string)) return `"stance" needs one of ${RULE_STANCES.join(", ")}`;
   if (r.do === "retaliate" && !(RULE_RETALIATE as readonly string[]).includes(r.retaliate as string)) return `"retaliate" needs one of ${RULE_RETALIATE.join(", ")}`;
+  if (!availableRule(r, ruleset)) return "item is disabled in this ruleset";
   if (typeof r.label !== "string" || !r.label || r.label.length > MAX_RULE_LABEL) return "bad label";
   return null;
 }

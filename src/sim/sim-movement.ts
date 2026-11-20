@@ -1,21 +1,21 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { DT, FIGHTER, FIGHTER_DENSITY, G, POWER, SWAP_TICKS, WEAPONS, groups } from "./constants";
+import { DT, G, groups } from "./constants";
 import type { Sim } from "./sim";
-import { ALL_WEAPONS, WEAPON_LIST, type Entity, type Fighter, type Input, type Look } from "./sim-types";
+import { ALL_WEAPONS, type Entity, type Fighter, type Input, type Look } from "./sim-types";
 import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
 
 export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number) {
   const body = sim.world.createRigidBody(
     RAPIER.RigidBodyDesc.dynamic()
-      .setTranslation(x, y + FIGHTER.halfHeight + FIGHTER.radius + 0.05)
+      .setTranslation(x, y + sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.05)
       .lockRotations()
       .setCcdEnabled(true)
       .setLinearDamping(0.1),
   );
   const collider = sim.world.createCollider(
-    RAPIER.ColliderDesc.capsule(FIGHTER.halfHeight, FIGHTER.radius)
-      .setDensity(FIGHTER_DENSITY)
+    RAPIER.ColliderDesc.capsule(sim.ruleset.combat.fighter.halfHeight, sim.ruleset.combat.fighter.radius)
+      .setDensity(sim.ruleset.combat.density)
       .setFriction(0)
       .setRestitution(0)
       .setCollisionGroups(groups(G.FIGHTER, G.TERRAIN | G.FIGHTER | G.PROP | G.GRENADE)),
@@ -26,10 +26,10 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     kind: "fighter",
     body,
     collider,
-    hw: FIGHTER.radius,
-    hh: FIGHTER.halfHeight + FIGHTER.radius,
-    hp: FIGHTER.maxHp,
-    maxHp: FIGHTER.maxHp,
+    hw: sim.ruleset.combat.fighter.radius,
+    hh: sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius,
+    hp: sim.ruleset.combat.fighter.maxHp,
+    maxHp: sim.ruleset.combat.fighter.maxHp,
     dead: false,
     born: 0,
   };
@@ -39,9 +39,9 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     name: def.name,
     color: def.color,
     look: { ...def },
-    prefs: WEAPON_LIST.slice(),
+    prefs: sim.ruleset.weapons.enabled.slice(),
     entity: e,
-    hp: FIGHTER.maxHp,
+    hp: sim.ruleset.combat.fighter.maxHp,
     alive: true,
     koTick: -1,
     koCause: null,
@@ -88,7 +88,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
 }
 export function checkGrounded(sim: Sim, f: Fighter): boolean {
   const p = f.entity.body.translation();
-  const reach = FIGHTER.halfHeight + FIGHTER.radius + 0.12;
+  const reach = sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.12;
   for (const ox of [-0.28, 0, 0.28]) {
     const ray = new RAPIER.Ray({ x: p.x + ox, y: p.y }, { x: 0, y: -1 });
     const hit = sim.world.castRay(ray, reach, true, undefined, groups(0xffff, G.TERRAIN | G.PROP | G.FIGHTER), f.entity.collider);
@@ -113,22 +113,22 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     body.setLinvel({ x: vx, y: vy }, true);
     return;
   }
-  let speed = FIGHTER.walkSpeed;
-  if (f.power.speed > 0) speed *= POWER.speed.mul;
-  if (f.power.heavy > 0) speed *= POWER.heavy.speedMul;
+  let speed = sim.ruleset.combat.fighter.walkSpeed;
+  if (f.power.speed > 0) speed *= sim.ruleset.pickups.power.speed.mul;
+  if (f.power.heavy > 0) speed *= sim.ruleset.pickups.power.heavy.speedMul;
   const thrust = inp.thrust && f.power.jetpack > 0;
-  if (thrust) speed *= POWER.jetpack.speedMul;
+  if (thrust) speed *= sim.ruleset.pickups.power.jetpack.speedMul;
   const target = clamp(inp.move, -1, 1) * speed;
-  const accel = (f.grounded ? FIGHTER.groundAccel : FIGHTER.airAccel) * DT * (f.power.speed > 0 ? 1.3 : 1);
+  const accel = (f.grounded ? sim.ruleset.combat.fighter.groundAccel : sim.ruleset.combat.fighter.airAccel) * DT * (f.power.speed > 0 ? 1.3 : 1);
   vx += clamp(target - vx, -accel, accel);
   if (inp.jump && f.jumpCd === 0) {
     if (f.grounded) {
-      vy = FIGHTER.jumpSpeed;
+      vy = sim.ruleset.combat.fighter.jumpSpeed;
       f.jumpCd = 14;
       f.grounded = false;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: false });
     } else if (f.power.jump > 0 && !f.airJumped) {
-      vy = FIGHTER.jumpSpeed * 0.95;
+      vy = sim.ruleset.combat.fighter.jumpSpeed * 0.95;
       f.airJumped = true;
       f.jumpCd = 10;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: true });
@@ -136,7 +136,7 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   }
   if (thrust) {
     // Thrust adds acceleration below the flight cap, preserving faster knockback.
-    vy += clamp(POWER.jetpack.riseSpeed - vy, 0, POWER.jetpack.thrust * DT);
+    vy += clamp(sim.ruleset.pickups.power.jetpack.riseSpeed - vy, 0, sim.ruleset.pickups.power.jetpack.thrust * DT);
     f.jetting = true;
     if (!wasJetting) sim.events.push({ type: "jetpack", tick: sim.tick, fighter: f.id });
     if (--f.power.jetpack === 0) sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power: "jetpack", on: false });
@@ -157,7 +157,7 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     const slot = f.weapons.indexOf(inp.weapon);
     if (slot >= 0) {
       f.slot = slot as 0 | 1;
-      f.swap = SWAP_TICKS;
+      f.swap = sim.ruleset.combat.swapTicks;
       sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: inp.weapon });
     }
   }
@@ -165,7 +165,7 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   const firing = inp.fire && f.swap === 0;
   if (weapon === "railgun" && firing && f.cooldown.railgun === 0 && f.ammo.railgun > 0) {
     if (f.railCharge === 0) sim.events.push({ type: "railCharge", tick: sim.tick, fighter: f.id });
-    if (++f.railCharge < WEAPONS.railgun.chargeTicks) return;
+    if (++f.railCharge < sim.ruleset.weapons.table.railgun.chargeTicks) return;
   }
   f.railCharge = 0;
   if (firing) fire(sim, f, weapon);

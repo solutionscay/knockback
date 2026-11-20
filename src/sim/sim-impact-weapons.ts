@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { G, WEAPONS, groups } from "./constants";
+import { G, groups } from "./constants";
 import { clamp, length2D } from "./dmath";
 import { CELL, Mat, type Grid } from "./grid";
 import { traceRail } from "./rail-terrain";
@@ -9,7 +9,7 @@ import { damagePiece, damageTerrainCell } from "./sim-terrain";
 import type { Entity, Fighter } from "./sim-types";
 
 export function fireRailgun(sim: Sim, f: Fighter, x: number, y: number, dx: number, dy: number) {
-  const spec = WEAPONS.railgun;
+  const spec = sim.ruleset.weapons.table.railgun;
   const fighters = new Map<Entity, number>();
   const obstacle: { entity: Entity | null; distance: number } = { entity: null, distance: spec.range };
   sim.world.intersectionsWithRay(new RAPIER.Ray({ x, y }, { x: dx, y: dy }), spec.range, true, hit => {
@@ -26,7 +26,7 @@ export function fireRailgun(sim: Sim, f: Fighter, x: number, y: number, dx: numb
 
   const distance = traceRail(sim.grid, x, y, dx, dy, obstacle.distance, (cx, cy) => {
     damageTerrainCell(sim, cx, cy, sim.grid.matAt(cx, cy), spec.terrainDamage);
-  });
+  }, spec.terrainPenetration);
   for (const [e, d] of [...fighters].sort((a, b) => a[1] - b[1] || a[0].id - b[0].id)) {
     if (d > distance) break;
     sim.damageFighter(e.fighter!, spec.damage, f.id, dx * spec.knockback, dy * spec.knockback + spec.lift, "railgun", x + dx * d, y + dy * d);
@@ -41,8 +41,7 @@ export function fireRailgun(sim: Sim, f: Fighter, x: number, y: number, dx: numb
 }
 
 /** Highest continuous floor within one allowed step of the previous wave sample. */
-function floorAt(grid: Grid, x: number, y: number): number | null {
-  const step = WEAPONS.hammer.groundStep;
+function floorAt(grid: Grid, x: number, y: number, step: number): number | null {
   const cx = grid.cx(x);
   for (let cy = grid.cy(y + step) - 1; cy >= grid.cy(y - step) - 1; cy--) {
     const top = grid.wy(cy + 1);
@@ -52,7 +51,7 @@ function floorAt(grid: Grid, x: number, y: number): number | null {
 }
 
 export function slamHammer(sim: Sim, f: Fighter, x: number, dx: number) {
-  const spec = WEAPONS.hammer;
+  const spec = sim.ruleset.weapons.table.hammer;
   const y = sim.feetY(f);
   const grid = sim.grid;
   const impactX = x + Math.sign(dx) * 0.85;
@@ -83,7 +82,7 @@ export function slamHammer(sim: Sim, f: Fighter, x: number, dx: number) {
     let prev = y;
     for (let d = CELL / 2; d <= spec.range; d += CELL / 2) {
       const wx = x + dir * d;
-      const top = floorAt(sim.grid, wx, prev);
+      const top = floorAt(sim.grid, wx, prev, spec.groundStep);
       if (top === null) break;
       path.push({ x: wx, y: top });
       prev = top;

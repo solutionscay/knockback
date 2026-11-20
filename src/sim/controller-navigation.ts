@@ -1,6 +1,4 @@
-import { FIGHTER, POWER } from "./constants";
 import type { Controller } from "./controller";
-import { PATIENCE, PICKUP } from "./controller-tuning";
 import type { Link, Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { POWER_LIST, type Fighter, type Input, type Sim, type Weapon } from "./sim";
@@ -74,24 +72,24 @@ export class ControllerNavigation {
       for (const it of sim.items()) {
         if ((this.skipItems.get(it.id) ?? -1) > sim.tick) continue;
         const type = it.itemType!;
-        if (type === "jetpack" && me.power.jetpack > POWER.jetpack.fuelTicks / 2) continue;
+        if (type === "jetpack" && me.power.jetpack > sim.ruleset.pickups.power.jetpack.fuelTicks / 2) continue;
         const sought = seeking.indexOf(type);
         const isWeapon = !(POWER_LIST as readonly string[]).includes(type);
         let limit: number;
         let extra = 0;
         if (sought >= 0 && (!isWeapon || sim.wantsWeapon(me, type as Weapon))) {
           // an active seek rule: go far for it, ahead of everything else
-          limit = PICKUP.seekLimit;
+          limit = sim.ruleset.tactics.pickup.seekLimit;
           extra = -40 + sought * 5;
         } else if (isWeapon) {
           if (!sim.wantsWeapon(me, type as Weapon)) continue;
           if (it.owner === me.id && sim.tick - it.born < 45) continue;
           const rank = me.prefs.indexOf(type as Weapon);
-          extra = Math.max(0, rank) * PICKUP.rankCost;
-          limit = !armed ? PICKUP.unarmedLimit : stance === "item" ? PICKUP.itemStanceLimit : PICKUP.upgradeLimit;
-        } else if (type === "jetpack") limit = PICKUP.jetpackLimit;
-        else if (stance === "item") limit = PICKUP.itemStanceLimit;
-        else if (type === "health" && me.hp < PICKUP.healthBelowHp) limit = PICKUP.healthLimit;
+          extra = Math.max(0, rank) * sim.ruleset.tactics.pickup.rankCost;
+          limit = !armed ? sim.ruleset.tactics.pickup.unarmedLimit : stance === "item" ? sim.ruleset.tactics.pickup.itemStanceLimit : sim.ruleset.tactics.pickup.upgradeLimit;
+        } else if (type === "jetpack") limit = sim.ruleset.tactics.pickup.jetpackLimit;
+        else if (stance === "item") limit = sim.ruleset.tactics.pickup.itemStanceLimit;
+        else if (type === "health" && me.hp < sim.ruleset.tactics.pickup.healthBelowHp) limit = sim.ruleset.tactics.pickup.healthLimit;
         else continue;
         const t = it.body.translation();
         const s = nav.surfaceAt(t.x, t.y + 0.3, 0.2);
@@ -104,12 +102,12 @@ export class ControllerNavigation {
         }
       }
       if (best) {
-        // no closer for PICKUP.giveUpTicks: unreachable, skip it for a while
+        // no closer for sim.ruleset.tactics.pickup.giveUpTicks: unreachable, skip it for a while
         const d = Math.abs(sim.pos(me).x - best.x) + Math.abs(sim.pos(me).y - (nav.surfaces[best.surface]?.y ?? 0)) * 0.5;
         if (!this.chase || this.chase.id !== best.item) this.chase = { id: best.item!, best: d, since: sim.tick };
         else if (d < this.chase.best - 0.5) this.chase = { id: best.item!, best: d, since: sim.tick };
-        else if (sim.tick - this.chase.since > PICKUP.giveUpTicks) {
-          this.skipItems.set(best.item!, sim.tick + PICKUP.skipTicks);
+        else if (sim.tick - this.chase.since > sim.ruleset.tactics.pickup.giveUpTicks) {
+          this.skipItems.set(best.item!, sim.tick + sim.ruleset.tactics.pickup.skipTicks);
           this.chase = null;
           return this.chooseGoal(sim, me, target, plan, crossingWall, flank);
         }
@@ -122,7 +120,7 @@ export class ControllerNavigation {
 
     if (this.controller.pressing(sim)) {
       // pressing: get beside the target, switching sides now and then (breaks vertical and wall deadlocks)
-      const flip = Math.floor(sim.tick / PATIENCE.pressFlip) % 2 === 0 ? 1 : -1;
+      const flip = Math.floor(sim.tick / sim.ruleset.tactics.patience.pressFlip) % 2 === 0 ? 1 : -1;
       const gx = tp.x + flip * 2.2;
       return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - gx) + Math.abs(py + 0.9 - tp.y) * 0.7 + zonePenalty(px) + fragilePenalty(sid));
     }
@@ -150,7 +148,7 @@ export class ControllerNavigation {
     const ideal = me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
     if (stance === "cover") {
       // cover is not standing still: every so often, peek out somewhere with a clear shot
-      const peek = (sim.tick + this.controller.fighterId * 61) % PATIENCE.peekEvery < PATIENCE.peekFor;
+      const peek = (sim.tick + this.controller.fighterId * 61) % sim.ruleset.tactics.patience.peekEvery < sim.ruleset.tactics.patience.peekFor;
       return this.bestPoint(sim, plan, (px, py, sid) => {
         const dx = px - tp.x;
         const dy = py + 1 - tp.y;
@@ -218,7 +216,7 @@ export class ControllerNavigation {
       moveTarget = goal.x;
       if (me.grounded && this.activeLink && me.jumpCd === 0) this.activeLink = null;
       // a jump still "in flight" for too long (bouncing on a pad, wedged): drop it
-      if (this.activeLink && sim.tick - this.linkSince > PATIENCE.linkTicks) this.activeLink = null;
+      if (this.activeLink && sim.tick - this.linkSince > sim.ruleset.tactics.patience.linkTicks) this.activeLink = null;
       // stuck watchdog: no progress toward the goal for a while
       const gy = nav.surfaces[goal.surface]?.y ?? sim.feetY(me);
       const gd = Math.abs(mp.x - goal.x) + Math.abs(sim.feetY(me) - gy) * 0.5;
@@ -227,10 +225,10 @@ export class ControllerNavigation {
       else if (gd < pr.best - 0.3) {
         pr.best = gd;
         pr.since = sim.tick;
-      } else if (gd > 1.2 && sim.tick - pr.since > PATIENCE.stuckTicks) {
+      } else if (gd > 1.2 && sim.tick - pr.since > sim.ruleset.tactics.patience.stuckTicks) {
         this.stuckCount++;
-        if (goal.surface !== me.surface) this.badSurfaces.set(goal.surface, sim.tick + PATIENCE.avoidTicks);
-        this.dig = { until: sim.tick + PATIENCE.digTicks, dir: goal.x >= mp.x ? 1 : -1 };
+        if (goal.surface !== me.surface) this.badSurfaces.set(goal.surface, sim.tick + sim.ruleset.tactics.patience.avoidTicks);
+        this.dig = { until: sim.tick + sim.ruleset.tactics.patience.digTicks, dir: goal.x >= mp.x ? 1 : -1 };
         this.activeLink = null;
         this.prog = null;
         this.nextEval = sim.tick;
@@ -290,7 +288,7 @@ export class ControllerNavigation {
     input.move = Math.abs(diff) < 0.15 ? 0 : clamp(diff / 0.7, -1, 1);
     if (me.grounded && Math.abs(input.move) > 0.5) {
       const dir = input.move > 0 ? 1 : -1;
-      const hit = sim.raycast(mp.x, sim.feetY(me) + 0.35, dir, 0, FIGHTER.radius + 0.4, me.entity.collider);
+      const hit = sim.raycast(mp.x, sim.feetY(me) + 0.35, dir, 0, sim.ruleset.combat.fighter.radius + 0.4, me.entity.collider);
       if (hit && hit.entity?.kind !== "fighter") input.jump = true;
       if (Math.abs(mv.x) < 0.6) this.stuck++;
       else this.stuck = 0;

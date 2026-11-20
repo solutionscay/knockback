@@ -210,7 +210,7 @@ export class Terrain {
 // ------------------------------------------------------------------ pieces
 
 /** Colliders for a loose piece from its cells (local coords, merged rectangles). */
-export function buildPieceColliders(world: RAPIER.World, body: RAPIER.RigidBody, cells: PieceCell[]): RAPIER.Collider[] {
+export function buildPieceColliders(world: RAPIER.World, body: RAPIER.RigidBody, cells: PieceCell[], density = MAT_DENSITY): RAPIER.Collider[] {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -230,7 +230,7 @@ export function buildPieceColliders(world: RAPIER.World, body: RAPIER.RigidBody,
       world.createCollider(
         RAPIER.ColliderDesc.cuboid((r.w * CELL) / 2 - 0.005, (r.h * CELL) / 2 - 0.005)
           .setTranslation(r.cx * CELL + (r.w * CELL) / 2, r.cy * CELL + (r.h * CELL) / 2)
-          .setDensity(MAT_DENSITY[m] ?? 1.5)
+          .setDensity(density[m] ?? 1.5)
           .setFriction(0.8)
           .setRestitution(0.05)
           .setCollisionGroups(groups(G.PROP, G.TERRAIN | G.FIGHTER | G.PROP | G.ITEM | G.GRENADE)),

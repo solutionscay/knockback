@@ -1,11 +1,12 @@
-import { FIGHTER, G, POWER, groups } from "./constants";
+import { G, groups } from "./constants";
+import { CLASSIC, type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
 import { type Fighter } from "./sim-types";
 import { clamp, length2D } from "./dmath";
 import { dropWeapons } from "./sim-items";
 
-export function kbMult(hp: number): number {
-  return 1 + (clamp(FIGHTER.maxHp - hp, 0, FIGHTER.maxHp) / 100) * FIGHTER.kbGrowth;
+export function kbMult(hp: number, ruleset: Ruleset = CLASSIC): number {
+  return 1 + (clamp(ruleset.combat.fighter.maxHp - hp, 0, ruleset.combat.fighter.maxHp) / ruleset.combat.fighter.maxHp) * ruleset.combat.fighter.kbGrowth;
 }
 
 export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number, kbx: number, kby: number, cause: string, hx: number, hy: number) {
@@ -13,19 +14,19 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
   if (source >= 0 && source !== f.id && dmg > 0) sim.lastClashTick = sim.tick;
   const src = source >= 0 && source !== f.id ? sim.fighters[source]! : null;
   if (src && src.power.damage > 0) {
-    dmg *= POWER.damage.mul;
-    kbx *= POWER.damage.kbMul;
-    kby *= POWER.damage.kbMul;
+    dmg *= sim.ruleset.pickups.power.damage.mul;
+    kbx *= sim.ruleset.pickups.power.damage.kbMul;
+    kby *= sim.ruleset.pickups.power.damage.kbMul;
   }
   let shielded = false;
   if (f.power.shield > 0 && cause !== "impact") {
     shielded = true;
-    dmg *= POWER.shield.damageMul;
-    kbx *= POWER.shield.kbMul;
-    kby *= POWER.shield.kbMul;
+    dmg *= sim.ruleset.pickups.power.shield.damageMul;
+    kbx *= sim.ruleset.pickups.power.shield.kbMul;
+    kby *= sim.ruleset.pickups.power.shield.kbMul;
     if (f.shieldTick !== sim.tick) {
       f.shieldTick = sim.tick;
-      if (++f.power.shieldHits >= POWER.shield.hits) {
+      if (++f.power.shieldHits >= sim.ruleset.pickups.power.shield.hits) {
         f.power.shield = 0;
         const p = sim.pos(f);
         sim.events.push({ type: "shieldPop", tick: sim.tick, fighter: f.id, x: p.x, y: p.y });
@@ -33,8 +34,8 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
     }
   }
   if (f.power.heavy > 0) {
-    kbx *= POWER.heavy.kbMul;
-    kby *= POWER.heavy.kbMul;
+    kbx *= sim.ruleset.pickups.power.heavy.kbMul;
+    kby *= sim.ruleset.pickups.power.heavy.kbMul;
   }
   f.hp -= dmg;
   f.damageTaken += dmg;

@@ -1,4 +1,4 @@
-import { DT, FIGHTER, GRAVITY, POWER } from "./constants";
+import { DT } from "./constants";
 import { clamp } from "./dmath";
 import type { Surface } from "./nav";
 import type { Fighter, Input, Sim } from "./sim";
@@ -6,9 +6,6 @@ import type { Fighter, Input, Sim } from "./sim";
 type Point = { x: number; y: number };
 type Flight = { x: number; y: number; edge: number; until: number; crossedLip: boolean };
 type Burst = { direction: number; until: number; rescue: boolean };
-
-const FEET = FIGHTER.halfHeight + FIGHTER.radius;
-const CLEARANCE = FIGHTER.radius + 0.25;
 
 export class JetpackPilot {
   private flight: Flight | null = null;
@@ -21,7 +18,7 @@ export class JetpackPilot {
         sim.nav.surfaceAt(this.flight.x, this.flight.y, 0.1)?.y !== this.flight.y ||
         (me.grounded && Math.abs(sim.feetY(me) - this.flight.y) < 0.3))) this.flight = null;
     if (this.flight) {
-      if (this.fly(me, p, v, input, this.flight)) return true;
+      if (this.fly(sim, me, p, v, input, this.flight)) return true;
       this.flight = null;
     }
     if (me.power.jetpack <= 0) return false;
@@ -53,7 +50,7 @@ export class JetpackPilot {
       const cost = sim.nav.plan(me.surface, p.x).cost[upper.id] ?? Infinity;
       if (requested || cost > 15) {
         this.flight = this.route(sim, me, p, upper);
-        if (this.flight) return this.fly(me, p, v, input, this.flight);
+        if (this.flight) return this.fly(sim, me, p, v, input, this.flight);
       }
     }
 
@@ -75,24 +72,26 @@ export class JetpackPilot {
 
   private route(sim: Sim, me: Fighter, p: Point, surface: Surface): Flight | null {
     if (surface.x1 - surface.x0 < 1.5) return null;
-    const top = surface.y + FEET + 0.35;
+    const { radius, halfHeight } = sim.ruleset.combat.fighter;
+    const feet = halfHeight + radius;
+    const top = surface.y + feet + 0.35;
     const rise = top - p.y;
-    const pack = POWER.jetpack;
+    const pack = sim.ruleset.pickups.power.jetpack;
     const burnSeconds = me.power.jetpack * DT;
     // Conservative budget: reserve time for acceleration and crossing the lip.
-    if (rise > Math.max(0, burnSeconds - pack.riseSpeed / (pack.thrust - GRAVITY) / 2 - 0.15) * pack.riseSpeed) return null;
+    if (rise > Math.max(0, burnSeconds - pack.riseSpeed / (pack.thrust - sim.ruleset.combat.gravity) / 2 - 0.15) * pack.riseSpeed) return null;
 
     let best: Flight | null = null;
     let score = Infinity;
     for (const side of [-1, 1]) {
       const lip = side < 0 ? surface.x0 : surface.x1;
-      const edge = lip + side * CLEARANCE;
+      const edge = lip + side * (radius + 0.25);
       const approach = Math.abs(edge - p.x);
       if (approach > 7 || approach > score) continue;
       if (approach > 0.35 && !this.clear(sim, me, p.x, p.y, Math.sign(edge - p.x), 0, approach)) continue;
       // Check both sides of the capsule as it rises beside the lip.
-      if (![-FIGHTER.radius, FIGHTER.radius].every((offset) =>
-        this.clear(sim, me, edge + offset, p.y, 0, 1, rise + FEET))) continue;
+      if (![-radius, radius].every((offset) =>
+        this.clear(sim, me, edge + offset, p.y, 0, 1, rise + feet))) continue;
       const x = lip - side * 0.75;
       if (!this.clear(sim, me, edge, top, -side, 0, Math.abs(x - edge))) continue;
       score = approach;
@@ -101,8 +100,9 @@ export class JetpackPilot {
     return best;
   }
 
-  private fly(me: Fighter, p: Point, v: Point, input: Input, flight: Flight): boolean {
-    const above = p.y >= flight.y + FEET + 0.22;
+  private fly(sim: Sim, me: Fighter, p: Point, v: Point, input: Input, flight: Flight): boolean {
+    const body = sim.ruleset.combat.fighter;
+    const above = p.y >= flight.y + (body.halfHeight + body.radius) + 0.22;
     const over = Math.abs(p.x - flight.x) < 0.6;
     if (!above && !over && (me.power.jetpack <= 0 || flight.crossedLip)) return false;
     if (above) flight.crossedLip = true;

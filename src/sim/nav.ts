@@ -3,7 +3,7 @@
  * (tops of solid cells with headroom) and jump/drop/walk links between them.
  * Rebuilt as explosions carve the level.
  */
-import { FIGHTER, GRAVITY } from "./constants";
+import { CLASSIC, type Ruleset } from "./ruleset";
 import { CELL, F_BRIDGE, Mat, type Grid } from "./grid";
 
 export interface Surface {
@@ -33,18 +33,14 @@ export interface NavPoint {
   y: number;
 }
 
-const HEADROOM_CELLS = 4; // 2 m
-const MAX_JUMP_UP = (FIGHTER.jumpSpeed * FIGHTER.jumpSpeed) / (2 * GRAVITY) - 0.55;
-const MAX_GAP = 4.6;
-const DROP_FALL = 3;
-
 export class NavGraph {
   surfaces: Surface[] = [];
   links: Link[] = [];
   out: Link[][] = [];
   points: NavPoint[] = [];
 
-  static fromGrid(grid: Grid, minRun = 2): NavGraph {
+  static fromGrid(grid: Grid, minRun = 2, ruleset: Ruleset = CLASSIC): NavGraph {
+    const { headroomCells, dropFall } = ruleset.arena.navigation;
     const nav = new NavGraph();
     const { cols, rows } = grid;
     for (let cy = 0; cy < rows; cy++) {
@@ -54,7 +50,7 @@ export class NavGraph {
         let ok = false;
         if (cx < cols && grid.solid(cx, cy)) {
           ok = true;
-          for (let k = 1; k <= HEADROOM_CELLS; k++)
+          for (let k = 1; k <= headroomCells; k++)
             if (grid.solid(cx, cy + k)) {
               ok = false;
               break;
@@ -85,10 +81,10 @@ export class NavGraph {
       }
     }
     for (const s of nav.surfaces) {
-      s.dropLeft = nav.fallBelow(grid, s.x0 - 0.3, s.y) > DROP_FALL;
-      s.dropRight = nav.fallBelow(grid, s.x1 + 0.3, s.y) > DROP_FALL;
+      s.dropLeft = nav.fallBelow(grid, s.x0 - 0.3, s.y) > dropFall;
+      s.dropRight = nav.fallBelow(grid, s.x1 + 0.3, s.y) > dropFall;
     }
-    nav.buildLinks();
+    nav.buildLinks(ruleset);
     nav.out = nav.surfaces.map(() => []);
     for (const l of nav.links) nav.out[l.from]!.push(l);
     for (const s of nav.surfaces) {
@@ -112,13 +108,16 @@ export class NavGraph {
     this.links.push({ ...l, cost: dist + (l.kind === "walk" ? 0 : 2.5) });
   }
 
-  private buildLinks() {
+  private buildLinks(ruleset: Ruleset) {
+    const { jumpMargin, maxGap } = ruleset.arena.navigation;
+    const { fighter: F, gravity } = ruleset.combat;
+    const maxJumpUp = (F.jumpSpeed * F.jumpSpeed) / (2 * gravity) - jumpMargin;
     const S = this.surfaces;
     for (const a of S) {
       for (const b of S) {
         if (a === b) continue;
         const dy = b.y - a.y;
-        if (dy > MAX_JUMP_UP) continue;
+        if (dy > maxJumpUp) continue;
         const overlap = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
         if (overlap > 0) {
           if (dy > 0.4) {
@@ -133,7 +132,7 @@ export class NavGraph {
         } else {
           const bRight = b.x0 >= a.x1 - 1e-6;
           const gap = bRight ? b.x0 - a.x1 : a.x0 - b.x1;
-          if (gap > MAX_GAP) continue;
+          if (gap > maxGap) continue;
           if (Math.abs(dy) < 0.05 && gap < 0.05) {
             this.addLink({ from: a.id, to: b.id, kind: "walk", takeoffX: bRight ? a.x1 : a.x0, landX: bRight ? b.x0 + 0.3 : b.x1 - 0.3 });
           } else {

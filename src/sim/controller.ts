@@ -5,13 +5,13 @@
  * and movement. Every fighter gets the same controller and the same aim.
  */
 import { length2D } from "./dmath";
-import { REFLEX, WEAPONS } from "./constants";
+import { CLASSIC, type Ruleset } from "./ruleset";
 import { aimAndFire, inReach, railCanReach, sightTarget } from "./controller-aim";
 import { JetpackPilot } from "./controller-jetpack";
 import { ControllerNavigation } from "./controller-navigation";
-import { PATIENCE } from "./controller-tuning";
-import { attackWall, WallPursuit, WALL_PURSUIT } from "./controller-wall";
+import { attackWall, WallPursuit } from "./controller-wall";
 import type { Surface } from "./nav";
+import { availableRule } from "./rules";
 import { RuleEngine } from "./ruleeval";
 import { NO_INPUT, isPickupWeapon, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
 
@@ -73,7 +73,7 @@ export class Controller {
    */
   /** Sudden death or the final duel, and this fighter hasn't hurt anyone for a while. */
   pressing(sim: Sim): boolean {
-    return (sim.suddenDeath >= 0 || sim.alive().length === 2) && sim.tick - this.lastDealt > PATIENCE.pressAfter;
+    return (sim.suddenDeath >= 0 || sim.alive().length === 2) && sim.tick - this.lastDealt > sim.ruleset.tactics.patience.pressAfter;
   }
 
   /** Did `src` hit me at or after tick `since`? (hit_me rules) */
@@ -85,7 +85,7 @@ export class Controller {
     // engine guards first (stalemates), then an active stance rule, then the plan
     if (sim.suddenDeath >= 0 || sim.alive().length === 2) return "rush";
     const s = this.rules.stance() ?? this.strategy.stance;
-    if (s !== "rush" && sim.tick - Math.max(this.lastDealt, this.lastTaken) > PATIENCE.calmTicks) return "rush";
+    if (s !== "rush" && sim.tick - Math.max(this.lastDealt, this.lastTaken) > sim.ruleset.tactics.patience.calmTicks) return "rush";
     return s;
   }
   /** recent hits taken (for the back-attack reflex) */
@@ -99,18 +99,19 @@ export class Controller {
    * Called for every hit this fighter takes (from Fight, in event order: deterministic).
    * Repeated hits from behind by a non-target trigger the reflex.
    */
-  onHit(src: number, behind: boolean, _damage: number, tick: number) {
+  onHit(src: number, behind: boolean, _damage: number, tick: number, ruleset: Ruleset = CLASSIC) {
+    const reflex = ruleset.tactics.reflex;
     this.lastTaken = tick;
     const log = this.hitLog;
     if (!log.length || log[log.length - 1]!.src !== src || log[log.length - 1]!.tick !== tick) log.push({ src, tick, behind });
-    while (log.length && log[0]!.tick < tick - REFLEX.windowTicks) log.shift();
+    while (log.length && log[0]!.tick < tick - reflex.windowTicks) log.shift();
     if (src === this.targetId) return;
     if (this.reflex && this.reflex.attacker === src && tick < this.reflex.until) return;
     const n = log.filter((h) => h.src === src && h.behind).length;
-    if (n < REFLEX.hits) return;
+    if (n < reflex.hits) return;
     const rule = this.rules.retaliate() ?? this.strategy.retaliate ?? "turn";
     const mode = rule === "attacker" ? "switch" : rule === "turn" ? "fight" : "glance";
-    const span = mode === "switch" ? REFLEX.switchTicks : mode === "fight" ? REFLEX.fightTicks : REFLEX.glanceTicks;
+    const span = mode === "switch" ? reflex.switchTicks : mode === "fight" ? reflex.fightTicks : reflex.glanceTicks;
     this.reflex = { attacker: src, until: tick + span, mode };
     this.reflexLog.push({ tick, attacker: src, mode });
     this.hitLog = log.filter((h) => h.src !== src);
@@ -129,7 +130,7 @@ export class Controller {
     this.navigation.replan(sim.tick);
     this.nextRetarget = sim.tick;
     sim.setPrefs(this.fighterId, s.weapons ?? []);
-    this.rules = new RuleEngine(s.rules ?? []);
+    this.rules = new RuleEngine((s.rules ?? []).filter(rule => availableRule(rule, sim.ruleset)), sim.ruleset.tactics.ruleEval);
     this.prefsKey = "";
   }
 
@@ -214,9 +215,9 @@ export class Controller {
     const mp = sim.pos(me);
     // an active use rule: that weapon, when it is carried and can reach
     const u = this.rules.use();
-    const railLine = () => dist >= WEAPONS.railgun.minRange && railCanReach(sim, mp, sight);
-    if (u && u !== "jetpack" && has(u) && (u === "railgun" ? railLine() : inReach(u, dist, los))) return u;
-    if (ready("hammer") && me.grounded && Math.abs(dy0) < 1.2 && dist < WEAPONS.hammer.range) return "hammer";
+    const railLine = () => dist >= sim.ruleset.weapons.table.railgun.minRange && railCanReach(sim, mp, sight);
+    if (u && u !== "jetpack" && has(u) && (u === "railgun" ? railLine() : inReach(u, dist, los, sim.ruleset))) return u;
+    if (ready("hammer") && me.grounded && Math.abs(dy0) < 1.2 && dist < sim.ruleset.weapons.table.hammer.range) return "hammer";
     if (ready("railgun") && railLine()) return "railgun";
     if (this.blocked(dist)) {
       // a wall between us: lob over it, or break through it
@@ -227,12 +228,12 @@ export class Controller {
     }
     if (has("bat") && dist < 2.4) return "bat";
     // flamethrower (#32): up close with a clear line, it outdamages everything else
-    if (has("flamethrower") && los && dist < WEAPONS.flamethrower.range - 0.4) return "flamethrower";
+    if (has("flamethrower") && los && dist < sim.ruleset.weapons.table.flamethrower.range - 0.4) return "flamethrower";
     if (dist < 1.5 && !has("shotgun")) return "fist";
     if (ready("grapple") && los && dist > 3.5 && dist < 14 && (this.onLedge(sim, target, mp.x, mp.y) || has("bat") || has("shotgun"))) return "grapple";
     if (has("shotgun") && dist < 6.5) return "shotgun";
     if (has("grenade") && !los && dist > 2.5 && dist < 14) return "grenade";
-    if (ready("mine") && dist > 2.8 && dist <= WEAPONS.mine.range) return "mine";
+    if (ready("mine") && dist > 2.8 && dist <= sim.ruleset.weapons.table.mine.range) return "mine";
     if (has("rocket") && dist >= 3) return "rocket";
     if (has("grenade") && dist > 2.5 && dist < 14) return "grenade";
     if (has("grapple") && dist > 3.5 && dist < 14) return "grapple";
@@ -284,23 +285,23 @@ export class Controller {
     this.targetId = target.id;
     const wall = this.wallPursuit.observe(sim, me, target, mp);
     const wallTicks = wall?.ticks ?? 0;
-    const flankTick = wallTicks - WALL_PURSUIT.flankTicks;
-    const flank = flankTick >= 0 && flankTick % WALL_PURSUIT.flankPeriod < WALL_PURSUIT.flankFor
-      ? ((Math.floor(flankTick / WALL_PURSUIT.flankPeriod) + me.id) % 2 === 0 ? -1 : 1)
+    const flankTick = wallTicks - sim.ruleset.tactics.wall.flankTicks;
+    const flank = flankTick >= 0 && flankTick % sim.ruleset.tactics.wall.flankPeriod < sim.ruleset.tactics.wall.flankFor
+      ? ((Math.floor(flankTick / sim.ruleset.tactics.wall.flankPeriod) + me.id) % 2 === 0 ? -1 : 1)
       : 0;
-    const wallRoute = flank || (wallTicks >= WALL_PURSUIT.routeTicks ? 2 : 0);
+    const wallRoute = flank || (wallTicks >= sim.ruleset.tactics.wall.routeTicks ? 2 : 0);
     if (this.wallRoute !== wallRoute) {
       this.wallRoute = wallRoute;
       this.navigation.replan(sim.tick);
     }
-    if (wallTicks >= WALL_PURSUIT.retargetTicks && sim.alive().length > 2) {
-      this.unreachable.set(target.id, sim.tick + PATIENCE.skipTicks);
+    if (wallTicks >= sim.ruleset.tactics.wall.retargetTicks && sim.alive().length > 2) {
+      this.unreachable.set(target.id, sim.tick + sim.ruleset.tactics.patience.skipTicks);
       this.nextRetarget = 0;
       this.reflex = null;
     }
-    const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= WALL_PURSUIT.routeTicks, flank);
+    const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= sim.ruleset.tactics.wall.routeTicks, flank);
     const flying = this.jetpack.steer(sim, me, target, mp, mv, input, this.stanceNow(sim) === "rush", this.rules.use() === "jetpack");
-    if (!me.railCharge && !flying && wall && wallTicks >= WALL_PURSUIT.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
+    if (!me.railCharge && !flying && wall && wallTicks >= sim.ruleset.tactics.wall.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
 
     const sight = sightTarget(sim, me, aimTarget, mp);
     const { dx0, dy0, dist, los } = sight;
@@ -310,8 +311,8 @@ export class Controller {
     const tSurf = target.surface;
     const reachable = surf && tSurf >= 0 ? sim.nav.plan(me.surface, mp.x).cost[tSurf] !== Infinity : true;
     this.noReach = !reachable && !los ? this.noReach + 1 : 0;
-    if (this.noReach > PATIENCE.unreachTicks && sim.alive().length > 2) {
-      this.unreachable.set(target.id, sim.tick + PATIENCE.skipTicks);
+    if (this.noReach > sim.ruleset.tactics.patience.unreachTicks && sim.alive().length > 2) {
+      this.unreachable.set(target.id, sim.tick + sim.ruleset.tactics.patience.skipTicks);
       this.nextRetarget = 0;
       this.noReach = 0;
     }
@@ -333,11 +334,11 @@ export class Controller {
       this.navigation.dig = null;
     } else if (this.navigation.dig) this.navigation.dig = null;
     // breach: parked with a wall or floor between us and the target - go through it
-    const breach = this.noLos > PATIENCE.breachAfter && Math.abs(mv.x) < 0.8;
-    const useNewWeapon = (me.weapons.includes("hammer") && me.grounded && dist < WEAPONS.hammer.range && Math.abs(dy0) < 1.2) ||
+    const breach = this.noLos > sim.ruleset.tactics.patience.breachAfter && Math.abs(mv.x) < 0.8;
+    const useNewWeapon = (me.weapons.includes("hammer") && me.grounded && dist < sim.ruleset.weapons.table.hammer.range && Math.abs(dy0) < 1.2) ||
       (me.weapons.includes("railgun") && me.cooldown.railgun < 15 && railCanReach(sim, mp, sight)) ||
-      (me.weapons.includes("mine") && me.cooldown.mine < 15 && dist > 2.8 && dist <= WEAPONS.mine.range);
-    if (!useNewWeapon && !flying && !flank && (breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
+      (me.weapons.includes("mine") && me.cooldown.mine < 15 && dist > 2.8 && dist <= sim.ruleset.weapons.table.mine.range);
+    if (!useNewWeapon && !flying && !flank && (breach || this.pressing(sim)) && dist < sim.ruleset.tactics.patience.breachRange && dist > 0.3 && me.stun === 0) {
       const has = (w: Weapon) => me.weapons.includes(w);
       const w: Weapon = dist < 1.3 && !has("bat") && !has("shotgun") ? "fist" : has("bat") && dist < 2.8 ? "bat" : has("shotgun") && dist < 7 ? "shotgun" : has("rocket") && dist >= 2 ? "rocket" : has("grenade") ? "grenade" : has("bat") ? "bat" : "fist";
       input.weapon = w;

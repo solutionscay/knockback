@@ -5,7 +5,7 @@
  * and the fuses of barrels, TNT and gas cans (they catch, then go off as if
  * shot). Fighters catch fire by touching any of it, or from the flamethrower.
  *
- * Fire is updated every FIRE.step ticks, in a fixed order (cell index,
+ * Fire is updated at a fixed tick interval, in a fixed order (cell index,
  * entity id), with every chance drawn from the Sim's seeded RNG and no trig,
  * so it is the same in every JS engine. A burning cell loses hit points,
  * may light its flammable 4-neighbours, and either burns out (charred, never
@@ -14,8 +14,10 @@
  * falls.
  */
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { CRATE, DT, FIGHTER, FIRE, WEAPONS } from "./constants";
-import { CELL, F_ANCHOR, F_CHARRED, flammable } from "./grid";
+import { DT } from "./constants";
+import { length2D } from "./dmath";
+import { CELL, F_ANCHOR, F_CHARRED } from "./grid";
+import { CLASSIC, type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
 import { chainAtCell, damageChain, shootChains } from "./sim-chains";
 import { hitProp, light } from "./sim-objects";
@@ -29,14 +31,12 @@ export interface CellFire {
   by: number;
 }
 
-const FLAMMABLE_PROPS = new Set(["crate", "barrel", "tnt", "gas"]);
-
-export function propFlammable(e: Entity): boolean {
-  return FLAMMABLE_PROPS.has(e.kind);
+export function propFlammable(e: Entity, ruleset: Ruleset = CLASSIC): boolean {
+  return ruleset.fire.props.includes(e.kind);
 }
 
 function burnTime(sim: Sim): number {
-  return sim.rng.int(FIRE.burnMin, FIRE.burnMax);
+  return sim.rng.int(sim.ruleset.fire.burnMin, sim.ruleset.fire.burnMax);
 }
 
 /** Light a static cell. source: "flame", "blast" (counted as a new fire) or "spread". */
@@ -44,7 +44,7 @@ export function igniteCell(sim: Sim, cx: number, cy: number, by: number, source:
   const g = sim.grid;
   if (!g.solid(cx, cy)) return false;
   const i = g.idx(cx, cy);
-  if (!flammable(g.mat[i]!) || g.flags[i]! & F_CHARRED || sim.fires.has(i)) return false;
+  if (!sim.ruleset.fire.materials.includes(g.mat[i]!) || g.flags[i]! & F_CHARRED || sim.fires.has(i)) return false;
   sim.fires.set(i, { burn: burnTime(sim), by });
   sim.stats.cellsIgnited++;
   if (source !== "spread") {
@@ -55,7 +55,7 @@ export function igniteCell(sim: Sim, cx: number, cy: number, by: number, source:
 }
 
 function ignitePieceCell(sim: Sim, e: Entity, c: PieceCell, by: number, source: string): boolean {
-  if (!flammable(c.mat) || c.charred || c.burn || c.hp <= 0) return false;
+  if (!sim.ruleset.fire.materials.includes(c.mat) || c.charred || c.burn || c.hp <= 0) return false;
   c.burn = burnTime(sim);
   c.burnBy = by;
   sim.stats.cellsIgnited++;
@@ -70,7 +70,7 @@ function ignitePieceCell(sim: Sim, e: Entity, c: PieceCell, by: number, source: 
 /** Light a prop: crates burn; barrels, TNT and gas cans light their fuse (and burn until they go). */
 export function igniteProp(sim: Sim, e: Entity, by: number, source: string): boolean {
   // a fuse already burning (shot, blasted) is not a new fire
-  if (e.dead || !propFlammable(e) || e.burn || e.fuse !== undefined || e.thrust !== undefined) return false;
+  if (e.dead || !propFlammable(e, sim.ruleset) || e.burn || e.fuse !== undefined || e.thrust !== undefined) return false;
   e.burn = burnTime(sim);
   e.burnBy = by;
   sim.stats.propsIgnited++;
@@ -92,7 +92,7 @@ function igniteEntityAt(sim: Sim, e: Entity, x: number, y: number, by: number, s
     let best: PieceCell | null = null;
     let bd = Infinity;
     for (const c of e.cells!) {
-      if (!flammable(c.mat)) continue;
+      if (!sim.ruleset.fire.materials.includes(c.mat)) continue;
       const w = pieceCellWorld(t, a, c);
       const d = (w.x - x) * (w.x - x) + (w.y - y) * (w.y - y);
       if (d < bd) {
@@ -112,7 +112,7 @@ export function igniteFighter(sim: Sim, f: Fighter, by: number, cause: string) {
     sim.stats.fightersIgnited++;
     sim.events.push({ type: "burn", tick: sim.tick, fighter: f.id, by, cause });
   }
-  f.burning = FIRE.fighterTicks;
+  f.burning = sim.ruleset.fire.fighterTicks;
   // the flamethrower's credit sticks over a plain fire
   if (was && f.burnCause === "flamethrower" && cause !== "flamethrower") return;
   f.burnBy = by;
@@ -121,7 +121,7 @@ export function igniteFighter(sim: Sim, f: Fighter, by: number, cause: string) {
 
 /** A blast lights flammable things near its center (by chance). */
 export function blastIgnite(sim: Sim, x: number, y: number, radius: number, owner: number) {
-  const r = radius * FIRE.blastReach;
+  const r = radius * sim.ruleset.fire.blastReach;
   const g = sim.grid;
   const c0 = Math.max(0, g.cx(x - r));
   const c1 = Math.min(g.cols - 1, g.cx(x + r));
@@ -130,20 +130,20 @@ export function blastIgnite(sim: Sim, x: number, y: number, radius: number, owne
   for (let cy = r0; cy <= r1; cy++)
     for (let cx = c0; cx <= c1; cx++) {
       const i = g.idx(cx, cy);
-      if (g.mat[i] === 0 || !flammable(g.mat[i]!) || g.flags[i]! & F_CHARRED || sim.fires.has(i)) continue;
+      if (g.mat[i] === 0 || !sim.ruleset.fire.materials.includes(g.mat[i]!) || g.flags[i]! & F_CHARRED || sim.fires.has(i)) continue;
       const px = g.wx(cx) + CELL / 2 - x;
       const py = g.wy(cy) + CELL / 2 - y;
       if (px * px + py * py > r * r) continue;
-      if (sim.rng.chance(FIRE.blastChance)) igniteCell(sim, cx, cy, owner, "blast");
+      if (sim.rng.chance(sim.ruleset.fire.blastChance)) igniteCell(sim, cx, cy, owner, "blast");
     }
   const found: Entity[] = [];
   sim.world.intersectionsWithShape({ x, y }, 0, new RAPIER.Ball(r), (c) => {
     const e = sim.entityOf(c);
-    if (e && !e.dead && (e.kind === "chunk" || propFlammable(e)) && !found.includes(e)) found.push(e);
+    if (e && !e.dead && (e.kind === "chunk" || propFlammable(e, sim.ruleset)) && !found.includes(e)) found.push(e);
     return true;
   });
   found.sort((a, b) => a.id - b.id);
-  for (const e of found) if (sim.rng.chance(FIRE.blastChance)) igniteEntityAt(sim, e, x, y, owner, "blast");
+  for (const e of found) if (sim.rng.chance(sim.ruleset.fire.blastChance)) igniteEntityAt(sim, e, x, y, owner, "blast");
 }
 
 // --------------------------------------------------------------- flamethrower
@@ -159,9 +159,17 @@ const RAYS: readonly [number, number][] = [
 
 /** One pulse of flame from (ox, oy) along (dx, dy). */
 export function fireFlamethrower(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
-  const W = WEAPONS.flamethrower;
+  const W = sim.ruleset.weapons.table.flamethrower;
   const hitFighters: { fi: Fighter; rx: number; ry: number }[] = [];
-  for (const [co, si] of RAYS) {
+  for (const [baseCos, baseSin] of RAYS) {
+    let co = baseCos;
+    let si = baseSin;
+    if (W.spreadScale !== 1) {
+      si *= W.spreadScale;
+      const length = length2D(co, si);
+      co /= length;
+      si /= length;
+    }
     const rx = dx * co - dy * si;
     const ry = dx * si + dy * co;
     const hit = sim.raycast(ox, oy, rx, ry, W.range, f.entity.collider);
@@ -178,7 +186,7 @@ export function fireFlamethrower(sim: Sim, f: Fighter, ox: number, oy: number, d
     const e = hit.entity!;
     if (e.kind === "fighter" && e.fighter) {
       if (e.fighter.alive && !hitFighters.some((h) => h.fi === e.fighter)) hitFighters.push({ fi: e.fighter, rx, ry });
-    } else if (e.kind === "chunk" || propFlammable(e)) {
+    } else if (e.kind === "chunk" || propFlammable(e, sim.ruleset)) {
       if (sim.rng.chance(W.igniteChance)) igniteEntityAt(sim, e, hx, hy, f.id, "flame");
     }
   }
@@ -211,10 +219,10 @@ export function updateFire(sim: Sim) {
     // on a fixed clock (staggered per seat), so standing in fire, which keeps relighting them, still hurts
     if ((sim.tick + f.id * 7) % 30 === 0) {
       const p = sim.pos(f);
-      sim.damageFighter(f, FIRE.fighterDps * 30 * DT, f.burnBy, 0, 0, f.burnCause || "fire", p.x, p.y);
+      sim.damageFighter(f, sim.ruleset.fire.fighterDps * 30 * DT, f.burnBy, 0, 0, f.burnCause || "fire", p.x, p.y);
     }
   }
-  if (sim.tick % FIRE.step !== 0) return;
+  if (sim.tick % sim.ruleset.fire.step !== 0) return;
   // burning fighters set the planks they stand on alight
   for (const f of sim.fighters) {
     if (f.burning <= 0 || !f.alive || !f.grounded) continue;
@@ -222,7 +230,7 @@ export function updateFire(sim: Sim) {
     const g = sim.grid;
     const cx = g.cx(p.x);
     const cy = g.cy(sim.feetY(f) - 0.1);
-    if (g.solid(cx, cy) && flammable(g.matAt(cx, cy)) && sim.rng.chance(FIRE.feetChance)) igniteCell(sim, cx, cy, f.burnBy, "spread");
+    if (g.solid(cx, cy) && sim.ruleset.fire.materials.includes(g.matAt(cx, cy)) && sim.rng.chance(sim.ruleset.fire.feetChance)) igniteCell(sim, cx, cy, f.burnBy, "spread");
   }
   if (sim.fires.size) burnCells(sim);
   burnEntities(sim);
@@ -237,16 +245,16 @@ function burnCells(sim: Sim) {
     const cx = i % g.cols;
     const cy = (i - cx) / g.cols;
     const m = g.mat[i]!;
-    if (m === 0 || !flammable(m)) {
+    if (m === 0 || !sim.ruleset.fire.materials.includes(m)) {
       sim.fires.delete(i);
       continue;
     }
     // an anchor in flames eats its chain (#34)
     if (g.flags[i]! & F_ANCHOR) {
       const ch = chainAtCell(sim, cx, cy);
-      if (ch && !ch.broken && ch.piece < 0) damageChain(sim, ch, FIRE.chainDamage, fire.by, "fire", g.wx(cx) + CELL / 2, g.wy(cy) + CELL);
+      if (ch && !ch.broken && ch.piece < 0) damageChain(sim, ch, sim.ruleset.fire.chainDamage, fire.by, "fire", g.wx(cx) + CELL / 2, g.wy(cy) + CELL);
     }
-    if (damageTerrainCell(sim, cx, cy, m, FIRE.cellDamage)) {
+    if (damageTerrainCell(sim, cx, cy, m, sim.ruleset.fire.cellDamage)) {
       sim.stats.cellsBurnedDown++;
       sim.fires.delete(i);
       continue;
@@ -259,14 +267,14 @@ function burnCells(sim: Sim) {
     ] as const) {
       if (!g.inside(nx, ny)) continue;
       const j = g.idx(nx, ny);
-      if (g.mat[j] === 0 || !flammable(g.mat[j]!) || g.flags[j]! & F_CHARRED || sim.fires.has(j)) continue;
-      if (sim.rng.chance(FIRE.spread)) igniteCell(sim, nx, ny, fire.by, "spread");
+      if (g.mat[j] === 0 || !sim.ruleset.fire.materials.includes(g.mat[j]!) || g.flags[j]! & F_CHARRED || sim.fires.has(j)) continue;
+      if (sim.rng.chance(sim.ruleset.fire.spread)) igniteCell(sim, nx, ny, fire.by, "spread");
     }
     // flames lick the props resting on or against it
-    if (sim.rng.chance(FIRE.spread * 2)) {
-      sim.world.intersectionsWithShape({ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL / 2 }, 0, new RAPIER.Cuboid(CELL / 2 + FIRE.propReach / 2, CELL / 2 + FIRE.propReach / 2), (c) => {
+    if (sim.rng.chance(sim.ruleset.fire.spread * 2)) {
+      sim.world.intersectionsWithShape({ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL / 2 }, 0, new RAPIER.Cuboid(CELL / 2 + sim.ruleset.fire.propReach / 2, CELL / 2 + sim.ruleset.fire.propReach / 2), (c) => {
         const e = sim.entityOf(c);
-        if (e && propFlammable(e) && !e.burn) igniteProp(sim, e, fire.by, "spread");
+        if (e && propFlammable(e, sim.ruleset) && !e.burn) igniteProp(sim, e, fire.by, "spread");
         return true;
       });
     }
@@ -300,9 +308,9 @@ function burnPiece(sim: Sim, e: Entity) {
     if (c.chain !== undefined) {
       const ch = sim.chains[c.chain]!;
       const w = pieceCellWorld(t, a, c);
-      damageChain(sim, ch, FIRE.chainDamage, by, "fire", w.x, w.y);
+      damageChain(sim, ch, sim.ruleset.fire.chainDamage, by, "fire", w.x, w.y);
     }
-    c.hp -= FIRE.cellDamage;
+    c.hp -= sim.ruleset.fire.cellDamage;
     if (c.hp <= 0) {
       c.burn = 0;
       lost = true;
@@ -316,7 +324,7 @@ function burnPiece(sim: Sim, e: Entity) {
       [0, -1],
     ] as const) {
       const n = at.get((c.ly + dy) * 4096 + c.lx + dx);
-      if (n && !n.burn && !n.charred && flammable(n.mat) && n.hp > 0 && sim.rng.chance(FIRE.spread)) ignitePieceCell(sim, e, n, by, "spread");
+      if (n && !n.burn && !n.charred && sim.ruleset.fire.materials.includes(n.mat) && n.hp > 0 && sim.rng.chance(sim.ruleset.fire.spread)) ignitePieceCell(sim, e, n, by, "spread");
     }
     if (--c.burn! <= 0) {
       c.burn = 0;
@@ -336,21 +344,21 @@ function burnProp(sim: Sim, e: Entity) {
   const by = e.burnBy ?? -1;
   const t = e.body.translation();
   // spread to flammable props and cells it touches
-  if (sim.rng.chance(FIRE.spread * 3)) {
+  if (sim.rng.chance(sim.ruleset.fire.spread * 3)) {
     const near: Entity[] = [];
-    sim.world.intersectionsWithShape({ x: t.x, y: t.y }, 0, new RAPIER.Cuboid(e.hw + FIRE.propReach, e.hh + FIRE.propReach), (c) => {
+    sim.world.intersectionsWithShape({ x: t.x, y: t.y }, 0, new RAPIER.Cuboid(e.hw + sim.ruleset.fire.propReach, e.hh + sim.ruleset.fire.propReach), (c) => {
       const o = sim.entityOf(c);
-      if (o && o !== e && !o.dead && propFlammable(o) && !o.burn && !near.includes(o)) near.push(o);
+      if (o && o !== e && !o.dead && propFlammable(o, sim.ruleset) && !o.burn && !near.includes(o)) near.push(o);
       return true;
     });
     near.sort((x, y) => x.id - y.id);
     for (const o of near) igniteProp(sim, o, by, "spread");
     const g = sim.grid;
-    for (let cy = g.cy(t.y - e.hh - FIRE.propReach); cy <= g.cy(t.y + e.hh + FIRE.propReach); cy++)
-      for (let cx = g.cx(t.x - e.hw - FIRE.propReach); cx <= g.cx(t.x + e.hw + FIRE.propReach); cx++) igniteCell(sim, cx, cy, by, "spread");
+    for (let cy = g.cy(t.y - e.hh - sim.ruleset.fire.propReach); cy <= g.cy(t.y + e.hh + sim.ruleset.fire.propReach); cy++)
+      for (let cx = g.cx(t.x - e.hw - sim.ruleset.fire.propReach); cx <= g.cx(t.x + e.hw + sim.ruleset.fire.propReach); cx++) igniteCell(sim, cx, cy, by, "spread");
   }
   if (e.kind === "crate") {
-    hitProp(sim, e, FIRE.propDamage * (CRATE.hp / 14), by, "fire", t.x, t.y);
+    hitProp(sim, e, sim.ruleset.fire.propDamage * (sim.ruleset.arena.props.crate.hp / 14), by, "fire", t.x, t.y);
     if (e.dead) {
       sim.stats.propsBurnedOff++;
       return;
@@ -362,8 +370,8 @@ function burnProp(sim: Sim, e: Entity) {
 /** Fighters touching burning cells, props or pieces catch fire. */
 function catchFighters(sim: Sim) {
   const g = sim.grid;
-  const reach = FIGHTER.radius + FIRE.touch;
-  const half = FIGHTER.halfHeight + FIGHTER.radius + FIRE.touch;
+  const reach = sim.ruleset.combat.fighter.radius + sim.ruleset.fire.touch;
+  const half = sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + sim.ruleset.fire.touch;
   for (const f of sim.fighters) {
     if (!f.alive || f.removed) continue;
     const p = sim.pos(f);

@@ -3,7 +3,7 @@ import { CELL, Mat, type Grid } from "./grid";
 
 /** Walk exact distances inside grid cells. A thin layer spends part of the beam's penetration budget. */
 export function traceRail(grid: Grid, x: number, y: number, dx: number, dy: number, range: number,
-  touch?: (cx: number, cy: number) => void): number {
+  touch?: (cx: number, cy: number) => void, penetration: number = WEAPONS.railgun.terrainPenetration): number {
   let cx = grid.cx(x), cy = grid.cy(y);
   const sx = Math.sign(dx), sy = Math.sign(dy);
   const stepX = sx === 0 ? Infinity : CELL / Math.abs(dx);
@@ -11,7 +11,7 @@ export function traceRail(grid: Grid, x: number, y: number, dx: number, dy: numb
   let nextX = sx === 0 ? Infinity : (grid.wx(cx + (sx > 0 ? 1 : 0)) - x) / dx;
   let nextY = sy === 0 ? Infinity : (grid.wy(cy + (sy > 0 ? 1 : 0)) - y) / dy;
   let distance = 0;
-  let left = WEAPONS.railgun.terrainPenetration;
+  let left = penetration;
   while (distance < range) {
     const end = Math.min(nextX, nextY, range);
     const mat = grid.matAt(cx, cy);

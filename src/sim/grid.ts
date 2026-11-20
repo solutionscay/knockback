@@ -40,6 +40,8 @@ export class Grid {
     readonly rows: number,
     readonly x0: number,
     readonly y0: number,
+    readonly hitPoints: readonly number[] = MAT_HP,
+    readonly density: readonly number[] = MAT_DENSITY,
   ) {
     this.mat = new Uint8Array(cols * rows);
     this.hp = new Float64Array(cols * rows);
@@ -70,7 +72,7 @@ export class Grid {
     if (!this.inside(cx, cy)) return;
     const i = cy * this.cols + cx;
     this.mat[i] = m;
-    this.hp[i] = MAT_HP[m]!;
+    this.hp[i] = m === Mat.Bedrock ? Infinity : this.hitPoints[m]!;
     this.flags[i] = m === Mat.Empty ? 0 : flags;
   }
 
@@ -121,7 +123,7 @@ export class Grid {
   }
 
   clone(): Grid {
-    const g = new Grid(this.cols, this.rows, this.x0, this.y0);
+    const g = new Grid(this.cols, this.rows, this.x0, this.y0, this.hitPoints, this.density);
     g.mat.set(this.mat);
     g.hp.set(this.hp);
     g.flags.set(this.flags);

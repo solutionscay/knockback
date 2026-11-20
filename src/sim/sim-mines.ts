@@ -1,11 +1,10 @@
-import { DT, WEAPONS } from "./constants";
+import { DT } from "./constants";
 import { dcos, dsin, length2D } from "./dmath";
 import type { Sim } from "./sim";
 import type { Fighter, Mine } from "./sim-types";
 
-const M = WEAPONS.mine;
-
 export function throwMine(sim: Sim, f: Fighter, x: number, y: number, dx: number, dy: number) {
+  const M = sim.ruleset.weapons.table.mine;
   sim.mines.push({
     id: sim.entityStore.allocateId(), owner: f.id, x, y, vx: dx * M.speed, vy: dy * M.speed + M.throwLift,
     born: sim.tick, armedAt: -1, mount: null,
@@ -13,6 +12,7 @@ export function throwMine(sim: Sim, f: Fighter, x: number, y: number, dx: number
 }
 
 function move(sim: Sim, mine: Mine) {
+  const M = sim.ruleset.weapons.table.mine;
   const mount = mine.mount;
   if (mount?.kind === "terrain") {
     if (sim.grid.solid(mount.cx, mount.cy)) return;
@@ -65,6 +65,7 @@ function move(sim: Sim, mine: Mine) {
 
 export function updateMines(sim: Sim) {
   if (sim.mines.length === 0) return;
+  const M = sim.ruleset.weapons.table.mine;
   const keep: Mine[] = [];
   for (const mine of sim.mines) {
     move(sim, mine);

@@ -8,10 +8,11 @@
  * polynomial dsin/dcos (dmath.ts), so the JS side does not drift between engines.
  */
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { DEBRIS, DT, FIGHTER, G, GRAVITY, SUPPLY, groups, type Blast } from "./constants";
+import { DT, G, groups, type Blast } from "./constants";
 import { Mat, type Grid } from "./grid";
 import { generateLevel, type LevelDef, type PropKind } from "./levelgen";
 import { NavGraph } from "./nav";
+import { CLASSIC, type Ruleset } from "./ruleset";
 import { Rng } from "./rng";
 import { explode } from "./sim-blast";
 import { damageFighter, kbMult, knockOut, removeFighterBody } from "./sim-damage";
@@ -105,27 +106,28 @@ export class Sim {
     flamePulses: 0,
   };
 
-  constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS) {
-    this.level = level ?? generateLevel(seed);
+  constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS, readonly ruleset: Ruleset = CLASSIC) {
+    this.level = level ?? generateLevel(seed, undefined, ruleset);
     this.grid = this.level.grid.clone();
     this.rng = new Rng(seed);
-    this.world = new RAPIER.World({ x: 0, y: -GRAVITY });
+    this.world = new RAPIER.World({ x: 0, y: -this.ruleset.combat.gravity });
     this.world.timestep = DT;
     this.entityStore = new EntityStore(this.world);
     this.terrain = new Terrain(this.world, this.grid);
     this.chains = buildChains(this);
     for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
-    this.nav = NavGraph.fromGrid(this.grid);
+    this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
     this.navVersion = this.terrain.version;
     this.initialCells = this.grid.countSolid() - this.grid.countMat(Mat.Bedrock);
-    const startHalf = this.level.width / 2 - 1;
+    const startHalf = this.level.width / 2 - this.ruleset.zone.boundary.edgeInset;
     this.zone = { center: this.level.zoneCenter, half: startHalf, startHalf };
     for (const p of this.level.props) this.addProp(p.kind, p.x, p.y, p);
     // two power-ups waiting up high: a reason to climb
     const high = this.nav.surfaces.filter((s) => s.y > 3.5 && s.x1 - s.x0 >= 2 && Math.abs((s.x0 + s.x1) / 2 - this.zone.center) < 18);
     for (let i = 0; i < 2 && high.length; i++) {
       const s = high.splice(this.rng.int(0, high.length - 1), 1)[0]!;
-      this.spawnItem(randomPower(this.rng), (s.x0 + s.x1) / 2, s.y + 0.4);
+      const power = randomPower(this.rng, this.ruleset);
+      if (power) this.spawnItem(power, (s.x0 + s.x1) / 2, s.y + 0.4);
     }
     // seat order is shuffled by seed so no seat owns a spawn
     const spawns = this.rng.shuffle(this.level.spawns.slice());
@@ -166,7 +168,7 @@ export class Sim {
   }
 
   kbMult(hp: number): number {
-    return kbMult(hp);
+    return kbMult(hp, this.ruleset);
   }
 
   dangers(): { x: number; y: number; r: number }[] {
@@ -195,7 +197,7 @@ export class Sim {
   }
 
   feetY(f: Fighter): number {
-    return f.entity.body.translation().y - FIGHTER.halfHeight - FIGHTER.radius;
+    return f.entity.body.translation().y - this.ruleset.combat.fighter.halfHeight - this.ruleset.combat.fighter.radius;
   }
 
   weapon(f: Fighter): Weapon {
@@ -226,10 +228,10 @@ export class Sim {
     const tick = this.tick;
     const z = this.zone;
     if (this.zoneEnabled) {
-      z.half = zoneHalfAt(tick, z.startHalf);
+      z.half = zoneHalfAt(tick, z.startHalf, this.ruleset);
       this.zoneBehavior.checkStalemate(this, tick);
     }
-    if (tick >= SUPPLY.firstTick && (tick - SUPPLY.firstTick) % SUPPLY.interval === 0) supplyDrop(this, this.supplyCount++);
+    if (tick >= this.ruleset.pickups.supply.firstTick && (tick - this.ruleset.pickups.supply.firstTick) % this.ruleset.pickups.supply.interval === 0) supplyDrop(this, this.supplyCount++);
 
     for (const f of this.fighters) {
       if (!f.alive) continue;
@@ -251,7 +253,7 @@ export class Sim {
       if (f.removed) continue;
       const p = this.pos(f);
       if (!f.alive) {
-        if (p.y < FIGHTER.ringOutY - 6 || tick - f.koTick > 150) removeFighterBody(this, f);
+        if (p.y < this.ruleset.combat.fighter.ringOutY - 6 || tick - f.koTick > 150) removeFighterBody(this, f);
         continue;
       }
       const v = this.vel(f);
@@ -265,17 +267,17 @@ export class Sim {
         crumbleUnder(this, f, p.x);
       }
       const ex = pre[f.id]!.x;
-      const ey = pre[f.id]!.y - GRAVITY * DT;
+      const ey = pre[f.id]!.y - this.ruleset.combat.gravity * DT;
       const dv = Math.sqrt((v.x - ex) * (v.x - ex) + (v.y - ey) * (v.y - ey));
-      if (dv > FIGHTER.impactThreshold) {
-        const dmg = (dv - FIGHTER.impactThreshold) * FIGHTER.impactDamagePerMs;
-        const src = tick - f.lastHitTick < 120 ? f.lastHitBy : -1;
+      if (dv > this.ruleset.combat.fighter.impactThreshold) {
+        const dmg = (dv - this.ruleset.combat.fighter.impactThreshold) * this.ruleset.combat.fighter.impactDamagePerMs;
+        const src = tick - f.lastHitTick < this.ruleset.combat.attributionTicks ? f.lastHitBy : -1;
         this.events.push({ type: "impact", tick, fighter: f.id, damage: dmg, x: p.x, y: p.y });
         this.damageFighter(f, dmg, src, 0, 0, "impact", p.x, p.y);
         if (!f.alive) continue;
       }
-      const ringX = this.level.width / 2 + 6;
-      if (p.y < FIGHTER.ringOutY || p.x < -ringX || p.x > ringX) {
+      const ringX = this.level.width / 2 + this.ruleset.combat.fighter.ringOutMargin;
+      if (p.y < this.ruleset.combat.fighter.ringOutY || p.x < -ringX || p.x > ringX) {
         knockOut(this, f, "ringout", p.x, p.y);
         continue;
       }
@@ -289,7 +291,7 @@ export class Sim {
         this.entityStore.remove(e);
         continue;
       }
-      if (e.kind === "chunk" && e.cells!.length <= DEBRIS.smallCells && tick - e.born > DEBRIS.smallTicks) {
+      if (e.kind === "chunk" && e.cells!.length <= this.ruleset.arena.terrain.debris.smallCells && tick - e.born > this.ruleset.arena.terrain.debris.smallTicks) {
         this.events.push({ type: "break", tick, entity: e.id, kind: "chunk", x: t.x, y: t.y, hw: e.hw, hh: e.hh });
         this.entityStore.remove(e);
       }
@@ -299,7 +301,7 @@ export class Sim {
   }
 
   private rebuildNav() {
-    this.nav = NavGraph.fromGrid(this.grid);
+    this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
     this.navVersion = this.terrain.version;
     this.lastNavTick = this.tick;
     for (const f of this.fighters) {

@@ -11,7 +11,7 @@ import { blastIgnite } from "./sim-fire";
 export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: ExplosionKind, owner: number, depth: number, chainFrom: string | null) {
   sim.stats.explosions++;
   sim.events.push({ type: "explosion", tick: sim.tick, kind, x, y, radius: spec.radius, owner, depth, chainFrom });
-  const carveRadius = spec.radius * 1.12;
+  const carveRadius = spec.radius * sim.ruleset.combat.blastCarveScale;
   const carved = sim.terrain.carve(x, y, carveRadius, spec.terrainDamage);
   if (carved.length) {
     sim.stats.cellsDestroyed += carved.length;

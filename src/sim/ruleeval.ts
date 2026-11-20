@@ -16,7 +16,9 @@ import type { Fighter, ItemType, Retaliate, Rule, Sim, Stance, Weapon } from "./
  *   minOffTicks  and can start again only this long after it stops
  *   ledgeM, barrelM, chaseTicks, hitTicks, itemCost   trigger thresholds
  */
-export const RULE_EVAL = { everyTicks: 12, minOnTicks: 60, minOffTicks: 60, ledgeM: 2, barrelM: 3, chaseTicks: 180, hitTicks: 180, itemCost: 12 };
+import { CLASSIC, type Ruleset } from "./ruleset";
+export { RULE_EVAL } from "./controller-tuning";
+
 
 export interface RuleState {
   active: boolean;
@@ -34,8 +36,8 @@ export class RuleEngine {
   /** starts per rule this fight (tests, debug) */
   readonly starts: number[];
 
-  constructor(readonly rules: readonly Rule[]) {
-    this.state = rules.map(() => ({ active: false, since: -1, offAt: -RULE_EVAL.minOffTicks, subject: -1 }));
+  constructor(readonly rules: readonly Rule[], private readonly tuning: Ruleset["tactics"]["ruleEval"] = CLASSIC.tactics.ruleEval) {
+    this.state = rules.map(() => ({ active: false, since: -1, offAt: -this.tuning.minOffTicks, subject: -1 }));
     this.starts = rules.map(() => 0);
   }
 
@@ -60,22 +62,22 @@ export class RuleEngine {
       case "holds":
         return this.some(cand().filter((f) => r.item === "jetpack" ? f.power.jetpack > 0 : f.weapons.includes(r.item as Weapon)));
       case "my_health_below":
-        return { on: me.hp < r.value!, who: [] };
+        return { on: me.hp < r.value! * (sim.ruleset.combat.fighter.maxHp / 100), who: [] };
       case "health_below":
-        return this.some(cand().filter((f) => f.hp < r.value!));
+        return this.some(cand().filter((f) => f.hp < r.value! * (sim.ruleset.combat.fighter.maxHp / 100)));
       case "near_ledge":
         return this.some(cand().filter((f) => nearLedge(sim, f)));
       case "near_barrel": {
         const barrels: { x: number; y: number }[] = [];
         for (const e of sim.entities.values()) if (!e.dead && (e.kind === "barrel" || e.kind === "tnt")) barrels.push(e.body.translation());
-        return this.some(cand().filter((f) => barrels.some((b) => Math.hypot(b.x - pos(f).x, b.y - pos(f).y) < RULE_EVAL.barrelM)));
+        return this.some(cand().filter((f) => barrels.some((b) => Math.hypot(b.x - pos(f).x, b.y - pos(f).y) < this.tuning.barrelM)));
       }
       case "on_streak":
         return this.some(cand().filter((f) => f.kos >= r.value!));
       case "chasing_me":
-        return this.some(cand().filter((f) => f.id !== me.id && ctl.peers[f.id]!.targetId === me.id && sim.tick - ctl.peers[f.id]!.targetSince >= RULE_EVAL.chaseTicks));
+        return this.some(cand().filter((f) => f.id !== me.id && ctl.peers[f.id]!.targetId === me.id && sim.tick - ctl.peers[f.id]!.targetSince >= this.tuning.chaseTicks));
       case "hit_me":
-        return this.some(cand().filter((f) => ctl.hitBy(f.id, sim.tick - RULE_EVAL.hitTicks)));
+        return this.some(cand().filter((f) => ctl.hitBy(f.id, sim.tick - this.tuning.hitTicks)));
       case "item_near": {
         if (me.surface < 0) return { on: false, who: [] };
         const plan = sim.nav.plan(me.surface, pos(me).x);
@@ -83,7 +85,7 @@ export class RuleEngine {
           if (it.itemType !== r.item) continue;
           const t = it.body.translation();
           const s = sim.nav.surfaceAt(t.x, t.y + 0.3, 0.2);
-          if (s && plan.cost[s.id]! + Math.abs(plan.arriveX[s.id]! - t.x) <= RULE_EVAL.itemCost) return { on: true, who: [] };
+          if (s && plan.cost[s.id]! + Math.abs(plan.arriveX[s.id]! - t.x) <= this.tuning.itemCost) return { on: true, who: [] };
         }
         return { on: false, who: [] };
       }
@@ -122,7 +124,7 @@ export class RuleEngine {
   evaluate(sim: Sim, ctl: Controller, me: Fighter) {
     if (!this.any || !me.alive) return;
     if (sim.tick < this.nextEval && !this.dirty) return;
-    this.nextEval = sim.tick + RULE_EVAL.everyTicks;
+    this.nextEval = sim.tick + this.tuning.everyTicks;
     this.dirty = false;
     const t = sim.tick;
     this.rules.forEach((r, i) => {
@@ -131,12 +133,12 @@ export class RuleEngine {
       const subj = tr.on ? this.closest(sim, me, tr.who) : -1;
       if (st.active) {
         if (tr.on) st.subject = subj;
-        else if (t - st.since >= RULE_EVAL.minOnTicks) {
+        else if (t - st.since >= this.tuning.minOnTicks) {
           st.active = false;
           st.offAt = t;
           sim.events.push({ type: "rule", tick: t, fighter: me.id, rule: i, on: false, subject: st.subject });
         } else if (st.subject >= 0 && !sim.fighters[st.subject]!.alive) st.subject = -1;
-      } else if (tr.on && t - st.offAt >= RULE_EVAL.minOffTicks) {
+      } else if (tr.on && t - st.offAt >= this.tuning.minOffTicks) {
         st.active = true;
         st.since = t;
         st.subject = subj;
@@ -190,11 +192,11 @@ export class RuleEngine {
   }
 }
 
-/** Standing within RULE_EVAL.ledgeM of a pit edge or the level edge. */
+/** Standing within sim.ruleset.tactics.ruleEval.ledgeM of a pit edge or the level edge. */
 export function nearLedge(sim: Sim, f: Fighter): boolean {
   const p = sim.pos(f);
-  if (p.x - sim.level.minX < RULE_EVAL.ledgeM || sim.level.maxX - p.x < RULE_EVAL.ledgeM) return true;
+  if (p.x - sim.level.minX < sim.ruleset.tactics.ruleEval.ledgeM || sim.level.maxX - p.x < sim.ruleset.tactics.ruleEval.ledgeM) return true;
   const s = f.surface >= 0 ? sim.nav.surfaces[f.surface] : undefined;
   if (!s || !f.grounded) return false;
-  return (s.dropLeft && p.x - s.x0 < RULE_EVAL.ledgeM) || (s.dropRight && s.x1 - p.x < RULE_EVAL.ledgeM);
+  return (s.dropLeft && p.x - s.x0 < sim.ruleset.tactics.ruleEval.ledgeM) || (s.dropRight && s.x1 - p.x < sim.ruleset.tactics.ruleEval.ledgeM);
 }

@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { CRUMBLE_DPS, DT } from "./constants";
+import { DT } from "./constants";
 import type { Sim } from "./sim";
 import { type Entity, type Fighter } from "./sim-types";
 import { clamp } from "./dmath";
@@ -14,7 +14,7 @@ export function crumbleUnder(sim: Sim, f: Fighter, x: number) {
     const cx = g.cx(x + ox);
     if (g.matAt(cx, cy) !== Mat.Crumble) continue;
     const m = Mat.Crumble;
-    damageTerrainCell(sim, cx, cy, m, CRUMBLE_DPS * DT);
+    damageTerrainCell(sim, cx, cy, m, sim.ruleset.arena.terrain.crumbleDps * DT);
   }
 }
 
@@ -84,7 +84,7 @@ function makePiece(sim: Sim, cells: PieceCell[], x: number, y: number, angle: nu
   const body = sim.world.createRigidBody(
     RAPIER.RigidBodyDesc.dynamic().setTranslation(x, y).setRotation(angle).setLinvel(v.x, v.y).setAngvel(w).setLinearDamping(0.05).setAngularDamping(0.4).setCcdEnabled(cells.length >= 6),
   );
-  const colliders = buildPieceColliders(sim.world, body, cells);
+  const colliders = buildPieceColliders(sim.world, body, cells, sim.grid.density);
   let maxX = 0;
   let maxY = 0;
   for (const c of cells) {

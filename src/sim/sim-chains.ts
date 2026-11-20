@@ -1,13 +1,13 @@
 /**
  * Breakable chains (#34). Each floating platform hangs from two chains, one
- * per anchor cell (F_ANCHOR). A chain has hit points (CHAIN.hp): explosions,
+ * per anchor cell (F_ANCHOR). A chain has hit points (sim.ruleset.arena.chain.hp): explosions,
  * shotgun pellets, bat swings, fists with the heavy power-up and heavy flying
  * things damage it.
  *
  * - Both chains intact: the platform is static terrain, as before.
  * - One chain gone (or its anchor cell destroyed): the platform comes loose as
  *   a dynamic piece hung from the other chain by a rope joint to a fixed pivot
- *   CHAIN.length above its anchor, so it swings.
+ *   sim.ruleset.arena.chain.length above its anchor, so it swings.
  * - All chains gone: it falls and crushes what is below (checkCrush), credited
  *   to whoever broke the last chain.
  *
@@ -15,7 +15,7 @@
  * pass through them. Deterministic: chains are kept in grid scan order.
  */
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { CHAIN } from "./constants";
+
 import { dcos, dsin } from "./dmath";
 import { CELL, F_ANCHOR } from "./grid";
 import type { Sim } from "./sim";
@@ -53,7 +53,7 @@ export function buildChains(sim: Sim): Chain[] {
       if (!(g.flags[g.idx(cx, cy)]! & F_ANCHOR)) continue;
       const x = g.wx(cx) + CELL / 2;
       const y = g.wy(cy) + CELL;
-      out.push({ id: out.length, cx, cy, px: x, py: y + CHAIN.length, hp: CHAIN.hp, broken: false, brokenTick: -1, breakX: x, breakY: y, cause: "", lastHitBy: -1, piece: -1, joint: null });
+      out.push({ id: out.length, cx, cy, px: x, py: y + sim.ruleset.arena.chain.length, hp: sim.ruleset.arena.chain.hp, broken: false, brokenTick: -1, breakX: x, breakY: y, cause: "", lastHitBy: -1, piece: -1, joint: null });
     }
   return out;
 }
@@ -82,7 +82,7 @@ export function chainAttach(sim: Sim, ch: Chain): { x: number; y: number } {
       return { x: t.x + l.x * co - l.y * si, y: t.y + l.x * si + l.y * co };
     }
   }
-  return { x: ch.px, y: ch.py - CHAIN.length };
+  return { x: ch.px, y: ch.py - sim.ruleset.arena.chain.length };
 }
 
 /** Hang a freshly made piece from the intact chains its cells carry. */
@@ -96,7 +96,7 @@ export function hangPiece(sim: Sim, e: Entity) {
     }
     const l = cellTop(c);
     ch.piece = e.id;
-    ch.joint = sim.world.createImpulseJoint(RAPIER.JointData.rope(CHAIN.length, { x: ch.px, y: ch.py }, l), sim.terrain.body, e.body, true);
+    ch.joint = sim.world.createImpulseJoint(RAPIER.JointData.rope(sim.ruleset.arena.chain.length, { x: ch.px, y: ch.py }, l), sim.terrain.body, e.body, true);
   }
 }
 
@@ -105,7 +105,7 @@ function segments(sim: Sim, ch: Chain): [number, number, number, number][] {
   const a = chainAttach(sim, ch);
   return [
     [a.x, a.y, ch.px, ch.py],
-    [ch.px, ch.py, ch.px, ch.py + CHAIN.reachAbove],
+    [ch.px, ch.py, ch.px, ch.py + sim.ruleset.arena.chain.reachAbove],
   ];
 }
 
@@ -143,7 +143,7 @@ function crossing(p0x: number, p0y: number, p1x: number, p1y: number, q0x: numbe
   return { x: p0x + rx * t, y: p0y + ry * t };
 }
 
-/** Does a shot from (x0, y0) to (x1, y1) pass through (or within CHAIN.hitRadius of) the chain? Returns the hit point. */
+/** Does a shot from (x0, y0) to (x1, y1) pass through (or within sim.ruleset.arena.chain.hitRadius of) the chain? Returns the hit point. */
 function shotHit(sim: Sim, ch: Chain, x0: number, y0: number, x1: number, y1: number): { x: number; y: number } | null {
   for (const s of segments(sim, ch)) {
     const c = crossing(x0, y0, x1, y1, s[0], s[1], s[2], s[3]);
@@ -151,10 +151,10 @@ function shotHit(sim: Sim, ch: Chain, x0: number, y0: number, x1: number, y1: nu
   }
   // grazing: the shot's end points near the chain, or the chain's ends near the shot
   const n0 = nearest(sim, ch, x1, y1);
-  if (n0.d <= CHAIN.hitRadius) return n0;
+  if (n0.d <= sim.ruleset.arena.chain.hitRadius) return n0;
   for (const s of segments(sim, ch)) {
     const c = closestOnSeg(s[0], s[1], x0, y0, x1, y1);
-    if (c.d <= CHAIN.hitRadius) return { x: s[0], y: s[1] };
+    if (c.d <= sim.ruleset.arena.chain.hitRadius) return { x: s[0], y: s[1] };
   }
   return null;
 }
@@ -191,7 +191,7 @@ export function swingChains(sim: Sim, x: number, y: number, r: number, damage: n
   for (const ch of sim.chains) {
     if (ch.broken) continue;
     const n = nearest(sim, ch, x, y);
-    if (n.d > r + CHAIN.hitRadius) continue;
+    if (n.d > r + sim.ruleset.arena.chain.hitRadius) continue;
     damageChain(sim, ch, damage, owner, cause, n.x, n.y);
     hit = true;
   }
@@ -247,7 +247,7 @@ export function updateChains(sim: Sim) {
       if (!e || e.dead || !e.cells!.some((c) => c.chain === ch.id)) {
         // the cell it held was destroyed, or the piece is gone: removing the body removed the joint
         ch.joint = null;
-        breakChain(sim, ch, "anchor", ch.px, ch.py - CHAIN.length);
+        breakChain(sim, ch, "anchor", ch.px, ch.py - sim.ruleset.arena.chain.length);
         continue;
       }
     }
@@ -269,8 +269,8 @@ function center(o: Entity): { x: number; y: number } {
 function heavyHits(sim: Sim, ch: Chain) {
   const a = chainAttach(sim, ch);
   // an axis-aligned box around the attach-to-pivot part (no atan2: not exact across JS engines), then a distance test
-  const hx0 = Math.abs(ch.px - a.x) / 2 + CHAIN.hitRadius;
-  const hy0 = Math.abs(ch.py - a.y) / 2 + CHAIN.hitRadius;
+  const hx0 = Math.abs(ch.px - a.x) / 2 + sim.ruleset.arena.chain.hitRadius;
+  const hy0 = Math.abs(ch.py - a.y) / 2 + sim.ruleset.arena.chain.hitRadius;
   let dmg = 0;
   let by = -1;
   let hx = 0;
@@ -279,13 +279,13 @@ function heavyHits(sim: Sim, ch: Chain) {
     const o = sim.entityOf(c);
     if (!o || o.dead || o.id === ch.piece || o.kind === "fighter" || o.kind === "item" || o.kind === "grenade") return true;
     const p = center(o);
-    if (closestOnSeg(p.x, p.y, a.x, a.y, ch.px, ch.py).d > Math.min(o.hw, o.hh) + CHAIN.hitRadius) return true;
+    if (closestOnSeg(p.x, p.y, a.x, a.y, ch.px, ch.py).d > Math.min(o.hw, o.hh) + sim.ruleset.arena.chain.hitRadius) return true;
     const m = o.body.mass();
-    if (m < CHAIN.heavyMinMass) return true;
+    if (m < sim.ruleset.arena.chain.heavyMinMass) return true;
     const v = o.body.linvel();
     const s = Math.sqrt(v.x * v.x + v.y * v.y);
-    if (s < CHAIN.heavyMinSpeed) return true;
-    const d = (s - CHAIN.heavyMinSpeed + 1) * Math.sqrt(m) * CHAIN.heavyPerUnit;
+    if (s < sim.ruleset.arena.chain.heavyMinSpeed) return true;
+    const d = (s - sim.ruleset.arena.chain.heavyMinSpeed + 1) * Math.sqrt(m) * sim.ruleset.arena.chain.heavyPerUnit;
     if (d > dmg) {
       dmg = d;
       by = o.triggeredBy ?? -1;

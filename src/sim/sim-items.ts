@@ -1,26 +1,17 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { ARMORY, FIGHTER, FIGHTER_DENSITY, G, ITEM, POWER, SUPPLY, SWAP_TICKS, WEAPONS, groups } from "./constants";
+import { G, groups } from "./constants";
+import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
-import { isPickupWeapon, usesAmmo, WEAPON_LIST, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
+import { isPickupWeapon, usesAmmo, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
-
-const POWER_WEIGHTS: [PowerUp, number][] = [
-  ["health", 3],
-  ["shield", 2.5],
-  ["speed", 2],
-  ["heavy", 1.5],
-  ["damage", 2],
-  ["jump", 2],
-  ["jetpack", 2],
-];
 
 /** Starting weapons near each spawn, in the middle and up high, plus a central jetpack. */
 export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
   const nav = sim.nav;
   const c = sim.zone.center;
   const placed: { x: number; y: number }[] = [];
-  // nearest free spot on a solid surface (weapons never stack: ARMORY.minGap apart)
+  // Nearest free spot on a solid surface that meets the armory spacing.
   const near = (x: number, y: number, maxDy: number) => {
     let best: { x: number; y: number } | null = null;
     let bd = Infinity;
@@ -28,7 +19,7 @@ export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
       if (s.x1 - s.x0 < 1 || s.fragile || Math.abs(s.y - y) > maxDy) continue;
       for (let k = 0; k <= 8; k++) {
         const px = clamp(x + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.75, s.x0 + 0.4, s.x1 - 0.4);
-        if (placed.some((p) => Math.abs(p.x - px) < ARMORY.minGap && Math.abs(p.y - s.y) < 1)) continue;
+        if (placed.some((p) => Math.abs(p.x - px) < sim.ruleset.pickups.armory.minGap && Math.abs(p.y - s.y) < 1)) continue;
         const d = Math.abs(px - x) + Math.abs(s.y - y) * 1.5;
         if (d < bd) {
           bd = d;
@@ -40,33 +31,33 @@ export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
     if (best) placed.push(best);
     return best;
   };
-  const bag = sim.rng.shuffle(WEAPON_LIST.slice());
+  const bag = sim.rng.shuffle(sim.ruleset.weapons.enabled.slice());
   let k = 0;
   const next = () => bag[k++ % bag.length]!;
   for (const sp of spawns) {
-    for (let n = 0; n < ARMORY.nearSpawn; n++) {
-      const q = near(sp.x + (sp.x < c ? 1 : -1) * ARMORY.spawnOffset, sp.y, 2.5);
+    for (let n = 0; n < sim.ruleset.pickups.armory.nearSpawn; n++) {
+      const q = near(sp.x + (sp.x < c ? 1 : -1) * sim.ruleset.pickups.armory.spawnOffset, sp.y, 2.5);
       if (q) sim.spawnItem(next(), q.x, q.y + 0.4);
     }
   }
-  const pack = near(c + ARMORY.jetpackOffset, 0, 4);
+  const pack = sim.ruleset.pickups.enabled.includes("jetpack") ? near(c + sim.ruleset.pickups.armory.jetpackOffset, 0, 4) : null;
   if (pack) sim.spawnItem("jetpack", pack.x, pack.y + 0.4);
-  for (let n = 0; n < ARMORY.middle; n++) {
+  for (let n = 0; n < sim.ruleset.pickups.armory.middle; n++) {
     const q = near(c + (n % 2 ? 2.5 : -2.5) * (1 + (n >> 1)), 0, 30);
     if (q) sim.spawnItem(next(), q.x, q.y + 0.4);
   }
   const high = nav.surfaces.filter((s) => s.y > 3.5 && s.x1 - s.x0 >= 2 && Math.abs((s.x0 + s.x1) / 2 - c) < 14);
-  for (let n = 0; n < ARMORY.high && high.length; n++) {
+  for (let n = 0; n < sim.ruleset.pickups.armory.high && high.length; n++) {
     const s = high.splice(sim.rng.int(0, high.length - 1), 1)[0]!;
-    sim.spawnItem(sim.rng.pick(WEAPON_LIST), (s.x0 + s.x1) / 2 + 0.8, s.y + 0.4);
+    sim.spawnItem(sim.rng.pick(sim.ruleset.weapons.enabled), (s.x0 + s.x1) / 2 + 0.8, s.y + 0.4);
   }
 }
 /** Which weapon pickups a fighter wants, best first (from its strategy). */
 export function setPrefs(sim: Sim, id: number, prefs: readonly Weapon[]) {
   const f = sim.fighters[id]!;
-  const ok = prefs.filter((w, i) => isPickupWeapon(w) && prefs.indexOf(w) === i);
+  const ok = prefs.filter((w, i) => sim.ruleset.weapons.enabled.includes(w) && prefs.indexOf(w) === i);
   // anything not listed still beats fists, after the listed ones
-  f.prefs = [...ok, ...WEAPON_LIST.filter((w) => !ok.includes(w))];
+  f.prefs = [...ok, ...sim.ruleset.weapons.enabled.filter((w) => !ok.includes(w))];
 }
 
 /** Is a weapon pickup worth taking for this fighter right now? */
@@ -84,30 +75,33 @@ export function wantsWeapon(f: Fighter, w: Weapon): boolean {
 export function spawnItem(sim: Sim, type: ItemType, x: number, y: number, vx = 0, vy = 0): Entity {
   const body = sim.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(x, y).setLinvel(vx, vy).setAngularDamping(1));
   const collider = sim.world.createCollider(
-    RAPIER.ColliderDesc.cuboid(ITEM.size / 2, ITEM.size / 2)
+    RAPIER.ColliderDesc.cuboid(sim.ruleset.pickups.item.size / 2, sim.ruleset.pickups.item.size / 2)
       .setDensity(0.5)
       .setFriction(0.9)
       .setCollisionGroups(groups(G.ITEM, G.TERRAIN | G.PROP)),
     body,
   );
-  const e: Entity = { id: sim.entityStore.allocateId(), kind: "item", body, collider, hw: ITEM.size / 2, hh: ITEM.size / 2, hp: 1, maxHp: 1, dead: false, born: sim.tick, itemType: type };
+  const e: Entity = { id: sim.entityStore.allocateId(), kind: "item", body, collider, hw: sim.ruleset.pickups.item.size / 2, hh: sim.ruleset.pickups.item.size / 2, hp: 1, maxHp: 1, dead: false, born: sim.tick, itemType: type };
   sim.entityStore.register(e);
   sim.events.push({ type: "itemSpawn", tick: sim.tick, entity: e.id, item: type, x, y });
   return e;
 }
 
-export function randomPower(rng: Rng): PowerUp {
-  const total = POWER_WEIGHTS.reduce((a, w) => a + w[1], 0);
+export function randomPower(rng: Rng, ruleset: Ruleset = CLASSIC): PowerUp | null {
+  const choices = ruleset.pickups.enabled;
+  const weights = ruleset.pickups.weights;
+  if (!choices.length) return null;
+  const total = choices.reduce((a, p) => a + weights[p], 0);
   let r = rng.next() * total;
-  for (const [p, w] of POWER_WEIGHTS) {
-    r -= w;
+  for (const p of choices) {
+    r -= weights[p];
     if (r < 0) return p;
   }
-  return "health";
+  return choices[0]!;
 }
 
 export function randomDrop(sim: Sim, weaponChance: number): ItemType {
-  return sim.rng.chance(weaponChance) ? sim.rng.pick(WEAPON_LIST) : randomPower(sim.rng);
+  return sim.rng.chance(weaponChance) ? sim.rng.pick(sim.ruleset.weapons.enabled) : randomPower(sim.rng, sim.ruleset) ?? sim.rng.pick(sim.ruleset.weapons.enabled);
 }
 
 function looseWeapons(sim: Sim): number {
@@ -127,16 +121,17 @@ function dropX(sim: Sim): number {
 }
 
 export function supplyDrop(sim: Sim, n: number) {
-  const wc = looseWeapons(sim) >= SUPPLY.maxLooseWeapons ? 0 : SUPPLY.weaponChance;
-  sim.spawnItem(randomDrop(sim, wc), dropX(sim), 16);
-  if (n % 2 === 0) {
+  const supply = sim.ruleset.pickups.supply;
+  const wc = looseWeapons(sim) >= supply.maxLooseWeapons ? 0 : supply.weaponChance;
+  sim.spawnItem(randomDrop(sim, wc), dropX(sim), supply.itemHeight);
+  if (n % supply.propEvery === 0) {
     const x = dropX(sim);
-    const tnt = sim.rng.chance(0.3);
-    const a = sim.addProp(tnt ? "tnt" : "barrel", x, 15);
-    sim.events.push({ type: "propDrop", tick: sim.tick, entity: a.id, kind: a.kind, x, y: 15 });
+    const tnt = sim.rng.chance(supply.tntChance);
+    const a = sim.addProp(tnt ? "tnt" : "barrel", x, supply.propHeight);
+    sim.events.push({ type: "propDrop", tick: sim.tick, entity: a.id, kind: a.kind, x, y: supply.propHeight });
     if (!tnt) {
-      const b = sim.addProp("barrel", x + (sim.rng.chance(0.5) ? 0.75 : -0.75), 16.4);
-      sim.events.push({ type: "propDrop", tick: sim.tick, entity: b.id, kind: b.kind, x, y: 16.4 });
+      const b = sim.addProp("barrel", x + (sim.rng.chance(0.5) ? supply.barrelOffset : -supply.barrelOffset), supply.extraBarrelHeight);
+      sim.events.push({ type: "propDrop", tick: sim.tick, entity: b.id, kind: b.kind, x, y: supply.extraBarrelHeight });
     }
     sim.stats.propsDropped += tnt ? 1 : 2;
   }
@@ -149,7 +144,7 @@ export function tickPowers(sim: Sim, f: Fighter) {
   if (p.damage > 0 && --p.damage === 0) end("damage");
   if (p.jump > 0 && --p.jump === 0) end("jump");
   if (p.heavy > 0 && --p.heavy === 0) {
-    f.entity.collider.setDensity(FIGHTER_DENSITY);
+    f.entity.collider.setDensity(sim.ruleset.combat.density);
     end("heavy");
   }
   if (f.padCd > 0) f.padCd--;
@@ -176,13 +171,14 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
     // reach covers the whole body: from just below the feet to just above the head
     const dx = Math.abs(t.x - x);
     const dy = t.y - y;
-    const half = FIGHTER.halfHeight + FIGHTER.radius;
-    if (dx > ITEM.pickupRange * 0.85 || dy < -half - ITEM.reachBelow || dy > half + 0.3) continue;
+    const half = sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius;
+    if (dx > sim.ruleset.pickups.item.pickupRange * 0.85 || dy < -half - sim.ruleset.pickups.item.reachBelow || dy > half + 0.3) continue;
     const it = e.itemType!;
-    if (it === "jetpack" && f.power.jetpack > POWER.jetpack.fuelTicks / 2) continue;
+    if (!availableItem(sim.ruleset, it)) continue;
+    if (it === "jetpack" && f.power.jetpack > sim.ruleset.pickups.power.jetpack.fuelTicks / 2) continue;
     if (isPickupWeapon(it)) {
       // the one who just dropped it can't grab it straight back
-      if (e.owner === f.id && sim.tick - e.born < ARMORY.pickupGraceTicks) continue;
+      if (e.owner === f.id && sim.tick - e.born < sim.ruleset.pickups.armory.pickupGraceTicks) continue;
       if (!sim.wantsWeapon(f, it)) continue;
     }
     applyItem(sim, f, it, e.ammo);
@@ -193,31 +189,32 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
 }
 
 export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
+  if (!availableItem(sim.ruleset, it)) return;
   f.pickups.push(it);
   const on = (p: PowerUp) => sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power: p, on: true });
   switch (it) {
     case "health":
-      f.hp = Math.min(FIGHTER.maxHp, f.hp + ITEM.healAmount);
+      f.hp = Math.min(sim.ruleset.combat.fighter.maxHp, f.hp + sim.ruleset.pickups.item.healAmount);
       return;
     case "shield":
-      f.power.shield = POWER.shield.ticks;
+      f.power.shield = sim.ruleset.pickups.power.shield.ticks;
       f.power.shieldHits = 0;
       return on("shield");
     case "speed":
-      f.power.speed = POWER.speed.ticks;
+      f.power.speed = sim.ruleset.pickups.power.speed.ticks;
       return on("speed");
     case "heavy":
-      f.power.heavy = POWER.heavy.ticks;
-      f.entity.collider.setDensity(FIGHTER_DENSITY * POWER.heavy.densityMul);
+      f.power.heavy = sim.ruleset.pickups.power.heavy.ticks;
+      f.entity.collider.setDensity(sim.ruleset.combat.density * sim.ruleset.pickups.power.heavy.densityMul);
       return on("heavy");
     case "damage":
-      f.power.damage = POWER.damage.ticks;
+      f.power.damage = sim.ruleset.pickups.power.damage.ticks;
       return on("damage");
     case "jump":
-      f.power.jump = POWER.jump.ticks;
+      f.power.jump = sim.ruleset.pickups.power.jump.ticks;
       return on("jump");
     case "jetpack":
-      f.power.jetpack = POWER.jetpack.fuelTicks;
+      f.power.jetpack = sim.ruleset.pickups.power.jetpack.fuelTicks;
       return on("jetpack");
     default: {
       // a weapon: fill an empty (fists) slot, else replace the one not in hand and drop it
@@ -235,11 +232,11 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
         }
       }
       f.weapons[other] = it;
-      if (usesAmmo(it)) f.ammo[it] = ammo ?? WEAPONS[it].ammo;
+      if (usesAmmo(it)) f.ammo[it] = ammo ?? sim.ruleset.weapons.table[it].ammo;
       f.railCharge = 0;
-      if (it === "flamethrower") f.fuel = WEAPONS.flamethrower.fuel; // a full tank
+      if (it === "flamethrower") f.fuel = sim.ruleset.weapons.table.flamethrower.fuel; // a full tank
       f.slot = other;
-      f.swap = SWAP_TICKS;
+      f.swap = sim.ruleset.combat.swapTicks;
       f.cooldown[it] = 0;
       sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: it });
     }

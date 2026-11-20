@@ -1,3 +1,5 @@
+import { RULESET_MAX_ROUNDS } from "./ruleset";
+
 /**
  * Engine version: which physics and controller behavior made a match record.
  *
@@ -66,7 +68,7 @@ export function summarizeRecord(raw: unknown): RecordSummary | null {
   const identities = Array.isArray(r.identities) ? r.identities : [];
   const souls = Array.isArray(r.souls) ? r.souls : [];
   const labels = Array.isArray(r.labels) ? r.labels : [];
-  const rounds = (r.rounds as unknown[]).slice(0, 3).map((rd) => {
+  const rounds = (r.rounds as unknown[]).slice(0, RULESET_MAX_ROUNDS).map((rd) => {
     const x = (rd && typeof rd === "object" ? rd : {}) as Record<string, unknown>;
     const lines = Array.isArray(x.lines) ? x.lines : [];
     return { lines: [0, 1, 2, 3].map((i) => str(lines[i], 200)), winner: seat(x.winner) };
@@ -80,7 +82,7 @@ export function summarizeRecord(raw: unknown): RecordSummary | null {
     labels: [0, 1, 2, 3].map((i) => str(labels[i], 80) || str(meta[i]?.provider, 80) || null),
     colors: [0, 1, 2, 3].map((i) => color((identities[i] as { color?: unknown })?.color) ?? color((souls[i] as { color?: unknown })?.color)),
     winner: seat(r.winner),
-    wins: [0, 1, 2, 3].map((i) => (typeof wins[i] === "number" ? Math.max(0, Math.min(9, Math.floor(wins[i] as number))) : 0)),
+    wins: [0, 1, 2, 3].map((i) => (typeof wins[i] === "number" ? Math.max(0, Math.min(RULESET_MAX_ROUNDS, Math.floor(wins[i] as number))) : 0)),
     rounds,
   };
 }
