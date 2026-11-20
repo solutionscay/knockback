@@ -88,9 +88,8 @@ export class PickPanel {
     return e;
   }
 
-  /** A live (or open) match: fetch its cards and this browser's pick. */
+  /** A live (or open) match: fetch its cards and this browser's pick (again when an agent joins or the match starts). */
   async setMatch(id: string) {
-    if (this.view?.match === id) return;
     this.readOnly = false;
     await this.load(`/api/matches/${encodeURIComponent(id)}/picks`);
   }
