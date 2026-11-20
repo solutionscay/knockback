@@ -2,7 +2,7 @@ import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { DT, FIGHTER, FIGHTER_DENSITY, G, POWER, SWAP_TICKS, groups } from "./constants";
 import type { Sim } from "./sim";
 import { ALL_WEAPONS, WEAPON_LIST, type Entity, type Fighter, type Input, type Look } from "./sim-types";
-import { clamp } from "./dmath";
+import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
 
 export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number) {
@@ -124,7 +124,7 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   }
   body.setLinvel({ x: vx, y: vy }, true);
 
-  const al = Math.sqrt(inp.aimX * inp.aimX + inp.aimY * inp.aimY);
+  const al = length2D(inp.aimX, inp.aimY);
   if (al > 1e-6) {
     f.aimX = inp.aimX / al;
     f.aimY = inp.aimY / al;

@@ -4,13 +4,9 @@
  * choices. The plan and the line are judged separately, so a good line can
  * survive a bad plan (and vice versa).
  */
-import { autoLabel, checkRule, MAX_RULE_LABEL, PICKUPS, ruleKey, WHO_TRIGGERS } from "../sim/rules";
-import { MAX_RULES, RULE_DO, RULE_WHEN, type ItemType, type Retaliate, type Rule, type RuleWho, type Stance, type Strategy, type TargetPref, type Weapon } from "../sim/sim";
+import { autoLabel, checkRule, MAX_RULE_LABEL, PICKUPS, ruleKey, RULE_RETALIATE, RULE_STANCES, WHO_TRIGGERS } from "../sim/rules";
+import { isPickupWeapon, MAX_RULES, RULE_DO, RULE_WHEN, TARGET_PREFERENCES, type ItemType, type Retaliate, type Rule, type RuleWho, type Stance, type Strategy, type TargetPref, type Weapon } from "../sim/sim-types";
 
-const WEAPONS: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple"];
-const STANCES: readonly Stance[] = ["rush", "distance", "cover", "item"];
-const PREFS: readonly TargetPref[] = ["nearest", "weakest", "strongest", "leader", "rocket", "shotgun"];
-const RETALIATE: readonly Retaliate[] = ["attacker", "turn", "ignore"];
 const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", grappling: "grapple", "grappling hook": "grapple", "baseball bat": "bat", rockets: "rocket", grenades: "grenade", launcher: "rocket" };
 
 export const MAX_LINE = 120;
@@ -158,14 +154,14 @@ export function validatePlan(o: Record<string, unknown>, me: number, names: stri
   const weapon = (v: unknown): Weapon | null => {
     if (typeof v !== "string") return null;
     const w = v.toLowerCase().trim();
-    return (WEAPONS as readonly string[]).includes(w) ? (w as Weapon) : (WEAPON_ALIAS[w] ?? null);
+    return isPickupWeapon(w) ? w : (WEAPON_ALIAS[w] ?? null);
   };
   const rawW = o.weapons ?? o.loadout;
   const ws = Array.isArray(rawW) ? rawW.map(weapon) : typeof rawW === "string" ? [weapon(rawW)] : [];
   const weapons = ws.filter((w, i): w is Weapon => !!w && ws.indexOf(w) === i);
   if (!weapons.length || weapons.length !== ws.length || weapons.length > 3) problems.push(`weapons ${JSON.stringify(rawW)}`);
   const stance = typeof o.stance === "string" ? (o.stance.toLowerCase().trim() as Stance) : null;
-  if (!stance || !STANCES.includes(stance)) problems.push(`stance ${JSON.stringify(o.stance)}`);
+  if (!stance || !RULE_STANCES.includes(stance)) problems.push(`stance ${JSON.stringify(o.stance)}`);
   let target: TargetPref | null = null;
   let grudge: number | undefined;
   if (typeof o.target === "string") {
@@ -174,13 +170,13 @@ export function validatePlan(o: Record<string, unknown>, me: number, names: stri
     if (id >= 0 && id !== me) {
       target = "grudge";
       grudge = id;
-    } else if ((PREFS as readonly string[]).includes(t)) target = t as TargetPref;
+    } else if ((TARGET_PREFERENCES as readonly string[]).includes(t)) target = t as TargetPref;
   }
   if (!target) problems.push(`target ${JSON.stringify(o.target)}`);
   let retaliate: Retaliate = "turn";
   if (o.retaliate !== undefined) {
     const r = typeof o.retaliate === "string" ? o.retaliate.toLowerCase().trim() : "";
-    if ((RETALIATE as readonly string[]).includes(r)) retaliate = r as Retaliate;
+    if ((RULE_RETALIATE as readonly string[]).includes(r)) retaliate = r as Retaliate;
     else problems.push(`retaliate ${JSON.stringify(o.retaliate)}`);
   }
   if (problems.length) return { strategy: null, problems };

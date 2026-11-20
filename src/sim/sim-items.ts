@@ -1,7 +1,7 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { ARMORY, FIGHTER, FIGHTER_DENSITY, G, ITEM, POWER, SUPPLY, SWAP_TICKS, groups } from "./constants";
 import type { Sim } from "./sim";
-import { WEAPON_LIST, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
+import { isPickupWeapon, WEAPON_LIST, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
 
@@ -109,7 +109,7 @@ export function randomDrop(sim: Sim, weaponChance: number): ItemType {
 
 function looseWeapons(sim: Sim): number {
   let n = 0;
-  for (const e of sim.entities.values()) if (e.kind === "item" && !e.dead && WEAPON_LIST.includes(e.itemType as Weapon)) n++;
+  for (const e of sim.entities.values()) if (e.kind === "item" && !e.dead && isPickupWeapon(e.itemType)) n++;
   return n;
 }
 function dropX(sim: Sim): number {
@@ -172,10 +172,10 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
     const half = FIGHTER.halfHeight + FIGHTER.radius;
     if (dx > ITEM.pickupRange * 0.85 || dy < -half - ITEM.reachBelow || dy > half + 0.3) continue;
     const it = e.itemType!;
-    if (WEAPON_LIST.includes(it as Weapon)) {
+    if (isPickupWeapon(it)) {
       // the one who just dropped it can't grab it straight back
       if (e.owner === f.id && sim.tick - e.born < ARMORY.pickupGraceTicks) continue;
-      if (!sim.wantsWeapon(f, it as Weapon)) continue;
+      if (!sim.wantsWeapon(f, it)) continue;
     }
     sim.applyItem(f, it);
     sim.events.push({ type: "pickup", tick: sim.tick, fighter: f.id, item: e.itemType!, x: t.x, y: t.y });

@@ -2,7 +2,8 @@ import { FIGHTER } from "./constants";
 import type { Controller } from "./controller";
 import { PATIENCE, PICKUP } from "./controller-tuning";
 import type { Link, Surface } from "./nav";
-import { clamp, type Fighter, type Input, type Sim, type Weapon } from "./sim";
+import { clamp, length2D } from "./dmath";
+import { POWER_LIST, type Fighter, type Input, type Sim, type Weapon } from "./sim";
 
 export interface Goal {
   surface: number;
@@ -62,7 +63,7 @@ export class ControllerNavigation {
         if ((this.skipItems.get(it.id) ?? -1) > sim.tick) continue;
         const type = it.itemType!;
         const sought = seeking.indexOf(type);
-        const isWeapon = type !== "health" && type !== "shield" && type !== "speed" && type !== "heavy" && type !== "damage" && type !== "jump";
+        const isWeapon = !(POWER_LIST as readonly string[]).includes(type);
         let limit: number;
         let extra = 0;
         if (sought >= 0 && (!isWeapon || sim.wantsWeapon(me, type as Weapon))) {
@@ -139,7 +140,7 @@ export class ControllerNavigation {
       return this.bestPoint(sim, plan, (px, py, sid) => {
         const dx = px - tp.x;
         const dy = py + 1 - tp.y;
-        const d = Math.sqrt(dx * dx + dy * dy);
+        const d = length2D(dx, dy);
         let s = Math.abs(d - ideal) * 0.8 + zonePenalty(px) + fragilePenalty(sid);
         if (d > 0.5) {
           const hit = sim.raycast(tp.x, tp.y, dx / d, dy / d, d);
@@ -154,7 +155,7 @@ export class ControllerNavigation {
     return this.bestPoint(sim, plan, (px, py, sid) => {
       const dx = px - tp.x;
       const dy = py + 1 - tp.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
+      const d = length2D(dx, dy);
       let s = Math.abs(d - ideal) + zonePenalty(px) + fragilePenalty(sid);
       if (d > 0.5) {
         const hit = sim.raycast(tp.x, tp.y, dx / d, dy / d, d);

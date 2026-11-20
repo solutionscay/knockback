@@ -12,9 +12,8 @@
  */
 import type { Morale, MoraleState, RoundFacts } from "./morale";
 import type { Rng } from "./rng";
-import type { Strategy, Weapon } from "./sim";
+import { isPickupWeapon, type Rule, type Strategy, type Weapon } from "./sim-types";
 import type { LineTemplate, Soul, Voice } from "./soul";
-import type { Rule } from "./sim";
 
 export interface DecideContext {
   /** "intro" before round 1, "between" after a round */
@@ -283,7 +282,7 @@ export function houseStrategy(ctx: DecideContext): Strategy {
   }
   // whatever killed me last round goes up my wish list
   const killedBy = ctx.last?.fighters[ctx.me]?.koBy?.weapon as Weapon | undefined;
-  if (killedBy && soul.weapons.length && ["rocket", "shotgun", "bat", "grenade", "grapple"].includes(killedBy) && !weapons.includes(killedBy) && m.state !== "rattled") weapons = [weapons[0]!, killedBy, ...weapons.slice(1)].slice(0, 3);
+  if (killedBy && soul.weapons.length && isPickupWeapon(killedBy) && !weapons.includes(killedBy) && m.state !== "rattled") weapons = [weapons[0]!, killedBy, ...weapons.slice(1)].slice(0, 3);
   let retaliate: Strategy["retaliate"] = soul.retaliate;
   const st = ctx.last?.stats;
   if (st && retaliate !== "ignore") {

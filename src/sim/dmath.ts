@@ -41,3 +41,8 @@ export function dcos(x: number): number {
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
+
+/** Euclidean length with the simulation's explicit square, add and sqrt. */
+export function length2D(x: number, y: number): number {
+  return Math.sqrt(x * x + y * y);
+}

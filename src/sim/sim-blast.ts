@@ -2,7 +2,7 @@ import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { type Blast } from "./constants";
 import type { Sim } from "./sim";
 import { type Entity, type ExplosionKind } from "./sim-types";
-import { clamp } from "./dmath";
+import { clamp, length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { damagePiece } from "./sim-terrain";
 
@@ -29,7 +29,7 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
     const t = e.body.translation();
     const dx = t.x - x;
     const dy = t.y - y;
-    const d = Math.sqrt(dx * dx + dy * dy);
+    const d = length2D(dx, dy);
     const edge = Math.max(0, d - Math.min(e.hw, e.hh));
     const f = clamp(1 - edge / spec.radius, 0, 1);
     if (f <= 0 && e.kind !== "chunk") continue;
@@ -39,7 +39,7 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
       const fi = e.fighter;
       if (!fi.alive) continue;
       ny += 0.55;
-      const l = Math.sqrt(nx * nx + ny * ny);
+      const l = length2D(nx, ny);
       nx /= l;
       ny /= l;
       const kb = spec.knockback * (0.45 + 0.55 * f);

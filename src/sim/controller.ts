@@ -4,13 +4,14 @@
  * engine does all target picking, pickup hunting, weapon switching, aiming
  * and movement. Every fighter gets the same controller and the same aim.
  */
+import { length2D } from "./dmath";
 import { REFLEX } from "./constants";
 import { aimAndFire, inReach, sightTarget } from "./controller-aim";
 import { ControllerNavigation } from "./controller-navigation";
 import { PATIENCE } from "./controller-tuning";
 import type { Surface } from "./nav";
 import { RuleEngine } from "./ruleeval";
-import { NO_INPUT, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
+import { NO_INPUT, isPickupWeapon, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
 
 export { ballisticAim, inReach } from "./controller-aim";
 export type { Goal } from "./controller-navigation";
@@ -236,7 +237,7 @@ export class Controller {
     if (this.rules.any) {
       this.rules.evaluate(sim, this, me);
       // an active seek rule for a weapon puts it first in the wish list (so it gets picked up)
-      const seekW = this.rules.seeking().filter((x): x is Weapon => x === "rocket" || x === "shotgun" || x === "bat" || x === "grenade" || x === "grapple");
+      const seekW = this.rules.seeking().filter(isPickupWeapon);
       const key = seekW.join(">");
       if (key !== this.prefsKey) {
         this.prefsKey = key;
@@ -305,7 +306,7 @@ export class Controller {
       input.weapon = w;
       input.aimX = dx0 / dist;
       input.aimY = (dy0 + (w === "grenade" ? 0.6 : 0)) / dist;
-      const al = Math.sqrt(input.aimX * input.aimX + input.aimY * input.aimY);
+      const al = length2D(input.aimX, input.aimY);
       input.aimX /= al;
       input.aimY /= al;
       input.fire = (sim.weapon(me) === w || w === "fist") && me.swap === 0 && me.cooldown[w] === 0;

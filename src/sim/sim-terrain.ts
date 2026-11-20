@@ -13,10 +13,7 @@ export function crumbleUnder(sim: Sim, f: Fighter, x: number) {
     const cx = g.cx(x + ox);
     if (g.matAt(cx, cy) !== Mat.Crumble) continue;
     const m = Mat.Crumble;
-    if (sim.terrain.damageCell(cx, cy, CRUMBLE_DPS * DT)) {
-      sim.stats.cellsDestroyed++;
-      sim.events.push({ type: "carve", tick: sim.tick, cells: [{ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL / 2, mat: m }] });
-    }
+    damageTerrainCell(sim, cx, cy, m, CRUMBLE_DPS * DT);
   }
 }
 
@@ -26,10 +23,14 @@ export function chipTerrain(sim: Sim, x: number, y: number, dx: number, dy: numb
   const cx = g.cx(x + dx * 0.05);
   const cy = g.cy(y + dy * 0.05);
   const m = g.matAt(cx, cy);
-  if (m !== Mat.Empty && sim.terrain.damageCell(cx, cy, dmg)) {
-    sim.stats.cellsDestroyed++;
-    sim.events.push({ type: "carve", tick: sim.tick, cells: [{ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL / 2, mat: m }] });
-  }
+  if (m !== Mat.Empty) damageTerrainCell(sim, cx, cy, m, dmg);
+}
+
+function damageTerrainCell(sim: Sim, cx: number, cy: number, mat: Mat, damage: number) {
+  if (!sim.terrain.damageCell(cx, cy, damage)) return;
+  sim.stats.cellsDestroyed++;
+  const g = sim.grid;
+  sim.events.push({ type: "carve", tick: sim.tick, cells: [{ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL / 2, mat }] });
 }
 
 /** Rebuild changed terrain colliders and drop whatever lost its support. */

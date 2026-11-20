@@ -1,7 +1,7 @@
 import { FIGHTER, G, POWER, groups } from "./constants";
 import type { Sim } from "./sim";
 import { type Fighter } from "./sim-types";
-import { clamp } from "./dmath";
+import { clamp, length2D } from "./dmath";
 import { dropWeapons } from "./sim-items";
 
 export function kbMult(hp: number): number {
@@ -59,7 +59,7 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
     const nvy = (stack ? v.y : Math.max(v.y * 0.3, 0)) + kby * m;
     f.kbTick = sim.tick;
     body.setLinvel({ x: nvx, y: nvy }, true);
-    kb = Math.sqrt(kbx * kbx + kby * kby) * m;
+    kb = length2D(kbx, kby) * m;
     f.stun = Math.max(f.stun, Math.round(clamp(kb * 1.7, 6, 55)));
     f.grounded = false;
   }

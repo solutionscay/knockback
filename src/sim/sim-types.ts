@@ -6,7 +6,12 @@ import type { PieceCell } from "./terrain";
 export type Weapon = "rocket" | "shotgun" | "bat" | "grenade" | "grapple" | "fist";
 /** Weapons that exist as pickups. */
 export const WEAPON_LIST: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple"];
-export const ALL_WEAPONS: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple", "fist"];
+export const ALL_WEAPONS: readonly Weapon[] = [...WEAPON_LIST, "fist"];
+
+export function isPickupWeapon(value: unknown): value is Exclude<Weapon, "fist"> {
+  return WEAPON_LIST.includes(value as Weapon);
+}
+
 export type PowerUp = "health" | "shield" | "speed" | "heavy" | "damage" | "jump";
 export const POWER_LIST: readonly PowerUp[] = ["health", "shield", "speed", "heavy", "damage", "jump"];
 export type ItemType = PowerUp | Weapon;
@@ -15,7 +20,8 @@ export type EntityKind = PropKind | "fighter" | "chunk" | "item" | "grenade";
 export type ExplosionKind = "rocket" | "barrel" | "grenade" | "tnt" | "gas";
 
 /** Who a fighter goes after. Resolved continuously during the fight. */
-export type TargetPref = "nearest" | "weakest" | "strongest" | "rocket" | "shotgun" | "leader" | "grudge";
+export const TARGET_PREFERENCES = ["nearest", "weakest", "strongest", "leader", "rocket", "shotgun"] as const;
+export type TargetPref = (typeof TARGET_PREFERENCES)[number] | "grudge";
 
 /**
  * What to do when someone keeps hitting you from behind (see the reflex in controller.ts):
@@ -113,7 +119,6 @@ export interface Entity {
   joint?: RAPIER.ImpulseJoint | null;
   anchorCx?: number;
   anchorCy?: number;
-  ropeLen?: number;
   ax?: number;
   ay?: number;
   // terrain piece

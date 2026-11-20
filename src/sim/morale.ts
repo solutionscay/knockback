@@ -13,6 +13,7 @@
  *   confident  score >= 0
  *   rattled    otherwise                           (shaky aim)
  */
+import { clamp } from "./dmath";
 import type { FightResult } from "./fight";
 import type { RoundStats } from "./roundstats";
 
@@ -73,8 +74,6 @@ export interface Morale {
   /** short human-readable reasons for the last change (for the viewer and logs) */
   reasons: string[];
 }
-
-const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
 export function moraleState(m: Pick<Morale, "score" | "anger">, myWins: number, bestOtherWins: number): MoraleState {
   if (m.anger >= 50) return "furious";

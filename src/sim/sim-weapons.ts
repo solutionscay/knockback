@@ -2,7 +2,7 @@ import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { DT, G, WEAPONS, groups } from "./constants";
 import type { Sim } from "./sim";
 import { type Entity, type Fighter, type Rocket, type Weapon } from "./sim-types";
-import { dcos, dsin } from "./dmath";
+import { length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { chipTerrain } from "./sim-terrain";
 
@@ -33,11 +33,11 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
       break;
     case "bat":
       f.cooldown.bat = WEAPONS.bat.cooldown;
-      swingBat(sim, f, ox, oy, dx, dy);
+      swingMelee(sim, f, "bat", ox, oy, dx, dy);
       break;
     case "fist":
       f.cooldown.fist = WEAPONS.fist.cooldown;
-      punch(sim, f, ox, oy, dx, dy);
+      swingMelee(sim, f, "fist", ox, oy, dx, dy);
       break;
     case "grenade":
       f.cooldown.grenade = WEAPONS.grenade.cooldown;
@@ -58,7 +58,7 @@ function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
     const spread = ((i / (W.pellets - 1)) * 2 - 1) * 0.16 + sim.rng.gauss() * 0.03;
     let rx = dx + px * spread;
     let ry = dy + py * spread;
-    const l = Math.sqrt(rx * rx + ry * ry);
+    const l = length2D(rx, ry);
     rx /= l;
     ry /= l;
     const hit = sim.raycast(ox, oy, rx, ry, W.range, f.entity.collider);
@@ -84,19 +84,26 @@ function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
   }
 }
 
-function swingBat(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
-  const B = WEAPONS.bat;
-  const cx = ox + dx * B.reach;
-  const cy = oy + dy * B.reach + 0.1;
+const MELEE = {
+  bat: { propDamage: 15, propMassCap: 4, terrainOffset: 0.3 },
+  fist: { propDamage: 4, propMassCap: 3, terrainOffset: 0.2 },
+} as const;
+
+function swingMelee(sim: Sim, f: Fighter, weapon: "bat" | "fist", ox: number, oy: number, dx: number, dy: number) {
+  const spec = WEAPONS[weapon];
+  const tuning = MELEE[weapon];
+  const cx = ox + dx * spec.reach;
+  const height = oy + dy * spec.reach;
+  const cy = weapon === "bat" ? height + 0.1 : height;
   const found: Entity[] = [];
-  sim.world.intersectionsWithShape({ x: cx, y: cy }, 0, new RAPIER.Ball(B.radius), (c) => {
+  sim.world.intersectionsWithShape({ x: cx, y: cy }, 0, new RAPIER.Ball(spec.radius), (c) => {
     const e = sim.entityOf(c);
     if (e && !e.dead && e !== f.entity && !found.includes(e)) found.push(e);
     return true;
   });
   let lx = dx;
-  let ly = dy + B.lift;
-  const l = Math.sqrt(lx * lx + ly * ly);
+  let ly = dy + spec.lift;
+  const l = length2D(lx, ly);
   lx /= l;
   ly /= l;
   let hitAny = false;
@@ -104,66 +111,25 @@ function swingBat(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: 
     if (e.kind === "fighter" && e.fighter) {
       if (!e.fighter.alive) continue;
       const t = e.body.translation();
-      sim.damageFighter(e.fighter, B.damage, f.id, lx * B.knockback, ly * B.knockback, "bat", t.x, t.y);
+      sim.damageFighter(e.fighter, spec.damage, f.id, lx * spec.knockback, ly * spec.knockback, weapon, t.x, t.y);
       hitAny = true;
     } else if (e.kind !== "item") {
-      hitProp(sim, e, 15, f.id, "bat", cx, cy);
+      hitProp(sim, e, tuning.propDamage, f.id, weapon, cx, cy);
       if (!e.dead) {
         const m = e.body.mass();
-        e.body.applyImpulse({ x: lx * B.propImpulse * Math.min(m, 4), y: ly * B.propImpulse * Math.min(m, 4) }, true);
+        e.body.applyImpulse({ x: lx * spec.propImpulse * Math.min(m, tuning.propMassCap), y: ly * spec.propImpulse * Math.min(m, tuning.propMassCap) }, true);
       }
       hitAny = true;
     }
   }
-  // the bat smashes through walls too
-  const smashed = sim.terrain.carve(cx + dx * 0.3, cy + dy * 0.3, B.terrainRadius, B.terrainDamage);
+  // The swing also damages static terrain just past its hit center.
+  const smashed = sim.terrain.carve(cx + dx * tuning.terrainOffset, cy + dy * tuning.terrainOffset, spec.terrainRadius, spec.terrainDamage);
   if (smashed.length) {
     sim.stats.cellsDestroyed += smashed.length;
     sim.events.push({ type: "carve", tick: sim.tick, cells: smashed });
     hitAny = true;
   }
-  sim.events.push({ type: "swing", tick: sim.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny, weapon: "bat" });
-}
-
-/** Fists: a short jab, small shove, chips nothing. */
-function punch(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
-  const P = WEAPONS.fist;
-  const cx = ox + dx * P.reach;
-  const cy = oy + dy * P.reach;
-  const found: Entity[] = [];
-  sim.world.intersectionsWithShape({ x: cx, y: cy }, 0, new RAPIER.Ball(P.radius), (c) => {
-    const e = sim.entityOf(c);
-    if (e && !e.dead && e !== f.entity && !found.includes(e)) found.push(e);
-    return true;
-  });
-  let lx = dx;
-  let ly = dy + P.lift;
-  const l = Math.sqrt(lx * lx + ly * ly);
-  lx /= l;
-  ly /= l;
-  let hitAny = false;
-  for (const e of found) {
-    if (e.kind === "fighter" && e.fighter) {
-      if (!e.fighter.alive) continue;
-      const t = e.body.translation();
-      sim.damageFighter(e.fighter, P.damage, f.id, lx * P.knockback, ly * P.knockback, "fist", t.x, t.y);
-      hitAny = true;
-    } else if (e.kind !== "item") {
-      hitProp(sim, e, 4, f.id, "fist", cx, cy);
-      if (!e.dead) {
-        const m = e.body.mass();
-        e.body.applyImpulse({ x: lx * P.propImpulse * Math.min(m, 3), y: ly * P.propImpulse * Math.min(m, 3) }, true);
-      }
-      hitAny = true;
-    }
-  }
-  const chipped = sim.terrain.carve(cx + dx * 0.2, cy + dy * 0.2, P.terrainRadius, P.terrainDamage);
-  if (chipped.length) {
-    sim.stats.cellsDestroyed += chipped.length;
-    sim.events.push({ type: "carve", tick: sim.tick, cells: chipped });
-    hitAny = true;
-  }
-  sim.events.push({ type: "swing", tick: sim.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny, weapon: "fist" });
+  sim.events.push({ type: "swing", tick: sim.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny, weapon });
 }
 
 function throwGrenade(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
@@ -195,7 +161,7 @@ function fireGrapple(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
     const t = e.body.translation();
     let px = ox - t.x;
     let py = oy - t.y;
-    const l = Math.sqrt(px * px + py * py) || 1;
+    const l = length2D(px, py) || 1;
     px /= l;
     py /= l;
     if (e.kind === "fighter" && e.fighter) {
@@ -229,7 +195,7 @@ export function updateRockets(sim: Sim) {
     r.vy -= W.gravity * DT;
     const sx = r.vx * DT;
     const sy = r.vy * DT;
-    const len = Math.sqrt(sx * sx + sy * sy);
+    const len = length2D(sx, sy);
     const owner = sim.fighters[r.owner]!;
     const exclude = r.age < 30 && !owner.removed ? owner.entity.collider : undefined;
     const hit = sim.raycast(r.x, r.y, sx / len, sy / len, len, exclude);

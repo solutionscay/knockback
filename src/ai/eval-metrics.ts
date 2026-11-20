@@ -1,4 +1,5 @@
-import type { Strategy, Weapon } from "../sim/sim";
+import { ruleKey } from "../sim/rules";
+import { isPickupWeapon, type Strategy } from "../sim/sim-types";
 import { checkLine } from "./factcheck";
 import { NA, type ChangeStats, type EvalDecision, type EvalMatch, type EvalReport, type FactCheck, type FieldVariety, type FollowStats, type ProviderReliability, type RulesStats, type VarietyGroup } from "./eval-types";
 
@@ -80,7 +81,7 @@ function planDiff(a: Strategy, b: Strategy, names: string[]): string[] {
   if (targetLabel(a, names) !== targetLabel(b, names)) out.push("target");
   if ((a.retaliate ?? "turn") !== (b.retaliate ?? "turn")) out.push("retaliate");
   if (a.weapons.join(">") !== b.weapons.join(">")) out.push("weapons");
-  if (JSON.stringify((a.rules ?? []).map((r) => [r.when, r.who, r.item, r.value, r.do, r.doItem, r.stance, r.retaliate])) !== JSON.stringify((b.rules ?? []).map((r) => [r.when, r.who, r.item, r.value, r.do, r.doItem, r.stance, r.retaliate]))) out.push("rules");
+  if (JSON.stringify((a.rules ?? []).map(ruleKey)) !== JSON.stringify((b.rules ?? []).map(ruleKey))) out.push("rules");
   return out;
 }
 
@@ -110,8 +111,6 @@ export function changeOf(matches: EvalMatch[], role: Role): { all: ChangeStats |
   return { all: all.transitions ? all : NA, byFighter };
 }
 
-const PICKUP: readonly string[] = ["rocket", "shotgun", "bat", "grenade", "grapple"];
-
 export function followsOf(matches: EvalMatch[], role: Role): FollowStats | NA {
   const c = { killer: [0, 0], winner: [0, 0], top: [0, 0], named: [0, 0], weapon: [0, 0] };
   let decisions = 0;
@@ -129,9 +128,9 @@ export function followsOf(matches: EvalMatch[], role: Role): FollowStats | NA {
       c.killer[0]++;
       if (named === ko.by) c.killer[1]++;
       const before = (role === "house" && !hasHouseSeats(matches) ? prev.decisions[seat]!.house : undefined)?.weapons ?? prev.decisions[seat]!.strategy.weapons;
-      if (PICKUP.includes(ko.weapon) && !before.includes(ko.weapon as Weapon)) {
+      if (isPickupWeapon(ko.weapon) && !before.includes(ko.weapon)) {
         c.weapon[0]++;
-        if (s.weapons.includes(ko.weapon as Weapon)) c.weapon[1]++;
+        if (s.weapons.includes(ko.weapon)) c.weapon[1]++;
       }
     }
     if (f.winner >= 0 && f.winner !== seat) {

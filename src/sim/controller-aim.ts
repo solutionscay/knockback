@@ -1,3 +1,4 @@
+import { length2D } from "./dmath";
 import { WEAPONS } from "./constants";
 import type { Fighter, Input, Sim, Weapon } from "./sim";
 
@@ -6,7 +7,7 @@ export function sightTarget(sim: Sim, me: Fighter, aimTarget: Fighter, mp: Retur
   const atv = sim.vel(aimTarget);
   const dx0 = atp.x - mp.x;
   const dy0 = atp.y - mp.y;
-  const dist = Math.sqrt(dx0 * dx0 + dy0 * dy0);
+  const dist = length2D(dx0, dy0);
   const sight = dist > 0.1 ? sim.raycast(mp.x, mp.y + 0.25, dx0 / dist, (dy0 - 0.25) / dist, dist + 0.5, me.entity.collider) : null;
   const los = !!sight && sight.entity === aimTarget.entity;
   return { atp, atv, dx0, dy0, dist, los };
@@ -40,7 +41,7 @@ export function aimAndFire(
   } else {
     ay -= 0.25;
   }
-  const al = Math.sqrt(ax * ax + ay * ay) || 1;
+  const al = length2D(ax, ay) || 1;
   input.aimX = ax / al;
   input.aimY = ay / al;
 
@@ -73,7 +74,7 @@ export function aimAndFire(
     const n = aimNoise * sim.rng.gauss() * (weapon === "rocket" || weapon === "grenade" ? 1 : 0.5);
     const nx = input.aimX - input.aimY * n;
     const ny = input.aimY + input.aimX * n;
-    const l = Math.sqrt(nx * nx + ny * ny);
+    const l = length2D(nx, ny);
     input.aimX = nx / l;
     input.aimY = ny / l;
     input.fire = true;

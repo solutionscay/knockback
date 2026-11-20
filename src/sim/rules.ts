@@ -3,7 +3,7 @@
  * resolved items). Shared by the AI parser (src/ai/parse.ts), the viewer's
  * sanitizer (records, the live stream) and the house bots. Pure.
  */
-import { POWER_LIST, RULE_DO, RULE_WHEN, WEAPON_LIST, type ItemType, type Rule, type RuleWhen, type RuleWho } from "./sim";
+import { isPickupWeapon, POWER_LIST, RULE_DO, RULE_WHEN, WEAPON_LIST, type ItemType, type Rule, type RuleWhen, type RuleWho } from "./sim-types";
 
 export const RULE_STANCES = ["rush", "distance", "cover", "item"] as const;
 export const RULE_RETALIATE = ["attacker", "turn", "ignore"] as const;
@@ -35,11 +35,11 @@ export function checkRule(r: Rule, me: number): string | null {
     if (typeof r.value !== "number" || !Number.isInteger(r.value)) return `"${r.when}" needs a whole-number "value"`;
     if (r.value < range[0] || r.value > range[1]) return `"value" ${r.value} is out of range ${range[0]}-${range[1]}`;
   }
-  if (r.when === "holds" && !WEAPON_LIST.includes(r.item as never)) return `"holds" needs a weapon, got ${JSON.stringify(r.item)}`;
+  if (r.when === "holds" && !isPickupWeapon(r.item)) return `"holds" needs a weapon, got ${JSON.stringify(r.item)}`;
   if (r.when === "item_near" && !PICKUPS.includes(r.item as never)) return `"item_near" needs a pickup, got ${JSON.stringify(r.item)}`;
   if ((r.do === "target" || r.do === "avoid") && !SUBJECT_TRIGGERS.includes(r.when)) return `"${r.do}" needs a trigger about a fighter, not "${r.when}"`;
   if (r.do === "seek" && !PICKUPS.includes(r.doItem as never)) return `"seek" needs a pickup, got ${JSON.stringify(r.doItem)}`;
-  if (r.do === "use" && !WEAPON_LIST.includes(r.doItem as never)) return `"use" needs a weapon, got ${JSON.stringify(r.doItem)}`;
+  if (r.do === "use" && !isPickupWeapon(r.doItem)) return `"use" needs a weapon, got ${JSON.stringify(r.doItem)}`;
   if (r.do === "stance" && !(RULE_STANCES as readonly string[]).includes(r.stance as string)) return `"stance" needs one of ${RULE_STANCES.join(", ")}`;
   if (r.do === "retaliate" && !(RULE_RETALIATE as readonly string[]).includes(r.retaliate as string)) return `"retaliate" needs one of ${RULE_RETALIATE.join(", ")}`;
   if (typeof r.label !== "string" || !r.label || r.label.length > MAX_RULE_LABEL) return "bad label";

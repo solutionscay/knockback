@@ -9,8 +9,9 @@
  * block of `key: value` lines between `---` fences, a free-text body, and an
  * optional `## Lines` section of `- context [states]: text` entries.
  */
-import type { MoraleState } from "./morale";
-import type { Retaliate, Stance, TargetPref, Weapon } from "./sim";
+import { MORALE_STATES, type MoraleState } from "./morale";
+import { RULE_RETALIATE, RULE_STANCES } from "./rules";
+import { isPickupWeapon, SEAT_LOOKS, TARGET_PREFERENCES, WEAPON_LIST, type Retaliate, type Stance, type TargetPref, type Weapon } from "./sim-types";
 
 export type Temperament = "cocky" | "confident" | "calm" | "nervous";
 export type Voice = "brash" | "smug" | "nervous" | "sly" | "plain";
@@ -38,21 +39,17 @@ export interface Soul {
   lines: LineTemplate[];
 }
 
-export const PICKUP_WEAPONS: readonly Weapon[] = ["rocket", "shotgun", "bat", "grenade", "grapple"];
-const STANCES: readonly Stance[] = ["rush", "distance", "cover", "item"];
-const TARGETS: readonly TargetPref[] = ["nearest", "weakest", "strongest", "leader", "rocket", "shotgun"];
-const RETALIATE: readonly Retaliate[] = ["attacker", "turn", "ignore"];
+export { WEAPON_LIST as PICKUP_WEAPONS };
 const TEMPERAMENTS: readonly Temperament[] = ["cocky", "confident", "calm", "nervous"];
 const VOICES: readonly Voice[] = ["brash", "smug", "nervous", "sly", "plain"];
 const MARKS: readonly Mark[] = ["headband", "antenna", "ears", "crown", "none"];
-const STATES: readonly MoraleState[] = ["cocky", "confident", "rattled", "furious", "desperate"];
 const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", "grappling hook": "grapple", grenades: "grenade", rockets: "rocket", launcher: "rocket" };
 
 /** Morale baseline from temperament (morale itself still comes from match events). */
 export const TEMPERAMENT_MORALE: Record<Temperament, number> = { cocky: 45, confident: 25, calm: 8, nervous: -15 };
 
 /** Seat colors used when a soul gives none (or an invalid one). */
-export const SEAT_COLORS = [0xff4f4f, 0x47a3ff, 0x4fdc6a, 0xffc733];
+export const SEAT_COLORS = SEAT_LOOKS.map((look) => look.color);
 
 export interface SoulParse {
   soul: Soul;
@@ -62,7 +59,7 @@ export interface SoulParse {
 
 function weaponOf(s: string): Weapon | null {
   const w = s.toLowerCase().trim();
-  return (PICKUP_WEAPONS as readonly string[]).includes(w) ? (w as Weapon) : (WEAPON_ALIAS[w] ?? null);
+  return isPickupWeapon(w) ? w : (WEAPON_ALIAS[w] ?? null);
 }
 
 function list(v: string): string[] {
@@ -91,7 +88,7 @@ export function inferFromText(text: string): { stance?: Stance; target?: TargetP
   else if (has("never backs down", "charge", "rush", "in your face", "close up", "brawl")) out.stance = "rush";
   if (has("grudge", "never forgets", "revenge", "gets even")) out.retaliate = "attacker";
   else if (has("ignores", "single-minded", "never distracted")) out.retaliate = "ignore";
-  for (const w of PICKUP_WEAPONS) if (t.includes(w === "grapple" ? "hook" : w) || t.includes(w)) out.weapons.push(w);
+  for (const w of WEAPON_LIST) if (t.includes(w === "grapple" ? "hook" : w) || t.includes(w)) out.weapons.push(w);
   if (has("cocky", "arrogant", "swagger", "talks big")) out.temperament = "cocky";
   else if (has("nervous", "anxious", "jittery", "scared")) out.temperament = "nervous";
   else if (has("calm", "patient", "cool-headed")) out.temperament = "calm";
@@ -126,7 +123,7 @@ export function parseSoul(text: string, seat = 0): SoulParse {
       if (/^##\s/.test(l)) break;
       const m = /^\s*-\s*([a-z:]+)\s*(?:\[([a-z, ]+)\])?\s*:\s*(.+)$/.exec(l);
       if (!m) continue;
-      const states = m[2] ? (list(m[2]).filter((s) => (STATES as readonly string[]).includes(s)) as MoraleState[]) : "*";
+      const states = m[2] ? (list(m[2]).filter((s) => (MORALE_STATES as readonly string[]).includes(s)) as MoraleState[]) : "*";
       lines.push([m[1]!, states && (states === "*" || states.length) ? states : "*", m[3]!.trim()]);
     }
   }
@@ -176,9 +173,9 @@ export function parseSoul(text: string, seat = 0): SoulParse {
     voice: pick("voice", VOICES, "plain", guess.voice),
     values: front.values ? list(front.values).slice(0, 8) : [],
     weapons: weapons.slice(0, 3),
-    stance: pick("stance", STANCES, "rush", guess.stance),
-    target: pick("target", TARGETS, "nearest", guess.target),
-    retaliate: pick("retaliate", RETALIATE, "turn", guess.retaliate),
+    stance: pick("stance", RULE_STANCES, "rush", guess.stance),
+    target: pick("target", TARGET_PREFERENCES, "nearest", guess.target),
+    retaliate: pick("retaliate", RULE_RETALIATE, "turn", guess.retaliate),
     catchphrase: (front.catchphrase ?? "").slice(0, 80),
     mark: pick("mark", MARKS, "none"),
     body,

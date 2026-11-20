@@ -6,7 +6,7 @@ import { Container, Graphics, type Application } from "pixi.js";
 import type { Entity, Sim, SimEvent } from "../sim/sim";
 import type { Callout } from "./callouts";
 import { PALETTES } from "./palette";
-import { SceneCamera, type CamMode } from "./scene-camera";
+import { SceneCamera } from "./scene-camera";
 import { CalloutViews } from "./scene-callouts";
 import { SceneEffects } from "./scene-effects";
 import { FighterViews } from "./scene-fighters";

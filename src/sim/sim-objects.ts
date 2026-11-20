@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { ARMORY, BARREL, BLOCK, CRATE, CRUSH, DT, FIGHTER, G, GAS, GLASS, PAD, STEEL, TNT, WEAPONS, WEIGHT, groups } from "./constants";
+import { ARMORY, BARREL, BLOCK, CRATE, CRUSH, DT, G, GAS, GLASS, PAD, STEEL, TNT, WEAPONS, WEIGHT, groups } from "./constants";
 import type { Sim } from "./sim";
 import { type Entity } from "./sim-types";
 import { dcos, dsin } from "./dmath";
@@ -48,7 +48,6 @@ export function addProp(sim: Sim, kind: PropKind, x: number, yBottom: number, sp
   if (kind === "weight" && spec?.ax !== undefined) {
     e.ax = spec.ax;
     e.ay = spec.ay!;
-    e.ropeLen = spec.len!;
     e.anchorCx = sim.grid.cx(spec.ax);
     e.anchorCy = sim.grid.cy(spec.ay! + 0.01);
     e.joint = sim.world.createImpulseJoint(
