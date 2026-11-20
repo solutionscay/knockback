@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { parseAnswer, parseRules } from "../src/ai/parse";
 import { checkRule } from "../src/sim/rules";
 import { initPhysics, Match, MAX_RULES, replayMatch, type Rule } from "../src/sim";
@@ -125,17 +125,13 @@ describe("stored rules and records (#5)", () => {
     expect(m.record.version).toBe(4);
     expect(m.record.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     expect(sanitizeRecord(JSON.parse(JSON.stringify(m.record)))!.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
-    // a version 2 record made by the current engine (the #3/#4 eval) replays exactly
-    const v2 = "/Users/jose/skiff-agent/results/55af6894-knockback-ai-plan-expansion/4dc8999d-issues-3-and-4-prompt-quality/eval-10/match-1001.json";
-    if (existsSync(v2)) {
-      const rec = JSON.parse(readFileSync(v2, "utf8"));
-      expect(rec.version).toBe(2);
-      expect(() => replayMatch(rec)).not.toThrow();
-      expect(sanitizeRecord(rec)).not.toBeNull();
-      // an old record keeps its fighters' names and colors (#17)
-      expect(replayMatch(sanitizeRecord(rec)!).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
-      expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).identities.map((i) => i.color)).toEqual(rec.souls.map((s: { color: number }) => s.color));
-    }
+    // The saved version 2 record still replays and preserves its original identities.
+    const rec = JSON.parse(readFileSync(`${import.meta.dir}/fixtures/record-v2-match-1001.json`, "utf8"));
+    expect(rec.version).toBe(2);
+    expect(() => replayMatch(rec)).not.toThrow();
+    expect(sanitizeRecord(rec)).not.toBeNull();
+    expect(replayMatch(sanitizeRecord(rec)!).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
+    expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).identities.map((i) => i.color)).toEqual(rec.souls.map((s: { color: number }) => s.color));
     const v2made = new Match(11);
     v2made.playToEnd();
     const rec2 = { ...JSON.parse(JSON.stringify(v2made.record)), version: 2 };
