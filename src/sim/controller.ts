@@ -9,6 +9,7 @@ import { REFLEX } from "./constants";
 import { aimAndFire, inReach, sightTarget } from "./controller-aim";
 import { ControllerNavigation } from "./controller-navigation";
 import { PATIENCE } from "./controller-tuning";
+import { attackWall, WallPursuit, WALL_PURSUIT } from "./controller-wall";
 import type { Surface } from "./nav";
 import { RuleEngine } from "./ruleeval";
 import { NO_INPUT, isPickupWeapon, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
@@ -43,6 +44,8 @@ export class Controller {
   private lastTaken = 0;
   private unreachable = new Map<number, number>();
   private noReach = 0;
+  private readonly wallPursuit = new WallPursuit();
+  private wallRoute = 0;
 
   get goal() {
     return this.navigation.goal;
@@ -137,7 +140,7 @@ export class Controller {
     const tr = this.rules.targetRule();
     if (tr && tr.kind === "target" && sim.suddenDeath < 0) {
       const f = sim.fighters[tr.subject];
-      if (f && f.alive && !f.removed && f.id !== me.id) {
+      if (f && f.alive && !f.removed && f.id !== me.id && !skip(f)) {
         this.nextRetarget = sim.tick; // back to the plan as soon as the rule stops
         return f;
       }
@@ -146,7 +149,9 @@ export class Controller {
     if (cur && cur.alive && !cur.removed && cur.id !== me.id && sim.tick < this.nextRetarget && !skip(cur) && !avoided.includes(cur.id)) return cur;
     this.nextRetarget = sim.tick + 60;
     const p = sim.pos(me);
-    const foes = sim.fighters.filter((o) => o.alive && o.id !== me.id);
+    const alive = sim.fighters.filter((o) => o.alive && o.id !== me.id);
+    const available = alive.filter((o) => !skip(o));
+    const foes = available.length ? available : alive;
     if (foes.length === 0) return null;
     const dist = (o: Fighter) => {
       const q = sim.pos(o);
@@ -268,7 +273,24 @@ export class Controller {
       this.targetSince = sim.tick;
     }
     this.targetId = target.id;
-    const surf = this.navigation.steer(sim, me, target, mp, mv, input);
+    const wall = this.wallPursuit.observe(sim, me, target, mp);
+    const wallTicks = wall?.ticks ?? 0;
+    const flankTick = wallTicks - WALL_PURSUIT.flankTicks;
+    const flank = flankTick >= 0 && flankTick % WALL_PURSUIT.flankPeriod < WALL_PURSUIT.flankFor
+      ? ((Math.floor(flankTick / WALL_PURSUIT.flankPeriod) + me.id) % 2 === 0 ? -1 : 1)
+      : 0;
+    const wallRoute = flank || (wallTicks >= WALL_PURSUIT.routeTicks ? 2 : 0);
+    if (this.wallRoute !== wallRoute) {
+      this.wallRoute = wallRoute;
+      this.navigation.replan(sim.tick);
+    }
+    if (wallTicks >= WALL_PURSUIT.retargetTicks && sim.alive().length > 2) {
+      this.unreachable.set(target.id, sim.tick + PATIENCE.skipTicks);
+      this.nextRetarget = 0;
+      this.reflex = null;
+    }
+    const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= WALL_PURSUIT.routeTicks, flank);
+    if (wall && wallTicks >= WALL_PURSUIT.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
 
     const sight = sightTarget(sim, me, aimTarget, mp);
     const { dx0, dy0, dist, los } = sight;
@@ -300,7 +322,7 @@ export class Controller {
     } else if (this.navigation.dig) this.navigation.dig = null;
     // breach: parked with a wall or floor between us and the target - go through it
     const breach = this.noLos > PATIENCE.breachAfter && Math.abs(mv.x) < 0.8;
-    if ((breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
+    if (!flank && (breach || this.pressing(sim)) && dist < PATIENCE.breachRange && dist > 0.3 && me.stun === 0) {
       const has = (w: Weapon) => me.weapons.includes(w);
       const w: Weapon = dist < 1.3 && !has("bat") && !has("shotgun") ? "fist" : has("bat") && dist < 2.8 ? "bat" : has("shotgun") && dist < 7 ? "shotgun" : has("rocket") && dist >= 2 ? "rocket" : has("grenade") ? "grenade" : has("bat") ? "bat" : "fist";
       input.weapon = w;
