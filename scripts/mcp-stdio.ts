@@ -5,7 +5,7 @@
  * sees the same six tools (and the same session: one wrapper process = one
  * MCP session = one seat).
  *
- *   bun scripts/mcp-stdio.ts --server http://192.168.1.32:5180
+ *   bun scripts/mcp-stdio.ts --server https://YOUR-SERVER/mcp
  *   bun scripts/mcp-stdio.ts                                   # KB_SERVER, else http://localhost:5176
  *
  * In a client's config: command "bun", args ["<repo>/scripts/mcp-stdio.ts", "--server", "<url>"].
