@@ -299,7 +299,7 @@ body {
   -webkit-text-stroke: 0;
 }
 #callout.show {
-  animation: countpop 2.2s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+  animation: pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
 
 /* ---------------------------------------------------------- celebrate */
@@ -801,4 +801,64 @@ body.capture #controls {
   flex-wrap: wrap;
   max-width: 44vw;
   margin-left: 0.4vw;
+}
+
+/* ---------------------------------------------------------- AI tags, round recap */
+#dialogue .ai {
+  font: 800 1.5vh system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  padding: 0.35vh 1vh;
+  border-radius: 0.7vh;
+  background: rgba(255, 255, 255, 0.1);
+  color: #d8d4ca;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+#dialogue .ai.bot {
+  color: #ffb0b8;
+  border-color: #ff5a6a;
+}
+#dialogue .stat {
+  margin-top: 0.9vh;
+  font: 700 1.8vh "Helvetica Neue", system-ui, sans-serif;
+  color: #b9b5ab;
+  line-height: 1.3;
+}
+#callout .recap {
+  display: inline-grid;
+  margin-top: 1.4vh;
+  padding: 1.2vh 2vh;
+  border-radius: 1.4vh;
+  background: rgba(10, 11, 18, 0.9);
+  font: 700 2vh "Helvetica Neue", system-ui, sans-serif;
+  letter-spacing: 0;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  text-align: left;
+  gap: 0.5vh;
+}
+#callout .rr {
+  display: grid;
+  grid-template-columns: 1.6vh 9vh 9vh 9vh 26vh;
+  gap: 1vh;
+  align-items: center;
+  color: #e8e4da;
+}
+#callout .rr i {
+  width: 1.4vh;
+  height: 1.4vh;
+  border-radius: 50%;
+  background: var(--c);
+}
+#callout .rr b {
+  color: var(--c);
+}
+#callout .rr em {
+  font-style: normal;
+  color: #ffb0b8;
+}
+#callout .thinking,
+#intro .thinking {
+  margin-top: 1vh;
+  color: #ffde4a;
+  animation: blink 1.2s steps(1) infinite;
 }

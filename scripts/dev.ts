@@ -5,6 +5,7 @@
  *   bun run dev --port 8080
  */
 import { networkInterfaces } from "node:os";
+import { join } from "node:path";
 import index from "../index.html";
 
 const args = process.argv.slice(2);
@@ -22,7 +23,13 @@ const server = Bun.serve({
   port,
   routes: { "/": index },
   development: process.env.NODE_ENV !== "production",
-  fetch() {
+  fetch(req) {
+    // saved AI match records, for ?record=/records/<file>.json
+    const url = new URL(req.url);
+    if (url.pathname.startsWith("/records/")) {
+      const f = Bun.file(join(process.cwd(), "records", url.pathname.slice("/records/".length).replace(/[^\w.-]/g, "")));
+      return new Response(f, { headers: { "content-type": "application/json" } });
+    }
     return new Response("Not found", { status: 404 });
   },
 });

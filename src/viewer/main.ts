@@ -8,6 +8,7 @@ declare global {
       ready: boolean;
       advance: (dt: number, frames?: number) => void;
       newMatch: (seed: number) => void;
+      loadRecord: (url: string) => Promise<void>;
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
       state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string };
       drainMoments: () => { time: number; kind: string; weight: number }[];
@@ -79,7 +80,34 @@ window.addEventListener("keydown", (e) => {
 });
 
 const seedParam = params.get("seed");
-start(seedParam !== null && seedParam !== "" ? Number(seedParam) >>> 0 : randomSeed());
+const recordUrl = params.get("record");
+let lastRecord: string | null = recordUrl;
+if (params.has("live")) {
+  // Live AI match: the ai-match server streams each round's decisions.
+  game.autoNext = null;
+  game.onNeedNewMatch = () => {
+    if (lastRecord) location.href = `/?record=${encodeURIComponent(lastRecord)}`;
+  };
+  const es = new EventSource("/api/live");
+  es.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === "match") {
+      seedEl.textContent = `seed ${msg.seed} · live AI match`;
+      game.newMatch(msg.seed, { live: true, labels: msg.labels });
+    } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta);
+    else if (msg.type === "done") {
+      lastRecord = msg.record;
+      seedEl.textContent += ` · replay: ?record=${msg.record}`;
+    }
+  };
+} else if (recordUrl) {
+  // Replay a saved match exactly (every decision from the record).
+  game.autoNext = null;
+  game.onNeedNewMatch = () => location.reload();
+  const rec = await (await fetch(recordUrl)).json();
+  seedEl.textContent = `seed ${rec.seed} · replay`;
+  game.newMatch(rec.seed, { recorded: rec, labels: rec.labels });
+} else start(seedParam !== null && seedParam !== "" ? Number(seedParam) >>> 0 : randomSeed());
 
 if (capture) {
   // Deterministic frame stepping for video capture: the page only moves when told to.
@@ -91,6 +119,10 @@ if (capture) {
       app.renderer.render(app.stage);
     },
     newMatch: (seed) => start(seed),
+    loadRecord: async (url: string) => {
+      const rec = await (await fetch(url)).json();
+      game.newMatch(rec.seed, { recorded: rec, labels: rec.labels });
+    },
     setCamera: (mode) => game.setCamera(mode),
     state: () => ({
       beat: game.flow.beat.kind,

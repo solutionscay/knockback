@@ -38,7 +38,7 @@ export interface BeatTiming {
   readMin: number;
 }
 
-export const DEFAULT_TIMING: BeatTiming = { level: 2.4, count: 0.75, go: 0.9, roundEnd: 3.0, celebrate: 9, readBase: 1.1, readPerChar: 0.045, readMin: 2.6 };
+export const DEFAULT_TIMING: BeatTiming = { level: 2.4, count: 0.75, go: 0.9, roundEnd: 4.5, celebrate: 9, readBase: 1.1, readPerChar: 0.045, readMin: 2.6 };
 
 export function readTime(line: string, t: BeatTiming = DEFAULT_TIMING): number {
   return Math.max(t.readMin, t.readBase + line.length * t.readPerChar);

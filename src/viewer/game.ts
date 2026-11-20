@@ -10,7 +10,7 @@ import { POINTS, Tally, type FightScore } from "../flow/score";
 import { CHARACTERS } from "../sim/characters";
 import { DT, FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import type { Fight } from "../sim/fight";
-import { Match, ROUNDS_TO_WIN } from "../sim/match";
+import { Match, ROUNDS_TO_WIN, type DecisionMeta, type MatchRecord } from "../sim/match";
 import type { MoraleState } from "../sim/morale";
 import type { SimEvent, Strategy } from "../sim/sim";
 import { VoiceSession, type Decision } from "../sim/voice";
@@ -65,6 +65,12 @@ export class Game {
   autoNext: number | null = 6;
   private idleAfter = 0;
   onNeedNewMatch: (() => void) | null = null;
+  /** provider label per fighter ("claude/haiku"), when AI fighters play */
+  labels: string[] | null = null;
+  /** live AI match: decisions arrive from the server, round by round */
+  live = false;
+  private liveQueue = new Map<number, { decisions: Decision[]; meta: DecisionMeta[] }>();
+  private waitingRound = 0;
 
   constructor(
     app: Application,
@@ -157,13 +163,48 @@ export class Game {
 
   // ------------------------------------------------------------- match setup
 
-  newMatch(seed: number) {
-    this.match = new Match(seed, { session: this.session });
+  /**
+   * Start a match. Default: house bots decide. `recorded`: replay a saved match
+   * exactly (all decisions from the record). `live`: decisions arrive later via
+   * pushDecisions() (AI fighters thinking on the server).
+   */
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[] } = {}) {
+    this.match = new Match(seed, { session: this.session, recorded: opts.recorded });
     this.match.onEvent = (e) => this.onEvent(e);
+    this.labels = opts.labels ?? null;
+    this.live = !!opts.live;
+    this.liveQueue.clear();
+    this.waitingRound = 0;
     this.matchPoints = [0, 0, 0, 0];
     this.matchScores = [];
+    if (this.live) {
+      // show the arena while the fighters think about round 1
+      this.waitingRound = 1;
+      this.shown = null as unknown as Fight;
+      const preview = new Match(seed);
+      preview.prepareRound();
+      this.shown = preview.fight!;
+      this.scene.load(this.shown.sim, this.shown.controllers);
+      this.resetHud();
+      this.flow = new FlowRunner([{ kind: "level", duration: 2.4 }], (b) => this.enter(b));
+      this.hud.cam.className = "show";
+      this.renderCamBar();
+      return;
+    }
     this.decisions = this.match.prepareRound();
     this.showFight(this.match.fight!);
+    this.resetHud();
+    this.startLineup();
+    const order = introOrder(this.match.morale.map((m) => m.score));
+    this.flow = new FlowRunner(
+      [...openingBeats(order, this.decisions.map((d) => d.line)), ...roundBeats(1)],
+      (b) => this.enter(b),
+    );
+    this.hud.cam.className = "show";
+    this.renderCamBar();
+  }
+
+  private resetHud() {
     this.acc = 0;
     this.hitPause = 0;
     this.slow = 0;
@@ -173,17 +214,36 @@ export class Game {
       el.className = "";
       el.innerHTML = "";
     }
+  }
+
+  private startLineup() {
     this.hud.lineup.innerHTML = this.shown.sim.fighters
       .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.personality, this.decisions[f.id]!.strategy.loadout[0])}<span>${esc(f.name)}</span></div>`)
       .join("");
     this.hud.lineup.className = "show";
-    const order = introOrder(this.match.morale.map((m) => m.score));
-    this.flow = new FlowRunner(
-      [...openingBeats(order, this.decisions.map((d) => d.line)), ...roundBeats(1)],
-      (b) => this.enter(b),
-    );
-    this.hud.cam.className = "show";
-    this.renderCamBar();
+  }
+
+  /** Live AI match: the server sends each round's decisions as soon as the fighters have answered. */
+  pushDecisions(round: number, decisions: Decision[], meta: DecisionMeta[]) {
+    this.liveQueue.set(round, { decisions, meta });
+    if (this.waitingRound === round) this.startLiveRound(round);
+  }
+
+  private startLiveRound(round: number) {
+    const got = this.liveQueue.get(round)!;
+    this.waitingRound = 0;
+    this.decisions = this.match.prepareRound(got.decisions, got.meta);
+    if (round === 1) {
+      this.showFight(this.match.fight!);
+      this.startLineup();
+      const order = introOrder(this.match.morale.map((m) => m.score));
+      this.flow.append([...openingBeats(order, this.decisions.map((d) => d.line)).slice(1), ...roundBeats(1)]);
+    } else {
+      const facts = this.match.facts[this.match.facts.length - 1]!;
+      const order = betweenOrder(facts.winner, facts.fighters.map((f) => f.outOrder));
+      this.hud.callout.querySelector(".thinking")?.remove();
+      this.flow.append([...betweenBeats(order, this.decisions.map((d) => d.line), this.match.round), ...roundBeats(this.match.round)]);
+    }
   }
 
   private showFight(f: Fight) {
@@ -200,12 +260,14 @@ export class Game {
     switch (b.kind) {
       case "level": {
         const lv = this.match.level;
+        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking: ${this.labels?.map((l, i) => `${esc(CHARACTERS[i]!.name)} (${esc(l)})`).join(" · ") ?? ""}</div>` : "";
         this.scene.overview = true;
         h.intro.innerHTML = `
           <div class="levelcard">
             <div class="kicker">ARENA ${lv.seed} · BEST OF 3</div>
             <div class="lvname">${esc(lv.name)}</div>
             <div class="lvmeta">${lv.width} m wide · ${lv.platforms} platforms · ${lv.props.length} props · ${lv.pits.length} pit${lv.pits.length === 1 ? "" : "s"} · everything breaks</div>
+            ${thinking}
           </div>`;
         restart(h.intro, "show level");
         break;
@@ -258,9 +320,14 @@ export class Game {
         const w = CHARACTERS[facts.winner]!;
         const decided = this.match.over;
         h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span>${this.pipsHtml("big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === ROUNDS_TO_WIN - 1 && this.match.round === 2 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
+        h.callout.innerHTML += this.recapHtml(facts);
         restart(h.callout, "show");
         if (decided) this.flow.append(closingBeats());
-        else {
+        else if (this.live) {
+          this.waitingRound = this.match.round + 1;
+          if (this.liveQueue.has(this.waitingRound)) this.startLiveRound(this.waitingRound);
+          else h.callout.insertAdjacentHTML("beforeend", `<span class="small thinking">the fighters are thinking…</span>`);
+        } else {
           this.decisions = this.match.prepareRound();
           const order = betweenOrder(facts.winner, facts.fighters.map((f) => f.outOrder));
           this.flow.append([...betweenBeats(order, this.decisions.map((d) => d.line), this.match.round), ...roundBeats(this.match.round)]);
@@ -290,6 +357,21 @@ export class Game {
     return `<span class="pips pips-${size}">${pips}</span>`;
   }
 
+  /** Short round recap: damage dealt/taken and who hurt each fighter most (from round stats). */
+  private recapHtml(facts: import("../sim/morale").RoundFacts): string {
+    const st = facts.stats;
+    const rows = CHARACTERS.map((c, i) => {
+      const dealt = st.damage[i]!.reduce((a, s, j) => a + (j === i ? 0 : s.damage), 0);
+      const took = st.damage.reduce((a, row, j) => a + (j === i ? 0 : row[i]!.damage), 0);
+      let worst = -1;
+      for (let a = 0; a < 4; a++) if (a !== i && st.damage[a]![i]!.damage > (worst >= 0 ? st.damage[worst]![i]!.damage : 0)) worst = a;
+      const w = worst >= 0 ? st.damage[worst]![i]! : null;
+      const hurt = w && w.damage >= 8 ? `${esc(CHARACTERS[worst]!.name)} ${Math.round(w.damage)}${w.fromBehind * 2 >= w.hits && w.hits > 1 ? " from behind" : ""}` : "";
+      return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
+    }).join("");
+    return `<div class="recap">${rows}</div>`;
+  }
+
   private dialogueHtml(b: Extract<Beat, { kind: "dialogue" }>): string {
     const c = CHARACTERS[b.fighter]!;
     const d = this.decisions[b.fighter]!;
@@ -297,13 +379,26 @@ export class Game {
     const s = d.strategy;
     const tgt = s.target === "grudge" && s.grudge !== undefined ? `AFTER ${CHARACTERS[s.grudge]!.name.toUpperCase()}` : `TARGET: ${s.target.toUpperCase()}`;
     const head = b.phase === "intro" ? "BEFORE ROUND 1" : `AFTER ROUND ${b.round - 1} · NEXT: ROUND ${b.round}`;
+    const meta = this.match.record.rounds[b.round - 1]?.meta?.[b.fighter];
+    const who = meta
+      ? meta.outcome === "ok"
+        ? `<span class="ai">${esc(meta.provider)} · ${(meta.ms / 1000).toFixed(1)} s</span>`
+        : meta.outcome === "house"
+          ? `<span class="ai">house bot</span>`
+          : `<span class="ai bot">${esc(meta.provider)} · ${meta.outcome === "fallback-timeout" ? "timed out" : meta.outcome === "fallback-error" ? "error" : "bad answer"} · ${meta.aiLine ? "bot plan" : "bot line"}</span>`
+      : this.labels
+        ? `<span class="ai">${esc(this.labels[b.fighter]!)}</span>`
+        : "";
+    const lastStats = b.phase === "between" ? this.match.facts[b.round - 2]?.stats.summary[b.fighter] : undefined;
+    const rt = s.retaliate === "attacker" ? "TURN ON ATTACKERS" : s.retaliate === "ignore" ? "IGNORE BACKSTABS" : "FIGHT BACK";
     return `
       <div class="panel" style="--c:${hex(c.color)}">
         <div class="portrait">${portraitSvg(c.color, c.personality, s.loadout[0], m.state)}</div>
         <div class="body">
-          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span><span class="title">${esc(c.title.toUpperCase())}</span><span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span></div>
+          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span><span class="title">${esc(c.title.toUpperCase())}</span><span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
+          ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
-          <div class="plan"><span class="k">${head}</span><b>${STANCE[s.stance]}</b><b>${s.loadout[0].toUpperCase()} + ${s.loadout[1].toUpperCase()}</b><b>${tgt}</b></div>
+          <div class="plan"><span class="k">${head}</span><b>${STANCE[s.stance]}</b><b>${s.loadout[0].toUpperCase()} + ${s.loadout[1].toUpperCase()}</b><b>${tgt}</b><b>${rt}</b></div>
         </div>
         <button type="button" class="skip" title="Skip the dialogue">SKIP ▸▸</button>
         <div class="hint">SPACE ▸</div>
@@ -420,7 +515,7 @@ export class Game {
       if (this.hud.clock.innerHTML !== txt) this.hud.clock.innerHTML = txt;
       this.hud.clock.className = left < 10 ? "show low" : "show";
     }
-    if (this.flow.done && this.autoNext !== null) {
+    if (this.flow.done && this.match.over && this.autoNext !== null) {
       this.idleAfter += dt;
       const btn = this.hud.celebrate.querySelector<HTMLElement>(".auto");
       const left = Math.ceil(this.autoNext - this.idleAfter);
