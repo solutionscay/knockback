@@ -25,6 +25,11 @@ services:
       KB_FILL_AFTER: ${KB_FILL_AFTER:-60}
       KB_OPEN: ${KB_OPEN:-false}
       KB_NO_MATCH: ${KB_NO_MATCH:-true}
+      # MCP lobby (#21): seats of a lobby match, seconds per turn, seconds before house bots fill, base URL for links
+      KB_LOBBY_SEATS: ${KB_LOBBY_SEATS:-remote,remote,remote,house}
+      KB_MCP_DEADLINE: ${KB_MCP_DEADLINE:-75}
+      KB_LOBBY_FILL: ${KB_LOBBY_FILL:-120}
+      KB_PUBLIC_URL: ${KB_PUBLIC_URL:-}
     volumes:
       - kb-data:/data # match-server.db (+ WAL) and records/
     expose:
