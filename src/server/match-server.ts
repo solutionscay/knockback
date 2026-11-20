@@ -567,7 +567,8 @@ export class MatchServer {
       await this.store.listMatches(["running"]);
       return json({ ok: true, ...base, store: "ok" });
     } catch (e) {
-      return json({ ok: false, ...base, store: e instanceof Error ? e.message : String(e) }, 503);
+      this.log(`health: storage unavailable: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
+      return json({ ok: false, error: "storage unavailable" }, 503);
     }
   }
 

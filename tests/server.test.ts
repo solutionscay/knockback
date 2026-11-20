@@ -131,6 +131,24 @@ describe("ops", () => {
     expect((await s.handle(new Request("http://kb.test/api/health")))!.status).toBe(503);
   });
 
+  test("GET /api/health keeps storage errors in the server log", async () => {
+    const detail = "cannot read /example/private/storage.db";
+    const store = new SqliteStore(":memory:");
+    store.listMatches = async () => {
+      throw new Error(detail);
+    };
+    const logs: string[] = [];
+    const s = new MatchServer({ outDir: tmp(), store, log: (message) => logs.push(message) });
+    try {
+      const res = (await s.handle(new Request("http://kb.test/api/health")))!;
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ ok: false, error: "storage unavailable" });
+      expect(logs.join("\n")).toContain(detail);
+    } finally {
+      await store.close();
+    }
+  });
+
   test("the live stream sends an SSE comment while someone watches", async () => {
     const live = new LiveStream(64, 20);
     live.broadcast({ type: "match" });

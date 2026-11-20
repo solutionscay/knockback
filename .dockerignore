@@ -1,14 +1,18 @@
 # keep the build context small and free of local state
 .git
 node_modules
-records
+**/records
 evals
 docs
 tests
-*.log
-*.db
-*.db-*
-.env
-deploy/.env
-deploy/backups
+**/*.log
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.env
+**/.env
+**/.env.*
+!deploy/.env.example
+**/backups
 .DS_Store
