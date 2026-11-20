@@ -67,7 +67,7 @@ const server = Bun.serve({
   async fetch(req, srv) {
     const res = await api.handle(req, srv.requestIP(req)?.address ?? "unknown");
     if (res) return res;
-    return serveRecord(new URL(req.url).pathname, outDir) ?? new Response("Not found", { status: 404 });
+    return (await serveRecord(new URL(req.url).pathname, outDir)) ?? new Response("Not found", { status: 404 });
   },
 });
 

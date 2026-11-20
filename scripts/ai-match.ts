@@ -68,10 +68,10 @@ if (!headless) {
     idleTimeout: 0,
     development: true,
     routes: { "/": index },
-    fetch(req) {
+    async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/api/live") return live.response();
-      return serveRecord(url.pathname, outDir) ?? new Response("Not found", { status: 404 });
+      return (await serveRecord(url.pathname, outDir)) ?? new Response("Not found", { status: 404 });
     },
   });
   console.log(`AI match viewer: http://localhost:${server.port}/?live`);

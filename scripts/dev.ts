@@ -23,10 +23,10 @@ const server = Bun.serve({
   port,
   routes: { "/": index },
   development: process.env.NODE_ENV !== "production",
-  fetch(req) {
+  async fetch(req) {
     // saved AI match records, for ?record=/records/<file>.json
     const url = new URL(req.url);
-    return serveRecord(url.pathname, join(process.cwd(), "records")) ?? new Response("Not found", { status: 404 });
+    return (await serveRecord(url.pathname, join(process.cwd(), "records"))) ?? new Response("Not found", { status: 404 });
   },
 });
 
