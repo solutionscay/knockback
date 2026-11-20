@@ -369,7 +369,7 @@ export class Game {
       let worst = -1;
       for (let a = 0; a < 4; a++) if (a !== i && st.damage[a]![i]!.damage > (worst >= 0 ? st.damage[worst]![i]!.damage : 0)) worst = a;
       const w = worst >= 0 ? st.damage[worst]![i]! : null;
-      const hurt = w && w.damage >= 8 ? `${esc(CHARACTERS[worst]!.name)} ${Math.round(w.damage)}${w.fromBehind * 2 >= w.hits && w.hits > 1 ? " from behind" : ""}` : "";
+      const hurt = w && w.damage >= 8 ? `${esc(CHARACTERS[worst]!.name)} ${Math.round(w.damage)}${w.hits > 1 && w.fromBehind === w.hits ? " from behind" : w.fromBehind >= 2 ? ` (${w.fromBehind} from behind)` : ""}` : "";
       return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
     }).join("");
     return `<div class="recap">${rows}</div>`;

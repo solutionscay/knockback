@@ -14,7 +14,7 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import { initPhysics, Match } from "../src/sim";
+import { initPhysics, Match, replayMatch } from "../src/sim";
 
 // flags: --url <base>, --camera <auto|all|follow:N> (also --flag=value)
 const flags: Record<string, string> = {};
@@ -39,6 +39,13 @@ function parseCamera(v: string): CamMode {
   throw new Error(`--camera must be auto, all or follow:1..4 (got "${v}")`);
 }
 const camera = parseCamera(flags.camera || "all");
+// --record /records/<file>.json : film an exact replay of a saved (e.g. AI) match
+const recordPath = flags.record || "";
+const recordJson = recordPath ? JSON.parse(await Bun.file(join("records", recordPath.replace(/^\/records\//, ""))).text()) : null;
+if (recordJson) {
+  rest.splice(1);
+  rest.push(String(recordJson.seed));
+}
 const outDir = rest[0] ?? "out";
 const seeds = rest.slice(1).map(Number);
 if (seeds.length === 0) seeds.push(7, 42);
@@ -56,7 +63,7 @@ const browser = await chromium.launch({ args: ["--use-angle=metal", "--enable-gp
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 page.on("pageerror", (e) => console.error("[pageerror]", e.message));
 
-await page.goto(`${base}/?seed=${seeds[0]}&capture`);
+await page.goto(recordPath ? `${base}/?record=${encodeURIComponent(recordPath)}&capture` : `${base}/?seed=${seeds[0]}&capture`);
 await page.waitForFunction(() => window.__kb?.ready, null, { timeout: 60000 });
 
 await page.evaluate((c) => window.__kb!.setCamera(c), camera);
@@ -118,8 +125,8 @@ for (const [mi, seed] of seeds.entries()) {
     if (st.over && !checked) {
       checked = true;
       // cross-engine determinism check: Bun replays the same seed headless
-      const m = new Match(seed);
-      m.playToEnd();
+      const m = recordJson ? replayMatch(recordJson) : new Match(seed);
+      if (!recordJson) m.playToEnd();
       const same = m.record.rounds.map((r) => r.fight.finalHash).join(",") === st.hash;
       report.push(
         `seed ${seed} (${m.level.theme}): browser round hashes ${st.hash}, bun ${m.record.rounds.map((r) => r.fight.finalHash).join(",")} -> ${same ? "MATCH" : "MISMATCH"}; ` +

@@ -125,7 +125,7 @@ describe("round stats", () => {
     expect(s.fromBehind).toBe(4);
     expect(s.byRange.long).toBe(4);
     expect(s.byRange.close).toBe(1);
-    expect(st.summary[3]).toContain("Blue hit you 5 times from behind with the rocket at long range, 52 damage, and you never turned on Blue.");
+    expect(st.summary[3]).toContain("Blue hit you 5 times (4 from behind) with the rocket at long range, 52 damage, and you never turned on Blue.");
     expect(st.summary[3]).toContain("You chased Red all round and never landed a hit.");
     expect(st.summary[3]).toContain("You were knocked out by Blue with the rocket.");
   });

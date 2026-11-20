@@ -114,7 +114,8 @@ export function attackerLine(st: RoundStats, me: number, names: string[]): strin
   for (const [w, v] of Object.entries(s.byWeapon)) weapons[w] = v.damage;
   const w = mainKey(weapons);
   const r = mainKey(s.byRange);
-  const behind = s.hits > 0 && s.fromBehind * 2 >= s.hits ? " from behind" : "";
+  // precise: "from behind" only if every hit was; otherwise say how many
+  const behind = s.hits > 0 && s.fromBehind === s.hits ? " from behind" : s.fromBehind >= 2 ? ` (${s.fromBehind} from behind)` : "";
   const chased = st.targetSeconds[me]![worst]!;
   const total = st.targetSeconds[me]!.reduce((a, b) => a + b, 0);
   const ignored = total > 4 && chased / total < 0.2 ? `, and you never turned on ${names[worst]}` : "";
