@@ -151,6 +151,10 @@ export interface RuleFiring {
   tick: number;
   fighter: number;
   rule: number;
+  /** the fighter that made the rule fire (-1 = none) */
+  subject?: number;
+  /** the rule's action */
+  action?: Rule["do"];
 }
 export interface KoEvent {
   tick: number;
@@ -160,18 +164,24 @@ export interface KoEvent {
 
 /**
  * "Best rule" of a round (#11): a rule firing followed by a knockout by the
- * same fighter within `windowTicks` (5 s). The closest such pair wins
- * (ties: the earlier knockout). Null if none.
+ * same fighter within `windowTicks` (5 s). A rule about the fighter who got
+ * knocked out beats a fighting rule (target, use, avoid, retaliate); a seek
+ * or stance rule about someone else never counts ("patch up" before a
+ * knockout did not win it). Then the closest pair wins (ties: the earlier
+ * knockout). Null if none.
  */
 export function bestRule(firings: RuleFiring[], kos: KoEvent[], windowTicks = 300): { fighter: number; rule: number; victim: number; gap: number } | null {
-  let best: { fighter: number; rule: number; victim: number; gap: number; tick: number } | null = null;
+  const FIGHTING = ["target", "use", "avoid", "retaliate"];
+  let best: { fighter: number; rule: number; victim: number; gap: number; tick: number; cls: number } | null = null;
   for (const k of kos) {
     if (k.by < 0 || k.by === k.victim) continue;
     for (const f of firings) {
       if (f.fighter !== k.by) continue;
       const gap = k.tick - f.tick;
       if (gap < 0 || gap > windowTicks) continue;
-      if (!best || gap < best.gap || (gap === best.gap && k.tick < best.tick)) best = { fighter: f.fighter, rule: f.rule, victim: k.victim, gap, tick: k.tick };
+      const cls = f.subject === k.victim ? 0 : f.action === undefined || FIGHTING.includes(f.action) ? 1 : 2;
+      if (cls === 2) continue;
+      if (!best || cls < best.cls || (cls === best.cls && (gap < best.gap || (gap === best.gap && k.tick < best.tick)))) best = { fighter: f.fighter, rule: f.rule, victim: k.victim, gap, tick: k.tick, cls };
     }
   }
   return best ? { fighter: best.fighter, rule: best.rule, victim: best.victim, gap: best.gap } : null;

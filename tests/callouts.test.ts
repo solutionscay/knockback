@@ -93,6 +93,15 @@ describe("callout texts and the best rule", () => {
     expect(bestRule(firings, [{ tick: 1000, by: 2, victim: 3 }])).toEqual({ fighter: 2, rule: 0, victim: 3, gap: 50 });
     expect(bestRule(firings, [{ tick: 500, by: 1, victim: 3 }])).toBeNull(); // 400 ticks later: too late
     expect(bestRule(firings, [{ tick: 1000, by: -1, victim: 3 }])).toBeNull(); // a fall: nobody's rule
+    // a rule about the victim beats a closer fighting rule; a heal before a knockout never counts
+    const typed = [
+      { tick: 800, fighter: 1, rule: 0, subject: 3, action: "target" as const },
+      { tick: 990, fighter: 1, rule: 1, subject: -1, action: "use" as const },
+      { tick: 995, fighter: 1, rule: 2, subject: -1, action: "seek" as const },
+    ];
+    expect(bestRule(typed, [{ tick: 1000, by: 1, victim: 3 }])!.rule).toBe(0);
+    expect(bestRule(typed.slice(1), [{ tick: 1000, by: 1, victim: 3 }])!.rule).toBe(1);
+    expect(bestRule(typed.slice(2), [{ tick: 1000, by: 1, victim: 3 }])).toBeNull();
   });
 });
 

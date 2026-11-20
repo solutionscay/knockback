@@ -547,7 +547,7 @@ export class Game {
         this.lastRuleTag = this.clock;
         this.callouts.add({ kind: "rule", fighter: e.fighter, text: ruleTagText(rule), subject: e.subject, at: this.clock });
       }
-      this.roundFirings.push({ tick: e.tick, fighter: e.fighter, rule: e.rule });
+      this.roundFirings.push({ tick: e.tick, fighter: e.fighter, rule: e.rule, subject: e.subject, ...(rule ? { action: rule.do } : {}) });
     }
     if (e.type === "ko") this.roundKos.push({ tick: e.tick, by: e.by, victim: e.fighter });
     if (e.type === "rule" && this.debugRules) {
