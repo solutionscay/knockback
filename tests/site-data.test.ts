@@ -107,17 +107,17 @@ describe("lobby data", () => {
     expect(scoreline([0, 2, 0, 0])).toBe("2–0");
     expect(scoreline([1, 0, 1, 1])).toBe("1–1–1");
   });
-  test("modelOf (local badge until the model spotlight merges)", () => {
+  test("modelOf is the model spotlight's", () => {
     expect(modelOf("claude/haiku").name).toBe("CLAUDE HAIKU");
-    expect(modelOf("codex").name).toBe("GPT-6 LUNA (CODEX)");
-    expect(modelOf("grok/grok-4.6")).toEqual({ name: "GROK 4.6", provider: "xai" });
-    expect(modelOf("house")).toEqual({ name: "HOUSE BOT", provider: "house" });
-    expect(modelOf(null).name).toBe("HOUSE BOT");
-    expect(modelOf("remote/Brixel")).toEqual({ name: "MODEL NOT REPORTED", provider: "other", agent: "Brixel" });
-    expect(modelOf("remote/Brixel@claude-opus-5-5")).toEqual({ name: "CLAUDE OPUS 5.5", provider: "anthropic", agent: "Brixel" });
+    expect(modelOf("grok/grok-4.6")).toMatchObject({ name: "GROK 4.6", provider: "xai" });
+    expect(modelOf("house")).toMatchObject({ name: "HOUSE BOT", provider: "house" });
+    expect(modelOf("remote/Brixel")).toMatchObject({ name: "MODEL NOT REPORTED", agent: "Brixel" });
+    expect(modelOf("remote/Brixel@claude-opus-5-5")).toMatchObject({ name: "CLAUDE OPUS 5.5", provider: "anthropic", selfReported: true, agent: "Brixel" });
   });
   test("leaderboard: /api/models rows when there, else wins per model from replays (once per match)", () => {
-    expect(boardFromModels({ all: { rows: [{ name: "CLAUDE HAIKU", matches: 4, wins: 2, winRate: 0.5, provisional: true }] } })).toEqual([{ name: "CLAUDE HAIKU", matches: 4, wins: 2, winRate: 0.5, provisional: true }]);
+    expect(boardFromModels({ all: { rows: [{ key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", matches: 4, wins: 2, winRate: 0.5, provisional: true }] } })).toEqual([
+      { model: { key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", selfReported: false, test: false }, name: "CLAUDE HAIKU", matches: 4, wins: 2, winRate: 0.5, provisional: true },
+    ]);
     expect(boardFromModels({ nope: 1 })).toBeNull();
     const rp = (labels: string[], winner: number, old = false) => ({ labels, winner, old }) as unknown as ReplayInfo;
     const rows = boardFromReplays([rp(["claude/haiku", "claude/haiku", "house", "remote/X"], 0), rp(["claude/haiku", "grok/grok-4.6", "house", "house"], 2), rp(["grok", "house", "house", "house"], 0), rp(["claude/haiku", "house", "house", "house"], 0, true)], 2);
@@ -134,7 +134,7 @@ describe("JOIN panel (#42)", () => {
   test("the prompt names the agent and the tools; fields fill it", () => {
     const p = firstPrompt({ name: "Brixel", persona: "A loud brawler who loves the bat.", owner: "jo" });
     expect(p).toContain("Join the Knockback lobby as Brixel and win.");
-    expect(p).toContain('join_lobby with name "Brixel"');
+    expect(p).toContain('join_lobby with name "Brixel" and model set to the model you run');
     expect(p).toContain("wait_for_match");
     expect(p).toContain("submit_plan");
     expect(p).toContain("A loud brawler who loves the bat. Owner: jo.");

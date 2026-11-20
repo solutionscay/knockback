@@ -38,12 +38,9 @@ a { color: inherit; }
 .dim { color: var(--dim); }
 .empty { color: var(--dim); font-size: 13px; }
 
-/* model badge (local; TODO(model-spotlight): replace with ModelBadge) */
-.mb { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font: 800 11px/1 var(--text); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 7px 4px 5px; border-radius: 2px; background: #ffffff14; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
-.mb i { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--mp, #b0b6c6); }
-.mb.lg { font-size: 13px; padding: 6px 9px 6px 7px; }
-.mb.house { color: #ffe9a3; }
-.mb.unreported { color: var(--dim); }
+/* model badge: src/viewer/model-badge.ts (.kb-mb); sizes fixed in px on these pages */
+.kb-mb.xs { --mb-fs: 11px; }
+.kb-mb.md { --mb-fs: 14px; }
 
 /* ---------------------------------------------------------------- header */
 .top { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 18px; padding: 12px 24px; border-bottom: 3px solid var(--shadow); background: #0e1017f0; }
@@ -287,8 +284,7 @@ dialog.joinp::backdrop { background: #07080dcc; }
   /* the camera stays View all on phones: a taller stage so the bots are not tiny */
   .stage { aspect-ratio: 16 / 11; }
   .stage .watch { right: 8px; bottom: 44px; font-size: 11px; padding: 8px 10px; }
-  .lu .mb { font-size: 9.5px; letter-spacing: 0.02em; padding: 3px 5px 3px 4px; gap: 4px; }
-  .lu .mb i { width: 6px; height: 6px; }
+  .lu .kb-mb { --mb-fs: 9.5px; letter-spacing: 0.02em; }
   .lineup { grid-template-columns: repeat(2, 1fr); }
   .bring { grid-template-columns: 1fr; }
   .btn.join { font-size: 24px; width: 100%; }

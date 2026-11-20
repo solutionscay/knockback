@@ -6,6 +6,7 @@ import { fightSecondsAt, roundPlayback } from "../flow/pacing";
 import { DEFAULT_TIMING } from "../flow/beats";
 import type { Identity } from "../sim/identity";
 import type { PlaybackPos } from "../viewer/embed";
+import { modelOf, type ModelInfo } from "../stats/models";
 
 // ------------------------------------------------------------------ API shapes (what the pages read)
 
@@ -78,37 +79,8 @@ export function ago(iso: string, now = Date.now()): string {
 export const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
 export const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 
-/**
- * The model behind a seat label, as the badge shows it. A minimal local version of the model spotlight's
- * modelOf() (feat/model-spotlight, src/stats/models.ts). TODO(model-spotlight): use modelOf / ModelBadge once merged.
- */
-export function modelOf(label: string | null | undefined): { name: string; provider: "anthropic" | "openai" | "xai" | "house" | "other"; agent?: string } {
-  const raw = (label ?? "").trim();
-  if (!raw || raw === "house") return { name: "HOUSE BOT", provider: "house" };
-  const alias: Record<string, string> = { claude: "claude/haiku", codex: "codex/gpt-6-luna", grok: "grok/grok-4.6" };
-  const full = alias[raw] ?? raw;
-  const slash = full.indexOf("/");
-  const head = (slash < 0 ? full : full.slice(0, slash)).toLowerCase();
-  const rest = slash < 0 ? "" : full.slice(slash + 1);
-  const pretty = (m: string) =>
-    m
-      .replace(/(\d)-(\d)(?=$|\D)/g, "$1.$2")
-      .replace(/[-_]+/g, " ")
-      .toUpperCase()
-      .replace(/^GPT (\d)/, "GPT-$1");
-  const provider = (m: string) => (/claude|haiku|sonnet|opus|fable/i.test(m) ? "anthropic" : /gpt|codex|openai/i.test(m) ? "openai" : /grok/i.test(m) ? "xai" : "other");
-  if (head === "remote") {
-    const at = rest.indexOf("@");
-    const agent = (at < 0 ? rest : rest.slice(0, at)) || "agent";
-    if (at < 0) return { name: "MODEL NOT REPORTED", provider: "other", agent };
-    const m = rest.slice(at + 1);
-    return { name: pretty(m), provider: provider(m), agent };
-  }
-  if (head === "claude") return { name: /^claude/i.test(rest) ? pretty(rest) : `CLAUDE ${pretty(rest || "")}`.trim(), provider: "anthropic" };
-  if (head === "codex") return { name: `${pretty(rest || "codex")} (CODEX)`, provider: "openai" };
-  if (head === "grok") return { name: pretty(rest || "grok"), provider: "xai" };
-  return { name: pretty(rest || head), provider: provider(full) };
-}
+/** The model behind a seat label: the model spotlight's modelOf (src/stats/models.ts). */
+export { modelOf };
 
 // ------------------------------------------------------------------ lobby
 
@@ -170,6 +142,8 @@ export function joinStatus(ms: MatchInfo[], name: string, since = ""): JoinStatu
 }
 
 export interface BoardRow {
+  /** the model, for its badge */
+  model: ModelInfo;
   name: string;
   matches: number;
   wins: number;
@@ -184,8 +158,8 @@ export function boardFromModels(data: unknown): BoardRow[] | null {
   if (!Array.isArray(rows)) return null;
   return rows
     .map((r) => r as Record<string, unknown>)
-    .filter((r) => typeof r.name === "string" && typeof r.matches === "number")
-    .map((r) => ({ name: r.name as string, matches: r.matches as number, wins: Number(r.wins) || 0, winRate: Number(r.winRate) || 0, provisional: r.provisional === true }));
+    .filter((r) => typeof r.name === "string" && typeof r.matches === "number" && r.key !== "remote:unreported")
+    .map((r) => ({ model: { key: String(r.key ?? r.name), name: r.name as string, provider: (r.provider as ModelInfo["provider"]) ?? "other", selfReported: r.selfReported === true, test: false }, name: r.name as string, matches: r.matches as number, wins: Number(r.wins) || 0, winRate: Number(r.winRate) || 0, provisional: r.provisional === true }));
 }
 
 /**
@@ -196,14 +170,15 @@ export function boardFromReplays(rs: ReplayInfo[], minMatches = 3): BoardRow[] {
   const by = new Map<string, BoardRow>();
   for (const r of rs) {
     if (r.old || r.winner < 0) continue;
-    const winner = modelOf(r.labels[r.winner]).name;
-    // each model once per match; agents that did not report a model are not a model
-    for (const name of new Set(r.labels.map((l) => modelOf(l).name))) {
-      if (name === "MODEL NOT REPORTED") continue;
-      const row = by.get(name) ?? { name, matches: 0, wins: 0, winRate: 0, provisional: false };
+    const winner = modelOf(r.labels[r.winner]).key;
+    // each model once per match; agents that did not report a model are not a model, test providers neither
+    const models = new Map(r.labels.map((l) => [modelOf(l).key, modelOf(l)]));
+    for (const [key, model] of models) {
+      if (key === "remote:unreported" || model.test) continue;
+      const row = by.get(key) ?? { model: { ...model, agent: undefined }, name: model.name, matches: 0, wins: 0, winRate: 0, provisional: false };
       row.matches++;
-      if (name === winner) row.wins++;
-      by.set(name, row);
+      if (key === winner) row.wins++;
+      by.set(key, row);
     }
   }
   return [...by.values()]
@@ -235,7 +210,7 @@ export function firstPrompt(f: JoinFields): string {
   const persona = f.persona.trim();
   const owner = f.owner.trim();
   const who = persona ? `Your persona (pass it as persona): "${persona.replace(/"/g, "'")}${owner ? ` Owner: ${owner.replace(/"/g, "'")}.` : ""}"` : `Write yourself a short fighting persona first (attitude, how you talk, what you go for; at least 40 characters)${owner ? ` and mention that ${owner} owns you` : ""}.`;
-  return `Join the Knockback lobby as ${name} and win. Use the knockback MCP tools: join_lobby with name "${name}", then wait_for_match, then call wait_for_turn and submit_plan for every round until the match is over. ${who}`;
+  return `Join the Knockback lobby as ${name} and win. Use the knockback MCP tools: join_lobby with name "${name}" and model set to the model you run (for example claude-opus-5-5), then wait_for_match, then call wait_for_turn and submit_plan for every round until the match is over. ${who}`;
 }
 
 export type JoinTab = "claude" | "codex" | "grok" | "json";

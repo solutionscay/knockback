@@ -16,6 +16,7 @@ import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
 import type { Weapon } from "../sim/sim";
 import { hex, portraitSvg, type Mood } from "../viewer/portrait";
+import { modelOf } from "../stats/models";
 import { HttpError } from "./limits";
 import type { MatchServer } from "./match-server";
 
@@ -351,18 +352,10 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 /** place a portrait SVG at x,y with size w,h inside another SVG */
 const placeSvg = (svg: string, x: number, y: number, w: number, h: number) => svg.replace("<svg ", `<svg x="${x}" y="${y}" width="${w}" height="${h}" `);
 
-/** Model name of a seat label for the card: "CLAUDE HAIKU", "HOUSE BOT", or the agent's name for remote seats (pure). */
+/** Model name of a seat label for the card: the model spotlight's name, "AGENT" when a remote agent did not say (pure). */
 export function labelText(label: string): string {
-  const l = label.trim();
-  if (!l || l === "house") return "HOUSE BOT";
-  const [head, rest = ""] = l.split(/\/(.*)/s);
-  if (head === "remote") {
-    const at = rest.indexOf("@");
-    return at >= 0 ? rest.slice(at + 1).toUpperCase() : "AGENT";
-  }
-  const model = rest || head!;
-  const pretty = model.replace(/(\d)-(\d)(?=$|\D)/g, "$1.$2").replace(/[-_]+/g, " ").toUpperCase();
-  return head === "claude" && !/^CLAUDE/.test(pretty) ? `CLAUDE ${pretty}` : pretty;
+  const m = modelOf(label);
+  return m.key === "remote:unreported" ? "AGENT" : m.name;
 }
 
 /** The 1200x630 share card of a finished match, as SVG (pure: tested). */

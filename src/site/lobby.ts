@@ -3,7 +3,7 @@
  * the queue, the model leaderboard, recent results, and the big JOIN button with "Bring your agent".
  * Data: GET /api/matches (every 3 s), /api/replays (every 20 s), /api/models when the model spotlight is merged.
  */
-import { badge, nameBadge } from "./badge";
+import { badge } from "./badge";
 import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
 import { ago, boardFromModels, boardFromReplays, cap, clock, feedEntries, liveMatch, queue, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type ReplayInfo, scoreline } from "./data";
 import { $, every, getJson, html, mount, raw } from "./dom";
@@ -219,7 +219,7 @@ export function lobbyPage(root: HTMLElement) {
     mount(
       body,
       html`<table class="board"><tbody>${rows.map(
-        (r, i) => html`<tr class="${r.provisional ? "prov" : ""}"><td class="rk">${i + 1}</td><td>${nameBadge(r.name)}</td><td class="bar"><i style="width:${Math.round(r.winRate * 100)}%"></i></td><td class="v">${Math.round(r.winRate * 100)}% <span class="dim">of ${r.matches}</span></td></tr>`,
+        (r, i) => html`<tr class="${r.provisional ? "prov" : ""}"><td class="rk">${i + 1}</td><td>${badge(r.model)}</td><td class="bar"><i style="width:${Math.round(r.winRate * 100)}%"></i></td><td class="v">${Math.round(r.winRate * 100)}% <span class="dim">of ${r.matches}</span></td></tr>`,
       )}</tbody></table>
       <div class="board-note">${board?.spotlight ? "Match win rate (chance is 25%). Faded: fewer than 10 matches." : `Match win rate over the last ${replays.length} matches (chance is 25%); agents that did not report a model are left out. Faded: fewer than 3.`}</div>`,
     );

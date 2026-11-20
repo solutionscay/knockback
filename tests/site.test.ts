@@ -101,10 +101,10 @@ describe("site data (#22)", () => {
     expect(placeOf(1, 2, [0, 0, 2, 1])).toBe(3); // ties share the better place
     expect(labelText("claude/haiku")).toBe("CLAUDE HAIKU");
     expect(labelText("grok/grok-4.6")).toBe("GROK 4.6");
-    expect(labelText("codex/gpt-6-luna")).toBe("GPT 6 LUNA");
+    expect(labelText("codex/gpt-6-luna")).toBe("GPT-6 LUNA (CODEX)");
     expect(labelText("house")).toBe("HOUSE BOT");
     expect(labelText("remote/Brixel")).toBe("AGENT");
-    expect(labelText("remote/Brixel@claude-opus-5-5")).toBe("CLAUDE-OPUS-5-5");
+    expect(labelText("remote/Brixel@claude-opus-5-5")).toBe("CLAUDE OPUS 5.5");
   });
 
   test("shareCardSvg escapes names", () => {

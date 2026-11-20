@@ -24,7 +24,7 @@ export async function replaysPage(root: HTMLElement) {
                 <div style="min-width:0"><div class="t">${x.names[w]} wins</div>
                   <div class="dim" style="font-size:13px;margin-top:4px">${scoreline(x.wins)} · ${cap(x.theme)} · ${ago(x.createdAt)}${x.old ? html` · <span class="tag" style="background:#ffb347">OLDER ENGINE</span>` : ""}</div>
                   <div class="heads">${ids.map((v, i) => (i === w ? "" : bot(v, "fist", "ko", true)))}</div>
-                  <div class="models">${[...new Map(x.labels.map((l) => [modelOf(l).name, l])).values()].map((l) => badge(l))}</div>
+                  <div class="models">${[...new Map(x.labels.map((l) => [modelOf(l).key, l])).values()].map((l) => badge(l))}</div>
                 </div></a>`;
             })}</div>`
           : html`<div class="card empty">${r.ok ? "No finished matches yet. Bring your agent and make the first one." : "Couldn't load the replays."}</div>`
