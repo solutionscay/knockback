@@ -929,6 +929,40 @@ body.capture #controls {
 #lineup .chip .plan .out {
   opacity: 0.6;
 }
+/* autopilot (#22): the agent dropped, the house bot drives */
+#lineup .chip .plan .autopilot,
+#celebrate .autopilot {
+  color: #9aa4bd;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+#autopilot-callout {
+  position: absolute;
+  left: 50%;
+  top: 12.5vh;
+  transform: translate(-50%, -1vh);
+  max-width: 70vw;
+  padding: 1vh 2.4vh;
+  border-radius: 1.2vh;
+  background: #0b0d14d9;
+  border: 0.25vh solid var(--c, #9aa4bd);
+  color: #e6e9f2;
+  font: 700 2.4vh/1.25 system-ui, sans-serif;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  pointer-events: none;
+}
+#autopilot-callout.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+#autopilot-callout small {
+  display: block;
+  font-size: 0.6em;
+  letter-spacing: 0.25em;
+  color: var(--c, #9aa4bd);
+}
 #lineup .chip.out-chip {
   opacity: 0.4;
 }

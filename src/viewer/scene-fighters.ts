@@ -52,6 +52,8 @@ export class FighterViews {
   readonly barsG = new Graphics();
   private fighters: FighterView[] = [];
   morale: string[] = [];
+  /** fighters on autopilot (#22): the sleepy "..." face instead of their mood */
+  autopilot: boolean[] = [];
   celebrateId = -1;
 
   clear() {
@@ -206,7 +208,9 @@ export class FighterViews {
               ? "stun"
               : this.celebrateId === f.id
                 ? "win"
-                : ((this.morale[f.id] ?? "confident") as FaceMood);
+                : this.autopilot[f.id]
+                  ? "sleepy"
+                  : ((this.morale[f.id] ?? "confident") as FaceMood);
       const look = { lookX: aimLocalX > 0.3 ? 1 : aimLocalX < -0.3 ? -1 : 0, lookY: aimLocalY < -0.5 ? -1 : aimLocalY > 0.5 ? 1 : 0, koT: (sim.tick - f.koTick) / 60 };
       const lod = lodFor(s);
       const faceNow = faceFor(mood, time, v.h, f.look.eyes, look);

@@ -238,3 +238,32 @@ describe("MCP agents", () => {
     gw.close();
   });
 });
+
+describe("viewer: AutopilotTrack", () => {
+  const { AutopilotTrack, sanitizeControl } = require("../src/viewer/autopilot") as typeof import("../src/viewer/autopilot");
+  test("fires each callout when the match reaches it; AUTOPILOT until the agent's round comes back", () => {
+    const tr = new AutopilotTrack();
+    tr.reset(
+      sanitizeControl([
+        { seat: 1, mode: "autopilot", round: 1, phase: "fight", tick: 600, line: "Ruxy's brain went to get milk.", reason: "x" },
+        { seat: 1, mode: "agent", round: 2, phase: "plan", tick: null, fromRound: 3, line: "Ruxy is back." },
+        { seat: 9, mode: "autopilot", round: 1, phase: "plan", tick: null, line: "bad seat" }, // dropped
+        "junk",
+      ]),
+    );
+    expect(tr.update(1, "fight", 599)).toEqual([]);
+    expect(tr.update(1, "fight", 600).map((e) => e.line)).toEqual(["Ruxy's brain went to get milk."]);
+    expect(tr.on).toEqual([false, true, false, false]);
+    expect(tr.update(2, "dialogue", 0).map((e) => e.line)).toEqual(["Ruxy is back."]);
+    expect(tr.on[1]).toBe(true); // still the house bot's round 2
+    tr.update(3, "dialogue", 0);
+    expect(tr.on[1]).toBe(false);
+  });
+
+  test("a replay that starts later fires everything already passed at once, in order", () => {
+    const tr = new AutopilotTrack();
+    tr.reset(sanitizeControl([{ seat: 0, mode: "autopilot", round: 1, phase: "plan", tick: null, line: "a" }, { seat: 2, mode: "autopilot", round: 1, phase: "roundEnd", tick: 900, line: "b" }]));
+    expect(tr.update(2, "countdown", 0).map((e) => e.line)).toEqual(["a", "b"]);
+    expect(tr.on).toEqual([true, false, true, false]);
+  });
+});

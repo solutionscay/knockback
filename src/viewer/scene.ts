@@ -97,6 +97,11 @@ export class Scene {
     return this.H / 1080;
   }
 
+  /** fighters on autopilot (#22): sleepy face */
+  set autopilot(on: boolean[]) {
+    this.fighters.autopilot = on;
+  }
+
   set morale(states: string[]) {
     this.fighters.morale = states;
   }

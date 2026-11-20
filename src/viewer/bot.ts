@@ -157,7 +157,7 @@ export interface Face {
   screen: "on" | "white" | "off";
   glow: number;
 }
-export type FaceMood = "confident" | "cocky" | "rattled" | "furious" | "desperate" | "hit" | "stun" | "win" | "ko" | "white";
+export type FaceMood = "confident" | "cocky" | "rattled" | "furious" | "desperate" | "hit" | "stun" | "win" | "ko" | "white" | "sleepy";
 export const MORALE_FACES: FaceMood[] = ["confident", "cocky", "rattled", "furious", "desperate"];
 export const ALL_FACES: FaceMood[] = [...MORALE_FACES, "hit", "stun", "ko", "win"];
 
@@ -270,6 +270,15 @@ export function faceFor(mood: FaceMood, t: number, h: number, eyes: Eyes = "tall
         const a = [1, 0.55, 0.25][i]!;
         bits.push([c, r, undefined, a], [10 - c, r, undefined, a]);
       }
+      lx = 0;
+      ly = 0;
+      break;
+    }
+    case "sleepy": {
+      // autopilot (#22): the agent is gone; "." ".." "..." typed slowly across a dimmed visor
+      const n = step(1.6) % 4;
+      for (let i = 0; i < n; i++) bits.push([3 + 2 * i, 4, undefined, 0.85]);
+      glow = 0.7;
       lx = 0;
       ly = 0;
       break;

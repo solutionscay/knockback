@@ -112,6 +112,7 @@ if (params.has("live")) {
       seedEl.textContent = `seed ${msg.seed} · live AI match`;
       game.newMatch(Number(msg.seed) >>> 0, { live: true, souls: sanitizeSouls(msg.souls), identities: sanitizeIdentities(msg.identities), labels: viewerLabels(msg.labels) });
     } else if (msg.type === "decisions") game.pushDecisions(msg.round, msg.decisions, msg.meta);
+    else if (msg.type === "control") game.pushControl(msg); // an agent dropped or came back (#22)
     else if (msg.type === "done") {
       lastRecord = isRecordUrl(msg.record) ? msg.record : null;
       seedEl.textContent += ` · replay: ?record=${msg.record}`;
@@ -135,7 +136,7 @@ if (params.has("live")) {
   }
   const labels = viewerLabels(raw.labels);
   seedEl.textContent = `seed ${rec.seed} · replay`;
-  game.newMatch(rec.seed, { recorded: rec, labels });
+  game.newMatch(rec.seed, { recorded: rec, labels, control: raw.control });
 } else start(seedParam !== null && seedParam !== "" ? Number(seedParam) >>> 0 : randomSeed());
 
 if (capture) {

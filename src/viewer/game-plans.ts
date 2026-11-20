@@ -19,6 +19,8 @@ export class GamePlans {
   private planNow: (Strategy | null)[] = [null, null, null, null];
   private nextUpdate = 0;
   private planKeys: string[] = [];
+  /** fighters on autopilot (#22): the chip says so instead of the plan */
+  autopilot: boolean[] = [];
 
   startRound(match: Match, decisions: Decision[], clock: number) {
     this.planKeys = [];
@@ -59,6 +61,7 @@ export class GamePlans {
   private planLine(i: number, match: Match, shown: Fight, decisions: Decision[]): string {
     const f = shown.sim.fighters[i]!;
     if (!f.alive) return `<span class="out">OUT</span>`;
+    if (this.autopilot[i]) return `<span class="autopilot">AUTOPILOT</span>`;
     const base = this.planNow[i] ?? decisions[i]!.strategy;
     const ctl = shown.controllers[i]!;
     const tr = ctl.rules.targetRule();

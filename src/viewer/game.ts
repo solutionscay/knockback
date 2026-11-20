@@ -19,6 +19,7 @@ import { sanitizeDecision } from "./sanitize";
 import { Scene, type CamMode } from "./scene";
 import { celebrateHtml, dialogueHtml, esc, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, renderDialogueLine, renderRoundClock, restart, saveCamera, saveTally, type Hud } from "./game-hud";
 import { GamePlans } from "./game-plans";
+import { AutopilotTrack, sanitizeControl, sanitizeOne, type ControlView } from "./autopilot";
 
 const SLOW_TIME = 1.6;
 
@@ -37,6 +38,9 @@ export class Game {
   readonly scene: Scene;
   flow!: FlowRunner;
   private readonly plans = new GamePlans();
+  /** autopilot (#22): control changes from the server, shown when the match reaches them */
+  private readonly ap = new AutopilotTrack();
+  private apUntil = 0;
   get callouts() {
     return this.plans.callouts;
   }
@@ -116,7 +120,10 @@ export class Game {
    * exactly (all decisions from the record). `live`: decisions arrive later via
    * pushDecisions() (AI fighters thinking on the server).
    */
-  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[] } = {}) {
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; control?: unknown } = {}) {
+    this.ap.reset(sanitizeControl(opts.control));
+    this.apUntil = 0;
+    document.getElementById("autopilot-callout")?.classList.remove("show");
     // live: the server's identities come as wishes; they are valid and distinct, so they are kept as they are
     this.match = new Match(seed, { session: this.session, recorded: opts.recorded, souls: opts.souls, identityWishes: opts.identities });
     this.match.onEvent = (e) => this.onEvent(e);
@@ -162,6 +169,26 @@ export class Game {
       el.className = "";
       el.innerHTML = "";
     }
+  }
+
+  /** Live match: an agent dropped (the house bot took its fighter) or came back (#22). */
+  pushControl(raw: unknown) {
+    const e = sanitizeOne(raw);
+    if (e) this.ap.push(e);
+  }
+
+  private showControl(e: ControlView) {
+    let el = document.getElementById("autopilot-callout");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "autopilot-callout";
+      (document.getElementById("hud") ?? document.body).appendChild(el);
+    }
+    const c = this.match.identities[e.seat]?.color;
+    if (c !== undefined) el.style.setProperty("--c", hex(c));
+    el.innerHTML = `<small>${e.mode === "autopilot" ? "AUTOPILOT" : "BACK IN CONTROL"}</small>${esc(e.line)}`;
+    restart(el, "show");
+    this.apUntil = this.clock + 4.5;
   }
 
   /** Live AI match: the server sends each round's decisions as soon as the fighters have answered. */
@@ -286,7 +313,7 @@ export class Game {
         const wid = this.match.winner;
         this.scene.camera.focus = { id: wid, offsetX: -0.24, heightM: 8 };
         this.scene.celebrateId = wid;
-        h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed);
+        h.celebrate.innerHTML = celebrateHtml(this.match, this.tally, this.matchPoints, this.matchesPlayed, this.ap.on);
         restart(h.celebrate, "show");
         h.celebrate.querySelector<HTMLButtonElement>(".next")?.addEventListener("click", () => this.onNeedNewMatch?.());
         this.moments.push({ time: this.clock, kind: "celebrate", weight: 0 });
@@ -359,6 +386,15 @@ export class Game {
 
     this.flow.update(dt, this.shown.over);
     const beat = this.flow.beat;
+    // the round on screen: during a round end the next round may already be prepared (match.round is one ahead)
+    const onScreen = beat.kind === "roundEnd" || beat.kind === "celebrate" ? this.match.results.length : this.match.round;
+    for (const e of this.ap.update(onScreen, beat.kind, this.shown.sim.tick)) this.showControl(e);
+    if (this.apUntil && this.clock > this.apUntil) {
+      this.apUntil = 0;
+      document.getElementById("autopilot-callout")?.classList.remove("show");
+    }
+    this.scene.autopilot = this.ap.on;
+    this.plans.autopilot = this.ap.on;
     if (this.suddenUntil > 0 && (this.clock > this.suddenUntil || beat.kind !== "fight")) {
       this.suddenUntil = 0;
       if (this.hud.callout.classList.contains("sd")) this.hud.callout.className = "";

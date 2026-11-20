@@ -147,7 +147,7 @@ export function dialogueHtml(match: Match, decision: Decision, labels: string[] 
       </div>`;
 }
 
-export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[], matchesPlayed: number): string {
+export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[], matchesPlayed: number, autopilot: boolean[] = []): string {
   const m = match;
   const w = match.identities[m.winner]!;
   const why = m.decidedBy() === "two-wins" ? `${m.wins[m.winner]} rounds to ${Math.max(...m.wins.filter((_, i) => i !== m.winner))}` : "won the deciding round";
@@ -162,7 +162,7 @@ export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[],
       const parts = [wins ? `${wins} ROUND${wins > 1 ? "S" : ""} +${wins * POINTS.win}` : "", kos ? `${kos} KO +${kos * POINTS.ko}` : ""].filter(Boolean).join(" · ");
       return `<div class="row${id === m.winner ? " champ" : ""}" style="--c:${hex(c.color)};--w:${(100 * tally.points[id]!) / best}%">
           <span class="rank">${rank + 1}</span><i></i><span class="name">${esc(c.name)}</span>
-          <span class="bar"><span></span></span><span class="pts">${tally.points[id]}</span>${gained ? `<em>+${gained}</em>` : `<em class="zero">+0</em>`}<span class="why">${parts}</span></div>`;
+          <span class="bar"><span></span></span><span class="pts">${tally.points[id]}</span>${gained ? `<em>+${gained}</em>` : `<em class="zero">+0</em>`}<span class="why">${parts}${autopilot[id] ? `${parts ? " · " : ""}<b class="autopilot">finished on autopilot</b>` : ""}</span></div>`;
     })
     .join("");
   return `
