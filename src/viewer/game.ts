@@ -8,6 +8,7 @@ import type { Application } from "pixi.js";
 import { betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
 import { POINTS, Tally, type FightScore } from "../flow/score";
 import type { Soul } from "../sim/soul";
+import { bestRule, CALLOUT, CalloutManager, planChangeText, ruleTagText, targetText, type KoEvent, type RuleFiring } from "./callouts";
 import { DT, FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import type { Fight } from "../sim/fight";
 import { Match, ROUNDS_TO_WIN, type DecisionMeta, type MatchRecord } from "../sim/match";
@@ -51,6 +52,17 @@ export class Game {
   shown!: Fight;
   readonly scene: Scene;
   flow!: FlowRunner;
+  /** plan thoughts and rule tags over the fight (#10, #11); ?thoughts=off hides them */
+  callouts = new CalloutManager(typeof location === "undefined" || new URLSearchParams(location.search).get("thoughts") !== "off");
+  /** round-start plan-change thoughts, shown one by one */
+  private pendingThoughts: { at: number; fighter: number; text: string }[] = [];
+  private roundFirings: RuleFiring[] = [];
+  private ruleTagAt = new Map<number, number>();
+  private roundKos: KoEvent[] = [];
+  /** each fighter's base plan now (the round's decision, then any plan updates) */
+  private planNow: (Strategy | null)[] = [null, null, null, null];
+  private nextUpdate = 0;
+  private planKeys: string[] = [];
   /** hide the SUDDEN DEATH callout at this clock time */
   private suddenUntil = 0;
   tally: Tally;
@@ -219,9 +231,49 @@ export class Game {
     }
   }
 
+  /** Mid-round plan updates in the record (#10; stub until #8/#9): a thought and the chip, at their tick. */
+  private applyPlanUpdates() {
+    const ups = this.match.record.rounds[this.match.round - 1]?.planUpdates;
+    if (!ups) return;
+    const tick = this.shown.sim.tick;
+    while (this.nextUpdate < ups.length && ups[this.nextUpdate]!.tick <= tick) {
+      const u = ups[this.nextUpdate++]!;
+      const prev = this.planNow[u.fighter] ?? this.decisions[u.fighter]!.strategy;
+      // a callout for every update that changes something, or that comes with a line
+      const text = planChangeText(prev, u.strategy, this.match.names) ?? (u.line ? "→ keeps the plan" : null);
+      if (text) this.callouts.add({ kind: "thought", fighter: u.fighter, text, ...(u.line ? { line: u.line } : {}), at: this.clock });
+      this.planNow[u.fighter] = u.strategy;
+    }
+  }
+
+  /** One line under each HUD chip: target, stance, first weapon; ⚑ marks a rule override (#10, #11). */
+  planLine(i: number): string {
+    const f = this.shown.sim.fighters[i]!;
+    if (!f.alive) return `<span class="out">OUT</span>`;
+    const base = this.planNow[i] ?? this.decisions[i]!.strategy;
+    const ctl = this.shown.controllers[i]!;
+    const tr = ctl.rules.targetRule();
+    const rs = ctl.rules.stance();
+    const names = this.match.names;
+    const tgt = tr ? `<b class="rule">⚑ ${tr.kind === "avoid" ? "avoid " : "→ "}${esc(names[tr.subject] ?? "?")}</b>` : `<b>→ ${esc(targetText(base, names))}</b>`;
+    const stance = rs ? `<span class="rule">⚑ ${esc(rs)}</span>` : esc(base.stance);
+    const w = base.weapons[0] === "grapple" ? "hook" : (base.weapons[0] ?? "fists");
+    return `${tgt}<i>·</i>${stance}<i>·</i>${esc(w)}`;
+  }
+
+  private renderPlanChips() {
+    for (let i = 0; i < 4; i++) {
+      const html = this.planLine(i);
+      if (this.planKeys[i] === html) continue;
+      this.planKeys[i] = html;
+      const el = this.hud.lineup.querySelector<HTMLElement>(`[data-id="${i}"] .plan`);
+      if (el) el.innerHTML = html;
+    }
+  }
+
   private startLineup() {
     this.hud.lineup.innerHTML = this.shown.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.mark, this.decisions[f.id]!.strategy.weapons[0] ?? "fist")}<span>${esc(f.name)}</span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.color, f.mark, this.decisions[f.id]!.strategy.weapons[0] ?? "fist")}<span class="nm">${esc(f.name)}<em class="plan"></em></span></div>`)
       .join("");
     this.hud.lineup.className = "show";
   }
@@ -304,18 +356,38 @@ export class Game {
         restart(h.count, "show");
         this.scene.addShake(0.25);
         break;
-      case "go":
+      case "go": {
         h.count.innerHTML = `<span class="go">FIGHT!</span>`;
         restart(h.count, "show go");
-        h.lineup.className = "show out";
+        // the lineup chips stay up during the fight as compact plan chips (#10)
+        h.lineup.className = "show fight";
+        this.planKeys = [];
+        this.callouts.clear();
+        this.roundFirings = [];
+        this.roundKos = [];
+        this.ruleTagAt.clear();
+        this.nextUpdate = 0;
+        this.planNow = this.decisions.map((d) => d.strategy);
+        // plan changes since last round: one thought per fighter, staggered
+        this.pendingThoughts = [];
+        const prev = this.match.record.rounds[this.match.round - 2]?.strategies;
+        if (prev) {
+          let k = 0;
+          this.decisions.forEach((d, i) => {
+            const t = planChangeText(prev[i]!, d.strategy, this.match.names);
+            if (t) this.pendingThoughts.push({ at: this.clock + 0.9 + 1.4 * k++, fighter: i, text: t });
+          });
+        }
         this.scene.addShake(0.6);
         this.acc = 0;
         break;
+      }
       case "fight":
         h.count.className = "";
         break;
       case "roundEnd": {
         h.clock.className = "";
+        h.lineup.className = "show out"; // the plan chips step aside for the recap
         const facts = this.match.finishRound();
         const res = this.match.results[this.match.results.length - 1]!;
         const scores = this.tally.add(res);
@@ -375,7 +447,11 @@ export class Game {
       const hurt = w && w.damage >= 8 ? `${esc(this.match.souls[worst]!.name)} ${Math.round(w.damage)}${w.hits > 1 && w.fromBehind === w.hits ? " from behind" : w.fromBehind >= 2 ? ` (${w.fromBehind} from behind)` : ""}` : "";
       return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b><span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
     }).join("");
-    return `<div class="recap">${rows}</div>`;
+    // best rule (#11): a rule firing followed within 5 s by a knockout by the same fighter
+    const br = bestRule(this.roundFirings, this.roundKos);
+    const brRule = br ? this.match.record.rounds[facts.round - 1]?.strategies[br.fighter]?.rules?.[br.rule] : undefined;
+    const best = br && brRule ? `<div class="best" style="--c:${hex(this.match.souls[br.fighter]!.color)}">BEST RULE · <b>${esc(this.match.names[br.fighter]!)}</b> '${esc(brRule.label)}' → knocked out ${esc(this.match.names[br.victim]!)}</div>` : "";
+    return `<div class="recap">${rows}${best}</div>`;
   }
 
   private dialogueHtml(b: Extract<Beat, { kind: "dialogue" }>): string {
@@ -396,6 +472,12 @@ export class Game {
         ? `<span class="ai">${esc(this.labels[b.fighter]!)}</span>`
         : "";
     const lastStats = b.phase === "between" ? this.match.facts[b.round - 2]?.stats.summary[b.fighter] : undefined;
+    // rules (#11): last round's rules with their firing counts, then this round's rules; the AI's reason (#10)
+    const lastRules = b.phase === "between" ? this.match.record.rounds[b.round - 2]?.strategies[b.fighter]?.rules : undefined;
+    const lastFired = b.phase === "between" ? this.match.facts[b.round - 2]?.stats.rules?.[b.fighter] : undefined;
+    const counts = lastRules?.length ? `<div class="rules"><span class="k">LAST ROUND'S RULES</span>${lastRules.map((r, i) => `<span>${esc(r.label)} <b>×${lastFired?.[i]?.fires ?? 0}</b></span>`).join("")}</div>` : "";
+    const nextRules = s.rules?.length ? `<div class="rules next"><span class="k">RULES</span>${s.rules.map((r) => `<span>${esc(r.label)}</span>`).join("")}</div>` : "";
+    const why = meta?.why ? `<div class="why">${esc(meta.why)}</div>` : "";
     const rt = s.retaliate === "attacker" ? "TURN ON ATTACKERS" : s.retaliate === "ignore" ? "IGNORE BACKSTABS" : "FIGHT BACK";
     return `
       <div class="panel" style="--c:${hex(c.color)}">
@@ -405,6 +487,7 @@ export class Game {
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
           <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
+          ${nextRules}${counts}${why}
         </div>
         <button type="button" class="skip" title="Skip the dialogue">SKIP ▸▸</button>
         <div class="hint">SPACE ▸</div>
@@ -454,6 +537,17 @@ export class Game {
 
   private onEvent(e: SimEvent) {
     this.scene.onEvent(e);
+    if (e.type === "rule" && e.on) {
+      const rule = this.match.decisions[e.fighter]?.strategy.rules?.[e.rule];
+      // few callouts: the same rule of the same fighter tags again only after CALLOUT.ruleRepeatSeconds
+      const key = e.fighter * 8 + e.rule;
+      if (this.clock - (this.ruleTagAt.get(key) ?? -1e9) >= CALLOUT.ruleRepeatSeconds) {
+        this.ruleTagAt.set(key, this.clock);
+        this.callouts.add({ kind: "rule", fighter: e.fighter, text: ruleTagText(rule), subject: e.subject, at: this.clock });
+      }
+      this.roundFirings.push({ tick: e.tick, fighter: e.fighter, rule: e.rule });
+    }
+    if (e.type === "ko") this.roundKos.push({ tick: e.tick, by: e.by, victim: e.fighter });
     if (e.type === "rule" && this.debugRules) {
       const f = this.shown.sim.fighters[e.fighter]!;
       const rule = this.match.decisions[e.fighter]?.strategy.rules?.[e.rule];
@@ -522,6 +616,7 @@ export class Game {
         this.scene.capturePrev();
         if (mode === "fight" && !this.shown.over) {
           this.shown.step();
+          this.applyPlanUpdates();
           const { bigHit } = this.scene.afterTick();
           if (bigHit >= 14) {
             this.hitPause = Math.max(this.hitPause, 0.045 + Math.min(0.08, (bigHit - 14) * 0.006));
@@ -534,6 +629,14 @@ export class Game {
         }
       }
     }
+
+    // callouts over the fight: nothing during knockout slow motion or outside the fight beat
+    while (this.pendingThoughts.length && this.pendingThoughts[0]!.at <= this.clock) {
+      const t = this.pendingThoughts.shift()!;
+      this.callouts.add({ kind: "thought", fighter: t.fighter, text: t.text, at: this.clock });
+    }
+    this.scene.setCallouts(this.callouts.update(this.clock, beat.kind !== "fight" || this.slow > 0), this.clock);
+    if (beat.kind === "go" || beat.kind === "fight") this.renderPlanChips();
 
     // per-frame HUD bits driven by beat progress (so capture stays in sync)
     if (beat.kind === "dialogue") {

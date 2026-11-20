@@ -870,3 +870,96 @@ body.capture #controls {
   color: #ffde4a;
   animation: blink 1.2s steps(1) infinite;
 }
+
+/* ---------------------------------------------------------- plan chips in the fight (#10, #11) */
+#lineup.fight {
+  left: 1.6vh;
+  right: 1.6vh;
+  top: 1.4vh;
+  transform: none;
+  justify-content: space-between;
+  pointer-events: none;
+}
+#lineup.fight .chip {
+  opacity: 1;
+  transform: none;
+  padding: 0.35vh 1.2vh 0.35vh 0.5vh;
+  font-size: 1.7vh;
+  background: rgba(7, 8, 13, 0.72);
+  pointer-events: auto;
+}
+#lineup.fight .chip:nth-child(2) {
+  margin-right: auto;
+}
+#lineup.fight .chip:nth-child(3) {
+  margin-left: auto;
+}
+#lineup.fight .chip svg {
+  width: 2.8vh;
+  height: 3.3vh;
+}
+#lineup .chip .nm {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+#lineup .chip .plan {
+  display: none;
+  font-style: normal;
+  font-size: 1.45vh;
+  color: #e6e9f2;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+#lineup.fight .chip .plan {
+  display: block;
+}
+#lineup .chip .plan b {
+  font-weight: 800;
+  color: var(--c);
+}
+#lineup .chip .plan i {
+  font-style: normal;
+  opacity: 0.5;
+  margin: 0 0.5vh;
+}
+#lineup .chip .plan .rule {
+  color: #ffd27a;
+}
+#lineup .chip .plan .out {
+  opacity: 0.6;
+}
+#lineup .chip.out-chip {
+  opacity: 0.4;
+}
+/* dialogue card: rules and the reason */
+#dialogue .rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6vh 1.4vh;
+  margin-top: 0.8vh;
+  font-size: 1.5vh;
+  color: #cfd3df;
+}
+#dialogue .rules .k {
+  color: #8a90a2;
+  letter-spacing: 0.12em;
+}
+#dialogue .rules b {
+  color: var(--c);
+}
+#dialogue .why {
+  margin-top: 0.7vh;
+  font-size: 1.45vh;
+  font-style: italic;
+  color: #9aa0b2;
+}
+#callout .recap .best {
+  grid-column: 1 / -1;
+  margin-top: 0.6vh;
+  font-size: 1.6vh;
+  color: #e6e9f2;
+}
+#callout .recap .best b {
+  color: var(--c);
+}

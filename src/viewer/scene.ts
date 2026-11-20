@@ -7,6 +7,7 @@ import { FIGHTER } from "../sim/constants";
 import type { Controller } from "../sim/controller";
 import { Mat } from "../sim/grid";
 import type { Entity, Fighter, Sim, SimEvent } from "../sim/sim";
+import { CALLOUT, type Callout } from "./callouts";
 import { Fx } from "./fx";
 import { PALETTES, POWER_COLOR, shade, type Palette } from "./palette";
 import { drawProp as drawPropShape, drawWeapon } from "./props";
@@ -115,6 +116,12 @@ export class Scene {
   private overlay = new Container();
   private barsG = new Graphics();
   private textLayer = new Container();
+  /** plan thoughts and rule tags over the fighters (#10, #11): set by the game every frame */
+  private callouts: Callout[] = [];
+  private calloutNow = 0;
+  private calloutLayer = new Container();
+  private calloutLines = new Graphics();
+  private calloutViews = new Map<string, { g: Graphics; t: Text; t2: Text | null }>();
   private flashScreen = new Graphics();
   readonly fx = new Fx();
   private props = new Map<number, PropView>();
@@ -154,7 +161,7 @@ export class Scene {
     const stage = app.stage;
     stage.addChild(this.sky, this.hills, this.world, this.overlay, this.flashScreen);
     this.world.addChild(this.abyss, this.zoneG, this.terrainLayer, this.fxBack, this.propLayer, this.planG, this.fighterLayer, this.projG, this.fxFront);
-    this.overlay.addChild(this.barsG, this.textLayer);
+    this.overlay.addChild(this.barsG, this.textLayer, this.calloutLines, this.calloutLayer);
   }
 
   get W() {
@@ -170,6 +177,13 @@ export class Scene {
   // ------------------------------------------------------------------ setup
 
   load(sim: Sim, controllers: Controller[]) {
+    for (const v of this.calloutViews.values()) {
+      v.g.destroy();
+      v.t.destroy();
+      v.t2?.destroy();
+    }
+    this.calloutViews.clear();
+    this.callouts = [];
     this.sim = sim;
     this.controllers = controllers;
     for (const v of this.props.values()) v.g.destroy();
@@ -1076,6 +1090,7 @@ export class Scene {
 
     // ------------------------------------------------ supply drop markers
     this.drawDropMarks(alpha);
+    this.drawCallouts();
 
     // ------------------------------------------------ effects
     this.fx.draw(this.fxBack, this.fxFront);
@@ -1102,6 +1117,101 @@ export class Scene {
     this.screenFlash = Math.max(0, this.screenFlash - dt * 1.8);
     this.flashScreen.clear();
     if (this.screenFlash > 0) this.flashScreen.rect(0, 0, W, H).fill({ color: 0xfff4e0, alpha: this.screenFlash });
+  }
+
+  setCallouts(list: Callout[], now: number) {
+    this.callouts = list;
+    this.calloutNow = now;
+  }
+
+  /** Callout bubbles above the fighters: dotted outline = a thought, solid in the fighter's color = a rule tag. */
+  private drawCallouts() {
+    const ui = this.ui;
+    const keep = new Set<string>();
+    const lines = this.calloutLines;
+    lines.clear();
+    const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+    for (const c of this.callouts) {
+      const f = this.sim.fighters[c.fighter];
+      if (!f || f.removed) continue;
+      const key = `${c.kind}:${c.fighter}:${c.shownAt}`;
+      keep.add(key);
+      let v = this.calloutViews.get(key);
+      if (!v) {
+        const style = (size: number, fill: number, italic = false) => ({
+          fontFamily: "Rubik, 'Arial Black', system-ui, sans-serif",
+          fontWeight: (italic ? "600" : "800") as "600" | "800",
+          fontStyle: (italic ? "italic" : "normal") as "italic" | "normal",
+          fontSize: size,
+          fill,
+        });
+        const t = new Text({ text: c.text, style: style(30, c.kind === "rule" ? f.color : 0xffffff) });
+        const t2 = c.line ? new Text({ text: `“${c.line.length > 60 ? `${c.line.slice(0, 59)}…` : c.line}”`, style: style(22, 0xd7dbe6, true) }) : null;
+        const g = new Graphics();
+        this.calloutLayer.addChild(g, t);
+        if (t2) this.calloutLayer.addChild(t2);
+        t.anchor.set(0.5, 0);
+        t2?.anchor.set(0.5, 0);
+        v = { g, t, t2 };
+        this.calloutViews.set(key, v);
+      }
+      const age = this.calloutNow - (c.shownAt ?? this.calloutNow);
+      const life = c.kind === "thought" ? CALLOUT.thoughtSeconds : CALLOUT.ruleSeconds;
+      const alpha = Math.min(1, age / 0.15, (life - age) / 0.3);
+      const k = ui * (age < 0.12 ? 0.85 + age * 1.25 : 1);
+      v.t.scale.set(k);
+      v.t2?.scale.set(k);
+      const w = Math.max(v.t.width, v.t2?.width ?? 0) + 28 * ui;
+      const h = v.t.height + (v.t2 ? v.t2.height + 4 * ui : 0) + 16 * ui;
+      const gp = this.fighterView(f.id).root.getGlobalPosition();
+      let x = Math.min(this.W - w / 2 - 12 * ui, Math.max(w / 2 + 12 * ui, gp.x));
+      let y = Math.max(12 * ui, gp.y - 120 * ui - h);
+      // two callouts never overlap: stack the second one above the first
+      for (const p of placed) if (x + w / 2 > p.x0 && x - w / 2 < p.x1 && y + h > p.y0 && y < p.y1) y = Math.max(12 * ui, p.y0 - h - 8 * ui);
+      placed.push({ x0: x - w / 2, x1: x + w / 2, y0: y, y1: y + h });
+      const g = v.g;
+      g.clear();
+      g.roundRect(x - w / 2, y, w, h, 12 * ui).fill({ color: 0x0b0d14, alpha: 0.82 });
+      if (c.kind === "rule") g.roundRect(x - w / 2, y, w, h, 12 * ui).stroke({ width: 3 * ui, color: f.color });
+      else {
+        // dotted outline: a thought, not a spoken line
+        const dot = 7 * ui;
+        for (let px = x - w / 2 + 10 * ui; px < x + w / 2 - 10 * ui; px += dot * 2) {
+          g.circle(px, y, 1.8 * ui).fill(0xffffff);
+          g.circle(px, y + h, 1.8 * ui).fill(0xffffff);
+        }
+        for (let py = y + 10 * ui; py < y + h - 8 * ui; py += dot * 2) {
+          g.circle(x - w / 2, py, 1.8 * ui).fill(0xffffff);
+          g.circle(x + w / 2, py, 1.8 * ui).fill(0xffffff);
+        }
+        // thought dots down to the fighter
+        g.circle(x, y + h + 10 * ui, 4 * ui).fill({ color: 0xffffff, alpha: 0.85 });
+        g.circle(x, y + h + 22 * ui, 2.5 * ui).fill({ color: 0xffffff, alpha: 0.7 });
+      }
+      g.alpha = alpha;
+      v.t.alpha = alpha;
+      v.t.position.set(x, y + 8 * ui);
+      if (v.t2) {
+        v.t2.alpha = alpha;
+        v.t2.position.set(x, y + 8 * ui + v.t.height + 4 * ui);
+      }
+      // rule tag: a thin line to the subject for the first second
+      if (c.kind === "rule" && c.subject !== undefined && c.subject >= 0 && age < CALLOUT.ruleLineSeconds) {
+        const sf = this.sim.fighters[c.subject];
+        if (sf && !sf.removed) {
+          const sp = this.fighterView(sf.id).root.getGlobalPosition();
+          lines.moveTo(x, y + h).lineTo(sp.x, sp.y - 40 * ui).stroke({ width: 3 * ui, color: f.color, alpha: alpha * (1 - age / CALLOUT.ruleLineSeconds) * 0.9 });
+          lines.circle(sp.x, sp.y - 40 * ui, 6 * ui).stroke({ width: 3 * ui, color: f.color, alpha: alpha * 0.9 });
+        }
+      }
+    }
+    for (const [k, v] of this.calloutViews) {
+      if (keep.has(k)) continue;
+      v.g.destroy();
+      v.t.destroy();
+      v.t2?.destroy();
+      this.calloutViews.delete(k);
+    }
   }
 
   private drawDropMarks(alpha: number) {

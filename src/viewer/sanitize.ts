@@ -1,5 +1,5 @@
 /** Untrusted input (record files, the live stream) -> safe decisions and souls. Pure: no DOM, no Pixi. */
-import type { MatchRecord } from "../sim/match";
+import type { MatchRecord, PlanUpdate } from "../sim/match";
 import { checkRule, MAX_RULE_LABEL } from "../sim/rules";
 import { MAX_RULES, type Rule, type Strategy } from "../sim/sim";
 import { SEAT_COLORS, type LineTemplate, type Soul } from "../sim/soul";
@@ -98,6 +98,22 @@ export function sanitizeSouls(v: unknown): Soul[] | undefined {
   return Array.isArray(v) && v.length === 4 ? v.map((s, i) => sanitizeSoul(s, i)) : undefined;
 }
 
+/** Mid-round plan updates from a record (#10): tick, fighter, a sanitized plan and line; at most 64, in tick order. */
+export function sanitizePlanUpdates(v: unknown): PlanUpdate[] {
+  if (!Array.isArray(v)) return [];
+  const out: PlanUpdate[] = [];
+  for (const u of v.slice(0, 64)) {
+    if (!u || typeof u !== "object") continue;
+    const o = u as Record<string, unknown>;
+    const fighter = Number(o.fighter);
+    const tick = Number(o.tick);
+    if (!Number.isInteger(fighter) || fighter < 0 || fighter > 3 || !Number.isInteger(tick) || tick < 0 || tick > 100000) continue;
+    const d = sanitizeDecision({ line: o.line, strategy: o.strategy }, fighter);
+    out.push({ tick, fighter, strategy: d.strategy, ...(d.line ? { line: d.line.slice(0, 120) } : {}) });
+  }
+  return out.sort((a, b) => a.tick - b.tick || a.fighter - b.fighter);
+}
+
 /** Sanitize a whole match record (replay files are untrusted). */
 export function sanitizeRecord(rec: unknown): MatchRecord | null {
   const r = rec as MatchRecord;
@@ -111,8 +127,9 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
     souls,
     rounds: r.rounds.map((rd) => {
       const ds = [0, 1, 2, 3].map((i) => sanitizeDecision({ line: rd.lines?.[i], strategy: rd.strategies?.[i] }, i));
-      const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
-      return { ...rd, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}) };
+      const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(m?.hedged === true ? { hedged: true } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
+      const planUpdates = sanitizePlanUpdates((rd as { planUpdates?: unknown }).planUpdates);
+      return { ...rd, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}), ...(planUpdates.length ? { planUpdates } : { planUpdates: undefined }) };
     }),
   };
 }

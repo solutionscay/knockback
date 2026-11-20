@@ -13,6 +13,10 @@ declare global {
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
       state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string };
       drainMoments: () => { time: number; kind: string; weight: number }[];
+      /** callouts over the fight (#10, #11): on screen now, the most ever at once, all shown so far */
+      callouts: () => { visible: { kind: string; fighter: number; text: string }[]; peak: number; shown: { kind: string; fighter: number; text: string }[] };
+      /** the HUD plan chip lines (plain text) */
+      planChips: () => string[];
     };
   }
 }
@@ -157,6 +161,12 @@ if (capture) {
       alive: game.shown.sim.fighters.map((f) => f.alive),
       hp: game.shown.sim.fighters.map((f) => f.hp),
     }),
+    callouts: () => ({
+      visible: game.callouts.visible.map((c) => ({ kind: c.kind, fighter: c.fighter, text: c.text })),
+      peak: game.callouts.peak,
+      shown: game.callouts.shownLog.map((c) => ({ kind: c.kind, fighter: c.fighter, text: c.text })),
+    }),
+    planChips: () => [...document.querySelectorAll<HTMLElement>("#lineup .chip .plan")].map((e) => e.textContent ?? ""),
     drainMoments() {
       const m = game.moments;
       game.moments = [];

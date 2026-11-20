@@ -40,6 +40,20 @@ export interface DecisionMeta {
   factWarnings?: string[];
   /** rules the parser dropped, and why (#5; the plan stays valid) */
   ruleProblems?: string[];
+  /** a second, hedged call was made because the first was slow (#14) */
+  hedged?: boolean;
+}
+
+/**
+ * A plan update during a round (#10; check-ins, #8/#9). For now the viewer
+ * shows them (thought bubble, HUD plan chip) and the engine does not apply
+ * them yet: only stub records carry them until #8 lands.
+ */
+export interface PlanUpdate {
+  tick: number;
+  fighter: number;
+  strategy: Strategy;
+  line?: string;
 }
 
 export interface RoundRecord {
@@ -47,6 +61,8 @@ export interface RoundRecord {
   /** provider/timing per fighter, when decisions came from outside (AI) */
   meta?: DecisionMeta[];
   phase: "intro" | "between";
+  /** mid-round plan updates (stub until #8/#9) */
+  planUpdates?: PlanUpdate[];
   strategies: Strategy[];
   lines: string[];
   fight: FightRecord;
@@ -199,6 +215,8 @@ export class Match {
       fight: this.fight.record,
       winner: -1,
       ...(meta ? { meta: meta.map((m) => ({ ...m })) } : {}),
+      // a replay keeps the record's mid-round plan updates (#10; stub until #8/#9)
+      ...(rec?.planUpdates?.length ? { planUpdates: rec.planUpdates.map((u) => ({ ...u, strategy: { ...u.strategy } })) } : {}),
     });
     this.phase = "fighting";
     return decisions;
