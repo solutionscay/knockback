@@ -3,7 +3,7 @@ import type { Graphics } from "pixi.js";
 import { TNT } from "../sim/constants";
 import type { Entity } from "../sim/sim";
 import type { ShapePen } from "./bot";
-import { POWER_COLOR, shade } from "./palette";
+import { POWER_COLOR, shade, WEAPON_ACCENT } from "./palette";
 
 const C = {
   block: 0xc8a06a,
@@ -18,6 +18,22 @@ const C = {
 export function drawWeapon(g: ShapePen, kind: string, color: number, scale = 1) {
   const s = scale;
   switch (kind) {
+    case "mine":
+      g.roundRect(0.11 * s, -0.16 * s, 0.53 * s, 0.32 * s, 0.12 * s).fill(0x584158).stroke({ width: 0.045 * s, color: INK });
+      g.circle(0.45 * s, 0, 0.09 * s).fill(WEAPON_ACCENT.mine);
+      g.rect(0.16 * s, -0.13 * s, 0.085 * s, 0.26 * s).fill(0xa0a6b3);
+      break;
+    case "railgun":
+      g.roundRect(-0.17 * s, -0.105 * s, 1.23 * s, 0.21 * s, 0.035 * s).fill(0x252e43).stroke({ width: 0.045 * s, color: INK });
+      for (const y of [-0.16, 0.1]) g.rect(0.33 * s, y * s, 0.83 * s, 0.06 * s).fill(WEAPON_ACCENT.railgun);
+      g.rect(0.07 * s, 0.065 * s, 0.14 * s, 0.24 * s).fill(color);
+      break;
+    case "hammer":
+      g.roundRect(-0.08 * s, -0.055 * s, 0.99 * s, 0.11 * s, 0.04 * s).fill(0x665040).stroke({ width: 0.045 * s, color: INK });
+      g.roundRect(0.67 * s, -0.33 * s, 0.52 * s, 0.66 * s, 0.08 * s).fill(0x586375).stroke({ width: 0.055 * s, color: INK });
+      g.rect(0.75 * s, -0.24 * s, 0.29 * s, 0.12 * s).fill(WEAPON_ACCENT.hammer);
+      g.rect(0.09 * s, -0.07 * s, 0.12 * s, 0.14 * s).fill(color);
+      break;
     case "rocket":
       g.roundRect(-0.15 * s, -0.15 * s, 1.0 * s, 0.3 * s, 0.08 * s).fill(0x3b4150).stroke({ width: 0.04 * s, color: 0x15171d });
       g.rect(0.72 * s, -0.17 * s, 0.16 * s, 0.34 * s).fill(color);
@@ -107,6 +123,26 @@ const OUT = { width: 0.06, color: INK, join: "round" as const };
  */
 export function drawPickupWeapon(g: Graphics, kind: string) {
   switch (kind) {
+    case "mine":
+      g.poly(turn([-0.32, -0.16, -0.19, -0.28, 0.19, -0.28, 0.32, -0.16, 0.32, 0.17, 0.19, 0.29, -0.19, 0.29, -0.32, 0.17], 0)).fill(0x584158).stroke(OUT);
+      g.circle(0, 0, 0.16).fill(WEAPON_ACCENT.mine).stroke(OUT);
+      g.rect(-0.31, -0.08, 0.12, 0.16).fill(0xb7b7ca);
+      g.rect(0.19, -0.08, 0.12, 0.16).fill(0xb7b7ca);
+      break;
+    case "railgun": {
+      const a = -0.55;
+      g.poly(bar(-0.44, 0.38, 0.10, a)).fill(0x252e43).stroke(OUT);
+      g.poly(turn([-0.17, 0.10, -0.02, 0.10, -0.02, 0.23, -0.17, 0.23], a)).fill(0x4f5970).stroke(OUT);
+      for (const y of [-0.12, 0.12]) g.poly(turn([0.01, y - 0.045, 0.44, y - 0.045, 0.44, y + 0.045, 0.01, y + 0.045], a)).fill(WEAPON_ACCENT.railgun).stroke({ width: 0.03, color: INK });
+      break;
+    }
+    case "hammer": {
+      const a = -0.75;
+      g.poly(bar(-0.47, 0.27, 0.08, a)).fill(0x76553c).stroke(OUT);
+      g.poly(turn([0.04, -0.28, 0.4, -0.28, 0.44, -0.21, 0.44, 0.21, 0.4, 0.28, 0.04, 0.28], a)).fill(0x586375).stroke(OUT);
+      g.poly(turn([0.1, -0.2, 0.36, -0.2, 0.36, -0.1, 0.1, -0.1], a)).fill(WEAPON_ACCENT.hammer);
+      break;
+    }
     case "rocket": {
       const a = -0.6;
       g.poly(bar(-0.4, 0.2, 0.13, a)).fill(0x3b4150).stroke(OUT);

@@ -1,10 +1,14 @@
 import { Graphics } from "pixi.js";
+import { WEAPON_ACCENT } from "./palette";
 import type { Sim } from "../sim/sim";
 import type { Fx } from "./fx";
 import type { XformAt } from "./scene";
 
 export class ProjectileViews {
   readonly graphics = new Graphics();
+  rails: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
+  waves: { paths: { x: number; y: number }[][]; life: number }[] = [];
+  private minePrev = new Map<number, { x: number; y: number }>();
   private rocketPrev = new Map<number, { x: number; y: number }>();
   ropes: { from: number; x0: number; y0: number; x1: number; y1: number; target: number; life: number; max: number }[] = [];
   zaps: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
@@ -19,15 +23,53 @@ export class ProjectileViews {
     this.ropes = [];
     this.zaps = [];
     this.swings = [];
+    this.rails = [];
+    this.waves = [];
+    this.minePrev.clear();
   }
 
   capturePrev(sim: Sim) {
     this.rocketPrev.clear();
     for (const r of sim.rockets) this.rocketPrev.set(r.id, { x: r.x, y: r.y });
+    this.minePrev.clear();
+    for (const m of sim.mines) this.minePrev.set(m.id, { x: m.x, y: m.y });
   }
 
   render(sim: Sim, fx: Fx, dt: number, alpha: number, fxDt: number, xform: XformAt) {
     const pg = this.graphics;
+    for (const m of sim.mines) {
+      const p = this.minePrev.get(m.id) ?? m;
+      const x = p.x + (m.x - p.x) * alpha;
+      const y = -(p.y + (m.y - p.y) * alpha);
+      const armed = m.armedAt >= 0 && sim.tick > m.armedAt;
+      const glow = armed && sim.tick % 12 < 8;
+      if (glow) pg.circle(x, y, 0.49).fill({ color: WEAPON_ACCENT.mine, alpha: 0.28 });
+      pg.roundRect(x - 0.3, y - 0.2, 0.6, 0.4, 0.14).fill(0x584158).stroke({ color: 0x15171d, width: 0.06 });
+      pg.circle(x, y, 0.13).fill(glow ? 0xffecfa : WEAPON_ACCENT.mine);
+    }
+    for (const r of this.rails) {
+      r.life -= fxDt;
+      if (r.life <= 0) continue;
+      const a = Math.min(1, r.life * 10);
+      pg.moveTo(r.x0, -r.y0).lineTo(r.x1, -r.y1).stroke({ width: 0.34, color: WEAPON_ACCENT.railgun, alpha: 0.55 * a });
+      pg.moveTo(r.x0, -r.y0).lineTo(r.x1, -r.y1).stroke({ width: 0.10, color: 0xf0fdff, alpha: a });
+    }
+    this.rails = this.rails.filter(r => r.life > 0);
+    for (const wave of this.waves) {
+      wave.life -= fxDt;
+      if (wave.life <= 0) continue;
+      const progress = Math.min(1, (0.36 - wave.life) / 0.23 + 0.12);
+      for (const path of wave.paths) {
+        const i = Math.floor((path.length - 1) * progress);
+        const start = path[Math.max(0, i - 6)]!;
+        const end = path[i]!;
+        pg.moveTo(start.x, -start.y - 0.08);
+        for (let j = Math.max(0, i - 6) + 1; j <= i; j++) pg.lineTo(path[j]!.x, -path[j]!.y - 0.08);
+        pg.stroke({ width: 0.18, color: WEAPON_ACCENT.hammer, alpha: Math.min(1, wave.life * 6) });
+        pg.circle(end.x, -end.y - 0.12, 0.24).fill({ color: 0xffe0a8, alpha: Math.min(1, wave.life * 6) });
+      }
+    }
+    this.waves = this.waves.filter(wave => wave.life > 0);
     for (const r of sim.rockets) {
       const pr = this.rocketPrev.get(r.id) ?? r;
       const x = pr.x + (r.x - pr.x) * alpha;

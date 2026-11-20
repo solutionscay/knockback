@@ -1,11 +1,12 @@
 import { Container, Graphics } from "pixi.js";
-import { FIGHTER, POWER } from "../sim/constants";
+import { FIGHTER, POWER, WEAPONS } from "../sim/constants";
 import type { Entity, Fighter, Sim } from "../sim/sim";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
+import { dcos, dsin } from "../sim/dmath";
 import { CELL } from "../sim/grid";
 import { drawArm, drawBody, drawFeet, drawHand, FEET_OVERLAP_PX, FEET_Y, FOOT_X, headTopAt, K, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, hash, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
-import { POWER_COLOR } from "./palette";
+import { POWER_COLOR, WEAPON_ACCENT } from "./palette";
 import { pixiPen } from "./pixiPen";
 import { drawWeapon } from "./props";
 import type { XformAt } from "./scene";
@@ -254,6 +255,11 @@ export class FighterViews {
       au.clear();
       ov.clear();
       if (f.alive) {
+        if (f.railCharge > 0) {
+          const charge = f.railCharge / WEAPONS.railgun.chargeTicks;
+          ov.circle(v.gun.position.x + dcos(v.gun.rotation) * 0.9, v.gun.position.y + dsin(v.gun.rotation) * 0.9, 0.09 + charge * 0.18)
+            .fill({ color: WEAPON_ACCENT.railgun, alpha: 0.35 + charge * 0.6 });
+        }
         if (pw.jetpack > 0 || f.jetting) drawJetpack(au, f.jetting, time);
         if (pw.damage > 0) {
           const pr = 0.85 + 0.12 * Math.sin(time * 10);

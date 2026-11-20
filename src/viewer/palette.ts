@@ -55,6 +55,12 @@ export function shade(color: number, k: number): number {
   return ((r | 0) << 16) | ((g | 0) << 8) | (b | 0);
 }
 
+export const WEAPON_ACCENT = {
+  mine: 0xf763aa,
+  railgun: 0x68dcff,
+  hammer: 0xffb34d,
+} as const;
+
 export const POWER_COLOR: Record<string, number> = {
   health: 0x7dffa0,
   shield: 0x6ee7ff,

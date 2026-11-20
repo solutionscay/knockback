@@ -73,6 +73,13 @@ describe("event -> sound mapping", () => {
   test("jetpack and fire: thrust, flame pulses, things catching fire, a burning fighter, an empty tank", () => {
     expect(one({ type: "jetpack", fighter: 2 })).toEqual(["jetpack.hiss"]);
     expect(cuesForEvent(ev({ type: "jetpack", fighter: 2 }), ctx)[0]!.x).toBe(4);
+    expect(one({ type: "fire", fighter: 0, weapon: "mine", x: 0, y: 0, dx: 1, dy: 0 })).toEqual(["mine.throw"]);
+    expect(one({ type: "mineStick", entity: 1, x: 0, y: 0 })).toEqual(["mine.stick"]);
+    expect(one({ type: "mineArm", entity: 1, x: 0, y: 0 })).toEqual(["mine.arm"]);
+    expect(one({ type: "explosion", kind: "mine", radius: 2.8, x: 0, y: 0, owner: 0, depth: 0, chainFrom: null })).toEqual(["mine.blast"]);
+    expect(one({ type: "railCharge", fighter: 0 })).toEqual(["rail.charge"]);
+    expect(one({ type: "rail", fighter: 0, x0: 0, y0: 0, x1: 3, y1: 0 })).toEqual(["rail.fire"]);
+    expect(one({ type: "shockwave", fighter: 0, x: 0, y: 0, paths: [] })).toEqual(["hammer.slam"]);
     expect(one({ type: "fire", fighter: 0, weapon: "flamethrower", x: 0, y: 0, dx: 1, dy: 0 })).toEqual(["flame.whoosh"]);
     expect(one({ type: "ignite", what: "prop", x: 1, y: 2, source: "flame", by: 0 })).toEqual(["fire.crackle"]);
     expect(one({ type: "burn", fighter: 1, by: 0, cause: "flamethrower" })).toEqual(["fire.crackle"]);

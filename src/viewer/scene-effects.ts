@@ -1,7 +1,7 @@
 import { Container, Graphics, Text } from "pixi.js";
 import { clamp, type Sim, type SimEvent } from "../sim/sim";
 import { Fx } from "./fx";
-import { POWER_COLOR, type Palette } from "./palette";
+import { POWER_COLOR, WEAPON_ACCENT, type Palette } from "./palette";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { FighterViews } from "./scene-fighters";
 import type { ProjectileViews } from "./scene-projectiles";
@@ -43,6 +43,10 @@ export class SceneEffects {
         camera.hotspot(e.x, e.y, big ? 2.5 : 1.2);
         this.fx.explosion(e.x, e.y, e.radius, big);
         camera.addShake(e.kind === "tnt" ? 1.0 : big ? 0.75 : e.kind === "grenade" ? 0.5 : 0.38);
+        if (e.kind === "mine") {
+          this.fx.add({ x: e.x, y: e.y, kind: "ring", life: 0.5, size: 0.45, size1: e.radius, color: WEAPON_ACCENT.mine, alpha: 0.9, aux: 0.18 });
+          this.float("MINE BLAST!", e.x, e.y + 0.9, WEAPON_ACCENT.mine, 0.8);
+        }
         if (big) this.screenFlash = Math.max(this.screenFlash, 0.22);
         break;
       }
@@ -143,7 +147,7 @@ export class SceneEffects {
         if (e.weapon === "flamethrower") {
           v.recoil = 0.06;
           this.fx.flameJet(e.x + e.dx * 0.9, e.y + e.dy * 0.9, e.dx, e.dy, 7);
-        } else if (e.weapon !== "grenade") {
+        } else if (e.weapon !== "grenade" && e.weapon !== "mine" && e.weapon !== "railgun" && e.weapon !== "hammer") {
           this.fx.add({ x: mx, y: my, kind: "flash", life: 0.07, size: 0.35, size1: 0.55, color: 0xffe9a0 });
           this.fx.sparks(mx, my, e.dx, e.dy, 0xffd27a, e.weapon === "shotgun" ? 8 : 4);
           this.fx.add({ x: mx, y: my, vx: e.dx * 2, vy: e.dy * 2 + 0.5, kind: "smoke", life: 0.6, size: 0.2, size1: 0.6, color: 0x8a8790, alpha: 0.5, drag: 3, back: true });
@@ -151,6 +155,23 @@ export class SceneEffects {
         if (e.weapon === "shotgun") camera.addShake(0.08);
         break;
       }
+      case "mineStick":
+      case "mineArm":
+        this.fx.add({ x: e.x, y: e.y, kind: "ring", life: 0.28, size: 0.24, size1: 0.9, color: WEAPON_ACCENT.mine, alpha: 0.9, aux: 0.09 });
+        break;
+      case "rail":
+        projectiles.rails.push({ x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, life: 0.25 });
+        this.fx.sparks(e.x1, e.y1, 0, 0, WEAPON_ACCENT.railgun, 12);
+        this.float("RAIL SHOT!", e.x0, e.y0 + 0.9, WEAPON_ACCENT.railgun, 0.72);
+        camera.addShake(0.22);
+        break;
+      case "shockwave":
+        fighters.get(e.fighter).swingT = 0.2;
+        projectiles.waves.push({ paths: e.paths, life: 0.36 });
+        this.fx.dust(e.x, e.y, 10);
+        this.float("SHOCKWAVE!", e.x, e.y + 1.9, WEAPON_ACCENT.hammer, 0.72);
+        camera.addShake(0.32);
+        break;
       case "pellet": {
         projectiles.tracer(e.x0, e.y0, e.x1, e.y1);
         if (e.hit) this.fx.sparks(e.x1, e.y1, -(e.x1 - e.x0) * 0.1, -(e.y1 - e.y0) * 0.1, 0xffe0a0, 3);
@@ -223,7 +244,7 @@ export class SceneEffects {
       case "pickup": {
         const col = POWER_COLOR[e.item] ?? 0xffb347;
         this.fx.burst(e.x, e.y, col);
-        const label: Record<string, string> = { health: "+HP", shield: "SHIELD!", speed: "SPEED!", heavy: "HEAVY!", damage: "2x DAMAGE!", jump: "DOUBLE JUMP!" };
+        const label: Record<string, string> = { health: "+HP", shield: "SHIELD!", speed: "SPEED!", heavy: "HEAVY!", damage: "2x DAMAGE!", jump: "DOUBLE JUMP!", mine: "STICKY MINE!", hammer: "SHOCKWAVE HAMMER!" };
         this.float(label[e.item] ?? e.item.toUpperCase() + "!", e.x, e.y + 1.4, col, 1.0);
         break;
       }

@@ -2,7 +2,7 @@
  * What sounds when: sim events, show beats and face moods -> sound cues. Pure functions (tested in
  * tests/sound.test.ts); the sim is only read, never changed, so sound can't touch determinism.
  */
-import type { SimEvent } from "../../sim/sim-types";
+import { ALL_WEAPONS, type SimEvent } from "../../sim/sim-types";
 
 /** One sound to play: a name from the sound book, where (world meters, or none for the show sounds), how. */
 export interface Cue {
@@ -24,7 +24,7 @@ export interface MapContext {
   fighterPos(id: number): { x: number; y: number } | null;
 }
 
-const WEAPON_ITEMS = new Set(["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "fist"]);
+const WEAPON_ITEMS = new Set<string>(ALL_WEAPONS);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const cue = (sound: string, x: number | undefined, y: number | undefined, gain: number, pitch: number, seed: number): Cue => ({ sound, x, y, gain, pitch, seed: seed >>> 0 });
 
@@ -51,12 +51,21 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       // bigger blasts: lower and louder; a chain reaction is a little quieter per blast (they stack)
       const pitch = clamp(2.6 / Math.max(0.5, e.radius), 0.7, 1.35);
       const gain = clamp(0.55 + e.radius * 0.12, 0.6, 1) * (e.chainFrom ? 0.85 : 1);
-      return [cue(explosionSound(e.radius), e.x, e.y, gain, pitch, e.tick * 31 + Math.round(e.x * 7))];
+      return [cue(e.kind === "mine" ? "mine.blast" : explosionSound(e.radius), e.x, e.y, gain, pitch, e.tick * 31 + Math.round(e.x * 7))];
     }
     case "fire": {
-      const s = { rocket: "rocket.launch", shotgun: "shotgun.fire", grenade: "grenade.throw", grapple: "grapple.shoot", flamethrower: "flame.whoosh" }[e.weapon as string];
+      const s = { rocket: "rocket.launch", shotgun: "shotgun.fire", grenade: "grenade.throw", grapple: "grapple.shoot", flamethrower: "flame.whoosh", mine: "mine.throw" }[e.weapon as string];
       return s ? [cue(s, e.x, e.y, 1, 1, e.tick + e.fighter)] : []; // bat and fist sound on their swing
     }
+    case "mineStick":
+    case "mineArm":
+      return [cue(e.type === "mineArm" ? "mine.arm" : "mine.stick", e.x, e.y, 1, 1, e.tick + e.entity)];
+    case "railCharge":
+      return [cue("rail.charge", at(e.fighter).x, at(e.fighter).y, 1, 1, e.tick + e.fighter)];
+    case "rail":
+      return [cue("rail.fire", e.x0, e.y0, 1, 1, e.tick + e.fighter)];
+    case "shockwave":
+      return [cue("hammer.slam", e.x, e.y, 1, 1, e.tick + e.fighter)];
     case "swing": {
       const w = e.weapon === "bat" ? "bat" : "fist";
       return [cue(`${w}.${e.hit ? "hit" : "swing"}`, e.x, e.y, 1, 1, e.tick + e.fighter)];
@@ -65,7 +74,7 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       return e.hit === "none" ? [] : [cue("grapple.latch", e.x1, e.y1, 1, 1, e.tick), cue("grapple.reel", e.x0, e.y0, 0.9, 1, e.tick + 1)];
     case "hit": {
       // explosions are already loud: a blast hit is a small thud on top
-      const blast = /explo|blast|barrel|tnt|gas|rocket|grenade/.test(e.cause);
+      const blast = /explo|blast|barrel|tnt|gas|rocket|grenade|mine/.test(e.cause);
       if (e.shielded) return [cue("hit.shielded", e.x, e.y, 1, 1, e.tick + e.target)];
       const heavy = e.damage >= 14 || e.kb >= 16;
       return [cue(heavy ? "hit.heavy" : "hit.light", e.x, e.y, blast ? 0.45 : clamp(0.6 + e.damage / 40, 0.6, 1), clamp(1.2 - e.damage / 60, 0.8, 1.2), e.tick + e.target * 13)];

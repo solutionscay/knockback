@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Graphics } from "pixi.js";
 import { ITEM } from "../src/sim/constants";
-import { POWER_LIST } from "../src/sim/sim-types";
+import { POWER_LIST, WEAPON_LIST } from "../src/sim/sim-types";
 import { drawPickup, PICKUP_R } from "../src/viewer/props";
 
 /** A Graphics stand-in that records every call, so the drawing can be checked without a renderer. */
@@ -16,7 +16,7 @@ function recorder() {
   return { g: g as Graphics, calls };
 }
 
-const WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower"];
+const WEAPONS = WEAPON_LIST;
 
 describe("pickup icons (#15)", () => {
   test("the badge is at least twice the 0.5 m physics box, which stays unchanged", () => {

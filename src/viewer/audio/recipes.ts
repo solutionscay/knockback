@@ -85,6 +85,34 @@ export const SOUNDS: Record<string, SoundDef> = {
     recipe: { layers: [L({ wave: "square", freq: 180, freqEnd: 420, duty: 0.3, attack: 0.01, decay: 0.35, vibrato: [1, 30], lowpass: 1800, gain: 0.13 })] },
     group: "reel", max: 3, gap: 0.05, priority: 4,
   },
+  "mine.throw": {
+    recipe: { layers: [L({ wave: "noise", freq: 900, freqEnd: 410, decay: 0.11, lowpass: 1500, gain: 0.32 }), L({ wave: "triangle", freq: 700, freqEnd: 500, decay: 0.035, gain: 0.22 })] },
+    group: "weapon", max: 6, gap: 0.02, priority: 5,
+  },
+  "mine.stick": {
+    recipe: { layers: [L({ wave: "noise", freq: 2750, decay: 0.045, highpass: 900, gain: 0.45 }), L({ wave: "triangle", freq: 185, decay: 0.07, gain: 0.3 })] },
+    group: "mine", max: 3, gap: 0.03, priority: 5,
+  },
+  "mine.arm": {
+    recipe: { layers: tinkles([960, 1440], 0.3, 0.09) },
+    group: "mine", max: 3, gap: 0.03, priority: 6,
+  },
+  "mine.blast": {
+    recipe: { layers: [L({ wave: "square", freq: 1150, freqEnd: 250, decay: 0.14, gain: 0.26 }), L({ wave: "noise", freq: 2100, lowpass: 3400, lowpassEnd: 310, decay: 0.49, gain: 0.75 }), L({ wave: "sine", freq: 98, freqEnd: 46, decay: 0.31, gain: 0.66 })] },
+    group: "explosion", max: 4, gap: 0.03, priority: 9,
+  },
+  "rail.charge": {
+    recipe: { layers: [L({ wave: "triangle", freq: 185, freqEnd: 1000, attack: 0.08, hold: 0.26, decay: 0.1, gain: 0.36 }), L({ wave: "saw", freq: 95, freqEnd: 440, attack: 0.12, hold: 0.22, decay: 0.09, lowpass: 1000, gain: 0.16 })] },
+    group: "rail", max: 3, gap: 0.06, priority: 6,
+  },
+  "rail.fire": {
+    recipe: { layers: [L({ wave: "saw", freq: 910, freqEnd: 140, decay: 0.31, punch: 0.65, lowpass: 3000, gain: 0.47 }), L({ wave: "noise", freq: 6000, decay: 0.11, highpass: 1400, gain: 0.52 }), L({ wave: "sine", freq: 130, freqEnd: 45, decay: 0.2, gain: 0.45 })] },
+    group: "weapon", max: 6, gap: 0.02, priority: 8,
+  },
+  "hammer.slam": {
+    recipe: { layers: [L({ wave: "sine", freq: 100, freqEnd: 34, decay: 0.42, punch: 0.75, gain: 0.8 }), L({ wave: "noise", freq: 400, lowpass: 800, decay: 0.39, gain: 0.7 }), L({ wave: "triangle", freq: 480, freqEnd: 245, decay: 0.18, gain: 0.25 })] },
+    group: "melee", max: 4, gap: 0.03, priority: 8,
+  },
   // --------------------------------------------------------------- jetpack and fire
   "jetpack.hiss": {
     recipe: { layers: [L({ wave: "noise", freq: 5000, attack: 0.03, hold: 0.25, decay: 0.2, highpass: 1500, lowpass: 6000, gain: 0.25 }), L({ wave: "saw", freq: 90, attack: 0.03, hold: 0.25, decay: 0.2, vibrato: [0.5, 20], lowpass: 400, gain: 0.08 })] },
