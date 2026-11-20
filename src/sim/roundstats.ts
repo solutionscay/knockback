@@ -24,7 +24,13 @@ export interface RoundStats {
   /** seconds each fighter spent with each rival as its target: targetSeconds[me][them] */
   targetSeconds: number[][];
   pickups: string[][];
-  kos: { victim: number; by: number; weapon: string; cause: "ringout" | "hp" }[];
+  /** each pickup with the tick it happened */
+  pickupTicks: { item: string; tick: number }[][];
+  kos: { victim: number; by: number; weapon: string; cause: "ringout" | "hp"; tick?: number }[];
+  /** average distance (m) to whoever the fighter was chasing, sampled; -1 if never sampled */
+  targetDistance: number[];
+  /** back-attack reflex firings per fighter */
+  reflexes: { tick: number; attacker: number; mode: "glance" | "fight" | "switch" }[][];
   /** one plain line per fighter, second person */
   summary: string[];
 }
@@ -43,6 +49,9 @@ export class StatsCollector {
   nearSeconds = [0, 1, 2, 3].map(() => [0, 0, 0, 0]);
   targetSeconds = [0, 1, 2, 3].map(() => [0, 0, 0, 0]);
   pickups: string[][] = [[], [], [], []];
+  pickupTicks: { item: string; tick: number }[][] = [[], [], [], []];
+  private distSum = [0, 0, 0, 0];
+  private distN = [0, 0, 0, 0];
   private lastHitTick = [0, 1, 2, 3].map(() => [-1, -1, -1, -1]);
 
   hit(attacker: number, victim: number, damage: number, weapon: string, distance: number, fromBehind: boolean, tick: number) {
@@ -64,7 +73,14 @@ export class StatsCollector {
       const a = positions[i];
       if (!a) continue;
       const t = targets[i]!;
-      if (t >= 0 && t !== i) this.targetSeconds[i]![t]! += dt;
+      if (t >= 0 && t !== i) {
+        this.targetSeconds[i]![t]! += dt;
+        const b = positions[t];
+        if (b) {
+          this.distSum[i]! += Math.hypot(a.x - b.x, a.y - b.y);
+          this.distN[i]!++;
+        }
+      }
       for (let j = i + 1; j < 4; j++) {
         const b = positions[j];
         if (!b) continue;
@@ -76,8 +92,23 @@ export class StatsCollector {
     }
   }
 
-  finish(kos: RoundStats["kos"], names: string[] = ["Red", "Blue", "Green", "Gold"]): RoundStats {
-    const st: RoundStats = { damage: this.damage, nearSeconds: this.nearSeconds, targetSeconds: this.targetSeconds, pickups: this.pickups, kos, summary: [] };
+  pickup(fighter: number, item: string, tick: number) {
+    this.pickups[fighter]!.push(item);
+    this.pickupTicks[fighter]!.push({ item, tick });
+  }
+
+  finish(kos: RoundStats["kos"], names: string[] = ["Red", "Blue", "Green", "Gold"], reflexes: RoundStats["reflexes"] = [[], [], [], []]): RoundStats {
+    const st: RoundStats = {
+      damage: this.damage,
+      nearSeconds: this.nearSeconds,
+      targetSeconds: this.targetSeconds,
+      pickups: this.pickups,
+      pickupTicks: this.pickupTicks,
+      kos,
+      targetDistance: this.distN.map((n, i) => (n ? Math.round((this.distSum[i]! / n) * 10) / 10 : -1)),
+      reflexes,
+      summary: [],
+    };
     st.summary = [0, 1, 2, 3].map((i) => summarize(st, i, names));
     return st;
   }

@@ -34,6 +34,8 @@ export interface DecisionMeta {
   detail?: string;
   /** the AI's own line, when its plan was rejected but the line was usable */
   aiLine?: string;
+  /** the line accuses someone in a way last round's facts don't support (#4; logged, never rejected) */
+  factWarnings?: string[];
 }
 
 export interface RoundRecord {

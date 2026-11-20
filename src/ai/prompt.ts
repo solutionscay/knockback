@@ -6,6 +6,8 @@
  * its own earlier lines (so it doesn't repeat itself) and the choices.
  */
 import type { LevelDef } from "../sim/levelgen";
+import type { RoundStats } from "../sim/roundstats";
+import type { Strategy } from "../sim/sim";
 import type { Soul } from "../sim/soul";
 import type { DecideContext } from "../sim/voice";
 
@@ -17,6 +19,10 @@ export interface PromptExtras {
   lastHealth: number[] | null;
   /** everything this fighter has said so far this match */
   myLines?: string[];
+  /** every seat's plan for the round just played (for "YOUR LAST PLAN", #3) */
+  lastPlans?: Strategy[] | null;
+  /** match seed (rotates the examples, #3) */
+  seed?: number;
 }
 
 export const WEAPON_HELP: Record<string, string> = {
@@ -55,6 +61,41 @@ export function soulText(s: Soul): string {
   return [s.body, ...facts].join("\n");
 }
 
+const WEAPON_NAME: Record<string, string> = { grapple: "hook", fist: "fists", impact: "a wall", crush: "falling junk", fall: "a fall", zone: "the zone" };
+const wname = (w: string) => WEAPON_NAME[w] ?? w;
+
+/**
+ * "WHAT HAPPENED TO YOU" (#4): who knocked me out, who hurt me most, who hit
+ * me from behind most, whom I knocked out. One fact per sentence, names only.
+ */
+export function whatHappenedLines(st: RoundStats, me: number, names: string[]): string[] {
+  const out: string[] = [];
+  const ko = st.kos.find((k) => k.victim === me);
+  const at = (t?: number) => (t !== undefined ? ` at ${Math.round(t / 60)} s` : "");
+  if (!ko) out.push(`You survived the round.`);
+  else if (ko.by >= 0 && ko.by !== me) out.push(`You were ${ko.cause === "ringout" ? "rung out" : "knocked out"} by ${names[ko.by]} (${wname(ko.weapon)})${at(ko.tick)}.`);
+  else if (ko.by === me) out.push(`You knocked yourself out (${wname(ko.weapon)})${at(ko.tick)}.`);
+  else out.push(`You were ${ko.cause === "ringout" ? "rung out by a fall" : `knocked out by ${wname(ko.weapon)}`}${at(ko.tick)}; no fighter gets the credit.`);
+  let top = -1;
+  for (let a = 0; a < 4; a++) if (a !== me && st.damage[a]![me]!.damage >= 1 && (top < 0 || st.damage[a]![me]!.damage > st.damage[top]![me]!.damage)) top = a;
+  if (top < 0) out.push(`Nobody damaged you.`);
+  else {
+    const s = st.damage[top]![me]!;
+    const w = Object.entries(s.byWeapon).sort((p, q) => q[1].damage - p[1].damage)[0]?.[0];
+    out.push(`Most damage to you: ${names[top]} (${Math.round(s.damage)}${w ? `, ${wname(w)}` : ""}).`);
+  }
+  const behind = [0, 1, 2, 3].map((a) => (a === me ? 0 : st.damage[a]![me]!.fromBehind));
+  const totalBehind = behind.reduce((a, b) => a + b, 0);
+  if (!totalBehind) out.push(`Nobody hit you from behind.`);
+  else {
+    const b = behind.indexOf(Math.max(...behind));
+    out.push(`Most hits on you from behind: ${names[b]} (${behind[b]} of the ${totalBehind} hits from behind).`);
+  }
+  const mine = st.kos.filter((k) => k.by === me && k.victim !== me);
+  out.push(mine.length ? `You knocked out ${mine.map((k) => `${names[k.victim]} (${wname(k.weapon)})`).join(" and ")}.` : `You knocked out: nobody.`);
+  return out;
+}
+
 export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): string {
   const me = ctx.me;
   const names = ctx.names;
@@ -83,6 +124,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
     const st = last.stats;
     const lines: string[] = [];
     lines.push(`LAST ROUND (round ${last.round}): ${names[last.winner]} won${last.reason === "time-out" ? " on time" : ""} after ${r(last.seconds)} s.`);
+    lines.push(`WHAT HAPPENED TO YOU: ${whatHappenedLines(st, me, names).join(" ")} If your line accuses someone, it must match these facts.`);
     for (const k of st.kos) lines.push(`${names[k.victim]} was ${k.cause === "ringout" ? "rung out" : "knocked out"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]} (${k.weapon})` : ` (${k.weapon})`}.`);
     lines.push(`YOUR ROUND: ${st.summary[me]}`);
     const took = [0, 1, 2, 3]

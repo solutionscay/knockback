@@ -126,7 +126,7 @@ export class Fight {
     if (evs.length === 0) return;
     for (const e of evs) {
       if (e.type === "ko") this.koLog.push({ fighter: e.fighter, by: e.by, cause: e.cause, weapon: e.weapon, tick: e.tick });
-      else if (e.type === "pickup") this.stats.pickups[e.fighter]!.push(e.item);
+      else if (e.type === "pickup") this.stats.pickup(e.fighter, e.item, e.tick);
       else if (e.type === "hit") {
         if (e.source >= 0 && e.source !== e.target) {
           const a = this.sim.fighters[e.source]!;
@@ -184,7 +184,11 @@ export class Fight {
       chainReactions: this.chains,
       platformsFallen: sim.stats.platformsFallen,
       biggestHit: this.biggest,
-      stats: this.stats.finish(this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause })), this.sim.fighters.map((f) => f.name)),
+      stats: this.stats.finish(
+        this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause, tick: k.tick })),
+        this.sim.fighters.map((f) => f.name),
+        this.controllers.map((c) => c.reflexLog.map((x) => ({ ...x }))),
+      ),
     };
   }
 

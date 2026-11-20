@@ -9,6 +9,7 @@ import type { DecisionMeta, Match } from "../sim/match";
 import { parseSoul, type Soul } from "../sim/soul";
 import { EXAMPLE_SOUL_ORDER } from "../sim/souls";
 import { houseBrain, type Decision } from "../sim/voice";
+import { checkFactsFromStats, checkLine } from "./factcheck";
 import { parseAnswer } from "./parse";
 import { buildPrompt } from "./prompt";
 import { PROVIDERS, type Provider } from "./providers";
@@ -126,9 +127,13 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
     }
     if (r.outcome === "ok") {
       const p = parseAnswer(r.raw!, me, match.names);
+      // post-check (#4): an accusation the last round's facts don't support is logged, never rejected
+      const lastStats = match.facts[match.facts.length - 1]?.stats;
+      const warn = p.line && lastStats ? checkLine(p.line, me, match.names, checkFactsFromStats(lastStats)).mismatches.map((x) => `${x.claim}; facts: ${x.facts}`) : [];
+      const extra = warn.length ? { factWarnings: warn } : {};
       if (p.strategy && p.line) {
         decisions.push({ line: p.line, strategy: { ...p.strategy, line: p.line } });
-        meta.push({ provider: label, ms: r.ms, outcome: "ok" });
+        meta.push({ provider: label, ms: r.ms, outcome: "ok", ...extra });
         return;
       }
       const bot = houseBrain(ctxs[me]!);
@@ -140,6 +145,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
         outcome: "fallback-invalid",
         detail: p.strategy ? "no usable line" : `bad plan: ${p.problems.join(", ")}`,
         ...(p.line ? { aiLine: p.line } : {}),
+        ...extra,
       });
       return;
     }

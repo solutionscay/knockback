@@ -11,6 +11,7 @@
  * report "n/a".
  */
 import type { DecisionMeta, Match } from "../sim/match";
+import { checkFactsFromStats, checkLine } from "./factcheck";
 import type { Strategy, Weapon } from "../sim/sim";
 
 export interface EvalDecision {
@@ -29,6 +30,8 @@ export interface EvalRoundFacts {
   damage: number[][];
   /** hits from behind: behind[attacker][victim] */
   behind: number[][];
+  /** weapons that did damage: weapons[attacker][victim] */
+  weapons?: string[][][];
 }
 
 export interface EvalRound {
@@ -96,6 +99,8 @@ export interface FollowStats {
 export interface FactCheck {
   /** lines (round 2+) that name a rival together with an event */
   checked: number;
+  /** decisions whose meta carries a fact warning (the post-check in decideRound) */
+  warnings: number;
   mismatches: { seed: number; round: number; fighter: string; line: string; claim: string; facts: string }[];
 }
 
@@ -284,61 +289,18 @@ export function followsOf(matches: EvalMatch[], role: Role): FollowStats | NA {
   };
 }
 
-/**
- * Heuristic fact check (not a judge): a line spoken before round r that
- * names a rival together with an event is checked against round r-1.
- *   knockout claims  ("X knocked me out", "took me out", "rang me out")  -> X knocked me out
- *   back claims      ("in the back", "from behind", "back-hooks")         -> X hit me from behind
- *   hit claims       ("X shot me", "hooked me", "hit me", "owes me")      -> X damaged me
- * Each claim is pinned on the rival named closest before it ("Goldie shot me")
- * or, with none before, closest after it ("you knocked me out, Goldie").
- */
-export const CLAIMS: { kind: "knockout" | "back" | "hit"; re: RegExp }[] = [
-  { kind: "knockout", re: /\b(knock(?:ed)? me (?:out|off)|took me out|finished me|ko'?d me|killed me|r[au]ng me out|threw me off|sent me (?:flying|off))\b/i },
-  { kind: "back", re: /\b(in the back|from behind|back-?(?:shot|stab|hook)s?|my back)\b/i },
-  { kind: "hit", re: /\b((?:shot|hit|blasted|hooked|batted|smacked|whacked|nailed|bonked|grenaded|rocketed|peppered|pelted|stung) (?:me|my)|owes? me)\b/i },
-];
-
+/** The facts metric: every line spoken before round 2+ that names a rival with a claim, checked (see factcheck.ts). */
 export function factsOf(matches: EvalMatch[]): FactCheck {
-  const out: FactCheck = { checked: 0, mismatches: [] };
+  const out: FactCheck = { checked: 0, mismatches: [], warnings: 0 };
   for (const m of matches) {
     for (let r = 1; r < m.rounds.length; r++) {
       const f = m.rounds[r - 1]!.facts;
       m.rounds[r]!.decisions.forEach((d, me) => {
-        const line = d.line;
-        // every mention of a rival, by position
-        const mentions: { at: number; who: number }[] = [];
-        m.names.forEach((n, i) => {
-          if (i === me) return;
-          const re = new RegExp(`\\b${n.replace(/[^\w]/g, "")}\\b`, "gi");
-          for (let x = re.exec(line); x; x = re.exec(line)) mentions.push({ at: x.index, who: i });
-        });
-        if (!mentions.length) return;
-        const claims = CLAIMS.flatMap((c) => {
-          const re = new RegExp(c.re.source, "gi");
-          const out: { kind: (typeof CLAIMS)[number]["kind"]; at: number }[] = [];
-          for (let x = re.exec(line); x; x = re.exec(line)) out.push({ kind: c.kind, at: x.index });
-          return out;
-        });
-        if (!claims.length) return;
+        if (d.meta.factWarnings?.length) out.warnings++;
+        const res = checkLine(d.line, me, m.names, f);
+        if (!res.checked) return;
         out.checked++;
-        for (const c of claims) {
-          const before = mentions.filter((x) => x.at < c.at).sort((a, b) => b.at - a.at)[0];
-          const after = mentions.filter((x) => x.at > c.at).sort((a, b) => a.at - b.at)[0];
-          const who = (before ?? after)!.who;
-          const fits = c.kind === "knockout" ? f.kos.some((k) => k.victim === me && k.by === who) : c.kind === "back" ? (f.behind[who]?.[me] ?? 0) > 0 : (f.damage[who]?.[me] ?? 0) > 0;
-          if (fits) continue;
-          const ko = f.kos.find((k) => k.victim === me);
-          const dmg = `${m.names[who]} dealt ${Math.round(f.damage[who]?.[me] ?? 0)} (${f.behind[who]?.[me] ?? 0} hits from behind)`;
-          out.mismatches.push({
-            seed: m.seed,
-            round: r + 1,
-            fighter: m.names[me]!,
-            line,
-            claim: `${c.kind} by ${m.names[who]}`,
-            facts: `${dmg}; ${ko ? `knocked out by ${ko.by >= 0 ? m.names[ko.by] : "the level"} (${ko.weapon})` : "not knocked out"}`,
-          });
-        }
+        for (const x of res.mismatches) out.mismatches.push({ seed: m.seed, round: r + 1, fighter: m.names[me]!, line: d.line, claim: x.claim, facts: x.facts });
       });
     }
   }
@@ -422,12 +384,7 @@ export function evalMatchFrom(match: Match, seats: string[], housePlans?: (Strat
       const f = match.facts[r]!;
       return {
         decisions: rd.strategies.map((s, i) => ({ strategy: s, line: rd.lines[i]!, meta: rd.meta?.[i] ?? { provider: "house", ms: 0, outcome: "house" as const }, ...(housePlans?.[r]?.[i] ? { house: housePlans[r]![i]! } : {}) })),
-        facts: {
-          winner: f.winner,
-          kos: f.stats.kos.map((k) => ({ ...k })),
-          damage: f.stats.damage.map((row) => row.map((h) => r3(h.damage))),
-          behind: f.stats.damage.map((row) => row.map((h) => h.fromBehind)),
-        },
+        facts: { winner: f.winner, ...checkFactsFromStats(f.stats), kos: f.stats.kos.map((k) => ({ victim: k.victim, by: k.by, weapon: k.weapon, cause: k.cause })) },
       };
     }),
   };
@@ -451,8 +408,9 @@ export interface MetricDelta {
 
 /** The change for each metric (old report -> new report). */
 export function compareReports(oldR: EvalReport, newR: EvalReport): MetricDelta[] {
-  const a = flatten({ ...oldR, facts: { checked: oldR.facts.checked, mismatches: oldR.facts.mismatches.length } });
-  const b = flatten({ ...newR, facts: { checked: newR.facts.checked, mismatches: newR.facts.mismatches.length } });
+  const fl = (r: EvalReport) => ({ checked: r.facts.checked, mismatches: r.facts.mismatches.length, mismatchRate: r.facts.checked ? r3(r.facts.mismatches.length / r.facts.checked) : 0, warnings: r.facts.warnings ?? 0 });
+  const a = flatten({ ...oldR, facts: fl(oldR) });
+  const b = flatten({ ...newR, facts: fl(newR) });
   const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => k !== "version").sort();
   return keys.map((k) => ({ metric: k, old: a[k] ?? NA, new: b[k] ?? NA, delta: a[k] !== undefined && b[k] !== undefined ? r3(b[k]! - a[k]!) : NA }));
 }
@@ -504,7 +462,7 @@ export function reportMarkdown(rep: EvalReport, opts: { title?: string; compare?
     L.push(`| ${label} | ${fa === NA ? NA : fr(fa[k])} | ${fh === NA ? NA : fr(fh[k])} |`);
   L.push("");
 
-  L.push("## Facts", "", `Heuristic, not a judge: ${rep.facts.checked} lines named a rival together with an event; ${rep.facts.mismatches.length} possible mismatches.`, "");
+  L.push("## Facts", "", `Heuristic, not a judge: ${rep.facts.checked} lines named a rival together with an event; ${rep.facts.mismatches.length} possible mismatches (${rep.facts.checked ? pct(rep.facts.mismatches.length / rep.facts.checked) : "n/a"} of checked lines). Fact warnings logged in the decision meta: ${rep.facts.warnings}.`, "");
   for (const x of rep.facts.mismatches) L.push(`- seed ${x.seed}, before round ${x.round}, ${x.fighter}: "${x.line}" (claims ${x.claim}; facts: ${x.facts})`);
   if (rep.facts.mismatches.length) L.push("");
 
