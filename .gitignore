@@ -5,3 +5,8 @@ out
 .DS_Store
 records/
 evals/
+
+# deploy (#26): local env and backups
+.env
+backups/
+.previous-tag

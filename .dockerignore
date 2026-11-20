@@ -1,0 +1,14 @@
+# keep the build context small and free of local state
+.git
+node_modules
+records
+evals
+docs
+tests
+*.log
+*.db
+*.db-*
+.env
+deploy/.env
+deploy/backups
+.DS_Store
