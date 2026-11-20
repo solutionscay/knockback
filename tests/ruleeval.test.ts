@@ -24,6 +24,8 @@ function setUp(f: Fight) {
 }
 function fight(rules: Rule[], props: Parameters<typeof flatLevel>[0] = [], over: Partial<Strategy> = {}) {
   const f = new Fight(7, [plan(rules, over), ...others()], { level: flatLevel(props) });
+  // These setups add their own pickups, so the shuffled armory cannot trigger a rule early.
+  for (const item of f.sim.items()) item.body.setTranslation({ x: 0, y: -30 }, true);
   const evs: SimEvent[] = [];
   f.onEvent = (e) => evs.push(e);
   f.step();
@@ -43,7 +45,6 @@ const ruleOn = (evs: SimEvent[], i = 0) => evs.some((e) => e.type === "rule" && 
 describe("every trigger fires in a small set-up fight (#6)", () => {
   test("holds -> target: someone picks up a rocket, the target changes within 0.5 s", () => {
     const { f, evs, c, sim } = fight([{ when: "holds", who: "enemy", item: "rocket", do: "target", label: "chase the rocket" }]);
-    for (const e of [...sim.entities.values()]) if (e.kind === "item" && e.itemType === "rocket") e.body.setTranslation({ x: 0, y: -30 }, true);
     expect(c.targetId).toBe(3);
     const p = sim.pos(sim.fighters[2]!);
     sim.spawnItem("rocket", p.x, p.y);

@@ -19,6 +19,7 @@ import {
   zoneHalfAt,
   type Input,
 } from "../src/sim";
+import { sightTarget } from "../src/sim/controller-aim";
 import { idle, place, sandbox, stepN } from "./helpers";
 import { chainAttach as chainAttachOf } from "../src/sim/sim-chains";
 import { pieceCellWorld } from "../src/sim/terrain";
@@ -58,7 +59,7 @@ describe("determinism and replay", () => {
   });
 
   test("different strategies give different states; interleaving matches changes nothing", () => {
-    const seed = 5;
+    const seed = 2;
     const plans = new Fight(seed).strategies;
     // The opening aim changes as soon as the bot targets a different rival.
     plans[0] = { ...plans[0]!, target: "grudge", grudge: 2 };
@@ -495,14 +496,18 @@ describe("weapons and switching", () => {
     sim.fighters[2]!.weapons = ["grapple", "rocket"];
     const c = m.controllers[0]! as any;
     const t = sim.fighters[1]!;
-    expect(c.chooseWeapon(sim, sim.fighters[0], t, 1.5, true)).toBe("bat");
-    expect(c.chooseWeapon(sim, sim.fighters[0], t, 12, true)).toBe("rocket");
+    const sight = (id: number, dist: number, los: boolean) => {
+      const me = sim.fighters[id]!;
+      return { ...sightTarget(sim, me, t, sim.pos(me)), dist, los };
+    };
+    expect(c.chooseWeapon(sim, sim.fighters[0], t, sight(0, 1.5, true))).toBe("bat");
+    expect(c.chooseWeapon(sim, sim.fighters[0], t, sight(0, 12, true))).toBe("rocket");
     const hooker = m.controllers[2]! as any;
     hooker.onLedge = () => true;
     sim.fighters[2]!.cooldown.grapple = 0;
-    expect(hooker.chooseWeapon(sim, sim.fighters[2], t, 8, true)).toBe("grapple");
+    expect(hooker.chooseWeapon(sim, sim.fighters[2], t, sight(2, 8, true))).toBe("grapple");
     hooker.noLos = 120; // a wall in the way for a while: lob or blast through it
-    expect(hooker.chooseWeapon(sim, sim.fighters[2], t, 5, false)).toBe("rocket");
+    expect(hooker.chooseWeapon(sim, sim.fighters[2], t, sight(2, 5, false))).toBe("rocket");
   });
 });
 

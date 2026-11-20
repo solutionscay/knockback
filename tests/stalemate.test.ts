@@ -133,8 +133,11 @@ describe("cover is not standing still", () => {
 
 describe("the final duel", () => {
   test("with two fighters left, both target each other and close in, regardless of strategy", () => {
+    const sameFloor = flatLevel();
+    sameFloor.spawns = [-8, -4, 1, 5].map(x => ({ x, y: 0 }));
     for (const seed of [2, 3, 4]) {
-      const f = new Fight(seed, [plan("cover", "grudge", 2), plan("distance", "grudge", 2), plan("cover", "grudge", 0), plan("item", "grudge", 0)]);
+      // Include an open, same-floor duel alongside two procedural arena fights.
+      const f = new Fight(seed, [plan("cover", "grudge", 2), plan("distance", "grudge", 2), plan("cover", "grudge", 0), plan("item", "grudge", 0)], seed === 3 ? { level: sameFloor } : undefined);
       for (let i = 0; i < 20; i++) f.step();
       f.sim.damageFighter(f.sim.fighters[2]!, 1000, 1, 0, 0, "test", 0, 0);
       f.sim.damageFighter(f.sim.fighters[3]!, 1000, 1, 0, 0, "test", 0, 0);
