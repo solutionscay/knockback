@@ -19,9 +19,10 @@ import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
 import { houseBrain, type Decision } from "../sim/voice";
 import { decideRound, type RoundAsk, type Seat } from "./decide";
-import { fightSecondsAt, playbackAt, roundPlayback, tickAtFightSeconds, type RoundPlayback } from "../flow/pacing";
+import { playbackAt, roundPlayback, tickAtFightSeconds, VIEWER_KO_EXTRA_S, type RoundPlayback } from "../flow/pacing";
 import { DEFAULT_TIMING } from "../flow/beats";
-import { applyTick, buildCheckinPrompt, CHECKIN, checkinStatus, checkinTicks, parseCheckin, type CheckinAsk, type CheckinConfig } from "./checkin";
+import { answeredTickFast, applyTick, buildCheckinPrompt, CHECKIN, checkinStatus, checkinTicks, parseCheckin, type CheckinAsk, type CheckinConfig } from "./checkin";
+import type { Fight } from "../sim/fight";
 import { checkinSummaryLines, planChangeSummary } from "./checkin-log";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
@@ -32,11 +33,13 @@ export type RunnerEvent =
   | { type: "done"; record: string | null; winner: number; wins: number[] }
   | ({ type: "control" } & ControlEvent)
   /** a mid-round check-in started (#9): the seats asked; plan updates may follow until checkinEnd */
-  | { type: "checkin"; round: number; tick: number; seats: number[]; deadlineMs: number; leadTicks: number }
+  | { type: "checkin"; round: number; tick: number; seats: number[]; capMs: number; leadTicks: number }
   /** a check-in answer became a plan update (#8): it applies at update.tick */
   | { type: "planUpdate"; round: number; update: PlanUpdate }
-  /** the check-in is over: no more updates from it */
-  | { type: "checkinEnd"; round: number; tick: number }
+  /** a seat's check-in is over (answered, missed or dropped): no more updates from it */
+  | { type: "checkinEnd"; round: number; tick: number; seat: number }
+  /** how far the server's sim is in a round with check-ins: no update will apply before tick + leadTicks */
+  | { type: "fightTick"; round: number; tick: number; leadTicks: number }
   /** no more check-ins this round (the rest of the schedule was skipped: the round ended, or one fighter is left) */
   | { type: "checkinsDone"; round: number };
 
@@ -142,8 +145,8 @@ export class MatchRunner {
   readonly checkin: CheckinConfig | null;
   /** a round being fought with check-ins at broadcast pace: when viewers see its tick 0 */
   private fighting: { round: number; fightAt: number } | null = null;
-  /** the check-in being asked now */
-  openCheckin: { round: number; tick: number } | null = null;
+  /** each seat's open check-in (round, asked tick) */
+  readonly openCheckins = new Map<number, { round: number; tick: number }>();
   /** per seat: how it answers a check-in (null: no check-ins, e.g. the house bot) */
   readonly checkinAsk: (CheckinAsk | null)[];
   /** every check-in prompt and answer, for the .checkins.json file */
@@ -155,7 +158,6 @@ export class MatchRunner {
     this.labels = opts.labels ?? opts.seats.map((s) => s.provider?.label ?? "house");
     this.lineup = opts.lineup ?? opts.seats.map((s) => s.providerName);
     this.checkin = opts.checkins ? { ...CHECKIN, ...(typeof opts.checkins === "object" ? opts.checkins : {}) } : null;
-    if (this.checkin && this.checkin.deadlineMs / 1000 + this.checkin.leadS >= this.checkin.everyS) throw new Error(`check-in deadline (${this.checkin.deadlineMs / 1000} s) plus lead must be shorter than the check-in interval (${this.checkin.everyS} s)`);
     this.checkinAsk = opts.seats.map((s) => s.checkin ?? (s.provider ? (prompt, _st, signal) => s.provider!.ask(prompt, signal) : null));
   }
 
@@ -217,7 +219,6 @@ export class MatchRunner {
   /** Where the viewers are now: the round being asked, or a moment in the round being played back. */
   position(): { round: number; phase: ControlEvent["phase"]; tick: number | null } {
     if (this.asking !== null) return { round: this.asking, phase: "plan", tick: null };
-    if (this.openCheckin) return { round: this.openCheckin.round, phase: "checkin", tick: this.openCheckin.tick };
     const fg = this.fighting;
     if (fg) {
       const now = Date.now();
@@ -322,107 +323,180 @@ export class MatchRunner {
   }
 
   /**
-   * Play the round up to each check-in tick and ask the AI seats (#9). At
-   * broadcast pace a check-in waits until viewers reach its tick, so agents
-   * react to what spectators see; an answer applies at the check-in tick
-   * plus its latency (plus a lead for the viewers). In fast mode the same
-   * rule simulates the latency. The sim waits at the check-in tick until
-   * every answer is in or late; the record keeps each update's tick.
+   * The round's fight with check-ins (#9). A check-in stays open until its
+   * answer arrives (or the round ends, the agent drops, or the hung-call cap
+   * passes); while a seat's check-in is open, that seat's next scheduled
+   * check-ins are skipped (no overlap, no queue).
+   *
+   * The fight never waits for an answer. The server sim follows a "watch
+   * tick": at broadcast pace the tick the viewers have reached (pacing.ts),
+   * in fast mode each open check-in's tick plus its elapsed wall time in
+   * fight ticks (the lowest of them). An answer applies at the watch tick it
+   * arrived at (+ the lead at broadcast pace), at least `minApplyS` after its
+   * check-in tick: a slow model reacts late. The record keeps every tick.
    */
   private async fightWithCheckins(round: number, ask: RoundAsk, decidedAt: number) {
     const cfg = this.checkin!;
     const match = this.match;
+    const fight = match.fight!;
     const broadcast = this.opts.pace === "broadcast";
+    const scale = this.opts.paceScale ?? 1;
     const fightAt = this.fightStartAt(round, ask.decisions.map((d) => d.line), decidedAt);
     if (broadcast) this.fighting = { round, fightAt };
+    const schedule = checkinTicks(cfg, match.ruleset.round.fightTicks);
+    const asked = this.opts.seats.map(() => 0);
+    const open = new Map<number, OpenCheckin>();
+    const metas: CheckinMeta[] = [];
+    let next = 0;
+    let lastTick = -1;
+    let wake: (() => void) | null = null;
+    // real time: broadcast pace with someone to pace for; otherwise latency becomes fight time
+    const realTime = () => broadcast && (this.opts.shouldPace?.() ?? true);
+    const viewerTick = () => tickAtFightSeconds(Math.max(0, (Date.now() - fightAt) / 1000 / scale - fight.result().koLog.length * VIEWER_KO_EXTRA_S));
+    const watchTick = () => {
+      if (realTime()) return viewerTick();
+      let t = Infinity;
+      for (const o of open.values()) t = Math.min(t, o.askedTick + Math.floor(((performance.now() - o.t0) / 1000) * 60));
+      return t;
+    };
+    const ctx: CheckinLoop = {
+      round,
+      fight,
+      open,
+      metas,
+      leadTicks: () => (realTime() ? Math.round(cfg.leadS * 60) : 0),
+      answeredTick: (o, ms) => Math.max(fight.sim.tick, realTime() ? viewerTick() : answeredTickFast(o.askedTick, ms)),
+      realTime,
+      wake: () => wake?.(),
+    };
     try {
-      for (const tick of checkinTicks(cfg, this.match.ruleset.round.fightTicks)) {
-        if (match.stepUntil(tick)) break;
-        const fight = match.fight!;
-        if (fight.sim.alive().length < 2) break;
-        const seats = this.opts.seats.map((_, i) => i).filter((i) => this.checkinAsk[i] && fight.sim.fighters[i]!.alive && !(this.opts.onAutopilot?.(i) ?? false));
-        if (!seats.length) continue;
-        if (broadcast) {
-          const kos = fight.result().koLog.length;
-          const at = fightAt + fightSecondsAt(tick, kos) * 1000 * (this.opts.paceScale ?? 1);
-          while (Date.now() < at && (this.opts.shouldPace?.() ?? true)) await Bun.sleep(Math.min(250, at - Date.now()));
+      for (;;) {
+        const target = Math.min(schedule[next] ?? Infinity, watchTick());
+        if (target > fight.sim.tick && match.stepUntil(target)) break;
+        if (fight.over) break;
+        if (next < schedule.length && fight.sim.tick >= schedule[next]!) {
+          this.startCheckins(ctx, schedule[next++]!, asked);
+          continue;
         }
-        await this.askCheckin(round, tick, seats, broadcast);
+        if (next >= schedule.length && !open.size) break;
+        // tell live viewers how far the server is: no update will apply before this tick + the lead
+        if (fight.sim.tick !== lastTick) this.emit({ type: "fightTick", round, tick: (lastTick = fight.sim.tick), leadTicks: ctx.leadTicks() });
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+          setTimeout(resolve, realTime() ? 100 : 10);
+        });
+        wake = null;
       }
     } finally {
+      for (const o of [...open.values()]) o.end("the round ended before the answer");
+      const rec = match.record.rounds[round - 1]!;
+      if (metas.length) rec.checkins = [...(rec.checkins ?? []), ...metas.sort((a, b) => a.tick - b.tick || a.fighter - b.fighter)];
       this.fighting = null;
       this.emit({ type: "checkinsDone", round });
     }
   }
 
-  /** One check-in: ask `seats` in parallel; each valid change becomes a plan update at its apply tick. */
-  private async askCheckin(round: number, tick: number, seats: number[], broadcast: boolean) {
-    const cfg = this.checkin!;
-    const match = this.match;
-    const leadTicks = broadcast ? Math.round(cfg.leadS * 60) : 0;
-    this.openCheckin = { round, tick };
-    this.emit({ type: "checkin", round, tick, seats, deadlineMs: cfg.deadlineMs, leadTicks });
-    const metas: CheckinMeta[] = [];
-    try {
-      await Promise.all(seats.map((seat) => this.askSeat(round, tick, seat, broadcast).then((m) => void metas.push(m))));
-    } finally {
-      this.openCheckin = null;
-      const rec = match.record.rounds[round - 1]!;
-      rec.checkins = [...(rec.checkins ?? []), ...metas.sort((a, b) => a.fighter - b.fighter)];
-      this.emit({ type: "checkinEnd", round, tick });
+  /** A scheduled check-in tick: ask every eligible seat that has no check-in open; the others skip it. */
+  private startCheckins(ctx: CheckinLoop, tick: number, asked: number[]) {
+    const fight = ctx.fight;
+    if (fight.sim.alive().length < 2) return;
+    const seats: number[] = [];
+    for (let seat = 0; seat < this.opts.seats.length; seat++) {
+      if (!this.checkinAsk[seat] || !fight.sim.fighters[seat]!.alive || (this.opts.onAutopilot?.(seat) ?? false)) continue;
+      const o = ctx.open.get(seat);
+      if (o) {
+        o.meta.skipped = [...(o.meta.skipped ?? []), tick];
+        continue;
+      }
+      if (asked[seat]! >= this.checkin!.maxPerRound) continue;
+      asked[seat]!++;
+      seats.push(seat);
     }
+    if (!seats.length) return;
+    this.emit({ type: "checkin", round: ctx.round, tick, seats, capMs: this.checkin!.capMs, leadTicks: ctx.leadTicks() });
+    for (const seat of seats) this.openCheckinFor(ctx, tick, seat);
   }
 
-  private async askSeat(round: number, tick: number, seat: number, broadcast: boolean): Promise<CheckinMeta> {
+  /** Open one seat's check-in: ask, and handle the answer whenever it arrives. */
+  private openCheckinFor(ctx: CheckinLoop, tick: number, seat: number) {
     const cfg = this.checkin!;
     const match = this.match;
-    const fight = match.fight!;
+    const fight = ctx.fight;
     const names = this.names;
+    const round = ctx.round;
     const st = checkinStatus(fight, seat, names, round);
     const prompt = buildCheckinPrompt(st, this.opts.seats[seat]!.soul, cfg, match.ruleset);
     const provider = this.labels[seat]!;
-    const t0 = performance.now();
     const ctl = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<"late">((resolve) => {
-      // settle as late before aborting, so the aborted ask's rejection doesn't count as an error
-      timer = setTimeout(() => (resolve("late"), ctl.abort()), cfg.deadlineMs);
-    });
-    let raw: string | null = null;
     const meta: CheckinMeta = { tick, fighter: seat, provider, ms: 0, outcome: "missed", promptChars: prompt.length };
-    try {
-      const got = await Promise.race([this.checkinAsk[seat]!(prompt, st, ctl.signal), late]);
-      meta.ms = Math.round(performance.now() - t0);
-      if (got === "late") meta.detail = `no answer in ${cfg.deadlineMs / 1000} s`;
-      else {
+    let raw: string | null = null;
+    let settled = false;
+    const t0 = performance.now();
+    const finish = () => {
+      settled = true;
+      clearTimeout(cap);
+      ctx.open.delete(seat);
+      this.openCheckins.delete(seat);
+      ctx.metas.push(meta);
+      this.checkinPrompts.push({ round, tick, seat, prompt, raw });
+      const skipped = meta.skipped?.length ? `, skipped ${meta.skipped.map((t) => `${t / 60} s`).join(", ")}` : "";
+      if (meta.outcome !== "update") this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${meta.outcome.toUpperCase()}${meta.detail ? ` (${meta.detail})` : ""}${skipped}`);
+      this.emit({ type: "checkinEnd", round, tick, seat });
+      ctx.wake();
+    };
+    const o: OpenCheckin = {
+      askedTick: tick,
+      t0,
+      meta,
+      end: (reason) => {
+        if (settled) return;
+        meta.ms = Math.round(performance.now() - t0);
+        Object.assign(meta, { outcome: "missed", detail: reason });
+        ctl.abort(); // kills a CLI call; a remote seat's check-in ends
+        finish();
+      },
+    };
+    // only against hung processes: otherwise the check-in waits for the answer
+    const cap = setTimeout(() => o.end(`no answer in ${cfg.capMs / 1000} s (hung-call cap)`), cfg.capMs);
+    ctx.open.set(seat, o);
+    this.openCheckins.set(seat, { round, tick });
+    this.checkinAsk[seat]!(prompt, st, ctl.signal).then(
+      (got) => {
+        if (settled) return;
+        meta.ms = Math.round(performance.now() - t0);
         raw = got;
         meta.answerChars = got.length;
         const current = fight.controllers[seat]!.strategy;
         const a = parseCheckin(got, seat, names, current, cfg, match.ruleset);
+        meta.answeredTick = ctx.answeredTick(o, meta.ms);
+        const at = applyTick(tick, meta.answeredTick, cfg, ctx.realTime());
         if (a.kind === "invalid") Object.assign(meta, { outcome: "invalid", detail: a.problems.join(", ").slice(0, 200) });
         else if (a.kind === "keep") Object.assign(meta, { outcome: "keep", ...(a.line ? { detail: `line: ${a.line}` } : {}) });
+        else if (fight.over || !fight.sim.fighters[seat]!.alive) Object.assign(meta, { outcome: "late", detail: `would apply at tick ${at}` });
         else {
-          const at = applyTick(tick, meta.ms, cfg, broadcast);
-          if (fight.over || !fight.sim.fighters[seat]!.alive) Object.assign(meta, { outcome: "late", detail: `would apply at tick ${at}` });
-          else {
-            const u: PlanUpdate = { tick: at, fighter: seat, strategy: a.strategy, ...(a.line ? { line: a.line } : {}), ...(a.why ? { why: a.why } : {}), source: "checkin" };
-            match.addUpdate(u);
-            Object.assign(meta, { outcome: "update", applyTick: at, changed: a.changed, ...(a.ruleProblems ? { detail: `rules dropped: ${a.ruleProblems.join("; ").slice(0, 160)}` } : {}) });
-            this.emit({ type: "planUpdate", round, update: u });
-            this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${planChangeSummary(current, a.strategy, names)}, applies at ${(at / 60).toFixed(1)} s${a.line ? ` "${a.line}"` : ""}${a.why ? ` (${a.why})` : ""}`);
-          }
+          const u: PlanUpdate = { tick: at, fighter: seat, strategy: a.strategy, ...(a.line ? { line: a.line } : {}), ...(a.why ? { why: a.why } : {}), source: "checkin" };
+          match.addUpdate(u);
+          Object.assign(meta, { outcome: "update", applyTick: at, changed: a.changed, ...(a.ruleProblems ? { detail: `rules dropped: ${a.ruleProblems.join("; ").slice(0, 160)}` } : {}) });
+          this.emit({ type: "planUpdate", round, update: u });
+          const skipped = meta.skipped?.length ? `; skipped ${meta.skipped.map((t) => `${t / 60} s`).join(", ")}` : "";
+          this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${planChangeSummary(current, a.strategy, names)}, applies at ${(at / 60).toFixed(1)} s${a.line ? ` "${a.line}"` : ""}${a.why ? ` (${a.why})` : ""}${skipped}`);
         }
-      }
-    } catch (e) {
-      meta.ms = Math.round(performance.now() - t0);
-      const msg = e instanceof Error ? e.message : String(e);
-      Object.assign(meta, { outcome: /autopilot|left the match/.test(msg) ? "autopilot" : "error", detail: msg.slice(0, 200) });
-    } finally {
-      clearTimeout(timer);
-    }
-    if (meta.outcome !== "update") this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${meta.outcome.toUpperCase()}${meta.detail ? ` (${meta.detail})` : ""}`);
-    this.checkinPrompts.push({ round, tick, seat, prompt, raw });
-    return meta;
+        finish();
+      },
+      (e) => {
+        if (settled) return;
+        meta.ms = Math.round(performance.now() - t0);
+        const msg = e instanceof Error ? e.message : String(e);
+        Object.assign(meta, { outcome: /autopilot|left the match/.test(msg) ? "autopilot" : "error", detail: msg.slice(0, 200) });
+        finish();
+      },
+    );
+  }
+
+  /** Where a seat's open check-in is (round, its tick), for an autopilot takeover stamped at it; null when none is open. */
+  checkinAt(seat: number): { round: number; phase: "checkin"; tick: number } | null {
+    const o = this.openCheckins.get(seat);
+    return o ? { round: o.round, phase: "checkin", tick: o.tick } : null;
   }
 
   /** Play the whole match (start() first if not started) and write the summary lines. */
@@ -473,4 +547,25 @@ export class MatchRunner {
     this.emit({ type: "done", record: `/records/${file}`, winner: this.match.winner, wins: this.match.wins.slice() });
     return file;
   }
+}
+
+/** One seat's open check-in. */
+interface OpenCheckin {
+  askedTick: number;
+  t0: number;
+  meta: CheckinMeta;
+  /** end it now as a miss (the round ended, the cap passed); aborts the call */
+  end: (reason: string) => void;
+}
+
+/** What the check-in handlers of one round share. */
+interface CheckinLoop {
+  round: number;
+  fight: Fight;
+  open: Map<number, OpenCheckin>;
+  metas: CheckinMeta[];
+  leadTicks: () => number;
+  answeredTick: (o: OpenCheckin, ms: number) => number;
+  realTime: () => boolean;
+  wake: () => void;
 }

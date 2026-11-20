@@ -52,15 +52,19 @@ export type { PlanUpdate };
 
 /** One fighter's mid-round check-in (#9) and how it went: logged in the round record, never replayed. */
 export interface CheckinMeta {
-  /** the check-in tick (the fight paused for nobody: the answer applies later) */
+  /** the tick the check-in was asked at (the fight never pauses: the answer applies when it arrives) */
   tick: number;
   fighter: number;
   provider: string;
   /** answer time (wall clock) */
   ms: number;
   outcome: "update" | "keep" | "missed" | "invalid" | "error" | "late" | "autopilot";
+  /** the fight tick the answer arrived at (broadcast: the viewers' tick; fast: check-in tick + latency) */
+  answeredTick?: number;
   /** the tick the update applies at (outcome "update") */
   applyTick?: number;
+  /** scheduled check-ins of this seat skipped while this one was open */
+  skipped?: number[];
   /** the plan fields that changed */
   changed?: string[];
   detail?: string;

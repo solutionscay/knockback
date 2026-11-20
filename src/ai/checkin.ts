@@ -25,15 +25,19 @@ export interface CheckinConfig {
   everyS: number;
   /** no check-in this close to the time-out */
   noneInLastS: number;
-  /** at most this many check-ins per seat per round (cost cap) */
+  /** at most this many check-ins asked per seat per round (cost cap) */
   maxPerRound: number;
-  /** wall-clock wait for an answer; a later answer is a miss (the plan stays) */
-  deadlineMs: number;
-  /** an update applies at least this long after its check-in */
+  /**
+   * Sanity cap against hung processes, wall clock: a check-in is otherwise
+   * open until the answer arrives (or the round ends, or the agent drops).
+   * Past the cap it is a miss and the call is aborted (a CLI is killed).
+   */
+  capMs: number;
+  /** an update applies at least this long after its check-in tick */
   minApplyS: number;
   /**
-   * broadcast pace: extra margin so an update reaches the viewers before
-   * they play its tick (they play the fight as the answers arrive)
+   * broadcast pace: an answer applies this long after the tick the viewers
+   * had reached when it arrived, so the update reaches them in time
    */
   leadS: number;
   /** at most this many characters in a check-in line */
@@ -44,22 +48,23 @@ export const CHECKIN: CheckinConfig = {
   firstS: 10,
   everyS: 10,
   noneInLastS: 5,
-  maxPerRound: 6,
-  deadlineMs: 8_000,
+  maxPerRound: 8,
+  capMs: 60_000,
   minApplyS: 1,
   leadS: 0.75,
   maxLine: 60,
 };
 
 /**
- * Check-in settings from command-line flags: --checkins on|off (default off),
- * --checkin-deadline, --checkin-every (seconds), --checkin-max (per round).
- * Returns false when check-ins are off.
+ * Check-in settings from command-line flags: --checkins on|off (default:
+ * `defaultOn`), --checkin-cap (seconds, the hung-call cap), --checkin-every
+ * (seconds), --checkin-max (per seat per round). False when check-ins are off.
  */
-export function checkinFlags(flags: Record<string, string | undefined>): false | Partial<CheckinConfig> {
-  const on = flags.checkins;
-  if (on === undefined || on === "off" || on === "false") return false;
+export function checkinFlags(flags: Record<string, string | undefined>, defaultOn = false): false | Partial<CheckinConfig> {
+  const on = flags.checkins ?? (defaultOn ? "on" : "off");
+  if (on === "off" || on === "false") return false;
   if (on !== "on" && on !== "true") throw new Error(`--checkins: on or off (got ${on})`);
+  if (flags["checkin-deadline"] !== undefined) throw new Error("--checkin-deadline is gone: a check-in waits for the answer (--checkin-cap <s> only stops hung calls)");
   const num = (k: string, lo: number, hi: number) => {
     const v = flags[k];
     if (v === undefined) return undefined;
@@ -67,28 +72,34 @@ export function checkinFlags(flags: Record<string, string | undefined>): false |
     if (!Number.isFinite(n) || n < lo || n > hi) throw new Error(`--${k}: a number from ${lo} to ${hi} (got ${v})`);
     return n;
   };
-  const d = num("checkin-deadline", 0.5, 30);
+  const c = num("checkin-cap", 1, 600);
   const e = num("checkin-every", 2, 60);
   const m = num("checkin-max", 1, 20);
-  return { ...(d !== undefined ? { deadlineMs: Math.round(d * 1000) } : {}), ...(e !== undefined ? { everyS: e, firstS: e } : {}), ...(m !== undefined ? { maxPerRound: Math.floor(m) } : {}) };
+  return { ...(c !== undefined ? { capMs: Math.round(c * 1000) } : {}), ...(e !== undefined ? { everyS: e, firstS: e } : {}), ...(m !== undefined ? { maxPerRound: Math.floor(m) } : {}) };
 }
 
-/** Check-in ticks of a round (fight ticks), before the cap: 600, 1200, ... */
+/** Check-in ticks up to the final quiet period before the round time limit. */
 export function checkinTicks(cfg: CheckinConfig = CHECKIN, fightTicks = FIGHT_TICKS): number[] {
   const out: number[] = [];
   const last = fightTicks - cfg.noneInLastS * TICK_RATE;
   for (let t = Math.round(cfg.firstS * TICK_RATE); t <= last; t += Math.round(cfg.everyS * TICK_RATE)) out.push(t);
-  return out.slice(0, cfg.maxPerRound);
+  return out;
 }
 
 /**
- * The tick a check-in answer applies at: the check-in tick plus the answer's
- * latency in fight ticks (rounded up), at least `minApplyS`, plus the
- * broadcast lead when viewers watch live. Deterministic from (tick, ms).
+ * The tick a check-in answer applies at. `answered` is the fight tick the
+ * answer arrived at: at broadcast pace the tick the viewers had reached, in
+ * fast mode the check-in tick plus the measured latency in fight ticks. The
+ * update applies `lead` ticks later (broadcast only), and at least
+ * `minApplyS` after the check-in tick. Pure: the record keeps the result.
  */
-export function applyTick(tick: number, ms: number, cfg: CheckinConfig = CHECKIN, broadcast = false): number {
-  const lat = Math.ceil((ms / 1000) * TICK_RATE) + (broadcast ? Math.round(cfg.leadS * TICK_RATE) : 0);
-  return tick + Math.max(Math.round(cfg.minApplyS * TICK_RATE), lat);
+export function applyTick(askedTick: number, answeredTick: number, cfg: CheckinConfig = CHECKIN, broadcast = false): number {
+  return Math.max(askedTick + Math.round(cfg.minApplyS * TICK_RATE), answeredTick + (broadcast ? Math.round(cfg.leadS * TICK_RATE) : 0));
+}
+
+/** Fast mode: the fight tick an answer arrives at, from the check-in tick and its latency (rounded up). */
+export function answeredTickFast(askedTick: number, ms: number): number {
+  return askedTick + Math.ceil((ms / 1000) * TICK_RATE);
 }
 
 /** How a seat answers a check-in: a remote seat publishes it to its agent; a local provider gets the prompt. */

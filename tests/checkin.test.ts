@@ -1,6 +1,6 @@
 /** Mid-round check-ins (#9): schedule, status prompt, answer parsing, the loop's latency rule and fallbacks. */
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { applyTick, buildCheckinPrompt, CHECKIN, checkinFlags, checkinStatus, checkinTicks, parseCheckin } from "../src/ai/checkin";
+import { answeredTickFast, applyTick, buildCheckinPrompt, CHECKIN, checkinFlags, checkinStatus, checkinTicks, parseCheckin } from "../src/ai/checkin";
 import { checkinStats } from "../src/ai/checkin-log";
 import { seatsFor } from "../src/ai/decide";
 import { registerProvider, registerStubs } from "../src/ai/providers";
@@ -25,32 +25,57 @@ beforeAll(async () => {
       return `{"stance":"${rushing ? "distance" : "rush"}","line":"New plan."}`;
     },
   });
+  // a slow model: every check-in answer takes 15 s
+  registerProvider("slow15", {
+    label: "slow15/test",
+    ask: async (prompt, signal) => {
+      if (!prompt.startsWith("Knockback check-in")) return `{"weapons":["shotgun"],"target":"nearest","stance":"rush","line":"Slow and steady."}`;
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, 15_000);
+        signal.addEventListener("abort", () => (clearTimeout(t), reject(new Error("aborted"))), { once: true });
+      });
+      const rushing = /^PLAN: target [^,]+, rush,/m.test(prompt);
+      return `{"stance":"${rushing ? "cover" : "rush"}","line":"Finally!"}`;
+    },
+  });
+  // a hung process: never answers; records whether the call was aborted (a CLI would be killed)
+  registerProvider("hung", {
+    label: "hung/test",
+    ask: (prompt, signal) =>
+      prompt.startsWith("Knockback check-in")
+        ? new Promise<string>((_, reject) => signal.addEventListener("abort", () => (hungAborts++, reject(new Error("killed"))), { once: true }))
+        : Promise.resolve(`{"weapons":["bat"],"target":"nearest","stance":"rush","line":"..."}`),
+  });
 });
+let hungAborts = 0;
 
 const NAMES = ["Ada", "Bix", "Cog", "Dot"];
 const PLAN: Strategy = { target: "nearest", stance: "rush", weapons: ["rocket", "bat"], retaliate: "turn", line: "", rules: [{ when: "my_health_below", value: 30, do: "stance", stance: "cover", label: "hide when hurt" }] };
 const hashes = (rec: Pick<MatchRecord, "rounds">) => rec.rounds.map((r) => r.fight.finalHash);
 
 describe("check-in schedule and latency rule", () => {
-  test("every 10 s from 10 s, capped per round, none in the last 5 s", () => {
-    expect(checkinTicks()).toEqual([600, 1200, 1800, 2400, 3000, 3600].slice(0, CHECKIN.maxPerRound));
-    expect(checkinTicks({ ...CHECKIN, maxPerRound: 20 }).at(-1)).toBe(4800); // 80 s: the last one at least 5 s before the 90 s time-out
-    expect(checkinTicks({ ...CHECKIN, maxPerRound: 2 })).toEqual([600, 1200]);
+  test("every 10 s from 10 s, none in the last 5 s", () => {
+    expect(checkinTicks()).toEqual([600, 1200, 1800, 2400, 3000, 3600, 4200, 4800]); // 80 s: the last one at least 5 s before the 90 s time-out
+    expect(checkinTicks({ ...CHECKIN, everyS: 20, firstS: 20 })).toEqual([1200, 2400, 3600, 4800]);
   });
 
-  test("an answer applies at the check-in tick plus its latency in ticks (at least the minimum; plus a lead at broadcast pace)", () => {
-    expect(applyTick(600, 1500)).toBe(690);
-    expect(applyTick(600, 1501)).toBe(691); // rounded up
-    expect(applyTick(600, 20)).toBe(600 + CHECKIN.minApplyS * 60);
-    expect(applyTick(600, 1500, CHECKIN, true)).toBe(690 + Math.round(CHECKIN.leadS * 60));
+  test("an answer applies at the tick it arrived at (+ the lead at broadcast pace), at least 1 s after its check-in", () => {
+    expect(answeredTickFast(600, 1500)).toBe(690);
+    expect(answeredTickFast(600, 1501)).toBe(691); // rounded up
+    expect(answeredTickFast(600, 15_000)).toBe(1500); // a slow model reacts late
+    expect(applyTick(600, 690)).toBe(690);
+    expect(applyTick(600, 601)).toBe(600 + CHECKIN.minApplyS * 60);
+    expect(applyTick(600, 1500, CHECKIN, true)).toBe(1500 + Math.round(CHECKIN.leadS * 60));
   });
 
-  test("flags", () => {
+  test("flags: off unless asked (tests, batches, evals) or on by default (match server, ai-match)", () => {
     expect(checkinFlags({})).toBe(false);
-    expect(checkinFlags({ checkins: "off" })).toBe(false);
-    expect(checkinFlags({ checkins: "on", "checkin-deadline": "5", "checkin-max": "3" })).toEqual({ deadlineMs: 5000, maxPerRound: 3 });
+    expect(checkinFlags({}, true)).toEqual({});
+    expect(checkinFlags({ checkins: "off" }, true)).toBe(false);
+    expect(checkinFlags({ checkins: "on", "checkin-cap": "30", "checkin-max": "3" })).toEqual({ capMs: 30_000, maxPerRound: 3 });
     expect(() => checkinFlags({ checkins: "maybe" })).toThrow(/on or off/);
-    expect(() => checkinFlags({ checkins: "on", "checkin-deadline": "0" })).toThrow(/checkin-deadline/);
+    expect(() => checkinFlags({ checkins: "on", "checkin-cap": "0" })).toThrow(/checkin-cap/);
+    expect(() => checkinFlags({ checkins: "on", "checkin-deadline": "8" })).toThrow(/is gone/);
   });
 });
 
@@ -120,7 +145,8 @@ describe("the check-in loop (fast mode)", () => {
     const ups = cs.filter((c) => c.outcome === "update");
     expect(ups.length).toBeGreaterThan(0);
     for (const c of ups) {
-      expect(c.applyTick).toBe(applyTick(c.tick, c.ms));
+      expect(c.answeredTick).toBe(answeredTickFast(c.tick, c.ms));
+      expect(c.applyTick).toBe(applyTick(c.tick, c.answeredTick!));
       expect(c.applyTick! - c.tick).toBeGreaterThanOrEqual(90); // 1.5 s
       expect(c.applyTick! - c.tick).toBeLessThan(90 + 30);
     }
@@ -141,8 +167,36 @@ describe("the check-in loop (fast mode)", () => {
     expect(stats[0]!.avgMs).toBeGreaterThanOrEqual(1500);
   });
 
+  test("a slow answer (15 s) still applies, at check-in tick + 15 s; that seat's check-ins in between are skipped; the record replays", async () => {
+    const { rec, runner } = await run(["slow15", "house", "house", "house"], { maxPerRound: 1 }, 1);
+    const cs = rec.rounds.flatMap((r) => r.checkins ?? []);
+    const late = cs.filter((c) => c.outcome === "update");
+    expect(late.length).toBeGreaterThan(0);
+    for (const c of late) {
+      expect(c.ms).toBeGreaterThanOrEqual(15_000);
+      expect(c.answeredTick).toBe(answeredTickFast(c.tick, c.ms));
+      expect(c.applyTick! - c.tick).toBeGreaterThanOrEqual(900);
+      expect(c.skipped).toEqual([c.tick + 600]); // the 20 s check-in came while the 10 s one was open
+    }
+    expect(runner.log.some((l) => /check-in 10 s: .*\[slow15\/test 15\.\d s\] stance .*applies at 25\.\d s .*skipped 20 s/.test(l))).toBe(true);
+    expect(hashes(replayMatch(rec).record)).toEqual(hashes(rec));
+  });
+
+  test("a hung call is capped: a miss, and the call is aborted (a CLI would be killed)", async () => {
+    hungAborts = 0;
+    const { rec } = await run(["hung", "house", "house", "house"], { maxPerRound: 2, capMs: 1000 }, 1);
+    const cs = rec.rounds.flatMap((r) => r.checkins ?? []);
+    expect(cs.length).toBeGreaterThan(0);
+    for (const c of cs) {
+      expect(c.outcome).toBe("missed");
+      expect(c.detail).toMatch(/no answer in 1 s \(hung-call cap\)|the round ended/);
+    }
+    expect(hungAborts).toBe(cs.length);
+    expect(rec.rounds.every((r) => !r.planUpdates)).toBe(true);
+  });
+
   test("slow, junk and broken providers never stop the match and never change the plan", async () => {
-    const { rec } = await run(["slow", "junk", "broken", "house"], { maxPerRound: 2, deadlineMs: 300 }, 13, 300);
+    const { rec } = await run(["slow", "junk", "broken", "house"], { maxPerRound: 2, capMs: 300 }, 13, 300);
     expect(rec.winner).toBeGreaterThanOrEqual(0);
     expect(rec.rounds.every((r) => !r.planUpdates)).toBe(true);
     const out = (f: number) => [...new Set(rec.rounds.flatMap((r) => (r.checkins ?? []).filter((c) => c.fighter === f).map((c) => c.outcome)))];
