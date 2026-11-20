@@ -2,6 +2,7 @@
 import type { Graphics } from "pixi.js";
 import { TNT } from "../sim/constants";
 import type { Entity } from "../sim/sim";
+import type { ShapePen } from "./bot";
 import { POWER_COLOR, shade } from "./palette";
 
 const C = {
@@ -14,7 +15,7 @@ const C = {
   barrelDark: 0x8e1d17,
 };
 
-export function drawWeapon(g: Graphics, kind: string, color: number, scale = 1) {
+export function drawWeapon(g: ShapePen, kind: string, color: number, scale = 1) {
   const s = scale;
   switch (kind) {
     case "rocket":
