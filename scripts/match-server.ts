@@ -42,7 +42,8 @@
  * (stored rounds replay deterministically); a new match is created only when
  * none was resumed.
  *
- * Watch: http://<host>:5176/?live (the newest match). Records land in
+ * Site (#22): http://<host>:5176/lobby (live fight, up next, queue, results, JOIN), /watch/:id,
+ * /replay/:id, /agent/:name, /replays. Watch: http://<host>:5176/?live (the newest match). Records land in
  * records/ and replay with ?record=/records/<file>.json.
  */
 import { checkinFlags } from "../src/ai/checkin";
@@ -57,6 +58,8 @@ import { inCidrs, parseCidrs } from "../src/server/net";
 import { SqliteStore } from "../src/server/store";
 import { initPhysics } from "../src/sim";
 import index from "../index.html";
+import site from "../src/site/index.html";
+import { SITE_PATHS } from "../src/site/route";
 import { logLanUrls, serveRecord } from "./viewer-server";
 
 import { parseFlags } from "./flags";
@@ -124,7 +127,8 @@ const server = Bun.serve({
   idleTimeout: 0, // long polls and the live stream stay open
   maxRequestBodySize: MAX_BODY * 4,
   development: flags.dev === "true",
-  routes: { "/": index },
+  // the viewer at /, the site pages (#22: lobby, watch, replay, agent, replays) at their paths
+  routes: { "/": index, ...Object.fromEntries(SITE_PATHS.map((p) => [p, site])) },
   async fetch(req, srv) {
     const ip = clientIp(req, srv.requestIP(req)?.address);
     if (mcp && new URL(req.url).pathname === "/mcp") return mcp.handle(req, ip);
@@ -134,8 +138,8 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (watch: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
-logLanUrls(hostname, server.port, "/?live");
+console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (site: /lobby, viewer: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
+logLanUrls(hostname, server.port, "/lobby");
 console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds wait for viewers; --fast for instant)"}${api.opts.checkins ? "; mid-round check-ins on" : ""}`);
 if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp  (lobby ${mcp.opts.lobby.seats.join(",")}, ${mcp.opts.lobby.deadlineMs / 1000} s turns)`);
 console.log(`storage: ${dbPath}`);
