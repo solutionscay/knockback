@@ -32,6 +32,8 @@ export interface EvalRoundFacts {
   behind: number[][];
   /** weapons that did damage: weapons[attacker][victim] */
   weapons?: string[][][];
+  /** plan rule firings (#6): rules[seat][rule index] */
+  rules?: { fires: number; activeTicks: number }[][];
 }
 
 export interface EvalRound {
@@ -96,6 +98,27 @@ export interface FollowStats {
   killerWeaponAdded: { chances: number; hits: number; rate: number };
 }
 
+export interface RulesStats {
+  plans: number;
+  plansWithRules: number;
+  plansWithRulesRate: number;
+  rulesWritten: number;
+  rulesPerPlan: number;
+  /** rules the parser dropped (decision meta ruleProblems) */
+  rejected: number;
+  /** rejected / (written + rejected) */
+  rejectedRate: number;
+  /** rules that fired at least once in their round */
+  fired: number;
+  firedRate: number;
+  firingsPerRound: number;
+  activeSecondsPerRule: number;
+  /** by trigger and by action: written, fired at least once, total firings */
+  byWhen: Record<string, { written: number; fired: number; firings: number }>;
+  byDo: Record<string, { written: number; fired: number; firings: number }>;
+  neverFired: string[];
+}
+
 export interface FactCheck {
   /** lines (round 2+) that name a rival together with an event */
   checked: number;
@@ -124,7 +147,7 @@ export interface EvalReport {
   lineups: string[];
   variety: { ai: VarietyGroup | NA; house: VarietyGroup | NA };
   change: { ai: ChangeStats | NA; house: ChangeStats | NA; byFighter: Record<string, ChangeStats>; checkinsPerRound: NA };
-  rules: { rulesPerPlan: NA; rejected: NA; firingsPerRound: NA; firingsByKind: NA; neverFired: NA };
+  rules: { ai: RulesStats | NA; house: RulesStats | NA };
   follows: { ai: FollowStats | NA; house: FollowStats | NA };
   facts: FactCheck;
   /** the optional "why" (#3): how many of the AI's own plans gave one, and a few of them */
@@ -208,7 +231,9 @@ export function varietyOf(matches: EvalMatch[], role: Role): VarietyGroup | NA {
   };
 }
 
-const FIELDS = ["stance", "target", "retaliate", "weapons"] as const;
+const FIELDS = ["stance", "target", "retaliate", "weapons", "rules"] as const;
+/** fields of the base plan: "changed" counts these only, so it compares with runs before rules */
+const BASE_FIELDS = ["stance", "target", "retaliate", "weapons"];
 
 function planDiff(a: Strategy, b: Strategy, names: string[]): string[] {
   const out: string[] = [];
@@ -216,6 +241,7 @@ function planDiff(a: Strategy, b: Strategy, names: string[]): string[] {
   if (targetLabel(a, names) !== targetLabel(b, names)) out.push("target");
   if ((a.retaliate ?? "turn") !== (b.retaliate ?? "turn")) out.push("retaliate");
   if (a.weapons.join(">") !== b.weapons.join(">")) out.push("weapons");
+  if (JSON.stringify((a.rules ?? []).map((r) => [r.when, r.who, r.item, r.value, r.do, r.doItem, r.stance, r.retaliate])) !== JSON.stringify((b.rules ?? []).map((r) => [r.when, r.who, r.item, r.value, r.do, r.doItem, r.stance, r.retaliate]))) out.push("rules");
   return out;
 }
 
@@ -235,7 +261,7 @@ export function changeOf(matches: EvalMatch[], role: Role): { all: ChangeStats |
         const diff = planDiff(a.strategy, b.strategy, m.names);
         for (const s of [all, f]) {
           s.transitions++;
-          if (diff.length) s.changed++;
+          if (diff.some((x) => BASE_FIELDS.includes(x))) s.changed++;
           for (const d of diff) s.fields[d]!++;
         }
       }
@@ -309,6 +335,67 @@ export function factsOf(matches: EvalMatch[]): FactCheck {
   return out;
 }
 
+/** The rules group (#7): how many plans carry rules, how many were rejected, how many fired. */
+export function rulesOf(matches: EvalMatch[], role: Role): RulesStats | NA {
+  let plans = 0;
+  let withRules = 0;
+  let written = 0;
+  let rejected = 0;
+  let fired = 0;
+  let firings = 0;
+  let activeTicks = 0;
+  let rounds = 0;
+  const byWhen: RulesStats["byWhen"] = {};
+  const byDo: RulesStats["byDo"] = {};
+  const never: string[] = [];
+  for (const m of matches)
+    m.rounds.forEach((rd, r) =>
+      rd.decisions.forEach((d, seat) => {
+        if (isHouse(m.seats, seat) !== (role === "house")) return;
+        if (role === "ai") rejected += d.meta.ruleProblems?.length ?? 0;
+        if (role === "ai" && !aiOwnPlan(d)) return;
+        plans++;
+        rounds++;
+        const rules = d.strategy.rules ?? [];
+        if (rules.length) withRules++;
+        rules.forEach((rule, i) => {
+          written++;
+          const f = rd.facts.rules?.[seat]?.[i] ?? { fires: 0, activeTicks: 0 };
+          const w = (byWhen[rule.when] ??= { written: 0, fired: 0, firings: 0 });
+          const a = (byDo[rule.do] ??= { written: 0, fired: 0, firings: 0 });
+          w.written++;
+          a.written++;
+          w.firings += f.fires;
+          a.firings += f.fires;
+          firings += f.fires;
+          activeTicks += f.activeTicks;
+          if (f.fires > 0) {
+            fired++;
+            w.fired++;
+            a.fired++;
+          } else if (never.length < 8) never.push(`${m.names[seat]}, round ${r + 1}: '${rule.label}' (${rule.when} -> ${rule.do})`);
+        });
+      }),
+    );
+  if (!plans) return NA;
+  return {
+    plans,
+    plansWithRules: withRules,
+    plansWithRulesRate: r3(withRules / plans),
+    rulesWritten: written,
+    rulesPerPlan: r3(written / plans),
+    rejected,
+    rejectedRate: written + rejected ? r3(rejected / (written + rejected)) : 0,
+    fired,
+    firedRate: written ? r3(fired / written) : 0,
+    firingsPerRound: r3(firings / Math.max(1, rounds)),
+    activeSecondsPerRule: written ? r3(activeTicks / 60 / written) : 0,
+    byWhen,
+    byDo,
+    neverFired: never,
+  };
+}
+
 export function whyOf(matches: EvalMatch[]): EvalReport["why"] {
   const ds = decisionsOf(matches, "ai");
   if (!ds.length) return NA;
@@ -369,7 +456,7 @@ export function computeReport(matches: EvalMatch[]): EvalReport {
     lineups: [...new Set(matches.map((m) => m.seats.join(",")))],
     variety: { ai: varietyOf(matches, "ai"), house: varietyOf(matches, "house") },
     change: { ai: ai.all, house: house.all, byFighter: { ...ai.byFighter, ...house.byFighter }, checkinsPerRound: NA },
-    rules: { rulesPerPlan: NA, rejected: NA, firingsPerRound: NA, firingsByKind: NA, neverFired: NA },
+    rules: { ai: rulesOf(matches, "ai"), house: rulesOf(matches, "house") },
     follows: { ai: followsOf(matches, "ai"), house: followsOf(matches, "house") },
     facts: factsOf(matches),
     why: whyOf(matches),
@@ -394,7 +481,7 @@ export function evalMatchFrom(match: Match, seats: string[], housePlans?: (Strat
       const f = match.facts[r]!;
       return {
         decisions: rd.strategies.map((s, i) => ({ strategy: s, line: rd.lines[i]!, meta: rd.meta?.[i] ?? { provider: "house", ms: 0, outcome: "house" as const }, ...(housePlans?.[r]?.[i] ? { house: housePlans[r]![i]! } : {}) })),
-        facts: { winner: f.winner, ...checkFactsFromStats(f.stats), kos: f.stats.kos.map((k) => ({ victim: k.victim, by: k.by, weapon: k.weapon, cause: k.cause })) },
+        facts: { winner: f.winner, ...checkFactsFromStats(f.stats), rules: f.stats.rules?.map((row) => row.map((x) => ({ ...x }))), kos: f.stats.kos.map((k) => ({ victim: k.victim, by: k.by, weapon: k.weapon, cause: k.cause })) },
       };
     }),
   };
@@ -449,14 +536,36 @@ export function reportMarkdown(rep: EvalReport, opts: { title?: string; compare?
   L.push("");
 
   L.push("## Change", "", "How often a fighter's plan changed between rounds, and which fields.", "");
-  L.push("| Who | Transitions | Changed | stance | target | retaliate | weapons |", "|---|---|---|---|---|---|---|");
+  L.push("Changed counts the base plan (stance, target, retaliate, weapons); the rules column shows rule-set changes separately.", "");
+  L.push("| Who | Transitions | Changed | stance | target | retaliate | weapons | rules |", "|---|---|---|---|---|---|---|---|");
   const row = (name: string, s: ChangeStats | NA) =>
-    s === NA ? `| ${name} | ${NA} | | | | | |` : `| ${name} | ${s.transitions} | ${s.changed} (${pct(s.changeRate)}) | ${s.fields.stance} | ${s.fields.target} | ${s.fields.retaliate} | ${s.fields.weapons} |`;
+    s === NA ? `| ${name} | ${NA} | | | | | | |` : `| ${name} | ${s.transitions} | ${s.changed} (${pct(s.changeRate)}) | ${s.fields.stance} | ${s.fields.target} | ${s.fields.retaliate} | ${s.fields.weapons} | ${s.fields.rules ?? 0} |`;
   L.push(row("all AI", rep.change.ai), row("all house", rep.change.house));
   for (const [k, s] of Object.entries(rep.change.byFighter).sort()) L.push(row(k, s));
   L.push("", `Check-in updates per round: ${rep.change.checkinsPerRound} (check-ins don't exist yet).`, "");
 
-  L.push("## Rules", "", `${NA}: conditional plans don't exist yet (rules per plan, rejected, firings per round, by kind, never fired).`, "");
+  L.push("## Rules", "", "Plan rules (#5-#7). Rejected = dropped by the parser; fired = started at least once in its round.", "");
+  L.push("| Measure | AI | House |", "|---|---|---|");
+  const ra = rep.rules.ai;
+  const rh = rep.rules.house;
+  const rr = (s: RulesStats | NA, f: (x: RulesStats) => string) => (s === NA ? NA : f(s));
+  for (const [label, f] of [
+    ["plans with 1+ rules", (x: RulesStats) => `${x.plansWithRules}/${x.plans} (${pct(x.plansWithRulesRate)})`],
+    ["rules per plan", (x: RulesStats) => String(x.rulesPerPlan)],
+    ["rules rejected", (x: RulesStats) => `${x.rejected} (${pct(x.rejectedRate)} of rules sent)`],
+    ["rules that fired at least once", (x: RulesStats) => `${x.fired}/${x.rulesWritten} (${pct(x.firedRate)})`],
+    ["firings per fighter-round", (x: RulesStats) => String(x.firingsPerRound)],
+    ["active seconds per rule", (x: RulesStats) => String(x.activeSecondsPerRule)],
+  ] as const)
+    L.push(`| ${label} | ${rr(ra, f)} | ${rr(rh, f)} |`);
+  L.push("");
+  for (const [k, s] of [["AI", ra], ["House", rh]] as const) {
+    if (s === NA || !s.rulesWritten) continue;
+    L.push(`${k} by trigger (written / fired / firings): ${Object.entries(s.byWhen).sort((a, b) => b[1].written - a[1].written).map(([w, v]) => `${w} ${v.written}/${v.fired}/${v.firings}`).join(", ")}.`);
+    L.push(`${k} by action: ${Object.entries(s.byDo).sort((a, b) => b[1].written - a[1].written).map(([w, v]) => `${w} ${v.written}/${v.fired}/${v.firings}`).join(", ")}.`);
+    if (s.neverFired.length) L.push(`${k} rules that never fired (first ${s.neverFired.length}): ${s.neverFired.join("; ")}.`);
+    L.push("");
+  }
 
   L.push("## Follows the stats", "", `Decisions after a round (round 2 on). Targeting counts only a rival named as the target. ${rep.houseInAiPlace ? "House column: the house bot's plan in the same spots." : "House column: house-bot seats."}`, "");
   L.push("| Measure | AI | House |", "|---|---|---|");

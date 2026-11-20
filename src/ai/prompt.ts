@@ -23,14 +23,16 @@ export interface PromptExtras {
   lastPlans?: Strategy[] | null;
   /** match seed (rotates the examples, #3) */
   seed?: number;
+  /** this fighter's rules the parser dropped last round, and why (#7) */
+  lastRuleProblems?: string[];
 }
 
 export const WEAPON_HELP: Record<string, string> = {
-  rocket: "arcing blast, long range, breaks terrain",
+  rocket: "long-range blast, breaks terrain",
   shotgun: "close spread, big shove",
-  bat: "melee launch, the best ring-out tool",
-  grenade: "bounces around cover, short fuse",
-  grapple: "hook: yanks a fighter toward you (off ledges, into bat range)",
+  bat: "melee launch, best for ring-outs",
+  grenade: "bounces around cover",
+  grapple: "hook: yanks a fighter to you, off ledges",
 };
 
 const r = (n: number) => Math.round(n);
@@ -146,6 +148,43 @@ export function lastPlanLines(plan: Strategy, st: RoundStats, me: number, names:
   return out;
 }
 
+/** Example rules (#7): 2 in the RULES section and 1 in the reply format, rotated by seed, round and seat. */
+export const RULE_EXAMPLES = [
+  '{"when":"holds","who":"anyone","item":"rocket","do":"target","label":"chase the rocket holder"}',
+  '{"when":"my_health_below","value":35,"do":"seek","item":"health","label":"patch up"}',
+  '{"when":"near_ledge","who":"enemy","do":"use","item":"grapple","label":"hook them off"}',
+  '{"when":"on_streak","who":"enemy","value":2,"do":"avoid","label":"dodge the hot hand"}',
+  '{"when":"hit_me","who":"enemy","do":"retaliate","retaliate":"attacker","label":"bite back"}',
+  '{"when":"health_below","who":"enemy","value":30,"do":"target","label":"finish the wounded"}',
+  '{"when":"near_barrel","who":"target","do":"use","item":"rocket","label":"light the barrel"}',
+];
+
+export function ruleExamplesFor(seed: number, round: number, me: number): string[] {
+  const n = RULE_EXAMPLES.length;
+  const a = (((seed >>> 0) + round * 2 + me * 3) % n + n) % n;
+  return [RULE_EXAMPLES[a]!, RULE_EXAMPLES[(a + 2) % n]!, RULE_EXAMPLES[(a + 4) % n]!];
+}
+
+/** The RULES section (#7): optional conditional rules, compact. Kept under 1,200 characters. */
+export function rulesSection(examples: string[]): string {
+  return [
+    "RULES (optional, at most 4, first = highest priority): conditions the engine checks during the round; a rule acts while its trigger holds (at least 1 s). A rule that never fires does nothing.",
+    "when: holds(who,item) | my_health_below(value 10-90) | health_below(who,value) | near_ledge(who) | near_barrel(who) | on_streak(who,value 1-3 knockouts) | chasing_me(who, 3 s+) | hit_me(who, last 3 s) | item_near(item, close) | alone_with (last two)",
+    "who: anyone | enemy | target | a name. do: target (go for that fighter) | avoid (keep away) | seek(item) | use(item: a weapon) | stance(stance) | retaliate(retaliate). target/avoid need a trigger about a fighter; after holds or item_near name the action's item as do_item.",
+    `Examples: ${examples.join(" ")}`,
+  ].join("\n");
+}
+
+/** What each rule did last round (#7). */
+export function ruleResultLine(rules: Strategy["rules"], fired: { fires: number; activeTicks: number }[] | undefined): string {
+  if (!rules?.length) return "YOUR RULES: you wrote none last round.";
+  const parts = rules.map((r, i) => {
+    const f = fired?.[i];
+    return f && f.fires > 0 ? `'${r.label}' fired ${f.fires} time${f.fires > 1 ? "s" : ""} (${Math.round(f.activeTicks / 60)} s active)` : `'${r.label}' never fired`;
+  });
+  return `YOUR RULES: ${parts.join("; ")}.`;
+}
+
 /** Situation -> plan change examples (#3); 2 shown per prompt, rotated by seed, round and seat. */
 export const PLAN_EXAMPLES = [
   "Knocked out by a rocket from far away -> put rocket in weapons, or rush the shooter.",
@@ -173,7 +212,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
   out.push(soulText(soul).trim());
   out.push(
     `RULES: best of 3 rounds; first to 2 round wins takes the match, and if nobody has 2 after round 3 the round-3 winner takes it. Each round is one continuous fight: last fighter standing wins (or most health after 90 s). You get knocked out by losing all health or by flying off the level (ring-out); knockback grows as health drops. A safe zone shrinks and pushes everyone together. ` +
-      `All four fighters are physically identical and start every round with only their fists (weak). Weapons are pickups lying around the arena, in crates and in supply drops; you carry at most 2, a new pickup replaces the one not in your hand (the old one drops for anyone to grab), and a knocked-out fighter drops theirs. You only choose a plan; the engine moves, picks up, aims and shoots for you.`,
+      `All four fighters are physically identical and start every round with only their fists (weak). Weapons are pickups (arena, crates, supply drops); you carry 2, a new pickup replaces the one not in your hand, and knocked-out fighters drop theirs. You only choose a plan; the engine moves, picks up, aims and shoots for you.`,
   );
   out.push(`LEVEL: ${levelLine(x.level)}`);
   out.push(
@@ -182,7 +221,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
         .map((n, i) => {
           const m = ctx.morale[i]!;
           const kos = ctx.history.reduce((a, f) => a + f.fighters[i]!.kosDealt.length, 0);
-          const hp = x.lastHealth ? `, ended last round with ${r(x.lastHealth[i]!)} health` : "";
+          const hp = x.lastHealth ? `, ended with ${r(x.lastHealth[i]!)} health` : "";
           return `${n}${i === me ? " (you)" : ""}: ${ctx.wins[i]} round win${ctx.wins[i] === 1 ? "" : "s"}, ${kos} knockout${kos === 1 ? "" : "s"}, feeling ${m.state}${hp}`;
         })
         .join("; ") +
@@ -194,14 +233,15 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
     lines.push(`LAST ROUND (round ${last.round}): ${names[last.winner]} won${last.reason === "time-out" ? " on time" : ""} after ${r(last.seconds)} s.`);
     lines.push(`WHAT HAPPENED TO YOU: ${whatHappenedLines(st, me, names).join(" ")} If your line accuses someone, it must match these facts.`);
     const plan = x.lastPlans?.[me];
-    if (plan) lines.push(`YOUR LAST PLAN AND HOW IT WENT: ${lastPlanLines(plan, st, me, names).join(" ")}`);
+    if (plan) lines.push(`YOUR LAST PLAN AND HOW IT WENT: ${lastPlanLines(plan, st, me, names).join(" ")} ${ruleResultLine(plan.rules, st.rules?.[me])}`);
+    if (x.lastRuleProblems?.length) lines.push(`RULES REJECTED LAST ROUND: ${x.lastRuleProblems.join("; ")}.`);
     lines.push(`KNOCKOUTS: ${st.kos.map((k) => `${names[k.victim]} ${k.cause === "ringout" ? "rung out" : "knocked out"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]} (${wname(k.weapon)})` : ` (${wname(k.weapon)})`}`).join("; ") || "none"}.`);
     const took = [0, 1, 2, 3]
       .filter((a) => a !== me && st.damage[a]![me]!.damage >= 1)
       .map((a) => {
         const s = st.damage[a]![me]!;
         const w = Object.entries(s.byWeapon).sort((p, q) => q[1].damage - p[1].damage)[0]?.[0];
-        return `${names[a]} ${r(s.damage)} damage in ${s.hits} hits (${s.fromBehind} from behind, mostly ${w})`;
+        return `${names[a]} ${r(s.damage)} (${s.hits} hits, ${s.fromBehind} behind, ${wname(w ?? "")})`;
       });
     lines.push(`DAMAGE YOU TOOK: ${took.join("; ") || "none"}.`);
     const chasers = [0, 1, 2, 3].filter((a) => a !== me && st.targetSeconds[a]![me]! >= 5).map((a) => `${names[a]} (${r(st.targetSeconds[a]![me]!)} s)`);
@@ -222,7 +262,9 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       `why = one short sentence in game terms, not in character, under 100 characters: why this plan. ` +
       `line = what you say out loud now, one short in-character sentence (under 90 characters) reacting to what happened.`,
   );
-  if (last) out.push(`EXAMPLES of changing a plan: ${examplesFor(x.seed ?? 0, ctx.round, me).join(" ")}`);
-  out.push(`Reply ONLY with JSON: {"weapons":[1 to 3 weapons],"target":"<name or preference>","stance":"<stance>","retaliate":"<attacker|turn|ignore>","why":"<reason>","line":"<what you say>"}`);
+  const rex = ruleExamplesFor(x.seed ?? 0, ctx.round, me);
+  out.push(rulesSection(rex.slice(0, 2)));
+  if (last) out.push(`EXAMPLES of changing a plan: ${examplesFor(x.seed ?? 0, ctx.round, me).join(" ")} If your last plan worked, keep it: change only what the facts show failed, or add a rule for it.`);
+  out.push(`Reply ONLY with JSON: {"weapons":[1 to 3 weapons],"target":"<name or preference>","stance":"<stance>","retaliate":"<attacker|turn|ignore>","rules":[0 to 4 rules, e.g. ${rex[2]}],"why":"<reason>","line":"<what you say>"}`);
   return out.join("\n\n");
 }

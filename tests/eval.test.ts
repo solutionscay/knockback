@@ -82,9 +82,9 @@ describe("metric functions on fixed records", () => {
 
   test("plan change: how often and which fields", () => {
     const rep = computeReport([fixed()]);
-    expect(rep.change.ai).toEqual({ transitions: 2, changed: 2, changeRate: 1, fields: { stance: 0, target: 2, retaliate: 1, weapons: 2 } });
-    expect(rep.change.house).toEqual({ transitions: 2, changed: 1, changeRate: 0.5, fields: { stance: 0, target: 1, retaliate: 0, weapons: 1 } });
-    expect(rep.change.byFighter["Brick (claude)"]!.fields).toEqual({ stance: 0, target: 1, retaliate: 1, weapons: 1 });
+    expect(rep.change.ai).toEqual({ transitions: 2, changed: 2, changeRate: 1, fields: { stance: 0, target: 2, retaliate: 1, weapons: 2, rules: 0 } });
+    expect(rep.change.house).toEqual({ transitions: 2, changed: 1, changeRate: 0.5, fields: { stance: 0, target: 1, retaliate: 0, weapons: 1, rules: 0 } });
+    expect(rep.change.byFighter["Brick (claude)"]!.fields).toEqual({ stance: 0, target: 1, retaliate: 1, weapons: 1, rules: 0 });
     expect(rep.change.checkinsPerRound).toBe(NA);
   });
 
@@ -135,10 +135,11 @@ describe("metric functions on fixed records", () => {
 
   test("groups for features that don't exist yet say n/a; compare gives the change for each metric", () => {
     const a = computeReport([fixed()]);
-    expect(Object.values(a.rules).every((v) => v === NA)).toBe(true);
+    expect(a.change.checkinsPerRound).toBe(NA); // check-ins don't exist yet
+    expect((a.rules.ai as { plansWithRules: number }).plansWithRules).toBe(0); // no rules in these plans
     const md = reportMarkdown(a);
     for (const h of ["## Variety", "## Change", "## Rules", "## Follows the stats", "## Facts", "## Reliability", "## Results"]) expect(md).toContain(h);
-    expect(md).toContain("n/a: conditional plans don't exist yet");
+    expect(md).toContain("Plan rules (#5-#7)");
     const m2 = fixed();
     m2.rounds[1]!.decisions[1] = ai(S("distance", "strongest", ["rocket"]), "quiet");
     const b = computeReport([m2]);
@@ -172,6 +173,28 @@ describe("metric functions on fixed records", () => {
     expect(h.killerWeaponAdded.hits).toBe(1); // grapple joined seat 0's house list
     expect((r.variety.house as { answers: number }).answers).toBe(8);
     expect(reportMarkdown(r)).toContain("in the same spots");
+  });
+
+  test("rules: plans with rules, rejected, fired, by trigger and action, never fired (#7)", () => {
+    const m = fixed();
+    const R1 = { when: "health_below" as const, who: "enemy" as const, value: 30, do: "target" as const, label: "finish the wounded" };
+    const R2 = { when: "my_health_below" as const, value: 30, do: "seek" as const, doItem: "health" as const, label: "patch up" };
+    m.rounds[0]!.decisions[0] = { ...m.rounds[0]!.decisions[0]!, strategy: { ...m.rounds[0]!.decisions[0]!.strategy, rules: [R1, R2] } };
+    m.rounds[0]!.decisions[1] = { ...m.rounds[0]!.decisions[1]!, meta: { ...m.rounds[0]!.decisions[1]!.meta, ruleProblems: ['rule 1: unknown trigger "flies"'] } };
+    m.rounds[0]!.facts.rules = [[{ fires: 2, activeTicks: 300 }, { fires: 0, activeTicks: 0 }], [], [], []];
+    const r = computeReport([m]).rules.ai as Exclude<ReturnType<typeof computeReport>["rules"]["ai"], typeof NA>;
+    expect(r.plans).toBe(4);
+    expect(r.plansWithRules).toBe(1);
+    expect(r.plansWithRulesRate).toBe(0.25);
+    expect(r.rulesWritten).toBe(2);
+    expect(r.rejected).toBe(1);
+    expect(r.rejectedRate).toBe(0.333);
+    expect(r.fired).toBe(1);
+    expect(r.firedRate).toBe(0.5);
+    expect(r.byWhen.health_below).toEqual({ written: 1, fired: 1, firings: 2 });
+    expect(r.byDo.seek).toEqual({ written: 1, fired: 0, firings: 0 });
+    expect(r.neverFired).toEqual(["Brick, round 1: 'patch up' (my_health_below -> seek)"]);
+    expect(reportMarkdown(computeReport([m]))).toContain("| plans with 1+ rules | 1/4 (25%)");
   });
 
   test("an empty or house-only run reports n/a for the AI side", () => {

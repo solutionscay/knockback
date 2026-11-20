@@ -89,7 +89,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
   const lastLines = prevRound ? prevRound.lines : null;
   const lastHealth = match.facts.length ? match.facts[match.facts.length - 1]!.fighters.map((f) => f.hpEnd) : null;
   const ctxs = seats.map((_, me) => match.contextFor(me));
-  const prompts = seats.map((s, me) => buildPrompt(s.soul, ctxs[me]!, { level: match.level, lastLines, lastHealth, myLines: match.record.rounds.map((r) => r.lines[me]!), lastPlans: prevRound ? prevRound.strategies : null, seed: match.seed }));
+  const prompts = seats.map((s, me) => buildPrompt(s.soul, ctxs[me]!, { level: match.level, lastLines, lastHealth, myLines: match.record.rounds.map((r) => r.lines[me]!), lastPlans: prevRound ? prevRound.strategies : null, seed: match.seed, lastRuleProblems: prevRound?.meta?.[me]?.ruleProblems }));
   const results = await Promise.all(
     seats.map(async (seat, me) => {
       const started = performance.now();

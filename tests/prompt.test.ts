@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { checkFactsFromStats, checkLine } from "../src/ai/factcheck";
 import { decideRound, seatsFor } from "../src/ai/decide";
 import { cleanWhy, MAX_WHY, parseAnswer } from "../src/ai/parse";
-import { buildPrompt, examplesFor, lastPlanLines, PLAN_EXAMPLES, whatHappenedLines } from "../src/ai/prompt";
+import { buildPrompt, examplesFor, lastPlanLines, PLAN_EXAMPLES, RULE_EXAMPLES, ruleExamplesFor, ruleResultLine, rulesSection, whatHappenedLines } from "../src/ai/prompt";
 import { registerStubs } from "../src/ai/providers";
 import { exampleSouls, initPhysics, Match, ReplayDivergedError, replayMatch, StatsCollector, type RoundFacts } from "../src/sim";
 
@@ -120,7 +120,7 @@ describe("YOUR LAST PLAN (#3)", () => {
     expect(quiet).toEqual(["target: Goldie: you chased nobody for long.", "weapons: grenade: you never got the grenade; you did no damage.", "retaliate: turn: the reflex never fired.", "stance: distance: you had no target to measure."]);
   });
 
-  test("the block is in rounds 2 and 3, the line bank stays out, and prompts stay under 6k characters", () => {
+  test("the block is in rounds 2 and 3, the line bank stays out, and prompts stay under 7k characters", () => {
     let longest = 0;
     let checked = 0;
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
@@ -146,7 +146,8 @@ describe("YOUR LAST PLAN (#3)", () => {
       }
     }
     expect(checked).toBeGreaterThan(30);
-    expect(longest).toBeLessThan(6000);
+    // budget: about 5.9k after #3, plus the RULES section (at most 1,200 by design, #7)
+    expect(longest).toBeLessThan(7000);
   });
 
   test("examples rotate by seed, round and seat (2 per prompt), and the retaliate text names no trap", () => {
@@ -158,7 +159,46 @@ describe("YOUR LAST PLAN (#3)", () => {
     const p = buildPrompt(m.souls[0]!, m.contextFor(0), { level: m.level, lastLines: null, lastHealth: null });
     expect((p.match(/default/gi) ?? []).length).toBe(1);
     expect(p).not.toMatch(/abandon your plan|bad when/);
-    expect(p).not.toMatch(/"retaliate":"(attacker|turn|ignore)"/); // no anchoring example answer
+    // no anchoring example answer: the plan's own fields are placeholders (only the rotated example rule is concrete)
+    expect(p).toContain('"stance":"<stance>","retaliate":"<attacker|turn|ignore>"');
+  });
+});
+
+describe("RULES in the prompt (#7)", () => {
+  test("the section exists in every round, stays under 1,200 characters, and its examples are valid rules", () => {
+    for (let seed = 0; seed < 10; seed++) {
+      const sec = rulesSection(ruleExamplesFor(seed, 1 + (seed % 3), seed % 4).slice(0, 2));
+      expect(sec.length).toBeLessThan(1200);
+      expect(sec).toContain("RULES (optional");
+      expect(sec).toContain("A rule that never fires does nothing.");
+    }
+    for (const ex of RULE_EXAMPLES) expect(parseAnswer(`{"weapons":["bat"],"target":"nearest","stance":"rush","line":"x","rules":[${ex}]}`, 0, NAMES).ruleProblems).toBeUndefined();
+    const m = new Match(3);
+    const p = buildPrompt(m.souls[0]!, m.contextFor(0), { level: m.level, lastLines: null, lastHealth: null, seed: 3 });
+    expect(p).toContain("RULES (optional");
+    expect(p).toMatch(/"rules":\[0 to 4 rules, e\.g\. \{"when"/); // one example rule in the reply format
+  });
+
+  test("rule results for a fixed round: firings, active time, never fired", () => {
+    const rules = [
+      { when: "holds" as const, who: "anyone" as const, item: "rocket" as const, do: "target" as const, label: "chase the rocket holder" },
+      { when: "my_health_below" as const, value: 30, do: "seek" as const, doItem: "health" as const, label: "patch up" },
+    ];
+    expect(ruleResultLine(rules, [{ fires: 3, activeTicks: 720 }, { fires: 0, activeTicks: 0 }])).toBe("YOUR RULES: 'chase the rocket holder' fired 3 times (12 s active); 'patch up' never fired.");
+    expect(ruleResultLine(undefined, undefined)).toBe("YOUR RULES: you wrote none last round.");
+    // and in the prompt, from a real round: the stats the engine recorded
+    const m = new Match(5);
+    m.prepareRound([0, 1, 2, 3].map((i) => ({ line: "x", strategy: { target: "nearest", stance: "rush", weapons: ["shotgun"], rules: i === 0 ? [{ when: "health_below", who: "enemy", value: 60, do: "target", label: "finish the wounded" }] : undefined, line: "x" } })));
+    while (!m.step()) {
+      /* round */
+    }
+    m.finishRound();
+    if (!m.over) {
+      const f = m.facts[0]!.stats.rules[0]![0]!;
+      const p = buildPrompt(m.souls[0]!, m.contextFor(0), { level: m.level, lastLines: m.record.rounds[0]!.lines, lastHealth: null, lastPlans: m.record.rounds[0]!.strategies, seed: 5, lastRuleProblems: ['rule 2: unknown trigger "flies"'] });
+      expect(p).toContain(f.fires > 0 ? `'finish the wounded' fired ${f.fires} time${f.fires > 1 ? "s" : ""} (${Math.round(f.activeTicks / 60)} s active)` : "'finish the wounded' never fired");
+      expect(p).toContain('RULES REJECTED LAST ROUND: rule 2: unknown trigger "flies".');
+    }
   });
 });
 
