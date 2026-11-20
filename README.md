@@ -54,6 +54,11 @@ Records land in `records/` and replay exactly with `bun run dev` +
 `/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
 Providers live in `src/ai/providers.ts` (one entry each).
 
+**Plan rules:** a plan can also carry up to 4 conditional rules ("when someone holds the rocket, target them",
+"below 30% health, go for health"). The controller evaluates them during the round, deterministically. House
+bots get 0-2 rules from their soul (turn this off with `Match({ houseRules: false })` or
+`--house-rules off` in the batch scripts). Watch them fire with `?debug=rules` in the viewer. Schema: `docs/rules.md`.
+
 ## AI eval (measure before changing prompts or rules)
 
 ```sh
