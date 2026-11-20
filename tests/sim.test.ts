@@ -58,13 +58,20 @@ describe("determinism and replay", () => {
   });
 
   test("different strategies give different states; interleaving matches changes nothing", () => {
-    const a = new Fight(5);
+    const seed = 5;
+    const plans = new Fight(seed).strategies;
+    // The opening aim changes as soon as the bot targets a different rival.
+    plans[0] = { ...plans[0]!, target: "grudge", grudge: 2 };
+    const a = new Fight(seed, plans);
     a.playToEnd();
-    const rec = JSON.parse(JSON.stringify(a.record));
-    rec.strategies[0].stance = rec.strategies[0].stance === "rush" ? "cover" : "rush";
-    rec.strategies[1].weapons = ["grenade", "bat"];
-    expect(replayFight(rec).checkpoints[0]).not.toBe(a.record.checkpoints[0]);
-    const x = new Fight(5);
+    const rec = structuredClone(a.record);
+    rec.strategies[0]!.grudge = 1;
+    const revised = replayFight(rec);
+    expect(a.record.checkpoints[0]).toBeDefined();
+    expect(revised.checkpoints[0]).toBeDefined();
+    expect(revised.checkpoints[0]).not.toBe(a.record.checkpoints[0]);
+
+    const x = new Fight(seed, plans);
     const y = new Fight(6);
     while (!x.over) {
       x.step();
