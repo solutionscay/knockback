@@ -208,7 +208,8 @@ export function updateFire(sim: Sim) {
       continue;
     }
     f.burning--;
-    if (f.burning % 30 === 0) {
+    // on a fixed clock (staggered per seat), so standing in fire, which keeps relighting them, still hurts
+    if ((sim.tick + f.id * 7) % 30 === 0) {
       const p = sim.pos(f);
       sim.damageFighter(f, FIRE.fighterDps * 30 * DT, f.burnBy, 0, 0, f.burnCause || "fire", p.x, p.y);
     }
