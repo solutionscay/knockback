@@ -1,0 +1,216 @@
+/**
+ * What sounds when: sim events, show beats and face moods -> sound cues. Pure functions (tested in
+ * tests/sound.test.ts); the sim is only read, never changed, so sound can't touch determinism.
+ */
+import type { SimEvent } from "../../sim/sim-types";
+
+/** One sound to play: a name from the sound book, where (world meters, or none for the show sounds), how. */
+export interface Cue {
+  sound: string;
+  /** world position; undefined = not spatial (countdown, siren, jingle, dialogue) */
+  x?: number;
+  y?: number;
+  /** linear gain before spatial attenuation (1 = as designed) */
+  gain: number;
+  /** frequency multiplier */
+  pitch: number;
+  /** variation seed (noise), from the event, so a replay sounds the same */
+  seed: number;
+}
+
+/** What the mapping may ask the viewer (positions for events that carry none). */
+export interface MapContext {
+  /** a fighter's position, or null when it is gone */
+  fighterPos(id: number): { x: number; y: number } | null;
+}
+
+const WEAPON_ITEMS = new Set(["rocket", "shotgun", "bat", "grenade", "grapple", "fist"]);
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const cue = (sound: string, x: number | undefined, y: number | undefined, gain: number, pitch: number, seed: number): Cue => ({ sound, x, y, gain, pitch, seed: seed >>> 0 });
+
+/**
+ * Hooks for event types that are not in the sim yet (jetpack on main soon, fire in its own branch): when such an
+ * event arrives with these names it sounds right away, no viewer change needed. Fields x, y (or fighter) are used
+ * when present.
+ */
+export const EVENT_HOOKS: Record<string, string> = {
+  jetpack: "jetpack.hiss",
+  thrust: "jetpack.hiss",
+  flame: "flame.whoosh",
+  flamethrower: "flame.whoosh",
+  ignite: "fire.crackle",
+  burn: "fire.crackle",
+  fire_spread: "fire.crackle",
+};
+
+/** Explosion size class from its blast radius (meters). */
+export function explosionSound(radius: number): string {
+  return radius < 2.2 ? "explosion.small" : radius < 3.4 ? "explosion.medium" : "explosion.large";
+}
+
+/** The cues for one sim event (most give one cue, some none). */
+export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
+  const at = (id: number) => ctx.fighterPos(id) ?? { x: undefined, y: undefined };
+  switch (e.type) {
+    case "explosion": {
+      // bigger blasts: lower and louder; a chain reaction is a little quieter per blast (they stack)
+      const pitch = clamp(2.6 / Math.max(0.5, e.radius), 0.7, 1.35);
+      const gain = clamp(0.55 + e.radius * 0.12, 0.6, 1) * (e.chainFrom ? 0.85 : 1);
+      return [cue(explosionSound(e.radius), e.x, e.y, gain, pitch, e.tick * 31 + Math.round(e.x * 7))];
+    }
+    case "fire": {
+      const s = { rocket: "rocket.launch", shotgun: "shotgun.fire", grenade: "grenade.throw", grapple: "grapple.shoot" }[e.weapon as string];
+      return s ? [cue(s, e.x, e.y, 1, 1, e.tick + e.fighter)] : []; // bat and fist sound on their swing
+    }
+    case "swing": {
+      const w = e.weapon === "bat" ? "bat" : "fist";
+      return [cue(`${w}.${e.hit ? "hit" : "swing"}`, e.x, e.y, 1, 1, e.tick + e.fighter)];
+    }
+    case "grapple":
+      return e.hit === "none" ? [] : [cue("grapple.latch", e.x1, e.y1, 1, 1, e.tick), cue("grapple.reel", e.x0, e.y0, 0.9, 1, e.tick + 1)];
+    case "hit": {
+      // explosions are already loud: a blast hit is a small thud on top
+      const blast = /explo|blast|barrel|tnt|gas|rocket|grenade/.test(e.cause);
+      if (e.shielded) return [cue("hit.shielded", e.x, e.y, 1, 1, e.tick + e.target)];
+      const heavy = e.damage >= 14 || e.kb >= 16;
+      return [cue(heavy ? "hit.heavy" : "hit.light", e.x, e.y, blast ? 0.45 : clamp(0.6 + e.damage / 40, 0.6, 1), clamp(1.2 - e.damage / 60, 0.8, 1.2), e.tick + e.target * 13)];
+    }
+    case "ko":
+      return e.cause === "ringout" ? [cue("ringout.whoosh", clamp(e.x, -30, 30), Math.max(-4, e.y), 1, 1, e.tick)] : [cue("ko", e.x, e.y, 1, 1, e.tick)];
+    case "break": {
+      const s = e.kind === "glass" ? "glass.break" : e.kind === "crate" || e.kind === "block" ? "wood.break" : e.kind === "steel" || e.kind === "weight" || e.kind === "pad" ? "steel.clang" : null;
+      // barrels, TNT and gas cans explode: the explosion is the sound
+      return s ? [cue(s, e.x, e.y, clamp(0.6 + (e.hw + e.hh) * 0.4, 0.6, 1), 1, e.tick + e.entity)] : [];
+    }
+    case "shatter":
+      return [cue("glass.break", e.x, e.y, 0.8, 1.1, e.tick + e.entity)];
+    case "pickup":
+      return [cue(WEAPON_ITEMS.has(e.item) ? "pickup.weapon" : "pickup.power", e.x, e.y, 1, e.item === "health" ? 0.9 : 1, e.tick + e.fighter)];
+    case "power":
+      return e.on ? [] : [cue("power.off", at(e.fighter).x, at(e.fighter).y, 1, 1, e.tick)]; // switching on is the pickup sound
+    case "shieldPop":
+      return [cue("shield.pop", e.x, e.y, 1, 1, e.tick)];
+    case "impact":
+      return [cue("hit.heavy", e.x, e.y, clamp(0.4 + e.damage / 30, 0.4, 0.9), 0.8, e.tick + e.fighter)];
+    case "jump":
+      return e.air ? [cue("jump", at(e.fighter).x, at(e.fighter).y, 1, 1.25, e.tick)] : []; // only double jumps: every hop would buzz
+    case "land":
+      return e.speed > 7 ? [cue("land", at(e.fighter).x, at(e.fighter).y, clamp(e.speed / 16, 0.4, 1), 1, e.tick)] : [];
+    case "bounce":
+      return [cue("pad.bounce", e.x, e.y, 1, 1, e.tick)];
+    case "zap":
+      return [cue("zap", e.x, e.y, 1, 1, e.tick)];
+    case "lit":
+      return [cue("fuse.lit", undefined, undefined, 0.8, 1, e.tick)]; // no position in the event: heard at the center
+    case "itemSpawn":
+      return [cue("item.spawn", e.x, e.y, 1, 1, e.tick)];
+    case "propDrop":
+      return [cue("prop.drop", e.x, e.y, 1, 1, e.tick)];
+    case "detach":
+      return e.cells >= 3 ? [cue("terrain.crumble", e.x, e.y, clamp(e.cells / 12, 0.4, 1), 1, e.tick + e.entity)] : [];
+    case "swap":
+      return []; // AI fighters swap weapons several times a second: a click each time is clutter ("swap" stays in the book)
+    case "suddenDeath":
+      return [cue("suddenDeath.siren", undefined, undefined, 1, 1, e.tick)];
+    case "chainBreak":
+      return [cue("chain.snap", e.x, e.y, 1, 1, e.tick + e.chain)];
+    case "snap":
+      return [cue("chain.snap", undefined, undefined, 0.7, 0.9, e.tick + e.entity)];
+    case "platformSwing":
+      return [cue("platform.creak", e.x, e.y, 1, 1, e.tick)];
+    case "platformFall":
+      return [cue("platform.creak", e.x, e.y, 1, 0.8, e.tick)]; // the crash comes when it lands (SoundWatch)
+    default: {
+      const hook = EVENT_HOOKS[(e as { type: string }).type];
+      if (!hook) return [];
+      const x = e as unknown as { x?: number; y?: number; fighter?: number; tick: number };
+      const p = typeof x.x === "number" ? { x: x.x, y: x.y } : typeof x.fighter === "number" ? at(x.fighter) : { x: undefined, y: undefined };
+      return [cue(hook, p.x, p.y, 1, 1, x.tick)];
+    }
+  }
+}
+
+/** Show sounds for the flow beats (countdown, FIGHT!, round end, the win). */
+export function cueForBeat(b: { kind: string; value?: number }): Cue | null {
+  switch (b.kind) {
+    case "countdown":
+      return cue("countdown.tick", undefined, undefined, 1, b.value === 1 ? 1.12 : 1, b.value ?? 0);
+    case "go":
+      return cue("countdown.go", undefined, undefined, 1, 1, 7);
+    case "roundEnd":
+      return cue("round.end", undefined, undefined, 1, 1, 8);
+    case "celebrate":
+      return cue("win.jingle", undefined, undefined, 1, 1, 9);
+    default:
+      return null;
+  }
+}
+
+const MOOD_SOUND: Record<string, string> = {
+  confident: "mood.up",
+  cocky: "mood.up",
+  win: "mood.up",
+  rattled: "mood.down",
+  desperate: "mood.down",
+  furious: "mood.angry",
+  stun: "mood.stun",
+  sleepy: "mood.sleepy",
+};
+
+/** A robot beep when a dot face changes mood (hit flashes and K.O. have their own sounds). */
+export function cueForMood(mood: string, x: number, y: number, voice: number, seed: number): Cue | null {
+  const s = MOOD_SOUND[mood];
+  return s ? cue(s, x, y, 1, voice / 440, seed) : null;
+}
+
+/** FNV-1a, for a stable per-name voice. */
+function hashStr(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+}
+
+/** Each bot's voice pitch (Hz) for its dialogue blips and mood beeps, from its identity: stable and distinct-ish. */
+export function voiceHz(id: { name: string; shape: string; color: number }): number {
+  // 13 steps of a whole tone apart over ~2 octaves, nudged by shape so two similar names still differ
+  const steps = (hashStr(id.name) + hashStr(id.shape) * 7 + (id.color & 0xff)) % 13;
+  return 220 * Math.pow(2, (steps * 2) / 12);
+}
+
+/** Dialogue blips: one per typed letter or digit, at most every other character, in the speaker's voice. */
+export function blipsFor(line: string, from: number, to: number, voice: number): Cue[] {
+  const out: Cue[] = [];
+  for (let i = Math.max(0, from); i < Math.min(line.length, to); i++) {
+    if (i % 2 || !/[\p{L}\p{N}]/u.test(line[i]!)) continue;
+    // a little melody: vowels a step up, end of a sentence a step down
+    const up = /[aeiouAEIOU]/.test(line[i]!) ? 1.12 : 1;
+    out.push(cue("blip", undefined, undefined, 1, (voice / 440) * up, i));
+  }
+  return out;
+}
+
+/** The camera as the mix hears it: world center, pixels per meter, screen size. */
+export interface Listener {
+  cx: number;
+  cy: number;
+  s: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Stereo pan and volume from where a sound is in the camera view: full volume on screen, quieter with distance
+ * off screen (half volume about one view width away), panned left/right by its place across the view.
+ */
+export function spatial(x: number | undefined, y: number | undefined, l: Listener | null): { pan: number; gain: number } {
+  if (x === undefined || y === undefined || !l || !(l.s > 0)) return { pan: 0, gain: 1 };
+  const hw = l.w / 2 / l.s;
+  const hh = l.h / 2 / l.s;
+  const dx = x - l.cx;
+  const dy = y - l.cy;
+  const pan = clamp(dx / hw, -1, 1) * 0.75;
+  const outX = Math.max(0, Math.abs(dx) - hw);
+  const outY = Math.max(0, Math.abs(dy) - hh);
+  const off = Math.hypot(outX, outY) / (2 * hw);
+  return { pan, gain: 1 / (1 + off * 2) };
+}
