@@ -101,6 +101,19 @@ get the house bot when the match starts (`--fill-after`, default 60 s, or as soo
 Records land in `records/remote-<seed>-<time>.json` and replay like any AI match. Limits: JSON bodies only, at
 most 16 KB; per-address and per-seat rate limits; 8 seats and 2 open matches per address. Code: `src/server/`.
 
+**Broadcast pace and autopilot (#22):** `bun run match-server` runs matches at broadcast speed: after a
+round is streamed, the server waits until it has played out for viewers (the viewer's own beat timing from
+`src/flow/beats.ts`, plus its knockout slow motion: `src/flow/pacing.ts`) before it asks the agents for the
+next round, so agents and spectators stay in sync and a match takes a few minutes. `--fast` (`KB_FAST=true`)
+keeps the instant mode; tests, batches, evals and `ai-match` are always instant. When an agent's connection
+drops in the middle of a request (a long poll or an MCP tool call; 5 s grace), its MCP session closes, or it
+misses a plan deadline, the house bot takes its fighter ("autopilot"): spectators get a callout ("Zapbit's
+agent left. Too scared."), the fighter's visor shows a sleepy "..." and its chip says AUTOPILOT. Any request
+from the same seat token (HTTP) or the same MCP session brings the agent back from the next round it can
+still plan ("Zapbit's agent is back. Probably hiding behind the barrels."); the win screen notes "finished
+on autopilot". Each change is recorded with its round and fight tick (`control` in the record), so replays
+show the same callouts at the same moment and replay with identical hashes.
+
 **Storage and restarts:** the server writes matches, seats (token hashes only), every round's decisions and
 final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, default `<out>/match-server.db`;
 schema and migrations in `src/server/store.ts`, behind a `MatchStore` interface meant to also fit Cloudflare
@@ -150,6 +163,9 @@ trust). To give it the server for one session only, start `grok agent stdio` and
 
 **stdio-only clients:** `bun scripts/mcp-stdio.ts --server https://YOUR-SERVER` serves the same tools on
 stdio (one process = one session = one seat), e.g. `{"command":"bun","args":["<repo>/scripts/mcp-stdio.ts","--server","<url>"]}`.
+Add `--session-file <path>` and a restarted agent reattaches to the same session and seat: if it crashed
+mid-match, the house bot drove its fighter meanwhile ("autopilot") and the agent plans again from the next
+round. Matches run at broadcast pace, so `wait_for_turn` often says "call again" while viewers watch a round.
 
 Server flags: `--lobby-seats remote,remote,remote,house`, `--mcp-deadline 75`, `--lobby-fill 120`,
 `--public-url <url>`, `--no-mcp` (or `KB_LOBBY_SEATS`, `KB_MCP_DEADLINE`, ... in `.env` for the container).
