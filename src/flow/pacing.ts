@@ -18,6 +18,16 @@ import { betweenBeats, DEFAULT_TIMING, openingBeats, roundBeats, type Beat, type
  */
 export const VIEWER_KO_EXTRA_S = 1.15;
 
+/**
+ * The viewer's fight also pauses on big hits (up to 0.125 s each) and barrel
+ * explosions (0.05 s), which the server doesn't count. Measured on a live
+ * 3-agent match at broadcast pace (#22): the viewer finished rounds of 34 s
+ * and 36 s fights 3.0 s and 1.8 s after the plain estimate. 4% of the fight
+ * covers most of it while staying a little early: agents then get their turn
+ * just before the round-end card closes, rather than viewers waiting.
+ */
+export const VIEWER_FIGHT_STRETCH = 1.04;
+
 export interface RoundPlayback {
   /** level card (round 1), dialogue lines, countdown: before the fight starts */
   preFight: number;
@@ -51,13 +61,13 @@ export function roundPlayback(x: RoundPlaybackInput): RoundPlayback {
   const roundEnd = sum(beats.filter((b) => b.kind === "roundEnd"));
   const slowmo = Math.max(0, x.kos - (x.endsWithKo ? 1 : 0)) * VIEWER_KO_EXTRA_S;
   const preFight = sum(talk) + countdown;
-  const fight = Math.max(t.go, x.fightTicks / TICK_RATE + slowmo);
+  const fight = Math.max(t.go, (x.fightTicks / TICK_RATE) * VIEWER_FIGHT_STRETCH + slowmo);
   return { preFight, fight, roundEnd, total: preFight + fight + roundEnd };
 }
 
 /** Where the viewer is, `elapsed` seconds into a round's playback: before the fight, at a fight tick, or at the round end. */
 export function playbackAt(p: RoundPlayback, elapsed: number, fightTicks: number): { phase: "plan" | "fight" | "roundEnd"; tick: number | null } {
   if (elapsed < p.preFight) return { phase: "plan", tick: null };
-  if (elapsed < p.preFight + p.fight) return { phase: "fight", tick: Math.min(fightTicks, Math.max(0, Math.floor(((elapsed - p.preFight) / p.fight) * fightTicks))) };
+  if (elapsed < p.preFight + p.fight) return { phase: "fight", tick: Math.min(fightTicks, Math.max(0, Math.round(((elapsed - p.preFight) / p.fight) * fightTicks))) };
   return { phase: "roundEnd", tick: fightTicks };
 }

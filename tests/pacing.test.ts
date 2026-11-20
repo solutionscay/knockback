@@ -3,7 +3,7 @@ import { seatsFor } from "../src/ai/decide";
 import { registerStubs } from "../src/ai/providers";
 import { MatchRunner } from "../src/ai/runner";
 import { DEFAULT_TIMING as T, readTime } from "../src/flow/beats";
-import { playbackAt, roundPlayback, VIEWER_KO_EXTRA_S } from "../src/flow/pacing";
+import { playbackAt, roundPlayback, VIEWER_FIGHT_STRETCH, VIEWER_KO_EXTRA_S } from "../src/flow/pacing";
 import { exampleSouls, initPhysics } from "../src/sim";
 
 setDefaultTimeout(120_000);
@@ -19,12 +19,12 @@ describe("broadcast pacing", () => {
     const talk = lines.reduce((a, l) => a + readTime(l), 0);
     const r1 = roundPlayback({ round: 1, lines, fightTicks: 60 * 40, kos: 3, endsWithKo: true });
     expect(r1.preFight).toBeCloseTo(T.level + talk + 3 * T.count, 6);
-    expect(r1.fight).toBeCloseTo(40 + 2 * VIEWER_KO_EXTRA_S, 6); // the round-ending knockout's slow motion is in the round end
+    expect(r1.fight).toBeCloseTo(40 * VIEWER_FIGHT_STRETCH + 2 * VIEWER_KO_EXTRA_S, 6); // the round-ending knockout's slow motion is in the round end
     expect(r1.roundEnd).toBe(T.roundEnd);
     expect(r1.total).toBeCloseTo(r1.preFight + r1.fight + r1.roundEnd, 6);
     const r2 = roundPlayback({ round: 2, lines, fightTicks: 60 * 90, kos: 2, endsWithKo: false });
     expect(r2.preFight).toBeCloseTo(talk + 3 * T.count, 6); // no level card after round 1
-    expect(r2.fight).toBeCloseTo(90 + 2 * VIEWER_KO_EXTRA_S, 6); // time-out: every knockout slowed the fight
+    expect(r2.fight).toBeCloseTo(90 * VIEWER_FIGHT_STRETCH + 2 * VIEWER_KO_EXTRA_S, 6); // time-out: every knockout slowed the fight
     expect(roundPlayback({ round: 2, lines, fightTicks: 10, kos: 0, endsWithKo: false }).fight).toBe(T.go); // FIGHT! shows even for a split-second round
   });
 
