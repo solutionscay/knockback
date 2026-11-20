@@ -9,7 +9,8 @@
  *   bun run match-server --no-match                   # matches only via POST /api/matches
  *   bun run match-server --host 0.0.0.0 --open        # trusted LAN: no seat token checks (?seat=N instead)
  *   bun run match-server --db records/match-server.db # storage (the default); --db :memory: keeps nothing
- *   bun run match-server --trust-proxy                # behind a reverse proxy (Caddy): client address from X-Forwarded-For
+ *   bun run match-server --trust-proxy                # behind a reverse proxy (Caddy): client address from X-Forwarded-For,
+ *                                                     # only when the request comes from --trusted-proxies (default: loopback and private addresses)
  *
  * Every flag can also come from the environment as KB_<FLAG> (KB_FILL_AFTER=60,
  * KB_OPEN=true, KB_NO_MATCH=true, ...), plus PORT and HOST; command-line flags
@@ -29,6 +30,7 @@ import { mkdirSync } from "node:fs";
 import { registerStubs } from "../src/ai/providers";
 import { MAX_BODY } from "../src/server/limits";
 import { MatchServer } from "../src/server/match-server";
+import { inCidrs, parseCidrs } from "../src/server/net";
 import { SqliteStore } from "../src/server/store";
 import { initPhysics } from "../src/sim";
 import index from "../index.html";
@@ -51,6 +53,7 @@ for (const [k, v] of Object.entries(process.env)) {
   if (name && flags[name] === undefined) flags[name] = v;
 }
 const trustProxy = flags["trust-proxy"] === "true";
+const trustedProxies = parseCidrs(flags["trusted-proxies"] ?? "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7");
 registerStubs();
 await initPhysics();
 const outDir = resolve(flags.out ?? "records");
@@ -71,9 +74,13 @@ const api = new MatchServer({
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
 
-/** The client's address for rate limits: behind a proxy, the last X-Forwarded-For hop (the one the proxy added). */
+/**
+ * The client's address for rate limits: behind a proxy, the last X-Forwarded-For
+ * hop (the one the proxy added), but only when the request really comes from a
+ * trusted proxy address; anyone else's X-Forwarded-For is ignored.
+ */
 function clientIp(req: Request, direct: string | undefined): string {
-  if (trustProxy) {
+  if (trustProxy && direct && inCidrs(direct, trustedProxies)) {
     const hop = req.headers.get("x-forwarded-for")?.split(",").pop()?.trim();
     if (hop) return hop;
   }
