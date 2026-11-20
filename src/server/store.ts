@@ -78,6 +78,8 @@ export interface RecordRow {
   hashes: string[];
   winner: number;
   createdAt: number;
+  /** engine version that made the record (src/sim/engine-version.ts); rows from before the column are 0 */
+  engine: number;
 }
 
 export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner">>;
@@ -170,6 +172,8 @@ export const MIGRATIONS: string[] = [
      event TEXT NOT NULL,              -- JSON ControlEvent (seat, mode, round, phase, tick, reason, line, fromRound)
      PRIMARY KEY (match_id, idx)
    );`,
+  // 3: the engine version that made each record; older rows count as 0
+  `ALTER TABLE records ADD COLUMN engine INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 type Row = Record<string, unknown>;
@@ -300,7 +304,7 @@ export class SqliteStore implements MatchStore {
     return (this.db.query("SELECT event FROM control WHERE match_id = ? ORDER BY idx").all(matchId) as Row[]).map((r) => p<ControlEvent>(r.event));
   }
   async insertRecord(r: RecordRow) {
-    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt);
+    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, engine) VALUES (?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.engine);
   }
   async getRecord(matchId: string) {
     const r = this.db.query("SELECT * FROM records WHERE match_id = ?").get(matchId) as Row | null;
@@ -321,4 +325,5 @@ const recordOf = (r: Row): RecordRow => ({
   hashes: p<string[]>(r.hashes),
   winner: r.winner as number,
   createdAt: r.created_at as number,
+  engine: (r.engine as number | null) ?? 0,
 });

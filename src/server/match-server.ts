@@ -35,6 +35,7 @@ import { exampleSouls } from "../sim/souls";
 import { errorResponse, HttpError, json, MAX_BODY, RateLimiter, readJson } from "./limits";
 import { LiveStream } from "./live";
 import { lobbyPage } from "./lobby";
+import { ENGINE_VERSION, recordEngine } from "../sim/engine-version";
 import { planSchema, RemoteSeat } from "./remote";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
 import type { ControlEvent } from "../ai/runner";
@@ -140,6 +141,8 @@ export class ServerMatch {
   startsAt: number;
   runner: MatchRunner | null = null;
   error: string | null = null;
+  /** engine version of this match's saved record (0 until it is saved, and for rows saved before the column existed) */
+  recordEngine = 0;
   private waiters = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -397,7 +400,8 @@ export class ServerMatch {
   }
 
   /** Rebuild a finished match from storage (for its report and its agents' last poll); not played on. */
-  async loadFinished(row: MatchRow, rounds: StoredRound[], recordPath: string | null) {
+  async loadFinished(row: MatchRow, rounds: StoredRound[], recordPath: string | null, recordEngineVersion = 0) {
+    this.recordEngine = recordEngineVersion;
     this.status = row.status;
     this.error = row.error;
     if (row.status === "failed" && !rounds.length) return;
@@ -431,7 +435,8 @@ export class ServerMatch {
     const r = this.runner!;
     const file = r.save(this.server.opts.outDir, "remote");
     const m = r.match;
-    await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now() });
+    this.recordEngine = recordEngine(m.record);
+    await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), engine: this.recordEngine });
     await this.store.updateMatch(this.id, { status: "over", winner: m.winner, endedAt: Date.now() });
     this.status = "over";
     this.server.log(`match ${this.id}: ${r.names[m.winner]} wins ${m.wins.join("-")}; record ${r.recordFile}`);
@@ -517,6 +522,7 @@ export class ServerMatch {
       wins: r ? r.match.wins.slice() : null,
       winner: r && r.match.over ? r.names[r.match.winner] : null,
       record: r?.recordFile ? `/records/${r.recordFile}` : null,
+      ...(r?.recordFile ? { recordEngine: this.recordEngine, recordOld: this.recordEngine !== ENGINE_VERSION } : {}),
       watch: `/?live&match=${this.id}`,
       live: `/api/live?match=${this.id}`,
       ...(this.error ? { error: this.error } : {}),
@@ -696,7 +702,8 @@ export class MatchServer {
     const load = (async () => {
       const loaded = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt);
       for (const s of await this.store.listSeats(row.id)) loaded.restoreSeat(s);
-      await loaded.loadFinished(row, await this.store.listRounds(mid), (await this.store.getRecord(mid))?.path ?? null);
+      const rec = await this.store.getRecord(mid);
+      await loaded.loadFinished(row, await this.store.listRounds(mid), rec?.path ?? null, rec?.engine ?? 0);
       this.add(loaded);
       return loaded;
     })();
@@ -749,7 +756,8 @@ export class MatchServer {
     }
     if (path === "/api/records") {
       allow("GET");
-      return json({ records: await this.store.listRecords(100) });
+      // each record's engine version; old ones (another engine) show as a summary card in the viewer, not a replay
+      return json({ engine: ENGINE_VERSION, records: (await this.store.listRecords(100)).map((r) => ({ ...r, old: r.engine !== ENGINE_VERSION })) });
     }
     const mm = /^\/api\/matches\/([\w-]{1,32})(?:\/(join|turn|plan|leave|report))?$/.exec(path);
     if (!mm) throw new HttpError(404, `no such endpoint: ${method} ${path} (see GET /api)`);
@@ -917,7 +925,7 @@ function apiIndex(open: boolean) {
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
       "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
       "GET /lobby": "landing page: the live match, the match list, how to join",
-      "GET /api/records": "index of saved records (path, seed, hashes, winner)",
+      "GET /api/records": "index of saved records (path, seed, hashes, winner, engine version; old = made by another engine, shown as a summary, not replayed)",
     },
     limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },
     schema: planSchema(),

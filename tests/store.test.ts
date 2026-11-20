@@ -57,8 +57,8 @@ describe("SqliteStore", () => {
     expect((await s.getPlan("m2", 2, 1))!.raw).toBe('{"a":1}');
     expect(await s.getPlan("m2", 2, 0)).toBeNull();
 
-    await s.insertRecord({ matchId: "m1", path: "/records/x.json", seed: 42, hashes: ["a", "b"], winner: 2, createdAt: 9 });
-    expect((await s.listRecords())[0]).toMatchObject({ path: "/records/x.json", hashes: ["a", "b"] });
+    await s.insertRecord({ matchId: "m1", path: "/records/x.json", seed: 42, hashes: ["a", "b"], winner: 2, createdAt: 9, engine: 1 });
+    expect((await s.listRecords())[0]).toMatchObject({ path: "/records/x.json", hashes: ["a", "b"], engine: 1 });
     await s.close();
   });
 

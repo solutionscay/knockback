@@ -35,6 +35,7 @@ export function lobbyPage(): string {
   .st.open { color: #7fd1ff; } .st.running { color: #8be38b; } .st.over { color: var(--dim); } .st.failed { color: #ff8a80; }
   pre { margin: .4rem 0 0; padding: .6rem; background: #0b0d14; border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font-size: .78rem; line-height: 1.35; }
   .empty { color: var(--dim); }
+  a.old { color: #ffb347; }
 </style>
 </head>
 <body>
@@ -80,7 +81,12 @@ function render(ms) {
     for (const s of m.seats) seats.append(el("div", (s.fighter ? s.fighter + " · " : "") + (s.agent ? "remote/" + s.agent : s.kind === "remote" ? "open seat" : "house bot")));
     const res = el("td");
     if (m.winner) res.append(el("div", m.winner + " wins " + (m.wins || []).join("-")));
-    if (m.record) { const a = el("a", "replay"); a.href = "/?record=" + encodeURIComponent(m.record); a.target = "_blank"; res.append(a); res.append(document.createTextNode(" · ")); }
+    if (m.record) {
+      // engine version of the record: an old one opens as a summary card in the viewer, not a replay
+      const a = el("a", m.recordOld ? "summary" : "replay", m.recordOld ? "old" : ""); a.href = "/?record=" + encodeURIComponent(m.record); a.target = "_blank"; res.append(a);
+      res.append(el("span", " engine v" + (m.recordEngine ?? 0) + (m.recordOld ? " (old engine: can't replay)" : ""), "empty"));
+      res.append(document.createTextNode(" · "));
+    }
     if (m.status !== "open") { const r = el("a", "report"); r.href = "/api/matches/" + encodeURIComponent(m.id) + "/report"; r.target = "_blank"; res.append(r); }
     tr.append(id, st, seats, res);
     tb.append(tr);
