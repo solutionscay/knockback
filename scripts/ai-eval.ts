@@ -22,6 +22,7 @@ import { DEFAULT_DEADLINE_MS, loadSouls, parseLineup, seatsFor } from "../src/ai
 import { compareReports, computeReport, reportMarkdown, type EvalReport } from "../src/ai/eval";
 import { buildPrompt } from "../src/ai/prompt";
 import { PROVIDERS, registerStubs } from "../src/ai/providers";
+import { fightStatsOf } from "../src/stats/models";
 import { playAiMatch, type PlayedMatch } from "../src/ai/run";
 import { initPhysics, Match } from "../src/sim";
 
@@ -133,7 +134,7 @@ const worker = async () => {
     const played = await playAiMatch(seed, seatsFor(lineup, rotated), rotated, deadline, checkins);
     results[k] = played;
     const base = join(outDir, `match-${seed}`);
-    writeFileSync(`${base}.json`, JSON.stringify({ ...played.match.record, labels: lineup, lineup, totalMs: Math.round(played.ms) }, null, 2));
+    writeFileSync(`${base}.json`, JSON.stringify({ ...played.match.record, labels: lineup.map((p) => PROVIDERS[p]?.label ?? "house"), lineup, totalMs: Math.round(played.ms), fightStats: fightStatsOf(played.match.facts) }, null, 2));
     writeFileSync(`${base}.prompts.json`, JSON.stringify(played.prompts, null, 2));
     writeFileSync(`${base}.log.txt`, played.log.join("\n") + "\n");
     if (played.checkinPrompts?.length) writeFileSync(`${base}.checkins.json`, JSON.stringify(played.checkinPrompts, null, 2));

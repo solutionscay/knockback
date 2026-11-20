@@ -8,6 +8,7 @@
  * stream understands (`match`, `decisions`, `done`) plus a `round` summary.
  * The record (seed + every decision) replays with no network.
  */
+import { fightStatsOf, type FightStats } from "../stats/models";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { formatSeconds } from "../format";
@@ -447,8 +448,9 @@ export class MatchRunner {
   }
 
   /** The record as saved: the match record plus labels, lineup and total time. */
-  savedRecord(): MatchRecord & { labels: string[]; lineup: string[]; totalMs: number; control?: ControlEvent[] } {
-    return { ...this.match.record, labels: this.labels, lineup: this.lineup, totalMs: Math.round(this.totalMs), ...(this.control.length ? { control: this.control.map((c) => ({ ...c })) } : {}) };
+  savedRecord(): MatchRecord & { labels: string[]; lineup: string[]; totalMs: number; control?: ControlEvent[]; fightStats: FightStats } {
+    // fightStats: knockouts, ring-outs, damage, survival per round and seat, for the model leaderboard (not hashed)
+    return { ...this.match.record, labels: this.labels, lineup: this.lineup, totalMs: Math.round(this.totalMs), ...(this.control.length ? { control: this.control.map((c) => ({ ...c })) } : {}), fightStats: fightStatsOf(this.match.facts) };
   }
 
   /**

@@ -11,7 +11,8 @@
     "ai-match": "bun scripts/ai-match.ts",
     "match-server": "bun scripts/match-server.ts",
     "ai-eval": "bun scripts/ai-eval.ts",
-    "teaser": "bun scripts/teaser.ts"
+    "teaser": "bun scripts/teaser.ts",
+    "models": "bun scripts/models.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-deterministic-compat": "0.21.0",
