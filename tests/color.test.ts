@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { contrast, darkenKeepChroma, fromOklch, oklab, oklabDistance, oklch } from "../src/sim/color";
+import { generateIdentities } from "../src/sim/identity";
+import { LIGHT_GROUNDS, nameInk } from "../src/viewer/palette";
 
 describe("OKLab / OKLCH color math", () => {
   test("round trip and reference values", () => {
@@ -19,5 +21,15 @@ describe("OKLab / OKLCH color math", () => {
   test("contrast ratio", () => {
     expect(contrast(0xffffff, 0x000000)).toBeCloseTo(21, 0);
     expect(contrast(0x777777, 0x777777)).toBe(1);
+  });
+  test("name ink for light grounds: 4.5:1 on every light ground, same hue; the dark ground keeps the color", () => {
+    for (let s = 0; s < 400; s++)
+      for (const id of generateIdentities(s)) {
+        const ink = nameInk(id.color);
+        for (const g of LIGHT_GROUNDS) expect(contrast(ink, g)).toBeGreaterThanOrEqual(4.5);
+        const d = Math.abs(oklch(ink).h - oklch(id.color).h);
+        expect(Math.min(d, 2 * Math.PI - d)).toBeLessThan(0.2);
+        expect(nameInk(id.color, "dark")).toBe(id.color);
+      }
   });
 });

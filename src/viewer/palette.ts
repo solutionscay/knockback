@@ -1,4 +1,5 @@
 /** Placeholder palettes per theme (the art-direction task replaces these). */
+import { contrast, fromOklch, oklch } from "../sim/color";
 import { Mat } from "../sim/grid";
 import type { Theme } from "../sim/levelgen";
 
@@ -62,3 +63,25 @@ export const POWER_COLOR: Record<string, number> = {
   damage: 0xff4d5e,
   jump: 0xffffff,
 };
+
+/** Light page grounds the name ink is checked against (none in the game today: websites, light themes, printed sheets). */
+export const LIGHT_GROUNDS = [0xffffff, 0xeef0f6] as const;
+
+/**
+ * A fighter's name color for a light ground (art-sheet fix 5): identity
+ * colors are tuned for the dark arenas and all fall below 3:1 as text on
+ * white. This keeps the hue and as much chroma as fits, and lowers OKLCH
+ * lightness until the name reaches 4.5:1 on every light ground. On dark
+ * grounds (the game) the identity color is used as it is.
+ */
+export function nameInk(color: number, ground: "light" | "dark" = "light"): number {
+  if (ground === "dark") return color;
+  const p = oklch(color);
+  let L = Math.min(p.L, 0.56);
+  let c = fromOklch({ L, C: p.C, h: p.h });
+  while (L > 0.2 && LIGHT_GROUNDS.some((g) => contrast(c, g) < 4.5)) {
+    L -= 0.01;
+    c = fromOklch({ L, C: p.C, h: p.h });
+  }
+  return c;
+}
