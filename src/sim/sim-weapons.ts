@@ -17,7 +17,8 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
   if (weapon === "hammer" && !f.grounded) return;
   const p = sim.pos(f);
   const ox = p.x;
-  const oy = p.y + 0.25;
+  const tactics = sim.ruleset.tactics.weapons;
+  const oy = p.y + (tactics.enabled ? tactics.aimHeight : 0.25);
   const dx = f.aimX;
   const dy = f.aimY;
   sim.events.push({ type: "fire", tick: sim.tick, fighter: f.id, weapon, x: ox, y: oy, dx, dy });

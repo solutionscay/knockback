@@ -120,6 +120,12 @@ export function validateRuleset(input: unknown): Ruleset {
   require(r.pickups.item.size > 0, "pickups.item.size", "must be positive");
   require(!r.pickups.enabled.includes("jetpack") || r.pickups.power.jetpack.thrust > r.combat.gravity, "pickups.power.jetpack.thrust", "an enabled jetpack must overcome gravity");
   require(r.pickups.enabled.length === 0 || r.pickups.enabled.some(p => r.pickups.weights[p] > 0), "pickups.weights", "an enabled power-up needs positive weight");
+  for (const [weapon, reach] of Object.entries(r.tactics.weapons.reach)) {
+    require(reach.max > 0 && reach.min <= reach.max, `tactics.weapons.reach.${weapon}`, "expected a positive maximum and minimum at most maximum");
+    const physics = r.weapons.table[weapon as Weapon];
+    if ("range" in physics) require(reach.max <= physics.range, `tactics.weapons.reach.${weapon}.max`, "must not exceed the weapon's physical range");
+  }
+  require(r.tactics.weapons.lobCheckStep >= 0.05, "tactics.weapons.lobCheckStep", "expected at least 0.05 seconds");
   return r;
 }
 
@@ -127,6 +133,8 @@ export const CLASSIC = validateRuleset({});
 /** Same placement and drop behavior as before the spread-out Classic. */
 export const CLOSE_QUARTERS = validateRuleset({
   arena: { spawns: CLOSE_SPAWNS },
+  zone: { suddenDeath: { graceTicks: 0 } },
+  tactics: { weapons: { enabled: false } },
   pickups: { armory: CLOSE_ARMORY, supply: { avoidDistance: 0, firstTick: SUPPLY.firstTick } },
 });
 

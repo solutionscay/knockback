@@ -41,7 +41,7 @@ export class ControllerNavigation {
     return [sim.zone.center - h, sim.zone.center + h];
   }
 
-  private chooseGoal(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<Sim["nav"]["plan"]>, crossingWall: boolean, flank: number): Goal {
+  private chooseGoal(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<Sim["nav"]["plan"]>, crossingWall: boolean, flank: number, weapon?: Weapon): Goal {
     const nav = sim.nav;
     const mp = sim.pos(me);
     const tp = sim.pos(target);
@@ -114,7 +114,7 @@ export class ControllerNavigation {
         else if (sim.tick - this.chase.since > sim.ruleset.tactics.pickup.giveUpTicks) {
           this.skipItems.set(best.item!, sim.tick + sim.ruleset.tactics.pickup.skipTicks);
           this.chase = null;
-          return this.chooseGoal(sim, me, target, plan, crossingWall, flank);
+          return this.chooseGoal(sim, me, target, plan, crossingWall, flank, weapon);
         }
         return best;
       }
@@ -132,12 +132,14 @@ export class ControllerNavigation {
 
     // an active avoid rule (the highest target/avoid rule): keep away from that fighter
     const tr = this.controller.rules.targetRule();
-    const av = tr && tr.kind === "avoid" && sim.suddenDeath < 0 && sim.alive().length > 2 ? sim.fighters[tr.subject] : undefined;
+    const av = tr && tr.kind === "avoid" && sim.suddenDeath < 0 && !sim.openingPressure && sim.alive().length > 2 ? sim.fighters[tr.subject] : undefined;
     if (av && av.alive && !av.removed) {
       const ap = sim.pos(av);
       return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(Math.hypot(px - ap.x, py + 1 - ap.y) - 12) + zonePenalty(px) + fragilePenalty(sid));
     }
 
+    const tactics = sim.ruleset.tactics.weapons;
+    const reach = weapon ? tactics.reach[weapon] : undefined;
     if (stance === "rush") {
       const side = mp.x < tp.x ? -1 : 1;
       const s = target.surface >= 0 ? nav.surfaces[target.surface] : undefined;
@@ -145,12 +147,13 @@ export class ControllerNavigation {
         return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - tp.x) + Math.abs(py - tp.y) * 0.5 + zonePenalty(px) + fragilePenalty(sid));
       }
       // explosives only: rush to blast range, not into your own blast
-      const gap = close || !me.weapons.some((w) => w === "rocket" || w === "grenade" || w === "railgun" || w === "mine") ? 1.1 : 4;
+      const gap = reach ? Math.min(reach.max, Math.max(tactics.rushGap, reach.min))
+        : close || !me.weapons.some((w) => w === "rocket" || w === "grenade" || w === "railgun" || w === "mine") ? 1.1 : 4;
       const x = clamp(tp.x + side * gap, Math.max(s.x0 + 0.3, zl), Math.min(s.x1 - 0.3, zr));
       return { surface: s.id, x: clamp(x, s.x0 + 0.3, s.x1 - 0.3) };
     }
 
-    const ideal = me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
+    const ideal = reach ? clamp(reach.standOff, reach.min, reach.max) : me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
     if (stance === "cover") {
       // cover is not standing still: every so often, peek out somewhere with a clear shot
       const peek = (sim.tick + this.controller.fighterId * 61) % sim.ruleset.tactics.patience.peekEvery < sim.ruleset.tactics.patience.peekFor;
@@ -176,7 +179,7 @@ export class ControllerNavigation {
       let s = Math.abs(d - ideal) + zonePenalty(px) + fragilePenalty(sid);
       if (d > 0.5) {
         const hit = sim.raycast(tp.x, tp.y, dx / d, dy / d, d);
-        if (hit && hit.terrain) s += 3;
+        if (hit && hit.terrain) s += reach ? tactics.terrainPenalty : 3;
       }
       s -= Math.min(py, 5) * 0.25;
       return s;
@@ -199,7 +202,7 @@ export class ControllerNavigation {
     return best ?? { surface: me.surface, x: sim.pos(me).x };
   }
 
-  steer(sim: Sim, me: Fighter, target: Fighter, mp: ReturnType<Sim["pos"]>, mv: ReturnType<Sim["vel"]>, input: Input, crossingWall: boolean, flank: number): Surface | undefined {
+  steer(sim: Sim, me: Fighter, target: Fighter, mp: ReturnType<Sim["pos"]>, mv: ReturnType<Sim["vel"]>, input: Input, crossingWall: boolean, flank: number, weapon?: Weapon): Surface | undefined {
     const tp = sim.pos(target);
     const nav = sim.nav;
 
@@ -214,7 +217,7 @@ export class ControllerNavigation {
     if (surf) {
       const plan = nav.plan(me.surface, mp.x);
       if (sim.tick >= this.nextEval || !this.goal || !nav.surfaces[this.goal.surface] || plan.cost[this.goal.surface] === Infinity) {
-        this.goal = this.chooseGoal(sim, me, target, plan, crossingWall, flank);
+        this.goal = this.chooseGoal(sim, me, target, plan, crossingWall, flank, weapon);
         this.nextEval = sim.tick + 24 + this.controller.fighterId * 3;
       }
       const goal = this.goal;

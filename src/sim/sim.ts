@@ -71,7 +71,7 @@ export class Sim {
   zoneEnabled = true;
   private supplyCount = 0;
   /** last tick a fighter damaged another fighter (anti-stalemate clock) */
-  lastClashTick = 0;
+  lastClashTick: number;
   /** tick sudden death started this round, or -1 */
   suddenDeath = -1;
   private readonly zoneBehavior = new SimZone();
@@ -107,6 +107,7 @@ export class Sim {
   };
 
   constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS, readonly ruleset: Ruleset = CLASSIC) {
+    this.lastClashTick = ruleset.zone.suddenDeath.graceTicks > 0 ? -1 : 0;
     this.level = level ?? generateLevel(seed, undefined, ruleset);
     this.grid = this.level.grid.clone();
     this.rng = new Rng(seed);
@@ -181,6 +182,12 @@ export class Sim {
   }
 
   // ----------------------------------------------------------------- queries
+
+  /** After the opening grace and quiet window, push for contact without announcing sudden death. */
+  get openingPressure(): boolean {
+    const sd = this.ruleset.zone.suddenDeath;
+    return this.zoneEnabled && this.lastClashTick < 0 && this.tick >= sd.graceTicks + sd.quietTicks;
+  }
 
   alive(): Fighter[] {
     return this.fighters.filter((f) => f.alive);

@@ -222,12 +222,16 @@ export const MIGRATIONS: string[] = [
   `UPDATE matches SET ruleset_body = json_set(ruleset_body,
        '$.arena.spawns.spread', json('${JSON.stringify(CLOSE_QUARTERS.arena.spawns.spread)}'),
        '$.pickups.armory.spread', json('${JSON.stringify(CLOSE_QUARTERS.pickups.armory.spread)}'),
-       '$.pickups.supply.avoidDistance', 0)
+       '$.pickups.supply.avoidDistance', 0,
+       '$.zone.suddenDeath.graceTicks', 0,
+       '$.tactics.weapons', json('{"enabled":false}'))
      WHERE ruleset_body IS NOT NULL AND json_type(ruleset_body, '$.arena.spawns.spread') IS NULL;
    UPDATE ruleset_presets SET body = json_set(body,
        '$.arena.spawns.spread', json('${JSON.stringify(CLOSE_QUARTERS.arena.spawns.spread)}'),
        '$.pickups.armory.spread', json('${JSON.stringify(CLOSE_QUARTERS.pickups.armory.spread)}'),
-       '$.pickups.supply.avoidDistance', 0)
+       '$.pickups.supply.avoidDistance', 0,
+       '$.zone.suddenDeath.graceTicks', 0,
+       '$.tactics.weapons', json('{"enabled":false}'))
      WHERE body IS NOT NULL AND json_type(body, '$.arena.spawns.spread') IS NULL;
    UPDATE ruleset_presets SET body = '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', version = version + 1 WHERE name = 'Classic';
    UPDATE ruleset_presets SET body = '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}' WHERE name = 'Close Quarters' AND body IS NULL;`,

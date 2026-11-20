@@ -11,7 +11,8 @@ export function kbMult(hp: number, ruleset: Ruleset = CLASSIC): number {
 
 export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number, kbx: number, kby: number, cause: string, hx: number, hy: number) {
   if (!f.alive) return;
-  if (source >= 0 && source !== f.id && dmg > 0) sim.lastClashTick = sim.tick;
+  const openingGrace = sim.ruleset.zone.suddenDeath.graceTicks > 0;
+  if (!openingGrace && source >= 0 && source !== f.id && dmg > 0) sim.lastClashTick = sim.tick;
   const src = source >= 0 && source !== f.id ? sim.fighters[source]! : null;
   if (src && src.power.damage > 0) {
     dmg *= sim.ruleset.pickups.power.damage.mul;
@@ -37,6 +38,7 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
     kbx *= sim.ruleset.pickups.power.heavy.kbMul;
     kby *= sim.ruleset.pickups.power.heavy.kbMul;
   }
+  if (openingGrace && src && dmg > 0) sim.lastClashTick = sim.tick;
   f.hp -= dmg;
   f.damageTaken += dmg;
   if (src) {

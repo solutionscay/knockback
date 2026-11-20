@@ -17,10 +17,12 @@ export class SimZone {
   checkStalemate(sim: Sim, tick: number) {
     const z = sim.zone;
     const alive = sim.alive();
-    if (sim.suddenDeath < 0 && alive.length >= 2 && tick - sim.lastClashTick >= sim.ruleset.zone.suddenDeath.quietTicks) {
+    const { quietTicks } = sim.ruleset.zone.suddenDeath;
+    const quiet = tick - sim.lastClashTick;
+    if (sim.lastClashTick >= 0 && sim.suddenDeath < 0 && alive.length >= 2 && quiet >= quietTicks) {
       sim.suddenDeath = tick;
       this.sdHalf = z.half;
-      sim.events.push({ type: "suddenDeath", tick, quietTicks: tick - sim.lastClashTick });
+      sim.events.push({ type: "suddenDeath", tick, quietTicks: quiet });
     }
     if (sim.suddenDeath < 0) return;
     this.sdHalf = Math.max(sim.ruleset.zone.suddenDeath.endHalf, this.sdHalf - (sim.ruleset.zone.suddenDeath.shrinkPerSec * DT));

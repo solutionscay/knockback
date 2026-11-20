@@ -30,6 +30,30 @@ export const CLOSE_ARMORY = {
   },
 };
 
+/** AI effective reach in meters. Physical damage and range remain in the weapon table. */
+const TACTICAL_WEAPONS = {
+  enabled: true,
+  readyMarginTicks: 4,
+  aimHeight: 0.25,
+  wallSampleDepth: 0.15,
+  wallAdvance: 0.6,
+  lobCheckStep: 0.12,
+  rushGap: 1.1,
+  terrainPenalty: 3,
+  reach: {
+    fist: { min: 0, max: 1.45, maxDy: 1.3, standOff: 1.1 },
+    bat: { min: 0, max: 1.95, maxDy: 1.6, standOff: 1.4 },
+    hammer: { min: 0, max: 4, maxDy: 1.4, standOff: 2.2 },
+    shotgun: { min: 0, max: 6.9, maxDy: 0, standOff: 4.5 },
+    rocket: { min: 3, max: 34, maxDy: 0, standOff: 12 },
+    grenade: { min: 3, max: 14, maxDy: 0, standOff: 9 },
+    grapple: { min: 3.5, max: 14, maxDy: 0, standOff: 8 },
+    mine: { min: 2.8, max: 9, maxDy: 0, standOff: 5 },
+    railgun: { min: C.WEAPONS.railgun.minRange, max: C.WEAPONS.railgun.range, maxDy: 0, standOff: 12 },
+    flamethrower: { min: 0, max: 3.5, maxDy: 0, standOff: 2.6 },
+  },
+};
+
 export const RULESET_DEFAULTS = {
   schemaVersion: 1,
   combat: { gravity: C.GRAVITY, fighter: { ...fighter, ringOutMargin: 6 }, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, blastCarveScale: 1.12, attributionTicks: 120 },
@@ -51,9 +75,9 @@ export const RULESET_DEFAULTS = {
     terrain: { hitPoints: MAT_HP.map(n => Number.isFinite(n) ? n : 0), density: MAT_DENSITY, crumbleDps: C.CRUMBLE_DPS, debris: C.DEBRIS },
     navigation: { headroomCells: 4, jumpMargin: 0.55, maxGap: 4.6, dropFall: 3 },
   },
-  zone: { boundary: { ...boundary, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: C.STALEMATE },
+  zone: { boundary: { ...boundary, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: { ...C.STALEMATE, graceTicks: 20 * C.TICK_RATE } },
   fire: { ...C.FIRE, materials: [Mat.Wood, Mat.Crumble] as readonly Mat[], props: ["crate", "barrel", "tnt", "gas"] as readonly string[] },
   morale: MORALE,
   round: { maxRounds: 3, winsToTake: 2, fightTicks: C.FIGHT_TICKS, finishTicks: C.FINISH_TICKS },
-  tactics: { aimNoise: AIM_NOISE, patience: PATIENCE, pickup: PICKUP, wall: WALL_PURSUIT, ruleEval: RULE_EVAL, reflex: C.REFLEX },
+  tactics: { weapons: TACTICAL_WEAPONS, aimNoise: AIM_NOISE, patience: PATIENCE, pickup: PICKUP, wall: WALL_PURSUIT, ruleEval: RULE_EVAL, reflex: C.REFLEX },
 };

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { exampleSouls, Fight, FIGHT_TICKS, initPhysics, Match, NO_INPUT, PATIENCE, STALEMATE, type Input, type Strategy } from "../src/sim";
+import { CLASSIC, CLOSE_QUARTERS, exampleSouls, Fight, FIGHT_TICKS, initPhysics, Match, NO_INPUT, PATIENCE, STALEMATE, type Input, type Strategy } from "../src/sim";
 import { flatLevel, idle, sandbox, stepN } from "./helpers";
 import { Sim } from "../src/sim";
 
@@ -26,14 +26,14 @@ describe("dead or missing targets", () => {
 });
 
 describe("the anti-stalemate rule", () => {
-  const quietSim = () => {
-    const sim = new Sim(5, flatLevel());
+  const quietSim = (ruleset = CLASSIC) => {
+    const sim = new Sim(5, flatLevel(), undefined, ruleset);
     for (const e of [...sim.entities.values()]) if (e.kind === "item") e.body.setTranslation({ x: 0, y: -30 }, true);
     return sim;
   };
 
   test("no fighter damage for STALEMATE.quietTicks: sudden death, a faster zone and drops between the survivors", () => {
-    const sim = quietSim();
+    const sim = quietSim(CLOSE_QUARTERS);
     const evs = stepN(sim, STALEMATE.quietTicks + 1);
     const sd = evs.filter((e) => e.type === "suddenDeath");
     expect(sd.length).toBe(1);
@@ -51,6 +51,33 @@ describe("the anti-stalemate rule", () => {
     expect(sim.zone.half).toBe(STALEMATE.endHalf);
   });
 
+  test("Classic opens quietly; a still-silent round presses after grace plus seven seconds", () => {
+    const sim = quietSim();
+    const { graceTicks, quietTicks } = sim.ruleset.zone.suddenDeath;
+    expect(graceTicks).toBe(20 * 60);
+    stepN(sim, graceTicks + quietTicks - 1);
+    expect(sim.lastClashTick).toBe(-1);
+    expect(sim.openingPressure).toBe(false);
+    expect(sim.suddenDeath).toBe(-1);
+    stepN(sim, 1);
+    expect(sim.openingPressure).toBe(true);
+    expect(sim.suddenDeath).toBe(-1);
+    sim.damageFighter(sim.fighters[0]!, 1, 1, 0, 0, "test", 0, 0);
+    expect(sim.openingPressure).toBe(false);
+    expect(stepN(sim, quietTicks).some(e => e.type === "suddenDeath")).toBe(false);
+    expect(stepN(sim, 1).some(e => e.type === "suddenDeath")).toBe(true);
+  });
+
+  test("an opening hit starts the seven-second clock without waiting for grace", () => {
+    const sim = quietSim();
+    const { quietTicks } = sim.ruleset.zone.suddenDeath;
+    stepN(sim, 60);
+    sim.damageFighter(sim.fighters[0]!, 1, 1, 0, 0, "test", 0, 0);
+    stepN(sim, quietTicks);
+    expect(sim.suddenDeath).toBe(-1);
+    expect(stepN(sim, 1).some(e => e.type === "suddenDeath")).toBe(true);
+  });
+
   test("fighter-on-fighter damage resets the clock; environment damage does not", () => {
     const sim = quietSim();
     stepN(sim, STALEMATE.quietTicks - 10);
@@ -62,8 +89,8 @@ describe("the anti-stalemate rule", () => {
   });
 
   test("it is deterministic and in the state hash", () => {
-    const a = quietSim();
-    const b = quietSim();
+    const a = quietSim(CLOSE_QUARTERS);
+    const b = quietSim(CLOSE_QUARTERS);
     stepN(a, STALEMATE.quietTicks + 200);
     stepN(b, STALEMATE.quietTicks + 200);
     expect(a.hash()).toBe(b.hash());

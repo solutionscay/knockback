@@ -9,13 +9,16 @@ export function sightTarget(sim: Sim, me: Fighter, aimTarget: Fighter, mp: Retur
   const dx0 = atp.x - mp.x;
   const dy0 = atp.y - mp.y;
   const dist = length2D(dx0, dy0);
-  const sight = dist > 0.1 ? sim.raycast(mp.x, mp.y + 0.25, dx0 / dist, (dy0 - 0.25) / dist, dist + 0.5, me.entity.collider) : null;
+  const tactical = sim.ruleset.tactics.weapons;
+  const height = tactical.enabled ? tactical.aimHeight : 0.25;
+  const rayDistance = tactical.enabled ? length2D(dx0, dy0 - height) : dist;
+  const sight = rayDistance > 0.1 ? sim.raycast(mp.x, mp.y + height, dx0 / rayDistance, (dy0 - height) / rayDistance, rayDistance + 0.5, me.entity.collider) : null;
   const los = !!sight && sight.entity === aimTarget.entity;
   return { atp, atv, dx0, dy0, dist, los, sight };
 }
 
 export function railCanReach(sim: Sim, p: ReturnType<Sim["pos"]>, target: ReturnType<typeof sightTarget>) {
-  const y = p.y + 0.25;
+  const y = p.y + (sim.ruleset.tactics.weapons.enabled ? sim.ruleset.tactics.weapons.aimHeight : 0.25);
   const dx = target.atp.x - p.x, dy = target.atp.y - y;
   const distance = length2D(dx, dy);
   if (distance < 0.1 || distance > sim.ruleset.weapons.table.railgun.range) return false;

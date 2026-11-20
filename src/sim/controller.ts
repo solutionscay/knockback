@@ -8,6 +8,7 @@ import { length2D } from "./dmath";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { aimAndFire, inReach, railCanReach, sightTarget } from "./controller-aim";
 import { JetpackPilot } from "./controller-jetpack";
+import { chooseCombatWeapon, playCombatChoice } from "./controller-weapons";
 import { ControllerNavigation } from "./controller-navigation";
 import { attackWall, WallPursuit } from "./controller-wall";
 import type { Surface } from "./nav";
@@ -73,7 +74,7 @@ export class Controller {
    */
   /** Sudden death or the final duel, and this fighter hasn't hurt anyone for a while. */
   pressing(sim: Sim): boolean {
-    return (sim.suddenDeath >= 0 || sim.alive().length === 2) && sim.tick - this.lastDealt > sim.ruleset.tactics.patience.pressAfter;
+    return (sim.suddenDeath >= 0 || sim.openingPressure || sim.alive().length === 2) && sim.tick - this.lastDealt > sim.ruleset.tactics.patience.pressAfter;
   }
 
   /** Did `src` hit me at or after tick `since`? (hit_me rules) */
@@ -83,7 +84,7 @@ export class Controller {
 
   stanceNow(sim: Sim): Stance {
     // engine guards first (stalemates), then an active stance rule, then the plan
-    if (sim.suddenDeath >= 0 || sim.alive().length === 2) return "rush";
+    if (sim.suddenDeath >= 0 || sim.openingPressure || sim.alive().length === 2) return "rush";
     const s = this.rules.stance() ?? this.strategy.stance;
     if (s !== "rush" && sim.tick - Math.max(this.lastDealt, this.lastTaken) > sim.ruleset.tactics.patience.calmTicks) return "rush";
     return s;
@@ -141,7 +142,7 @@ export class Controller {
     const avoided = this.rules.avoided();
     // an active target rule wins over the plan (not over the stalemate guards)
     const tr = this.rules.targetRule();
-    if (tr && tr.kind === "target" && sim.suddenDeath < 0) {
+    if (tr && tr.kind === "target" && sim.suddenDeath < 0 && !sim.openingPressure) {
       const f = sim.fighters[tr.subject];
       if (f && f.alive && !f.removed && f.id !== me.id && !skip(f)) {
         this.nextRetarget = sim.tick; // back to the plan as soon as the rule stops
@@ -161,7 +162,7 @@ export class Controller {
       return Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
     };
     // sudden death: everyone goes for the nearest rival (with two left, that is the duel)
-    const pref = sim.suddenDeath >= 0 ? "nearest" : this.strategy.target;
+    const pref = sim.suddenDeath >= 0 || sim.openingPressure ? "nearest" : this.strategy.target;
     let score: (o: Fighter) => number;
     switch (pref) {
       case "weakest":
@@ -299,13 +300,18 @@ export class Controller {
       this.nextRetarget = 0;
       this.reflex = null;
     }
-    const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= sim.ruleset.tactics.wall.routeTicks, flank);
+    const tacticalSight = sim.ruleset.tactics.weapons.enabled ? sightTarget(sim, me, aimTarget, mp) : null;
+    const ruleWeapon = tacticalSight ? this.rules.use() : undefined;
+    const choice = tacticalSight ? chooseCombatWeapon(sim, me, mp, tacticalSight, ruleWeapon === "jetpack" ? undefined : ruleWeapon ?? undefined,
+      this.onLedge(sim, aimTarget, mp.x, mp.y),
+      this.navigation.dig && sim.tick < this.navigation.dig.until ? this.navigation.dig.dir : undefined) : null;
+    const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= sim.ruleset.tactics.wall.routeTicks, flank, choice?.weapon);
     const flying = this.jetpack.steer(sim, me, target, mp, mv, input, this.stanceNow(sim) === "rush", this.rules.use() === "jetpack");
-    if (!me.railCharge && !flying && wall && wallTicks >= sim.ruleset.tactics.wall.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
+    if (!choice && !me.railCharge && !flying && wall && wallTicks >= sim.ruleset.tactics.wall.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
 
-    const sight = sightTarget(sim, me, aimTarget, mp);
+    const sight = tacticalSight ?? sightTarget(sim, me, aimTarget, mp);
     const { dx0, dy0, dist, los } = sight;
-    if (me.railCharge > 0) return aimAndFire(sim, me, mp, input, "railgun", sight, false, this.aimNoise);
+    if (!choice && me.railCharge > 0) return aimAndFire(sim, me, mp, input, "railgun", sight, false, this.aimNoise);
     this.noLos = los ? 0 : this.noLos + 1;
     // a target with no path and no line of sight for long: pick someone else for a while
     const tSurf = target.surface;
@@ -316,6 +322,15 @@ export class Controller {
       this.nextRetarget = 0;
       this.noReach = 0;
     }
+    if (choice) {
+      if (!choice.shot && dist > 0) {
+        input.aimX = dx0 / dist;
+        input.aimY = dy0 / dist;
+      }
+      return playCombatChoice(sim, me, input, choice, this.aimNoise, !flying && !flank);
+    }
+
+    // Close Quarters retains the original weapon and obstruction handling.
     // digging out: hit the wall between us and the goal
     if (!flying && this.navigation.dig && sim.tick < this.navigation.dig.until) {
       const dir = this.navigation.dig.dir;

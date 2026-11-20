@@ -47,6 +47,14 @@ Classic assigns one fighter to each arena quarter. Seeded X jitter changes the o
 
 `pickups.armory.spawnOffset` sets the target offset for a fighter's local weapon. Spread mode also places extra weapon caches per quarter and reserves the configured power weapons for elevated or exposed sites. The placement search prefers the configured distance from fighters. Unarmed house bots initially favor a weapon in their own quarter. Tight quarters and narrow surfaces can require a nearer site or leave an extra cache unfilled. Ordinary drops exclude the reserved weapons when an ordinary weapon is available. `pickups.supply.avoidDistance` keeps supply drops away from fighters and loose items where possible. The first Classic supply drop is at eight seconds. In a narrow zone the drop uses the least crowded available landing column.
 
+## Opening grace and weapon reach
+
+Classic waits for the first fighter-on-fighter damage before the sudden-death countdown. When nobody has landed a hit, the quiet clock begins after `zone.suddenDeath.graceTicks` (20 seconds). If that clock runs out, bots close in on a rival. Sudden death, including the faster zone and its announcement, can start once a hit has landed and the next quiet window expires. Classic uses a seven-second quiet window.
+
+`tactics.weapons.reach` sets each weapon's effective range for aiming, choosing shots, attacking obstructions and positioning. The settings also set vertical reach for melee and a preferred stand-off distance within the band. The controller favors ready weapons and treats obstructing destructibles as targets. Ammunition and fuel still come from the weapon table and carried inventory.
+
+Close Quarters keeps its original opening timer and weapon selection through its ruleset settings.
+
 ## Choose a ruleset
 
 - **HTTP** — Send a ruleset object or preset name in the `ruleset` field of `POST /api/matches`. Omit it to use the server default. An invalid selection returns HTTP 400 with the field name or preset error.
