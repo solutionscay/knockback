@@ -29,12 +29,12 @@ export interface PromptExtras {
 }
 
 export const WEAPON_HELP: Record<string, string> = {
-  rocket: "long-range blast, breaks terrain",
-  shotgun: "close spread, big shove",
-  bat: "melee launch, best for ring-outs",
+  rocket: "long-range terrain blast",
+  shotgun: "close spread and shove",
+  bat: "melee launch for ring-outs",
   grenade: "bounces around cover",
-  grapple: "hook: yanks a fighter to you, off ledges",
-  flamethrower: "short cone of fire: burns over time, sets wood, crates and barrels alight; limited fuel",
+  grapple: "hook pulls rivals off ledges",
+  flamethrower: "short cone of fire, lasting burns, ignites wood, crates and barrels, limited fuel",
 };
 
 const r = (n: number) => Math.round(n);
@@ -259,19 +259,19 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
   if (x.lastLines) out.push(`WHAT EVERYONE SAID LAST: ${names.map((n, i) => `${n}: "${x.lastLines![i]}"`).join(" | ")}`);
   if (x.myLines?.length) out.push(`YOUR EARLIER LINES THIS MATCH: ${x.myLines.map((l) => `"${l}"`).join(" ")}. Say something new: do not start with the same words as any of them, and do not reuse your catchphrase if you already said it.`);
   out.push(
-    `CHOICES: weapons = 1 to 3 different pickups to go for and use, best first, from ${Object.entries(WEAPON_HELP)
+    `CHOICES: weapons = 1 to 3 distinct pickups, best first, from ${Object.entries(WEAPON_HELP)
       .map(([w, h]) => `${w} (${h})`)
-      .join(", ")}; you grab the nearest one you want, and you fight with whatever you hold. Change your weapons if last round's pickups or knockouts say so. ` +
+      .join(", ")}; you fight with what you pick up. Change your weapons if last round's pickups or knockouts say so. ` +
       `target = a fighter's name, or nearest | weakest | strongest | leader. ` +
-      `jetpack is a pickup with limited fuel for climbing, escaping and chasing. In rules, seek or use it as "jetpack", and check rivals with holds. ` +
-      `stance = rush | distance | cover | item (detour for every pickup and power-up). ` +
-      `retaliate = what you do when a fighter you are not chasing hits you from behind 3 times (default turn): attacker = chase that fighter for 10 s; for one rival who keeps hitting you. turn = fight back for 3 s, then resume; for hits that matter less than your target. ignore = glance back, stay on target; for a target that is almost down. ` +
+      `jetpack has limited fuel for climbing, escape and pursuit. Rules can seek, use or check for it with holds. ` +
+      `stance = rush | distance | cover | item (detour for pickups). ` +
+      `retaliate = after 3 hits from behind by a non-target (default turn): attacker = chase that fighter for 10 s, turn = fight back for 3 s then resume, ignore = glance back and stay on target. ` +
       `why = one short sentence in game terms, not in character, under 100 characters: why this plan. ` +
       `line = what you say out loud now, one short in-character sentence (under 90 characters) reacting to what happened.`,
   );
   const rex = ruleExamplesFor(x.seed ?? 0, ctx.round, me);
   out.push(rulesSection(rex.slice(0, 2)));
-  if (last) out.push(`EXAMPLES of changing a plan: ${examplesFor(x.seed ?? 0, ctx.round, me).join(" ")} If your last plan worked, keep it: change only what the facts show failed, or add a rule for it.`);
+  if (last) out.push(`EXAMPLES of changing a plan: ${examplesFor(x.seed ?? 0, ctx.round, me).join(" ")}`);
   out.push(`Reply ONLY with JSON: {"weapons":[1 to 3 weapons],"target":"<name or preference>","stance":"<stance>","retaliate":"<attacker|turn|ignore>","rules":[0 to 4 rules, e.g. ${rex[2]}],"why":"<reason>","line":"<what you say>"}`);
   return out.join("\n\n");
 }
