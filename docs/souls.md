@@ -64,15 +64,21 @@ Before each match, `assignIdentities(seed)` in `src/sim/identity.ts` gives each 
 
 | Field | Pool |
 |---|---|
-| `name` | a machine word ("Rivet") or two syllables ("Zap" + "ko"); at most 12 characters |
-| `shape` | 20 head shapes: Skiff's 8 Skipper bodies plus 12 new ones |
+| `name` | mostly two syllables ("Zap" + "ko"), sometimes (1 in 8) a machine word ("Rivet"); at most 12 characters; never a shape, eye or mark word |
+| `shape` | 20 head shapes: Skiff's 8 Skipper bodies plus 12 new ones, in silhouette families |
 | `eyes` | 12 resting eye styles on the dot visor |
-| `mark` | 18 marks and accessories (headband, antenna, crown, horns, cape, ...) |
-| `color` | a random saturated color, bright enough for every arena |
+| `mark` | one of 14 major marks: silhouettes that read at 720p (headband, antenna, crown, ears, horns, cape, ...) |
+| `minor` | for half the fighters, one of 4 minor marks for close-ups (bolts, scratch, bandage, scarf) |
+| `color` | a saturated color of any hue, bright enough for every arena; blues are drawn lighter (each hue has its own lightness floor) |
 
-In a match no two fighters share a shape or a mark, names do not start with the same three letters, and colors are at least 50° apart in hue. The identity uses its own random stream from the match seed, so it never moves the level, the plans or the lines, and it is not part of the sim's state hash. Records (version 4) store the identities; version 2 and 3 records keep their souls' old names and colors.
+In a match:
+- no two fighters share a major mark, or a shape from the same silhouette family (round: squircle, dome, pill, egg, barrel, octagon; capped: mushroom, acorn; trapezoid: keystone, bucket; peaked: bell, onion; every other shape is a family of its own);
+- names do not start with the same three letters;
+- the four colors are drawn together (evenly spread hues, then shuffled over the seats) and are at least 0.11 apart in OKLab.
 
-A fighter may later choose its own identity (#19): pass `identityWishes` to `Match`. A valid wish that no earlier seat took is kept; the rest is generated.
+The identity uses its own random stream from the match seed, so it never moves the level, the plans or the lines, and it is not part of the sim's state hash. Records (version 4) store the identities; version 2 and 3 records keep their souls' old names and colors. On a light page, write a fighter's name in `nameInk(color)` (`src/viewer/palette.ts`), not in the raw color.
+
+A fighter may later choose its own identity (#19): pass `identityWishes` to `Match`. A valid wish that no earlier seat took is kept; the rest is generated. Wished colors are kept first, and the other colors are drawn around them.
 
 ### What the house bot reads from the text
 
