@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { cuesOnOutput, sceneList } from "../scripts/teaser/media";
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { OptionError, parseTeaserArgs } from "../scripts/teaser/options";
+import { cleanup, deliver, teaserPaths } from "../scripts/teaser/paths";
 import { CARD_MAX_S, chunks, deadStretches, END_CAPTION_S, outTime, planVideo, typedFrame, WIN_S, type Timeline } from "../scripts/teaser/plan";
 
 /** A two-round match timeline as the viewer logs it: beats with their first frame, the sim tick per frame. */
@@ -137,7 +141,7 @@ describe("segment planner", () => {
 describe("command-line options", () => {
   const now = new Date("2026-11-20T12:34:00Z");
   test("defaults: 1080 + 720, 60 fps, 6 pages; out folder from the source", () => {
-    expect(parseTeaserArgs(["--record", "records/x.json"], now)).toEqual({ source: { kind: "record", file: "records/x.json" }, out: "videos/record-2026-11-20-12-34", sizes: [1080, 720], fps: 60, fast: false, workers: 6, keepFrames: false });
+    expect(parseTeaserArgs(["--record", "records/x.json"], now)).toEqual({ source: { kind: "record", file: "records/x.json" }, out: "videos/record-2026-11-20-12-34", sizes: [1080, 720], fps: 60, fast: false, workers: 6, work: null, keepWork: false });
     expect(parseTeaserArgs(["--seed", "42"], now).out).toBe("videos/42-2026-11-20-12-34");
   });
   test("--fast: 30 fps, 720p only; explicit --fps / --sizes win", () => {
@@ -162,5 +166,49 @@ describe("command-line options", () => {
     expect(() => parseTeaserArgs(["--server", "localhost"], now)).toThrow(/base URL/);
     expect(() => parseTeaserArgs(["--record"], now)).toThrow(/needs a value/);
     expect(() => parseTeaserArgs(["--help"], now)).toThrow(/bun run teaser/);
+  });
+});
+
+describe("scratch on the local disk", () => {
+  test("--work and --keep-work (--keep-frames is the same)", () => {
+    expect(parseTeaserArgs(["--seed", "1", "--work", "/fast/disk", "--keep-work"])).toMatchObject({ work: "/fast/disk", keepWork: true });
+    expect(parseTeaserArgs(["--seed", "1", "--keep-frames"]).keepWork).toBe(true);
+    expect(parseTeaserArgs(["--seed", "1"])).toMatchObject({ work: null, keepWork: false });
+  });
+
+  test("all scratch goes under the temp dir (or --work), never inside --out", () => {
+    const p = teaserPaths("/Volumes/share/Knockback/v6", "/tmp", "123-456", "/tmp");
+    expect(p.out).toBe("/Volumes/share/Knockback/v6");
+    for (const k of ["work", "frames", "audio", "cues", "plan", "aiMatches", "staging"] as const) {
+      expect(p[k].startsWith("/tmp/knockback-teaser-123-456")).toBe(true);
+      expect(p[k].startsWith(p.out)).toBe(false);
+    }
+    expect(teaserPaths("/v/out", "/ssd/work", "7", "/tmp").work).toBe("/ssd/work/knockback-teaser-7");
+    // --work inside --out (or equal to it) would put the frames on the slow volume: the temp dir is used instead
+    expect(teaserPaths("/Volumes/share/out", "/Volumes/share/out/scratch", "7", "/tmp").work).toBe("/tmp/knockback-teaser-7");
+    expect(teaserPaths("/Volumes/share/out", "/Volumes/share/out", "7", "/tmp").work).toBe("/tmp/knockback-teaser-7");
+    expect(teaserPaths("/v/out", "/tmp", "a/b c", "/tmp").work).toBe("/tmp/knockback-teaser-a_b_c");
+  });
+
+  test("deliver copies only the finished files; cleanup removes this run's scratch and nothing else", () => {
+    const root = mkdtempSync(join(tmpdir(), "kb-paths-"));
+    const p = teaserPaths(join(root, "out"), root, "t1", root);
+    mkdirSync(p.frames, { recursive: true });
+    mkdirSync(p.staging, { recursive: true });
+    writeFileSync(join(p.frames, "000001.jpg"), "jpeg");
+    writeFileSync(p.audio, "wav");
+    for (const f of ["knockback-1-1080p60.mp4", "knockback-1-720p60.mp4", "README.md", "still-scoreboard.jpg", "match.json", "timing.json"]) writeFileSync(join(p.staging, f), f);
+    const other = join(root, "keep-me.txt");
+    writeFileSync(other, "not ours");
+    const got = deliver(p);
+    expect(readdirSync(p.out).sort()).toEqual(["README.md", "knockback-1-1080p60.mp4", "knockback-1-720p60.mp4", "match.json", "still-scoreboard.jpg", "timing.json"]);
+    expect(got.every((g) => g.bytes > 0)).toBe(true);
+    expect(existsSync(join(p.out, "frames"))).toBe(false);
+    expect(existsSync(join(p.out, "audio.wav"))).toBe(false);
+    cleanup(p);
+    expect(existsSync(p.work)).toBe(false);
+    expect(existsSync(other)).toBe(true);
+    expect(existsSync(join(p.out, "README.md"))).toBe(true);
+    expect(() => cleanup({ ...p, work: root })).toThrow(/refusing/);
   });
 });
