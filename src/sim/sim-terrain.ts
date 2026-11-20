@@ -54,7 +54,10 @@ export function flushTerrain(sim: Sim) {
       if (ch && c.anchor && !ch.broken) {
         cell.chain = ch.id;
         hanger = ch.id;
-      } else if (ch?.broken && ch.brokenTick === sim.tick) snappedBy = ch.lastHitBy;
+      } else if (ch?.broken) {
+        cell.stub = ch.id;
+        if (ch.brokenTick === sim.tick) snappedBy = ch.lastHitBy;
+      }
       return cell;
     });
     const e = makePiece(sim, cells, sim.grid.wx(minCx), sim.grid.wy(minCy), 0, { x: 0, y: 0 }, 0);

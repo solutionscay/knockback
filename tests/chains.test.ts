@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { CHAIN, initPhysics, Match, type Input } from "../src/sim";
 import { chainAttach } from "../src/sim/sim-chains";
 import { damagePiece } from "../src/sim/sim-terrain";
+import { ChainView } from "../src/viewer/chains";
 import { idle, place, sandbox, stepN } from "./helpers";
 
 beforeAll(async () => {
@@ -170,5 +171,24 @@ describe("breakable chains (#34)", () => {
     const again = new Match(5);
     again.playToEnd();
     expect(again.record.rounds.map((r) => r.fight.finalHash)).toEqual(m.record.rounds.map((r) => r.fight.finalHash));
+  });
+
+  test("viewer: a chain sprite is laid from its fixed end along the segment (screen y down)", () => {
+    const s = { visible: false, rotation: 0, height: 0, position: { x: 0, y: 0, set(x: number, y: number) { this.x = x; this.y = y; } }, tilePosition: { y: 3 } };
+    const lay = (x0: number, y0: number, x1: number, y1: number) => ChainView.lay(s as never, x0, y0, x1, y1);
+    lay(1, 2, 1, 8); // straight up from (1, 2)
+    expect(s.visible).toBe(true);
+    expect(s.height).toBeCloseTo(6, 9);
+    expect([s.position.x, s.position.y]).toEqual([1, -2]);
+    // the sprite's +y axis, (-sin r, cos r), points up the screen
+    expect(-Math.sin(s.rotation)).toBeCloseTo(0, 9);
+    expect(Math.cos(s.rotation)).toBeCloseTo(-1, 9);
+    lay(0, 0, 3, -4); // down and to the right
+    expect(s.height).toBeCloseTo(5, 9);
+    expect(-Math.sin(s.rotation)).toBeCloseTo(0.6, 9);
+    expect(Math.cos(s.rotation)).toBeCloseTo(0.8, 9);
+    expect(s.tilePosition.y).toBe(0); // links start at the fixed end
+    lay(2, 2, 2, 2);
+    expect(s.visible).toBe(false);
   });
 });

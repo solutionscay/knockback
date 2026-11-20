@@ -22,6 +22,8 @@ export interface PieceCell {
   hp: number;
   /** chain id (#34) when a chain holds the piece by this cell */
   chain?: number;
+  /** chain id of a broken chain whose stub stays on this cell (drawn by the viewer; not game state) */
+  stub?: number;
 }
 
 export class Terrain {

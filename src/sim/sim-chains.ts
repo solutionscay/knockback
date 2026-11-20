@@ -218,7 +218,11 @@ export function breakChain(sim: Sim, ch: Chain, cause: string, x: number, y: num
   const e = sim.entities.get(ch.piece);
   if (e && !e.dead) {
     if (ch.joint) sim.world.removeImpulseJoint(ch.joint, true);
-    for (const c of e.cells!) if (c.chain === ch.id) c.chain = undefined;
+    for (const c of e.cells!)
+      if (c.chain === ch.id) {
+        c.chain = undefined;
+        c.stub = ch.id;
+      }
     e.triggeredBy = ch.lastHitBy;
     e.body.wakeUp();
     sim.stats.platformsDropped++;
