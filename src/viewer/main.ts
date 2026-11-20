@@ -11,7 +11,7 @@ declare global {
       newMatch: (seed: number) => void;
       loadRecord: (url: string) => Promise<void>;
       setCamera: (mode: { kind: "auto" } | { kind: "all" } | { kind: "follow"; id: number }) => void;
-      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string; tick: number; view: { cx: number; cy: number; s: number; shx: number; shy: number } | null; soles: ([number, number] | null)[]; fighters: { x: number; y: number; grounded: boolean; alive: boolean }[] };
+      state: () => { beat: string; beatIndex: number; finished: boolean; over: boolean; hash: string; tally: number[]; camera: string; alive: boolean[]; hp: number[]; round: number; wins: number[]; dialoguePhase: string; tick: number; view: { cx: number; cy: number; s: number; shx: number; shy: number } | null; soles: ([number, number] | null)[]; items: { type: string; x: number; y: number }[]; fighters: { x: number; y: number; grounded: boolean; alive: boolean }[] };
       drainMoments: () => { time: number; kind: string; weight: number }[];
       /** callouts over the fight (#10, #11): on screen now, the most ever at once, all shown so far */
       callouts: () => { visible: { kind: string; fighter: number; text: string }[]; peak: number; shown: { kind: string; fighter: number; text: string }[] };
@@ -172,6 +172,8 @@ if (capture) {
       tick: game.shown.sim.tick,
       view: game.scene.lastFrame,
       soles: game.scene.soles(),
+      // for screenshot scripts: the pickups lying in the arena (world meters, y up)
+      items: [...game.shown.sim.entities.values()].filter((e) => e.kind === "item" && !e.dead).map((e) => ({ type: e.itemType ?? "", x: e.body.translation().x, y: e.body.translation().y })),
       fighters: game.shown.sim.fighters.map((f) => (f.removed ? { x: 0, y: -99, grounded: false, alive: false } : { x: f.entity.body.translation().x, y: f.entity.body.translation().y, grounded: f.grounded, alive: f.alive })), // a removed fighter has no body any more
     }),
     callouts: () => ({
