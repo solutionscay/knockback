@@ -2,6 +2,7 @@ export * from "./constants";
 export * from "./sim";
 export * from "./fight";
 export * from "./match";
+export * from "./engine-version";
 export * from "./morale";
 export * from "./soul";
 export * from "./identity";

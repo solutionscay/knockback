@@ -6,7 +6,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { buildRoundPrompts } from "../src/ai/prompt";
-import { checkRecordVersion, initPhysics, Match, type MatchRecord } from "../src/sim";
+import { checkRecordEngine, checkRecordVersion, initPhysics, Match, type MatchRecord } from "../src/sim";
 
 const args = process.argv.slice(2);
 const file = args[0];
@@ -18,6 +18,7 @@ await initPhysics();
 const rec = JSON.parse(await Bun.file(file).text()) as MatchRecord;
 try {
   checkRecordVersion(rec);
+  checkRecordEngine(rec);
 } catch (e) {
   console.error(`${file}: ${e instanceof Error ? e.message : e}`);
   process.exit(1);

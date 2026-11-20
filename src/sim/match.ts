@@ -12,6 +12,7 @@
  * three rounds can have three different winners), the round-3 winner still
  * takes the match. Winner takes all.
  */
+import { checkRecordEngine, ENGINE_VERSION } from "./engine-version";
 import { Fight, type FightRecord, type FightResult } from "./fight";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
@@ -77,6 +78,8 @@ export interface MatchRecord {
    * their souls' names, colors and marks become the identities.
    */
   version: 2 | 3 | 4;
+  /** engine version that made the record (src/sim/engine-version.ts); missing = 0. Not hashed. */
+  engine?: number;
   /** the souls that played (personality, voice, lines): a replay needs no files */
   souls: Soul[];
   /** each seat's generated name and look (version 4) */
@@ -159,7 +162,7 @@ export class Match {
     this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]));
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { version: 4, seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), rounds: [], winner: -1, wins: this.wins };
+    this.record = { version: 4, engine: ENGINE_VERSION, seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
@@ -309,6 +312,7 @@ export function checkRecordVersion(rec: { version?: unknown; souls?: unknown }) 
 
 /** Replay a whole match from its record (recorded decisions, same seeds). */
 export function replayMatch(record: MatchRecord): Match {
+  checkRecordEngine(record); // another engine's physics can't replay it: refuse before simulating
   const m = new Match(record.seed, { recorded: record });
   m.playToEnd();
   if (m.diverged >= 0) throw new ReplayDivergedError(m.diverged);

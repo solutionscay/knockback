@@ -5,6 +5,7 @@
  * given the decisions.
  */
 import { formatSeconds } from "../format";
+import { checkRecordEngine } from "../sim/engine-version";
 import { Match, ReplayDivergedError, type MatchRecord } from "../sim/match";
 import { Rng } from "../sim/rng";
 import type { Strategy } from "../sim/sim";
@@ -31,6 +32,7 @@ export interface PlayedMatch {
  * calls): lets new metrics run over old runs. `lineup` is the provider per seat.
  */
 export function rescoreRecord(rec: MatchRecord, lineup: string[]): EvalMatch {
+  checkRecordEngine(rec);
   const match = new Match(rec.seed, { recorded: rec });
   const housePlans: (Strategy | undefined)[][] = [];
   while (!match.over) {
