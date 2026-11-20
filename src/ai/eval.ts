@@ -127,6 +127,8 @@ export interface EvalReport {
   rules: { rulesPerPlan: NA; rejected: NA; firingsPerRound: NA; firingsByKind: NA; neverFired: NA };
   follows: { ai: FollowStats | NA; house: FollowStats | NA };
   facts: FactCheck;
+  /** the optional "why" (#3): how many of the AI's own plans gave one, and a few of them */
+  why: { answers: number; withWhy: number; rate: number; samples: string[] } | NA;
   reliability: Record<string, ProviderReliability>;
   results: {
     ai: { seats: number; roundWins: number; roundWinRate: number; matchWins: number; matchWinRate: number } | NA;
@@ -307,6 +309,13 @@ export function factsOf(matches: EvalMatch[]): FactCheck {
   return out;
 }
 
+export function whyOf(matches: EvalMatch[]): EvalReport["why"] {
+  const ds = decisionsOf(matches, "ai");
+  if (!ds.length) return NA;
+  const w = ds.filter((x) => x.d.meta.why);
+  return { answers: ds.length, withWhy: w.length, rate: r3(w.length / ds.length), samples: w.slice(0, 6).map((x) => `${x.m.names[x.seat]}: ${x.d.meta.why}`) };
+}
+
 export function reliabilityOf(matches: EvalMatch[]): Record<string, ProviderReliability> {
   const acc: Record<string, { ms: number[]; ok: number; timeouts: number; errors: number; invalid: number; calls: number }> = {};
   for (const m of matches)
@@ -363,6 +372,7 @@ export function computeReport(matches: EvalMatch[]): EvalReport {
     rules: { rulesPerPlan: NA, rejected: NA, firingsPerRound: NA, firingsByKind: NA, neverFired: NA },
     follows: { ai: followsOf(matches, "ai"), house: followsOf(matches, "house") },
     facts: factsOf(matches),
+    why: whyOf(matches),
     reliability: reliabilityOf(matches),
     results: resultsOf(matches),
   };
@@ -395,7 +405,7 @@ export function evalMatchFrom(match: Match, seats: string[], housePlans?: (Strat
 /** Every numeric leaf of a report, by path ("variety.ai.stance.entropy"). Distributions are skipped. */
 export function flatten(o: unknown, prefix = "", out: Record<string, number> = {}): Record<string, number> {
   if (typeof o === "number") out[prefix] = o;
-  else if (o && typeof o === "object" && !Array.isArray(o)) for (const [k, v] of Object.entries(o)) if (k !== "dist" && k !== "seeds") flatten(v, prefix ? `${prefix}.${k}` : k, out);
+  else if (o && typeof o === "object" && !Array.isArray(o)) for (const [k, v] of Object.entries(o)) if (k !== "dist" && k !== "seeds" && k !== "samples") flatten(v, prefix ? `${prefix}.${k}` : k, out);
   return out;
 }
 
@@ -465,6 +475,14 @@ export function reportMarkdown(rep: EvalReport, opts: { title?: string; compare?
   L.push("## Facts", "", `Heuristic, not a judge: ${rep.facts.checked} lines named a rival together with an event; ${rep.facts.mismatches.length} possible mismatches (${rep.facts.checked ? pct(rep.facts.mismatches.length / rep.facts.checked) : "n/a"} of checked lines). Fact warnings logged in the decision meta: ${rep.facts.warnings}.`, "");
   for (const x of rep.facts.mismatches) L.push(`- seed ${x.seed}, before round ${x.round}, ${x.fighter}: "${x.line}" (claims ${x.claim}; facts: ${x.facts})`);
   if (rep.facts.mismatches.length) L.push("");
+
+  L.push("## Why", "");
+  if (rep.why === NA) L.push(`${NA}: no AI answers.`, "");
+  else {
+    L.push(`${rep.why.withWhy} of ${rep.why.answers} AI plans gave a reason (${pct(rep.why.rate)}).`);
+    for (const s of rep.why.samples) L.push(`- ${s}`);
+    L.push("");
+  }
 
   L.push("## Reliability", "");
   const rel = Object.entries(rep.reliability);

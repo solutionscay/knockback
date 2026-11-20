@@ -153,12 +153,12 @@ describe("the prompt", () => {
     expect(p).toContain("sparingly");
     expect(p).toContain("best of 3");
     expect(p).toContain("only their fists");
-    expect(p).toContain(`YOUR ROUND: ${m.facts[0]!.stats.summary[1]}`);
+    expect(p).toContain("WHAT HAPPENED TO YOU");
     expect(p).toContain("DAMAGE YOU TOOK");
     expect(p).toContain("PICKUPS");
     expect(p).toContain(m.record.rounds[0]!.lines[0]!);
     expect(p).toContain("YOUR EARLIER LINES");
-    expect(p).toContain("abandon your plan");
+    expect(p).toContain("attacker = chase that fighter for 10 s");
     expect(p).toContain('"weapons"');
     expect(p).not.toContain("## Lines"); // the house bot's line bank stays out of the prompt
     expect(p).toContain(m.level.theme);

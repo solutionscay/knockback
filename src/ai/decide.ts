@@ -89,7 +89,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
   const lastLines = prevRound ? prevRound.lines : null;
   const lastHealth = match.facts.length ? match.facts[match.facts.length - 1]!.fighters.map((f) => f.hpEnd) : null;
   const ctxs = seats.map((_, me) => match.contextFor(me));
-  const prompts = seats.map((s, me) => buildPrompt(s.soul, ctxs[me]!, { level: match.level, lastLines, lastHealth, myLines: match.record.rounds.map((r) => r.lines[me]!) }));
+  const prompts = seats.map((s, me) => buildPrompt(s.soul, ctxs[me]!, { level: match.level, lastLines, lastHealth, myLines: match.record.rounds.map((r) => r.lines[me]!), lastPlans: prevRound ? prevRound.strategies : null, seed: match.seed }));
   const results = await Promise.all(
     seats.map(async (seat, me) => {
       const started = performance.now();
@@ -130,7 +130,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs = DEFA
       // post-check (#4): an accusation the last round's facts don't support is logged, never rejected
       const lastStats = match.facts[match.facts.length - 1]?.stats;
       const warn = p.line && lastStats ? checkLine(p.line, me, match.names, checkFactsFromStats(lastStats)).mismatches.map((x) => `${x.claim}; facts: ${x.facts}`) : [];
-      const extra = warn.length ? { factWarnings: warn } : {};
+      const extra = { ...(p.why ? { why: p.why } : {}), ...(warn.length ? { factWarnings: warn } : {}) };
       if (p.strategy && p.line) {
         decisions.push({ line: p.line, strategy: { ...p.strategy, line: p.line } });
         meta.push({ provider: label, ms: r.ms, outcome: "ok", ...extra });

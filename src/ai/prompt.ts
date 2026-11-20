@@ -96,6 +96,74 @@ export function whatHappenedLines(st: RoundStats, me: number, names: string[]): 
   return out;
 }
 
+/**
+ * "YOUR LAST PLAN" (#3): each setting of the plan the fighter just played,
+ * with one fact about how it went.
+ */
+export function lastPlanLines(plan: Strategy, st: RoundStats, me: number, names: string[]): string[] {
+  const out: string[] = [];
+  const pct = (a: number, b: number) => (b > 0 ? Math.round((100 * a) / b) : 0);
+  // target: who it actually chased, and the damage done to that fighter
+  const tgt = plan.target === "grudge" && plan.grudge !== undefined ? names[plan.grudge]! : plan.target;
+  const secs = st.targetSeconds[me]!;
+  let chased = -1;
+  for (let j = 0; j < 4; j++) if (j !== me && secs[j]! >= 1 && (chased < 0 || secs[j]! > secs[chased]!)) chased = j;
+  out.push(
+    chased < 0
+      ? `target: ${tgt}: you chased nobody for long.`
+      : `target: ${tgt}: you chased ${names[chased]} most (${Math.round(secs[chased]!)} s) and did ${Math.round(st.damage[me]![chased]!.damage)} damage to ${names[chased]}.`,
+  );
+  // weapons: when each wished weapon was picked up, and what did the damage
+  const got = (w: string) => st.pickupTicks[me]!.find((p) => p.item === w);
+  const parts = plan.weapons.map((w) => {
+    const g = got(w);
+    return g ? `you got the ${wname(w)} at ${Math.round(g.tick / 60)} s` : `you never got the ${wname(w)}`;
+  });
+  const byW: Record<string, number> = {};
+  let total = 0;
+  for (let v = 0; v < 4; v++)
+    if (v !== me)
+      for (const [w, d] of Object.entries(st.damage[me]![v]!.byWeapon)) {
+        byW[w] = (byW[w] ?? 0) + d.damage;
+        total += d.damage;
+      }
+  const topW = Object.entries(byW).sort((a, b) => b[1] - a[1])[0];
+  out.push(`weapons: ${plan.weapons.join(" > ")}: ${parts.join("; ")}; ${topW && total >= 1 ? `${pct(topW[1], total)}% of your damage was ${wname(topW[0])}` : "you did no damage"}.`);
+  // retaliate: the reflex firings, by attacker, and whether one of them knocked you out
+  const fired = st.reflexes[me] ?? [];
+  const ko = st.kos.find((k) => k.victim === me);
+  if (!fired.length) out.push(`retaliate: ${plan.retaliate ?? "turn"}: the reflex never fired.`);
+  else {
+    const by: Record<number, number> = {};
+    for (const f of fired) by[f.attacker] = (by[f.attacker] ?? 0) + 1;
+    const list = Object.entries(by).map(([a, n]) => `${n} against ${names[Number(a)]}`).join(", ");
+    const killer = ko && ko.by >= 0 && by[ko.by] ? `; ${names[ko.by]} then knocked you out` : "";
+    out.push(`retaliate: ${plan.retaliate ?? "turn"}: the reflex fired ${fired.length} time${fired.length > 1 ? "s" : ""}: ${list}${killer}.`);
+  }
+  // stance: how far from the target it fought
+  const d = st.targetDistance[me] ?? -1;
+  out.push(`stance: ${plan.stance}: ${d >= 0 ? `average distance to your target was ${Math.round(d)} m` : "you had no target to measure"}.`);
+  return out;
+}
+
+/** Situation -> plan change examples (#3); 2 shown per prompt, rotated by seed, round and seat. */
+export const PLAN_EXAMPLES = [
+  "Knocked out by a rocket from far away -> put rocket in weapons, or rush the shooter.",
+  "Hit from behind 8 times by a fighter you were not chasing -> retaliate attacker.",
+  "Your target fell early and you wandered -> target nearest or leader.",
+  "You never got your first weapon -> lead with a weapon you did pick up, or stance item.",
+  "Your plan won the round -> keep it, change only what failed.",
+  "Your target stayed across the level all round -> target nearest.",
+  "Everyone chased you -> stance cover, retaliate turn.",
+  "Your target was almost down when someone pulled you away -> retaliate ignore.",
+];
+
+export function examplesFor(seed: number, round: number, me: number): string[] {
+  const n = PLAN_EXAMPLES.length;
+  const a = (((seed >>> 0) + round * 3 + me * 5) % n + n) % n;
+  return [PLAN_EXAMPLES[a]!, PLAN_EXAMPLES[(a + 3) % n]!];
+}
+
 export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): string {
   const me = ctx.me;
   const names = ctx.names;
@@ -125,8 +193,9 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
     const lines: string[] = [];
     lines.push(`LAST ROUND (round ${last.round}): ${names[last.winner]} won${last.reason === "time-out" ? " on time" : ""} after ${r(last.seconds)} s.`);
     lines.push(`WHAT HAPPENED TO YOU: ${whatHappenedLines(st, me, names).join(" ")} If your line accuses someone, it must match these facts.`);
-    for (const k of st.kos) lines.push(`${names[k.victim]} was ${k.cause === "ringout" ? "rung out" : "knocked out"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]} (${k.weapon})` : ` (${k.weapon})`}.`);
-    lines.push(`YOUR ROUND: ${st.summary[me]}`);
+    const plan = x.lastPlans?.[me];
+    if (plan) lines.push(`YOUR LAST PLAN AND HOW IT WENT: ${lastPlanLines(plan, st, me, names).join(" ")}`);
+    lines.push(`KNOCKOUTS: ${st.kos.map((k) => `${names[k.victim]} ${k.cause === "ringout" ? "rung out" : "knocked out"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]} (${wname(k.weapon)})` : ` (${wname(k.weapon)})`}`).join("; ") || "none"}.`);
     const took = [0, 1, 2, 3]
       .filter((a) => a !== me && st.damage[a]![me]!.damage >= 1)
       .map((a) => {
@@ -135,8 +204,6 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
         return `${names[a]} ${r(s.damage)} damage in ${s.hits} hits (${s.fromBehind} from behind, mostly ${w})`;
       });
     lines.push(`DAMAGE YOU TOOK: ${took.join("; ") || "none"}.`);
-    const dealt = [0, 1, 2, 3].filter((v) => v !== me && st.damage[me]![v]!.damage >= 1).map((v) => `${names[v]} ${r(st.damage[me]![v]!.damage)}`);
-    lines.push(`DAMAGE YOU DEALT: ${dealt.join(", ") || "none"}.`);
     const chasers = [0, 1, 2, 3].filter((a) => a !== me && st.targetSeconds[a]![me]! >= 5).map((a) => `${names[a]} (${r(st.targetSeconds[a]![me]!)} s)`);
     lines.push(`WHO CHASED YOU: ${chasers.join(", ") || "nobody for long"}.`);
     const grabbed = names.map((n, i) => (st.pickups[i]!.length ? `${n}: ${st.pickups[i]!.join(", ")}` : "")).filter(Boolean);
@@ -148,12 +215,14 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
   out.push(
     `CHOICES: weapons = 1 to 3 different pickups to go for and use, best first, from ${Object.entries(WEAPON_HELP)
       .map(([w, h]) => `${w} (${h})`)
-      .join(", ")}; you grab the nearest one you want, and you fight with whatever you hold. ` +
+      .join(", ")}; you grab the nearest one you want, and you fight with whatever you hold. Change your weapons if last round's pickups or knockouts say so. ` +
       `target = a fighter's name, or nearest | weakest | strongest | leader. ` +
       `stance = rush | distance | cover | item (detour for every pickup and power-up). ` +
-      `retaliate = what to do when someone who is NOT your target hits you from behind 3 times: attacker (abandon your plan and chase them for 10 s: good against one pest, bad when you were about to finish your target or when everyone is shooting at you) | turn (fight back for 3 s, then back to your plan) | ignore (glance back, stay on your plan; best when your target is nearly done). ` +
+      `retaliate = what you do when a fighter you are not chasing hits you from behind 3 times (default turn): attacker = chase that fighter for 10 s; for one rival who keeps hitting you. turn = fight back for 3 s, then resume; for hits that matter less than your target. ignore = glance back, stay on target; for a target that is almost down. ` +
+      `why = one short sentence in game terms, not in character, under 100 characters: why this plan. ` +
       `line = what you say out loud now, one short in-character sentence (under 90 characters) reacting to what happened.`,
   );
-  out.push(`Reply ONLY with JSON like {"weapons":["bat","grapple"],"target":"${names[(me + 1) % 4]}","stance":"rush","retaliate":"turn","line":"..."}`);
+  if (last) out.push(`EXAMPLES of changing a plan: ${examplesFor(x.seed ?? 0, ctx.round, me).join(" ")}`);
+  out.push(`Reply ONLY with JSON: {"weapons":[1 to 3 weapons],"target":"<name or preference>","stance":"<stance>","retaliate":"<attacker|turn|ignore>","why":"<reason>","line":"<what you say>"}`);
   return out.join("\n\n");
 }

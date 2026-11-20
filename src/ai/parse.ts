@@ -13,6 +13,8 @@ const RETALIATE: readonly Retaliate[] = ["attacker", "turn", "ignore"];
 const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", grappling: "grapple", "grappling hook": "grapple", "baseball bat": "bat", rockets: "rocket", grenades: "grenade", launcher: "rocket" };
 
 export const MAX_LINE = 120;
+/** the optional "why" (#3): one sentence in game terms */
+export const MAX_WHY = 100;
 
 /** Every balanced {...} object in the text that parses as JSON, in order. */
 export function jsonObjects(text: string): unknown[] {
@@ -50,11 +52,19 @@ export function cleanLine(v: unknown): string | null {
   return s;
 }
 
+export function cleanWhy(v: unknown): string | null {
+  const s = cleanLine(v);
+  if (!s) return null;
+  return s.length > MAX_WHY ? s.slice(0, MAX_WHY - 1).replace(/\s+\S*$/, "") + "…" : s;
+}
+
 export interface Parsed {
   strategy: Strategy | null;
   line: string | null;
   /** why the plan was rejected */
   problems: string[];
+  /** the AI's reason for its plan (optional, never makes a plan invalid) */
+  why?: string;
 }
 
 /**
@@ -102,7 +112,8 @@ export function parseAnswer(text: string, me: number, names: string[]): Parsed {
   let best: Parsed | null = null;
   for (const o of objs) {
     const v = validatePlan(o, me, names);
-    const p: Parsed = { strategy: v.strategy, line: cleanLine(o.line ?? o.say), problems: v.problems };
+    const why = cleanWhy(o.why ?? o.reason);
+    const p: Parsed = { strategy: v.strategy, line: cleanLine(o.line ?? o.say), problems: v.problems, ...(why ? { why } : {}) };
     if (p.strategy && p.line) return p;
     if (!best || (p.strategy && !best.strategy) || (p.line && !best.line)) best = p;
   }

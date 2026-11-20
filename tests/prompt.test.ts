@@ -1,11 +1,15 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { checkFactsFromStats, checkLine } from "../src/ai/factcheck";
-import { buildPrompt, whatHappenedLines } from "../src/ai/prompt";
+import { decideRound, seatsFor } from "../src/ai/decide";
+import { cleanWhy, MAX_WHY, parseAnswer } from "../src/ai/parse";
+import { buildPrompt, examplesFor, lastPlanLines, PLAN_EXAMPLES, whatHappenedLines } from "../src/ai/prompt";
+import { registerStubs } from "../src/ai/providers";
 import { exampleSouls, initPhysics, Match, ReplayDivergedError, replayMatch, StatsCollector, type RoundFacts } from "../src/sim";
 
 setDefaultTimeout(120_000);
 beforeAll(async () => {
   await initPhysics();
+  registerStubs(5);
 });
 
 const NAMES = ["Brick", "Pike", "Squeaks", "Goldie"];
@@ -84,6 +88,97 @@ describe("replays from another engine are refused", () => {
     rec.rounds[0].fight.finalHash = "deadbeef";
     expect(() => replayMatch(rec)).toThrow(ReplayDivergedError);
     expect(() => replayMatch(rec)).toThrow(/older engine/);
+  });
+});
+
+describe("YOUR LAST PLAN (#3)", () => {
+  const plan = { target: "weakest" as const, stance: "distance" as const, weapons: ["bat" as const, "shotgun" as const], retaliate: "turn" as const, line: "" };
+  function planStats() {
+    const c = new StatsCollector();
+    c.pickup(0, "bat", 120);
+    c.pickup(0, "health", 300);
+    for (let t = 0; t < 8; t++) c.hit(0, 2, 5, "bat", 2, false, 400 + t * 40); // 40 bat damage to Squeaks
+    c.hit(0, 2, 10, "rocket", 9, false, 900); // and 10 with a rocket
+    for (let t = 0; t < 3; t++) c.hit(1, 0, 6, "rocket", 12, true, 1200 + t * 50);
+    // 31 s chasing Squeaks at 9 m
+    for (let t = 0; t < 62; t++) c.sample([{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 9, y: 0 }, { x: -30, y: 0 }], [2, 0, 1, 1]);
+    return c.finish([{ victim: 0, by: 1, weapon: "rocket", cause: "hp", tick: 3000 }], NAMES, [[{ tick: 1300, attacker: 1, mode: "fight" }, { tick: 1500, attacker: 1, mode: "fight" }, { tick: 2000, attacker: 3, mode: "fight" }], [], [], []]);
+  }
+
+  test("one fact for each field of the plan", () => {
+    expect(lastPlanLines(plan, planStats(), 0, NAMES)).toEqual([
+      "target: weakest: you chased Squeaks most (31 s) and did 50 damage to Squeaks.",
+      "weapons: bat > shotgun: you got the bat at 2 s; you never got the shotgun; 80% of your damage was bat.",
+      "retaliate: turn: the reflex fired 3 times: 2 against Pike, 1 against Goldie; Pike then knocked you out.",
+      "stance: distance: average distance to your target was 9 m.",
+    ]);
+    const quiet = lastPlanLines({ ...plan, target: "grudge", grudge: 3, weapons: ["grenade"] }, new StatsCollector().finish([], NAMES), 0, NAMES);
+    expect(quiet).toEqual(["target: Goldie: you chased nobody for long.", "weapons: grenade: you never got the grenade; you did no damage.", "retaliate: turn: the reflex never fired.", "stance: distance: you had no target to measure."]);
+  });
+
+  test("the block is in rounds 2 and 3, the line bank stays out, and prompts stay under 6k characters", () => {
+    let longest = 0;
+    let checked = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const m = new Match(seed);
+      const souls = m.souls;
+      for (let r = 1; !m.over; r++) {
+        const prev = m.record.rounds[m.record.rounds.length - 1];
+        for (let i = 0; i < 4; i++) {
+          const p = buildPrompt(souls[i]!, m.contextFor(i), { level: m.level, lastLines: prev?.lines ?? null, lastHealth: null, myLines: m.record.rounds.map((x) => x.lines[i]!), lastPlans: prev?.strategies ?? null, seed });
+          if (r > 1) {
+            expect(p).toContain(`YOUR LAST PLAN AND HOW IT WENT: ${lastPlanLines(prev!.strategies[i]!, m.facts[r - 2]!.stats, i, m.names).join(" ")}`);
+            expect(p).toContain("EXAMPLES of changing a plan:");
+            checked++;
+          } else expect(p).not.toContain("YOUR LAST PLAN");
+          expect(p).not.toContain("## Lines");
+          const spoken = new Set(m.record.rounds.flatMap((x) => x.lines));
+          for (const l of souls[i]!.lines) if (!spoken.has(l[2])) expect(p).not.toContain(l[2]); // only lines actually said appear (as quotes)
+          expect(p).toContain('"why"');
+          expect(p).toContain("Change your weapons if last round's pickups or knockouts say so.");
+          longest = Math.max(longest, p.length);
+        }
+        m.playRound();
+      }
+    }
+    expect(checked).toBeGreaterThan(30);
+    expect(longest).toBeLessThan(6000);
+  });
+
+  test("examples rotate by seed, round and seat (2 per prompt), and the retaliate text names no trap", () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 8; seed++) for (const e of examplesFor(seed, 2, 0)) seen.add(e);
+    expect(seen.size).toBe(PLAN_EXAMPLES.length);
+    expect(examplesFor(5, 2, 1)).not.toEqual(examplesFor(5, 2, 2));
+    const m = new Match(3);
+    const p = buildPrompt(m.souls[0]!, m.contextFor(0), { level: m.level, lastLines: null, lastHealth: null });
+    expect((p.match(/default/gi) ?? []).length).toBe(1);
+    expect(p).not.toMatch(/abandon your plan|bad when/);
+    expect(p).not.toMatch(/"retaliate":"(attacker|turn|ignore)"/); // no anchoring example answer
+  });
+});
+
+describe("why (#3)", () => {
+  test("parsed and validated; optional; never makes a plan invalid", () => {
+    const base = '"weapons":["rocket"],"target":"nearest","stance":"rush","line":"Go!"';
+    expect(parseAnswer(`{${base},"why":"Pike knocked me out with rockets, so I want one too"}`, 0, NAMES).why).toBe("Pike knocked me out with rockets, so I want one too");
+    const none = parseAnswer(`{${base}}`, 0, NAMES);
+    expect(none.strategy).not.toBeNull();
+    expect(none.why).toBeUndefined();
+    const bad = parseAnswer(`{${base},"why":42}`, 0, NAMES);
+    expect(bad.strategy).not.toBeNull();
+    expect(bad.why).toBeUndefined();
+    expect(cleanWhy("x ".repeat(200))!.length).toBeLessThanOrEqual(MAX_WHY);
+  });
+
+  test("kept in the decision meta, the match record and the prompts file (raw answer)", async () => {
+    const m = new Match(4);
+    const ask = await decideRound(m, seatsFor(["stub", "house", "house", "house"], m.souls), 400);
+    expect(ask.meta[0]!.why).toBe("stub plan: rush the weakest with rocket and bat");
+    expect(ask.raw[0]).toContain('"why"');
+    m.prepareRound(ask.decisions, ask.meta);
+    expect(JSON.parse(JSON.stringify(m.record)).rounds[0].meta[0].why).toBe("stub plan: rush the weakest with rocket and bat");
+    expect(ask.meta[1]!.why).toBeUndefined();
   });
 });
 
