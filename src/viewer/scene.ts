@@ -12,6 +12,7 @@ import { SceneEffects } from "./scene-effects";
 import { FighterViews } from "./scene-fighters";
 import { ProjectileViews } from "./scene-projectiles";
 import { PropViews } from "./scene-props";
+import { ChainView } from "./chains";
 import { TerrainView } from "./terrainview";
 
 export type { CamMode } from "./scene-camera";
@@ -32,6 +33,8 @@ export class Scene {
   private hills = new Graphics();
   private world = new Container();
   private terrainView: TerrainView | null = null;
+  private chainView: ChainView | null = null;
+  private readonly chainLayer = new Container();
   /** the camera of the last rendered frame (capture-mode screenshot scripts read it) */
   lastFrame: CameraFrame | null = null;
   private terrainLayer = new Container();
@@ -50,7 +53,7 @@ export class Scene {
 
   constructor(private readonly app: Application) {
     app.stage.addChild(this.sky, this.hills, this.world, this.overlay, this.effects.flashScreen);
-    this.world.addChild(this.abyss, this.zoneG, this.terrainLayer, this.effects.back, this.props.layer, this.props.marks, this.fighters.layer, this.projectiles.graphics, this.effects.front);
+    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.props.marks, this.fighters.layer, this.projectiles.graphics, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
   }
 
@@ -88,6 +91,9 @@ export class Scene {
     if (this.terrainView) this.terrainView.container.destroy({ children: true });
     this.terrainView = new TerrainView(sim.grid, this.pal);
     this.terrainLayer.addChild(this.terrainView.container);
+    this.chainView?.destroy();
+    this.chainView = new ChainView(sim.grid);
+    this.chainLayer.addChild(this.chainView.container);
     this.terrainView.update();
     this.drawTerrain();
     this.fighters.load(sim);
@@ -205,6 +211,7 @@ export class Scene {
 
     const frame = this.camera.render(sim, this.world, W, H, dt, alpha, this.xform);
     this.lastFrame = frame;
+    this.chainView?.update(frame, W, H);
     this.drawSky();
     this.drawZone();
     const projectiles = this.projectiles.graphics;

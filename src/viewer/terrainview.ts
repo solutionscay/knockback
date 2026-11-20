@@ -129,11 +129,10 @@ export class TerrainView {
         for (let a = 1; a <= 4 && g.solid(cx, cy + a); a++) above++;
         drawCell(gr, this.pal, g.wx(cx), g.wy(cy), m, crackStage(g.hp[i]!, m), !g.solid(cx, cy + 1), !g.solid(cx, cy - 1), above >= 4, g.flags[i]!, cx, cy);
         if (g.flags[i]! & F_ANCHOR) {
-          // anchor bolt + chain going up out of view
+          // anchor bolt; the chain above it is drawn by ChainView (chains.ts) up to the top of the view
           const x = g.wx(cx) + CELL / 2;
           const y = -(g.wy(cy) + CELL);
           gr.circle(x, y + CELL / 2, 0.09).fill(0x2a2a30).stroke({ width: 0.03, color: 0xb0b0b8 });
-          for (let yy = y; yy > -26; yy -= 0.32) gr.roundRect(x - 0.05, yy - 0.26, 0.1, 0.22, 0.05).stroke({ width: 0.035, color: 0x8a8a96, alpha: 0.8 });
         }
       }
     }
