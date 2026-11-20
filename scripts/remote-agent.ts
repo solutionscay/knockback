@@ -22,7 +22,7 @@
  * "checkin" with the fight status; the agent answers with POST /checkin.
  * random: a random stance or target change half the time, else keep; fixed:
  * take cover below 40 health, else keep; cli: the check-in prompt goes to the
- * command; silent: no answer (the plan stays).
+ * command; silent: no answer (the check-in stays open until the round ends; the plan stays).
  */
 import { readFileSync } from "node:fs";
 import { Rng } from "../src/sim/rng";
@@ -159,8 +159,8 @@ for (;;) {
   }
   if (t.status === "checkin") {
     if (mode === "silent") {
-      // the check-in stays open (and GET /turn keeps returning it) until its deadline: wait it out
-      await Bun.sleep(t.msLeft + 100);
+      // the check-in waits for an answer (GET /turn keeps returning it) until the round ends: look again in a while
+      await Bun.sleep(Math.min(2000, t.msLeft + 100));
       continue;
     }
     const c = await call("POST", `/api/matches/${matchId}/checkin?${q}`, await checkinAnswer(t), key);
