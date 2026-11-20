@@ -281,7 +281,9 @@ export type SimEvent =
   /** a platform lost its last chain and falls */
   | { type: "platformFall"; tick: number; entity: number; x: number; y: number; by: number }
   /** a plan rule started or stopped (#6); subject = the fighter that made it true, or -1 */
-  | { type: "rule"; tick: number; fighter: number; rule: number; on: boolean; subject: number };
+  | { type: "rule"; tick: number; fighter: number; rule: number; on: boolean; subject: number }
+  /** a mid-round plan update took effect (#8): the fighter plays its new plan from this tick */
+  | { type: "plan"; tick: number; fighter: number };
 
 /**
  * How a seat looks: its generated identity (identity.ts). Purely visual: all

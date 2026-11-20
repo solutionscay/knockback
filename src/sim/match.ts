@@ -13,7 +13,7 @@
  * takes the match. Winner takes all.
  */
 import { checkRecordEngine, ENGINE_VERSION } from "./engine-version";
-import { Fight, type FightRecord, type FightResult } from "./fight";
+import { Fight, type FightRecord, type FightResult, type PlanUpdate } from "./fight";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
@@ -46,16 +46,26 @@ export interface DecisionMeta {
   hedged?: boolean;
 }
 
-/**
- * A plan update during a round (#10; check-ins, #8/#9). For now the viewer
- * shows them (thought bubble, HUD plan chip) and the engine does not apply
- * them yet: only stub records carry them until #8 lands.
- */
-export interface PlanUpdate {
+/** A plan update during a round (#8): applied by the engine at its tick (fight.ts), shown by the viewer (#10). */
+export type { PlanUpdate };
+
+/** One fighter's mid-round check-in (#9) and how it went: logged in the round record, never replayed. */
+export interface CheckinMeta {
+  /** the check-in tick (the fight paused for nobody: the answer applies later) */
   tick: number;
   fighter: number;
-  strategy: Strategy;
-  line?: string;
+  provider: string;
+  /** answer time (wall clock) */
+  ms: number;
+  outcome: "update" | "keep" | "missed" | "invalid" | "error" | "late" | "autopilot";
+  /** the tick the update applies at (outcome "update") */
+  applyTick?: number;
+  /** the plan fields that changed */
+  changed?: string[];
+  detail?: string;
+  /** prompt and answer size in characters (cost: about 4 characters a token) */
+  promptChars?: number;
+  answerChars?: number;
 }
 
 export interface RoundRecord {
@@ -63,8 +73,10 @@ export interface RoundRecord {
   /** provider/timing per fighter, when decisions came from outside (AI) */
   meta?: DecisionMeta[];
   phase: "intro" | "between";
-  /** mid-round plan updates (stub until #8/#9) */
+  /** mid-round plan updates (#8), sorted by tick then fighter; the engine applies them at their ticks */
   planUpdates?: PlanUpdate[];
+  /** every mid-round check-in and its outcome (#9; log only) */
+  checkins?: CheckinMeta[];
   strategies: Strategy[];
   lines: string[];
   fight: FightRecord;
@@ -216,10 +228,13 @@ export class Match {
     this.decisions = decisions;
     const ps = physicsSeed(this.seed, this.round);
     this.moraleAtStart.push(this.morale.map((m) => ({ ...m })));
+    // a replay applies the record's mid-round plan updates at their ticks (#8)
+    const updates = rec ? (rec.planUpdates ?? rec.fight?.updates ?? []) : [];
     this.fight = new Fight(
       ps,
       decisions.map((d) => d.strategy),
       { level: this.level, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities },
+      updates,
     );
     this.fight.onEvent = (e) => this.onEvent?.(e);
     this.record.rounds.push({
@@ -230,8 +245,9 @@ export class Match {
       fight: this.fight.record,
       winner: -1,
       ...(meta ? { meta: meta.map((m) => ({ ...m })) } : {}),
-      // a replay keeps the record's mid-round plan updates (#10; stub until #8/#9)
-      ...(rec?.planUpdates?.length ? { planUpdates: rec.planUpdates.map((u) => ({ ...u, strategy: { ...u.strategy } })) } : {}),
+      // the fight's own sorted list: updates added later (addUpdate) show up here too
+      ...(this.fight.planUpdates.length ? { planUpdates: this.fight.planUpdates as PlanUpdate[] } : {}),
+      ...(rec?.checkins?.length ? { checkins: rec.checkins.map((c) => ({ ...c })) } : {}),
     });
     this.phase = "fighting";
     return decisions;
@@ -241,6 +257,29 @@ export class Match {
   step(): boolean {
     if (!this.fight || this.phase !== "fighting") return true;
     return this.fight.step();
+  }
+
+  /**
+   * Run the current round until its sim reaches `tick` (or the round ends).
+   * True once the round is over. With addUpdate this lets the check-in loop
+   * stop the sim at a check-in tick and go on later (#8).
+   */
+  stepUntil(tick: number): boolean {
+    const f = this.fight;
+    if (!f || this.phase !== "fighting") return true;
+    while (!f.over && f.sim.tick < tick) f.step();
+    return f.over;
+  }
+
+  /**
+   * Add a plan update to the current round: it applies at its tick and is
+   * saved in the round record (sorted). A tick that has passed is an error.
+   */
+  addUpdate(u: PlanUpdate) {
+    const f = this.fight;
+    if (!f || this.phase !== "fighting") throw new Error("no round is being fought");
+    f.addUpdate(u);
+    this.record.rounds[this.round - 1]!.planUpdates = f.planUpdates as PlanUpdate[];
   }
 
   /** Close the round: facts, wins, morale, match result. */

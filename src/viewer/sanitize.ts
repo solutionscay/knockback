@@ -104,7 +104,28 @@ export function sanitizeSouls(v: unknown): Soul[] | undefined {
   return Array.isArray(v) && v.length === 4 ? v.map((s, i) => sanitizeSoul(s, i)) : undefined;
 }
 
-/** Mid-round plan updates from a record (#10): tick, fighter, a sanitized plan and line; at most 64, in tick order. */
+/** Mid-round plan updates from a record or the live stream (#8, #10): tick, fighter, a sanitized plan, line and why; at most 64, in tick order. */
+export function sanitizePlanUpdate(v: unknown): PlanUpdate | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const fighter = Number(o.fighter);
+  const tick = Number(o.tick);
+  if (!Number.isInteger(fighter) || fighter < 0 || fighter > 3 || !Number.isInteger(tick) || tick < 0 || tick > 100000) return null;
+  return sanitizeOneUpdate(o, tick, fighter);
+}
+
+function sanitizeOneUpdate(o: Record<string, unknown>, tick: number, fighter: number): PlanUpdate {
+  const d = sanitizeDecision({ line: o.line, strategy: o.strategy }, fighter);
+  return {
+    tick,
+    fighter,
+    strategy: d.strategy,
+    ...(typeof o.line === "string" && d.line ? { line: d.line.slice(0, 120) } : {}),
+    ...(typeof o.why === "string" && o.why.trim() ? { why: o.why.trim().slice(0, 100) } : {}),
+    ...(o.source === "checkin" ? { source: "checkin" as const } : {}),
+  };
+}
+
 export function sanitizePlanUpdates(v: unknown): PlanUpdate[] {
   if (!Array.isArray(v)) return [];
   const out: PlanUpdate[] = [];
@@ -115,7 +136,7 @@ export function sanitizePlanUpdates(v: unknown): PlanUpdate[] {
     const tick = Number(o.tick);
     if (!Number.isInteger(fighter) || fighter < 0 || fighter > 3 || !Number.isInteger(tick) || tick < 0 || tick > 100000) continue;
     const d = sanitizeDecision({ line: o.line, strategy: o.strategy }, fighter);
-    out.push({ tick, fighter, strategy: d.strategy, ...(d.line ? { line: d.line.slice(0, 120) } : {}) });
+    out.push(sanitizeOneUpdate(o, tick, fighter));
   }
   return out.sort((a, b) => a.tick - b.tick || a.fighter - b.fighter);
 }
@@ -138,7 +159,9 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
       const ds = [0, 1, 2, 3].map((i) => sanitizeDecision({ line: rd.lines?.[i], strategy: rd.strategies?.[i] }, i));
       const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(m?.hedged === true ? { hedged: true } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
       const planUpdates = sanitizePlanUpdates((rd as { planUpdates?: unknown }).planUpdates);
-      return { ...rd, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}), ...(planUpdates.length ? { planUpdates } : { planUpdates: undefined }) };
+      // the engine replays planUpdates; the fight's own copy of them is not trusted (and not needed)
+      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: undefined } : rd.fight;
+      return { ...rd, fight, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}), ...(planUpdates.length ? { planUpdates } : { planUpdates: undefined }) };
     }),
   };
 }

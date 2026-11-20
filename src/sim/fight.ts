@@ -4,7 +4,11 @@
  * forces contact. Ends with one fighter left, or at time-out.
  * (match.ts runs best of 3 of these.)
  *
- * A FightRecord (seed + strategies) replays to the same state hash.
+ * A FightRecord (seed + strategies + plan updates) replays to the same state hash.
+ *
+ * Plan updates (#8, mid-round check-ins #9): a fighter's plan can change at a
+ * given tick. The update list is part of the record, so a replay applies the
+ * same plans at the same ticks and needs no AI.
  */
 import { neutralStrategy } from "./bots";
 import { FIGHT_TICKS, FINISH_TICKS, TICK_RATE } from "./constants";
@@ -26,12 +30,32 @@ export interface FightOptions {
   looks?: Look[];
 }
 
+/**
+ * A plan change during a round (#8): from `tick` on, `fighter` plays `strategy`
+ * (a whole plan, not a diff). Applied at the start of that tick's step, after
+ * `tick` ticks have run, in fighter order when several share a tick.
+ */
+export interface PlanUpdate {
+  tick: number;
+  fighter: number;
+  strategy: Strategy;
+  /** what the fighter says with the change (shown as a thought bubble) */
+  line?: string;
+  /** the AI's short reason, in game terms (logs and reports) */
+  why?: string;
+  /** where it came from: a mid-round check-in (#9) */
+  source?: "checkin";
+}
+
 export interface FightRecord {
-  version: 4;
+  /** 5: carries plan updates (`updates`); 4: none. Both replay. */
+  version: 4 | 5;
   /** The seed makes the level too (levelgen.ts); theme/attempt are informational. */
   seed: number;
   level: { theme: string; attempt: number; width: number };
   strategies: Strategy[];
+  /** mid-round plan updates, sorted by tick then fighter (version 5) */
+  updates?: PlanUpdate[];
   /** State hash every CHECKPOINT_TICKS, for pinpointing a divergence. */
   checkpoints: string[];
   finalHash: string;
@@ -39,6 +63,16 @@ export interface FightRecord {
 }
 
 export const CHECKPOINT_TICKS = 10 * TICK_RATE;
+
+/**
+ * A plan as the hash sees it: only what changes play (no line, no rule
+ * labels), keys sorted, so a plan that went through the viewer's sanitizer
+ * hashes like the server's.
+ */
+export function planKey(s: Strategy): string {
+  const sorted = (o: object) => Object.fromEntries(Object.entries(o).filter(([k, v]) => k !== "label" && v !== undefined).sort(([a], [b]) => (a < b ? -1 : 1)));
+  return JSON.stringify([s.target, s.grudge ?? -1, s.stance, s.weapons ?? [], s.retaliate ?? "turn", (s.rules ?? []).map(sorted)]);
+}
 
 export interface FightResult {
   winner: number;
@@ -68,11 +102,19 @@ export class Fight {
   readonly stats = new StatsCollector();
   /** Optional event sink (the viewer and stats use it). */
   onEvent: ((e: SimEvent) => void) | null = null;
+  /** every plan update, sorted by tick then fighter; `nextUpdate` = the first not applied yet */
+  private updates: PlanUpdate[] = [];
+  private nextUpdate = 0;
+  /** FNV-1a over the applied updates (tick, fighter, plan): mixed into the hashes once one applied */
+  private updateHash = 0;
+  /** recent hits (for the check-in status, #9): tick, attacker, victim, damage, weapon */
+  readonly hitLog: { tick: number; by: number; target: number; damage: number; weapon: string }[] = [];
 
   constructor(
     readonly seed: number,
     recorded?: Strategy[],
     readonly opts: FightOptions = {},
+    updates: readonly PlanUpdate[] = [],
   ) {
     this.sim = new Sim(seed, opts.level, opts.looks ?? SEAT_LOOKS);
     const botRng = new Rng((seed ^ 0x5bd1e995) >>> 0);
@@ -87,16 +129,60 @@ export class Fight {
       c.setStrategy(this.strategies[i]!, this.sim);
     }
     this.record = { version: 4, seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), checkpoints: [], finalHash: "", ticks: 0 };
+    for (const u of updates) this.addUpdate(u);
+  }
+
+  /** The plan updates of this fight, in the order they apply. */
+  get planUpdates(): readonly PlanUpdate[] {
+    return this.updates;
+  }
+
+  /**
+   * Schedule a plan update. Its tick must not have passed (a tick equal to
+   * the current one applies at the next step). Kept sorted by tick, then
+   * fighter; updates with the same tick and fighter apply in the order added.
+   */
+  addUpdate(u: PlanUpdate) {
+    if (!Number.isInteger(u.tick) || u.tick < this.sim.tick) throw new Error(`plan update at tick ${u.tick}: the fight is already at tick ${this.sim.tick}`);
+    if (!Number.isInteger(u.fighter) || u.fighter < 0 || u.fighter >= this.controllers.length) throw new Error(`plan update for fighter ${u.fighter}: no such fighter`);
+    const copy: PlanUpdate = { ...u, strategy: { ...u.strategy, weapons: (u.strategy.weapons ?? []).slice(), ...(u.strategy.rules ? { rules: u.strategy.rules.map((r) => ({ ...r })) } : {}) } };
+    let i = this.updates.length;
+    while (i > this.nextUpdate && (this.updates[i - 1]!.tick > u.tick || (this.updates[i - 1]!.tick === u.tick && this.updates[i - 1]!.fighter > u.fighter))) i--;
+    this.updates.splice(i, 0, copy);
+    this.record.version = 5;
+    this.record.updates = this.updates;
+  }
+
+  private applyUpdates() {
+    const sim = this.sim;
+    while (this.nextUpdate < this.updates.length && this.updates[this.nextUpdate]!.tick <= sim.tick) {
+      const u = this.updates[this.nextUpdate++]!;
+      this.controllers[u.fighter]!.setStrategy(u.strategy, sim);
+      let h = this.updateHash || 0x811c9dc5;
+      for (const ch of `${u.tick}:${u.fighter}:${planKey(u.strategy)};`) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+      this.updateHash = h || 1;
+      this.onEvent?.({ type: "plan", tick: u.tick, fighter: u.fighter });
+    }
+  }
+
+  /** The state hash: the sim's, plus the applied plan updates once there are any (no updates: exactly the sim's). */
+  hash(): string {
+    const h = this.sim.hash();
+    if (!this.updateHash) return h;
+    let x = this.updateHash;
+    for (const ch of h) x = Math.imul(x ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    return x.toString(16).padStart(8, "0");
   }
 
   /** One physics tick of the fight. Returns true once the fight is over. */
   step(): boolean {
     if (this.over) return true;
     const sim = this.sim;
+    if (this.nextUpdate < this.updates.length) this.applyUpdates();
     const inputs = this.controllers.map((c) => c.think(sim));
     sim.step(inputs);
     this.drain();
-    if (sim.tick % CHECKPOINT_TICKS === 0) this.record.checkpoints.push(sim.hash());
+    if (sim.tick % CHECKPOINT_TICKS === 0) this.record.checkpoints.push(this.hash());
     if (sim.tick % SAMPLE_TICKS === 0)
       this.stats.sample(
         sim.fighters.map((f) => (f.alive && !f.removed ? sim.pos(f) : null)),
@@ -107,7 +193,7 @@ export class Fight {
     if (this.finishLeft === 0 || sim.tick >= FIGHT_TICKS) {
       this.over = true;
       this.record.ticks = sim.tick;
-      this.record.finalHash = sim.hash();
+      this.record.finalHash = this.hash();
     }
     return this.over;
   }
@@ -140,6 +226,7 @@ export class Fight {
             const behind = v.facing * (ap.x - vp.x) < 0;
             const dist = Math.sqrt((ap.x - vp.x) * (ap.x - vp.x) + (ap.y - vp.y) * (ap.y - vp.y));
             this.stats.hit(e.source, e.target, e.damage, e.cause, dist, behind, e.tick);
+            this.hitLog.push({ tick: e.tick, by: e.source, target: e.target, damage: e.damage, weapon: e.cause });
             this.controllers[e.target]!.onHit(e.source, behind, e.damage, e.tick);
             this.controllers[e.source]!.onDealt(e.tick);
           }
@@ -231,9 +318,9 @@ export class Fight {
   }
 }
 
-/** Replay a record from its seed and strategies. */
+/** Replay a record from its seed, strategies and plan updates. */
 export function replayFight(record: FightRecord): { finalHash: string; checkpoints: string[]; match: Fight } {
-  const m = new Fight(record.seed, record.strategies);
+  const m = new Fight(record.seed, record.strategies, {}, record.updates ?? []);
   m.playToEnd();
   return { finalHash: m.record.finalHash, checkpoints: m.record.checkpoints, match: m };
 }
