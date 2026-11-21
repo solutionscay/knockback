@@ -8,12 +8,15 @@
  * server's /picks answers and the stream's picks events.
  */
 import type { Beat } from "../flow/beats";
+import { modelBadgeHtml } from "./model-badge";
 
 interface Fighter {
   seat: number;
   name: string;
   color: number;
   label: string;
+  /** the model label the badge reads (modelOf); null for an open seat */
+  model: string | null;
   line: string | null;
   svg: string;
 }
@@ -43,7 +46,7 @@ export function sanitizeView(raw: unknown): View | null {
   const fighters = o.fighters.map((f, i) => {
     const x = (f ?? {}) as Record<string, unknown>;
     const svg = typeof x.svg === "string" && x.svg.startsWith("<svg") && !/<script|on\w+=/i.test(x.svg) ? x.svg : "";
-    return { seat: i, name: String(x.name ?? `Fighter ${i + 1}`).slice(0, 24), color: Number(x.color) || 0x9aa4bd, label: String(x.label ?? "").slice(0, 40), line: typeof x.line === "string" ? x.line.slice(0, 140) : null, svg };
+    return { seat: i, name: String(x.name ?? `Fighter ${i + 1}`).slice(0, 24), color: Number(x.color) || 0x9aa4bd, label: String(x.label ?? "").slice(0, 40), model: typeof x.model === "string" ? x.model.slice(0, 120) : null, line: typeof x.line === "string" ? x.line.slice(0, 140) : null, svg };
   });
   const w = seat(o.winner);
   return {
@@ -186,7 +189,7 @@ export class PickPanel {
       const cards = v.fighters
         .map((f) => {
           const mine = v.yours === f.seat;
-          return `<div class="pcard${mine ? " mine" : ""}" style="--c:${hex(f.color)}">${mine ? `<span class="badge">YOUR PICK</span>` : ""}<div class="pp">${f.svg}</div><div class="pn">${esc(f.name)}</div><div class="pl">${esc(f.label)}</div><div class="pq">${f.line ? `“${esc(f.line)}”` : ""}</div><button type="button" data-pick="${f.seat}">${mine ? "✓ PICKED" : `PICK ${esc(f.name.toUpperCase())}`}</button><div class="ppct">${pct(v.counts[f.seat]!, v.total)}%</div></div>`;
+          return `<div class="pcard${mine ? " mine" : ""}" style="--c:${hex(f.color)}">${mine ? `<span class="badge">YOUR PICK</span>` : ""}<div class="pp">${f.svg}</div><div class="pn">${esc(f.name)}</div><div class="pm">${f.model !== null ? modelBadgeHtml(f.model, "sm") : ""}${f.label && f.label !== "house bot" ? `<span class="pl">${esc(f.label)}</span>` : ""}</div><div class="pq">${f.line ? `“${esc(f.line)}”` : ""}</div><button type="button" data-pick="${f.seat}">${mine ? "✓ PICKED" : `PICK ${esc(f.name.toUpperCase())}`}</button><div class="ppct">${pct(v.counts[f.seat]!, v.total)}%</div></div>`;
         })
         .join("");
       this.panel.innerHTML = `<div class="ptitle">Who wins? Tap a bot.</div><div class="pcards">${cards}</div><div class="pbar">${this.barHtml()}<div class="pcount"><b data-count></b><span>UNTIL PICKS LOCK</span></div></div><div class="pnote">The bots never see your pick.</div>`;

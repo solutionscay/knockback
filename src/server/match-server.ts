@@ -401,6 +401,13 @@ export class ServerMatch {
   }
 
   /** The 4 fighters as spectators see them on the pick cards: name, look, who plays it, the opening line. */
+  /** Who plays a seat, as a model label (for the model badge): from the runner's label once running, from the join before. */
+  modelLabel(i: number): string | null {
+    const k = this.kinds[i]!;
+    const a = this.agents[i];
+    return this.runner?.labels[i] ?? (a ? remoteLabel(a.name, a.model) : k === "remote" ? null : k === "house" ? "house" : (PROVIDERS[k]?.label ?? k));
+  }
+
   pickFighters() {
     const souls = this.souls();
     const ids = this.runner?.match.identities ?? assignIdentities(this.seed, this.agents.map((a) => a?.look ?? undefined));
@@ -409,7 +416,8 @@ export class ServerMatch {
       const id = ids[i]!;
       const line = a?.openingLine ?? soulOpeningLine(souls[i]!.lines, souls[i]!.catchphrase || undefined, id.name, this.seed + i);
       const label = a ? `agent · ${a.name}` : k === "remote" && this.status === "open" ? "open seat" : k === "remote" || k === "house" ? "house bot" : k;
-      return { seat: i, name: id.name, color: id.color, look: id, label, line, svg: portraitSvg(id, "fist", "fight", "full") };
+      // model: the label the model badge reads (modelOf), null for an open seat
+      return { seat: i, name: id.name, color: id.color, look: id, label, model: this.modelLabel(i), line, svg: portraitSvg(id, "fist", "fight", "full") };
     });
   }
 
@@ -690,7 +698,7 @@ export class ServerMatch {
           fighter: r?.names[i] ?? null,
           label: r?.labels[i] ?? null,
           // who plays it, for the model badge: from the label once running, from the join before
-          model: seatModel(r?.labels[i] ?? (a ? remoteLabel(a.name, a.model) : k === "remote" ? null : k === "house" ? "house" : (PROVIDERS[k]?.label ?? k))),
+          model: seatModel(this.modelLabel(i)),
         };
       }),
       round: r ? r.match.round : 0,

@@ -1164,7 +1164,7 @@ body.embed #new {
   transform: translateX(-50%);
   width: min(96vw, 150vh);
   padding: 1.6vh 1.8vh 1.2vh;
-  border-radius: 1.4vh;
+  border-radius: 3px;
   background: #0b0d14e6;
   box-shadow: 0 1vh 4vh #0008;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -1190,7 +1190,7 @@ body.embed #new {
   flex-direction: column;
   gap: 0.6vh;
   padding: 1.2vh;
-  border-radius: 1vh;
+  border-radius: 3px;
   background: radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--c) 28%, transparent), #10131c 62%);
   border: 0.3vh solid transparent;
 }
@@ -1202,7 +1202,7 @@ body.embed #new {
   top: 1vh;
   left: 1vh;
   padding: 0.3vh 0.8vh;
-  border-radius: 0.5vh;
+  border-radius: 3px;
   background: var(--c);
   color: #0b0d14;
   font-size: 1.3vh;
@@ -1224,10 +1224,16 @@ body.embed #new {
   font-weight: 900;
   line-height: 1;
 }
+#picks-panel .pm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6vh;
+  min-height: 2.6vh;
+}
 #picks-panel .pl {
-  align-self: flex-start;
   padding: 0.2vh 0.8vh;
-  border-radius: 0.5vh;
+  border-radius: 3px;
   background: #1c2130;
   color: #d5daea;
   font-size: 1.4vh;
@@ -1240,9 +1246,10 @@ body.embed #new {
   line-height: 1.35;
 }
 #picks-panel button {
+  margin-top: auto; /* the buttons line up whatever the card holds */
   min-height: 5vh;
   border: 0;
-  border-radius: 0.8vh;
+  border-radius: 3px;
   background: #1c2130;
   color: #e6e9f2;
   font: 800 1.8vh system-ui, sans-serif;
@@ -1276,7 +1283,7 @@ body.embed #new {
   display: flex;
   gap: 0.25vh;
   height: 1.6vh;
-  border-radius: 0.4vh;
+  border-radius: 3px;
   overflow: hidden;
 }
 #picks-panel .pseg i,
@@ -1302,7 +1309,7 @@ body.embed #new {
   width: 1.1vh;
   height: 1.1vh;
   margin-right: 0.5vh;
-  border-radius: 0.2vh;
+  border-radius: 2px;
   background: var(--c);
 }
 #picks-panel .plegend span.me {
@@ -1350,7 +1357,7 @@ body.embed #new {
   transform: translateX(-50%);
   width: min(38vw, 52vh);
   padding: 0.6vh 1vh 0.8vh;
-  border-radius: 0.8vh;
+  border-radius: 3px;
   background: #0b0d14c0;
   font: 600 1.4vh system-ui, sans-serif;
   color: #c9cfdf;
@@ -1374,7 +1381,7 @@ body.embed #new {
   left: 50%;
   transform: translateX(-50%);
   padding: 1vh 2.4vh;
-  border-radius: 1vh;
+  border-radius: 3px;
   background: #0b0d14e0;
   color: #e6e9f2;
   font: 700 2.4vh system-ui, sans-serif;
@@ -1392,7 +1399,7 @@ body.embed #new {
   bottom: 6vh;
   width: 40vw;
   padding: 1.6vh 2vh;
-  border-radius: 1.2vh;
+  border-radius: 3px;
   background: #0b0d14e0;
   font-family: system-ui, sans-serif;
   color: #e6e9f2;
@@ -1433,14 +1440,14 @@ body.embed #new {
 #celebrate .crowd .cb {
   position: relative;
   height: 2.2vh;
-  border-radius: 0.4vh;
+  border-radius: 3px;
   background: #1c2130;
 }
 #celebrate .crowd .cb span {
   position: absolute;
   inset: 0 auto 0 0;
   width: var(--w);
-  border-radius: 0.4vh;
+  border-radius: 3px;
   background: var(--c);
 }
 #celebrate .crowd .crow.won .cb {
@@ -1461,7 +1468,7 @@ body.embed #new {
 #celebrate .crowd .you {
   margin-top: 1.2vh;
   padding: 1.2vh 1.6vh;
-  border-radius: 0.9vh;
+  border-radius: 3px;
   background: #1c2130;
 }
 #celebrate .crowd .you.yes {
