@@ -1,23 +1,22 @@
 /**
  * HTTP for the matchmaker's queue (#22) and the JOIN panel's backend (#42):
  *
- *   GET    /api/queue                 who is waiting (names), seats needed, when house bots fill
+ *   GET    /api/queue                 who is waiting (name, owner, soul line), seats needed, when house bots fill (if the server fills)
  *   GET    /api/queue?name=X          ... plus X's place in the queue
- *   POST   /api/queue                 { name, persona, look?, model?, line?, ruleset? } -> { ticket, position, ... }
+ *   POST   /api/queue                 (owner key) { name, model, soul, look?, line?, ruleset? } -> { ticket, position, ... }
  *   GET    /api/queue/:ticket?wait=25 long poll: { status: queued, position } or { status: seated, match, seat, token }
  *   DELETE /api/queue/:ticket         leave the queue
- *   GET    /api/join?name=&persona=&owner=   per-client commands (Claude Code, Codex, Grok, JSON / HTTP) with this
- *                                     server's public URL, a ready first prompt, and the queue (X's place with ?name)
+ *   GET    /api/join                  the server's public URL and MCP URL, and the queue (the JOIN panel builds the
+ *                                     per-client MCP config with the owner's key)
  *
  * The ticket is the agent's secret until it is seated; the seat token then works as with POST /api/matches/:id/join.
  */
-import { joinSnippet, type JoinTab } from "../site/data";
+import { keyOf } from "./keys";
 import { HttpError, json, MAX_BODY, readJson } from "./limits";
 import type { MatchServer } from "./match-server";
 import type { Matchmaker } from "./matchmaker";
 
 const WAIT_MAX_S = 25;
-const TABS: JoinTab[] = ["claude", "codex", "grok", "json"];
 
 /** The server's public base URL: the configured one, else the request's origin (honouring a proxy's https). */
 export function publicBase(req: Request, configured?: string): string {
@@ -49,20 +48,14 @@ export async function queueRoute(server: MatchServer, req: Request, path: string
   if (path === "/api/join") {
     if (method !== "GET") throw new HttpError(405, "use GET for /api/join", undefined, { allow: "GET" });
     const base = publicBase(req, mm.opts.publicUrl);
-    const q = (k: string, max: number) => (url.searchParams.get(k) ?? "").slice(0, max);
-    const fields = { name: q("name", 24), persona: q("persona", 600), owner: q("owner", 40) };
-    const clients = Object.fromEntries(TABS.map((t) => [t, joinSnippet(t, `${base}/mcp`, fields)]));
     const summary = mm.summary();
     return json({
       publicUrl: base,
       mcp: `${base}/mcp`,
       api: `${base}/api`,
       lobby: `${base}/lobby`,
-      prompt: clients.claude!.prompt,
-      clients,
-      http: { queue: `POST ${base}/api/queue { name, persona, model?, line? } -> { ticket }`, poll: `GET ${base}/api/queue/<ticket>?wait=${WAIT_MAX_S} -> { status: seated, match, seat, token }`, play: `GET /api/matches/<match>/turn, POST /api/matches/<match>/plan (Authorization: Bearer <token>)` },
+      keys: `POST ${base}/api/keys { owner } -> { key }`,
       queue: { waiting: summary.waiting.length, needed: summary.needed, fillsInSec: summary.fillsInSec, fillAfterSec: summary.fillAfterSec, blocked: summary.blocked },
-      ...(fields.name ? { you: { name: fields.name, position: mm.position(fields.name) } } : {}),
     });
   }
 
@@ -75,7 +68,7 @@ export async function queueRoute(server: MatchServer, req: Request, path: string
     const body = await readJson(req, MAX_BODY);
     const { ruleset, ...join } = body;
     if (ruleset !== undefined && typeof ruleset !== "string") throw new HttpError(400, "ruleset: a preset name");
-    const e = await mm.enqueue(join, ip, ruleset as string | undefined);
+    const e = await mm.enqueue(join, ip, keyOf(req, url), ruleset as string | undefined);
     return json({ ticket: e.ticket, ...(e.seated ? seated(mm, e.ticket) : queued(mm, e.ticket)) }, 201);
   }
 

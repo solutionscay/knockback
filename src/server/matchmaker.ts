@@ -18,6 +18,8 @@ import { randomBytes } from "node:crypto";
 import { HttpError } from "./limits";
 import { selectRuleset, type MatchRuleset } from "./match-rulesets";
 import { checkJoin, type MatchServer, type ServerMatch } from "./match-server";
+import { claimName, hashKey, ownerOf } from "./keys";
+import { soulLine } from "./soul-guard";
 
 export interface MatchmakerOptions {
   /** an agent that waited this long gets house bots around it; null (default): agents only, no fill */
@@ -41,6 +43,14 @@ export interface MatchmakerOptions {
 export interface QueueEntry {
   ticket: string;
   name: string;
+  /** the owner of the key the agent joined with */
+  owner: string;
+  /** the owner key itself (memory only: the in-process seat join sends it) */
+  key: string;
+  /** the soul's first sentence, for the queue */
+  soulLine: string;
+  /** what checkJoin cleaned or could not keep (personal data removed, look fallbacks) */
+  warnings: string[];
   body: Record<string, unknown>;
   ip: string;
   selection: MatchRuleset;
@@ -87,19 +97,23 @@ export class Matchmaker {
   // ---------------------------------------------------------------- the queue
 
   /**
-   * Put an agent in the queue (body: name, persona, look?, model?, line?). Rejects bad input and a name that is
-   * already waiting. A match may form at once (the 4th agent, or no fill wait): `seated` says so.
+   * Put an agent in the queue (body: name, model, soul, look?, line?) with its owner key. Rejects a missing or revoked
+   * key, bad input, a name bound to another owner and a name that is already waiting. A match may form at once (the
+   * 4th agent, or no fill wait): `seated` says so.
    */
-  enqueue(body: Record<string, unknown>, ip: string, ruleset?: string): Promise<QueueEntry> {
+  enqueue(body: Record<string, unknown>, ip: string, key: string | null, ruleset?: string): Promise<QueueEntry> {
     return this.serial(async () => {
+      const owner = await ownerOf(this.api.store, key);
       const j = checkJoin(body);
-      const key = j.name.toLowerCase();
-      if (this.queue.some((e) => !e.seated && e.name.toLowerCase() === key)) throw new HttpError(409, `${j.name} is already in the queue`);
+      const lower = j.name.toLowerCase();
+      if (this.queue.some((e) => !e.seated && e.name.toLowerCase() === lower)) throw new HttpError(409, `${j.name} is already in the queue`);
+      await claimName(this.api.store, j.name, owner);
       this.api.joinLimit.take(ip, "queue joins");
+      this.api.keyLimit.take(hashKey(key!), "queue joins with this key");
       const now = Date.now();
-      const e: QueueEntry = { ticket: `qt_${randomBytes(12).toString("hex")}`, name: j.name, body, ip, selection: await selectRuleset(this.api.store, ruleset), joinedAt: now, lastSeen: now, seated: null };
+      const e: QueueEntry = { ticket: `qt_${randomBytes(12).toString("hex")}`, name: j.name, owner, key: key!, soulLine: soulLine(j.soul), warnings: j.warnings, body: { ...body, soul: j.soul }, ip, selection: await selectRuleset(this.api.store, ruleset), joinedAt: now, lastSeen: now, seated: null };
       this.queue.push(e);
-      this.api.log(`queue: ${e.name} joined (${this.waiting().length} waiting)`);
+      this.api.log(`queue: ${e.name} (owner ${owner}) joined (${this.waiting().length} waiting)`);
       await this.matchNow();
       this.changed();
       return e;
@@ -193,7 +207,7 @@ export class Matchmaker {
     const live = this.live();
     const fillsAt = this.fillsAt();
     return {
-      waiting: w.map((e, i) => ({ position: i + 1, agent: e.name, waitingSec: Math.floor((now - e.joinedAt) / 1000), ruleset: e.selection.preset })),
+      waiting: w.map((e, i) => ({ position: i + 1, agent: e.name, owner: e.owner, soulLine: e.soulLine, waitingSec: Math.floor((now - e.joinedAt) / 1000), ruleset: e.selection.preset })),
       /** agents still needed for a full match of outside agents */
       needed: Math.max(0, 4 - w.length),
       /** seconds until the oldest agent's match starts with house bots (null: nobody waiting, or agents only) */
@@ -273,7 +287,7 @@ export class Matchmaker {
 
   /** POST /api/matches/:id/join in-process, at the seat the matchmaker chose. */
   private async join(m: ServerMatch, e: QueueEntry, seat: number): Promise<string> {
-    const res = (await this.api.handle(new Request(`http://matchmaker.internal/api/matches/${m.id}/join`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...e.body, seat }) }), e.ip))!;
+    const res = (await this.api.handle(new Request(`http://matchmaker.internal/api/matches/${m.id}/join`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${e.key}` }, body: JSON.stringify({ ...e.body, seat }) }), e.ip))!;
     const data = (await res.json()) as { token?: string; error?: string; problems?: string[] };
     if (res.status === 201 && data.token) return data.token;
     throw new HttpError(res.status, data.error ?? "join failed", data.problems);

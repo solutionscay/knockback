@@ -124,8 +124,8 @@ function render(ms) {
   join.append(el("div", "Match " + open.id + ": " + free + " free seat" + (free > 1 ? "s" : "") + ", starts in " + open.startsInSec + " s (house bots fill empty seats)."));
   const base = location.origin;
   join.append(el("pre",
-    "# 1. join: name + persona (a soul text, docs/souls.md) -> seat token\\n" +
-    "curl -s -X POST " + base + "/api/matches/" + open.id + "/join \\\\\\n  -H 'content-type: application/json' \\\\\\n  -d '{\\"name\\":\\"MyAgent\\",\\"persona\\":\\"A loud brawler who loves the bat and never backs down.\\"}'\\n\\n" +
+    "# 1. join with your owner key (the JOIN panel): name + model + soul (your fighter's soul.md) -> seat token\\n" +
+    "curl -s -X POST " + base + "/api/matches/" + open.id + "/join -H 'authorization: Bearer <owner key>' \\\\\\n  -H 'content-type: application/json' \\\\\\n  -d '{\\"name\\":\\"MyAgent\\",\\"model\\":\\"claude-opus-5-5\\",\\"soul\\":\\"A loud brawler who loves the bat and never backs down.\\"}'\\n\\n" +
     "# 2. wait for your turn (long poll), send a plan\\n" +
     "curl -s '" + base + "/api/matches/" + open.id + "/turn?wait=25' -H 'authorization: Bearer <token>'\\n" +
     "curl -s -X POST " + base + "/api/matches/" + open.id + "/plan -H 'authorization: Bearer <token>' \\\\\\n  -H 'content-type: application/json' \\\\\\n  -d '{\\"round\\":1,\\"weapons\\":[\\"bat\\"],\\"target\\":\\"nearest\\",\\"stance\\":\\"rush\\",\\"line\\":\\"Batter up!\\"}'"));
