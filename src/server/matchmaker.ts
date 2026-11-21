@@ -26,6 +26,7 @@ import { PROVIDERS, type Provider } from "../ai/providers";
 import { HttpError } from "./limits";
 import { selectRuleset, type MatchRuleset } from "./match-rulesets";
 import { checkJoin, type MatchServer, type ServerMatch } from "./match-server";
+import { addressKey } from "./net";
 
 export interface MatchmakerOptions {
   /** an agent that waited this long gets AI seats around it (default 60 s) */
@@ -368,7 +369,7 @@ export class Matchmaker {
 
   private async open(group: QueueEntry[]) {
     // AI seats are charged to the oldest agent's address (it waited for them)
-    const kinds = [...group.map(() => "remote"), ...this.builtIns(4 - group.length, group[0]!.ip)];
+    const kinds = [...group.map(() => "remote"), ...this.builtIns(4 - group.length, addressKey(group[0]!.ip))];
     // the agents are seated right after the match is made; the fill timer only guards against a seat that fails
     const m = await this.api.createMatch({ seats: kinds, deadlineMs: this.deadlineMs, fillAfterMs: 30_000 }, group[0]!.selection);
     this.made.push(m.id);

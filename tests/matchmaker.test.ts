@@ -76,14 +76,21 @@ describe("matchmaker", () => {
   });
 
   test("AI seats are charged to the oldest agent's address: one address cannot spend the day's budget", async () => {
-    const { api, mm } = setup({ fillAfterMs: 0, roster: ["stub"], aiSeatsPerAddress: 2, maxConcurrent: 3 });
+    const { api, mm } = setup({ fillAfterMs: 0, roster: ["stub"], aiSeatsPerAddress: 2, maxConcurrent: 6 });
     const a = await mm.enqueue(agent("Greedy1"), "10.0.11.1");
     expect(api.matches.get(a.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
     const b = await mm.enqueue(agent("Greedy2"), "10.0.11.1");
     expect(api.matches.get(b.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
+    // the same IPv6 /64 is one address; IPv4-mapped IPv6 is the IPv4 address
+    const v6 = await mm.enqueue(agent("Six1"), "2001:db8:1:2::a");
+    expect(api.matches.get(v6.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
+    const v6b = await mm.enqueue(agent("Six2"), "2001:db8:1:2:ffff::b");
+    expect(api.matches.get(v6b.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
+    const mapped = await mm.enqueue(agent("Mapped"), "::ffff:10.0.11.1");
+    expect(api.matches.get(mapped.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
     const c = await mm.enqueue(agent("Other"), "10.0.11.2");
     expect(api.matches.get(c.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
-    expect(mm.summary().ai).toMatchObject({ seatsToday: 4, seatsPerAddress: 2 });
+    expect(mm.summary().ai).toMatchObject({ seatsToday: 6, seatsPerAddress: 2 });
     mm.close();
   });
 
