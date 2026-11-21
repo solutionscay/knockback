@@ -16,6 +16,41 @@ export interface CameraFrame {
   shy: number;
 }
 
+/**
+ * View all (#41): the most world height the frame zooms out to for fighters high above the rest. Above that the
+ * frame keeps the lowest fighters in view and a fighter above the top edge shows as an off-screen marker
+ * (scene-fighters.ts). Width is not capped: View all still shows everyone across the arena.
+ */
+export const ALL_MAX_VIEW_HEIGHT = 26;
+const ALL_PAD_X = 3.5;
+const ALL_PAD_Y = 2.5;
+/** "view all" must also show a fighter down in a crater (bedrock top is at -7) */
+export const ALL_FLOOR_Y = -6.6;
+
+/** View all target framing for the points to frame (world meters): scale s (px/m) and center (cx, cy). Pure. */
+export function viewAllTarget(pts: readonly { x: number; y: number; frame: boolean }[], W: number, H: number) {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const p of pts) {
+    if (!p.frame) continue;
+    x0 = Math.min(x0, p.x);
+    x1 = Math.max(x1, p.x);
+    y0 = Math.min(y0, p.y);
+    y1 = Math.max(y1, p.y);
+  }
+  y0 = Math.max(y0, ALL_FLOOR_Y);
+  y1 = Math.max(y1, y0 + 2);
+  const spanY = y1 - y0 + ALL_PAD_Y * 2 + 1.5;
+  const s = clamp(Math.min(W / (x1 - x0 + ALL_PAD_X * 2), H / Math.min(spanY, ALL_MAX_VIEW_HEIGHT)), H / 46, H / 11);
+  // anchor near the bottom: the lowest fighter sits ~3 m above the bottom edge; when the fighters span more
+  // height than the frame shows, keep the bottom in view (those above get an edge marker)
+  const viewH = H / s;
+  const cy = spanY > viewH ? y0 - 3.2 + viewH / 2 : Math.max(y0 - 3.2 + viewH / 2, (y0 + y1) / 2 + 0.8);
+  return { s, cx: (x0 + x1) / 2, cy, x0, x1, y0, y1 };
+}
+
 export class SceneCamera {
   overview = false;
   private trauma = 0;
@@ -85,8 +120,7 @@ export class SceneCamera {
     // Frame the fighters. If they are spread wider than the max zoom-out,
     // frame the busiest window (recent hits, shots, rockets in flight).
     const all = this.camMode.kind === "all" && !this.focus && !this.overview;
-    // "view all" must also show a fighter down in a crater (bedrock top is at -7)
-    const floorY = all ? -6.6 : -3;
+    const floorY = all ? ALL_FLOOR_Y : -3;
     const pts: { x: number; y: number; w: number; frame: boolean }[] = [];
     for (const f of sim.fighters) {
       if (!(f.alive || (!f.removed && sim.tick - f.koTick < 40))) continue;
@@ -100,8 +134,8 @@ export class SceneCamera {
     for (const r of sim.rockets) pts.push({ x: clamp(r.x, lx0, lx1), y: clamp(r.y, -3, 14), w: 0.4, frame: all });
     for (const h of this.hotspots) pts.push({ x: clamp(h.x, lx0, lx1), y: clamp(h.y, -3, 14), w: h.w, frame: all && h.w > 0.6 });
     if (!pts.some((p) => p.frame)) pts.push({ x: this.cam.x, y: 2, w: 1, frame: true });
-    const padX = all ? 3.5 : 6;
-    const padY = all ? 2.5 : 3.5;
+    const padX = all ? ALL_PAD_X : 6;
+    const padY = all ? ALL_PAD_Y : 3.5;
     const maxSpan = all ? Infinity : W / this.minScale(H) - padX * 2;
     pts.sort((a, b) => a.x - b.x);
     let bestW = -1;
@@ -134,12 +168,16 @@ export class SceneCamera {
     y0 = Math.max(y0, floorY);
     y1 = Math.max(y1, y0 + 2);
     let tx = (x0 + x1) / 2;
-    let ts = all
-      ? clamp(Math.min(W / (x1 - x0 + padX * 2), H / (y1 - y0 + padY * 2 + 1.5)), H / 46, H / 11)
-      : this.targetScale(x1 - x0 + padX * 2, y1 - y0 + padY * 2 + 1.5, W, H);
-    // anchor near the bottom: the lowest fighter sits ~3 m above the bottom edge
-    const viewH = H / ts;
-    let ty = Math.max(y0 - 3.2 + viewH / 2, (y0 + y1) / 2 + 0.8);
+    let ts: number;
+    let ty: number;
+    if (all) {
+      ({ s: ts, cy: ty } = viewAllTarget(inView, W, H));
+    } else {
+      ts = this.targetScale(x1 - x0 + padX * 2, y1 - y0 + padY * 2 + 1.5, W, H);
+      // anchor near the bottom: the lowest fighter sits ~3 m above the bottom edge
+      const viewH = H / ts;
+      ty = Math.max(y0 - 3.2 + viewH / 2, (y0 + y1) / 2 + 0.8);
+    }
     let rate = all ? 3.5 : 2.6;
     if (this.camMode.kind === "follow" && !this.focus && !this.overview) {
       const fo = sim.fighters[this.camMode.id];

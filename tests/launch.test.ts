@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { DT, initPhysics, NO_INPUT, Sim } from "../src/sim";
 import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, UNCAPPED_LAUNCH } from "../src/sim/ruleset";
+import { ALL_MAX_VIEW_HEIGHT, viewAllTarget } from "../src/viewer/scene-camera";
 import { flatLevel, place, sandbox, stepN } from "./helpers";
 
 beforeAll(initPhysics);
@@ -76,5 +77,30 @@ describe("launch height (#41)", () => {
     expect(() => resolveRuleset({ combat: { launch: { stackRetention: 1.5 } } })).toThrow("combat.launch.stackRetention: expected a value from 0 to 1");
     expect(() => resolveRuleset({ combat: { launch: { maxUpSpeed: -1 } } })).toThrow("combat.launch.maxUpSpeed");
     expect(resolveRuleset({ combat: { launch: { maxUpSpeed: 20 } } }).combat.launch).toEqual({ ...launch, maxUpSpeed: 20 });
+  });
+});
+
+describe("View all framing (#41)", () => {
+  const W = 1280;
+  const H = 720;
+  test("a fighter far above does not zoom the frame out past the cap; the lowest fighters stay in view", () => {
+    const t = viewAllTarget([{ x: -4, y: 0.9, frame: true }, { x: 4, y: 1, frame: true }, { x: 0, y: 60, frame: true }], W, H);
+    const viewH = H / t.s;
+    expect(viewH).toBeCloseTo(ALL_MAX_VIEW_HEIGHT, 6);
+    expect(t.cy - viewH / 2).toBeLessThan(0.9 - 3); // ground fighters ~3 m above the bottom edge
+    expect(t.cy + viewH / 2).toBeLessThan(60); // the high one is above the frame: an edge marker
+  });
+
+  test("fighters spread wide still all fit across", () => {
+    const t = viewAllTarget([{ x: -30, y: 0, frame: true }, { x: 30, y: 0, frame: true }], W, H);
+    expect(W / t.s).toBeGreaterThanOrEqual(60);
+  });
+
+  test("below the cap the framing is unchanged", () => {
+    const pts = [{ x: -5, y: 0, frame: true }, { x: 5, y: 9, frame: true }];
+    const t = viewAllTarget(pts, W, H);
+    const s = Math.min(W / (10 + 7), H / (9 + 5 + 1.5));
+    expect(t.s).toBeCloseTo(s, 9);
+    expect(t.cy).toBeCloseTo(Math.max(0 - 3.2 + H / s / 2, 4.5 + 0.8), 9);
   });
 });
