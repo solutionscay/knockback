@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLASSIC, CLOSE_QUARTERS, UNCAPPED_LAUNCH } from "../src/sim/ruleset";
 import { MIGRATIONS, SqliteStore, type MatchRow, type SeatRow } from "../src/server/store";
+import { CLASSIC_PRESET_VERSION, selectRuleset } from "../src/server/match-rulesets";
 
 const file = () => join(mkdtempSync(join(tmpdir(), "kb-store-")), "server.db");
 const match = (id: string, over: Partial<MatchRow> = {}): MatchRow => ({
@@ -75,7 +76,7 @@ describe("SqliteStore", () => {
 
     const upgraded = new SqliteStore(path);
     try {
-      expect(await upgraded.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: 3, ruleset: CLASSIC });
+      expect(await upgraded.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: CLASSIC_PRESET_VERSION, ruleset: CLASSIC });
       expect((await upgraded.getRulesetPreset("Close Quarters"))?.ruleset).toEqual(CLOSE_QUARTERS);
       const pinned = (await upgraded.getMatch("m_old"))!.ruleset!;
       expect(pinned.combat.launch).toEqual(UNCAPPED_LAUNCH);
@@ -85,6 +86,14 @@ describe("SqliteStore", () => {
     } finally {
       await upgraded.close();
     }
+  });
+
+  test("without a stored default, a match gets Classic at the built-in preset's current version", async () => {
+    const s = new SqliteStore(":memory:");
+    expect((await s.defaultRulesetPreset())!.version).toBe(CLASSIC_PRESET_VERSION);
+    s.db.exec("UPDATE ruleset_presets SET is_default = 0");
+    expect(await selectRuleset(s)).toEqual({ ruleset: CLASSIC, preset: "Classic", presetVersion: CLASSIC_PRESET_VERSION });
+    await s.close();
   });
 
   test("matches, seats, rounds, plans and records round-trip", async () => {
