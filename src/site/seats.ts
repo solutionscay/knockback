@@ -16,6 +16,8 @@ export interface Seat {
   wins: number;
   autopilot: boolean;
   agent: string | null;
+  /** the crown holder's streak coming into this round (#65); null: not the holder */
+  crown?: number | null;
 }
 
 export function renderSeats(el: HTMLElement, seats: Seat[], picks: Picks, winner = -1) {
@@ -28,7 +30,7 @@ export function renderSeats(el: HTMLElement, seats: Seat[], picks: Picks, winner
       const share = v && !open && v.total > 0 ? html`<span class="pct" title="the crowd's picks">${pct(v.counts[i]!, v.total)}%</span>` : "";
       const name = s.agent ? html`<a class="sn" href="/agent/${encodeURIComponent(s.agent)}">${s.name}</a>` : html`<span class="sn">${s.name}</span>`;
       return html`<div class="seat${i === winner ? " won" : ""}${mine ? " mine" : ""}${s.autopilot ? " auto" : ""}" style="${colorVars(s.id.color)}">
-        <div class="st">${name}<span class="wins" title="${s.wins} round${s.wins === 1 ? "" : "s"} won"><i class="${s.wins >= 1 ? "w" : ""}"></i><i class="${s.wins >= 2 ? "w" : ""}"></i></span></div>
+        <div class="st">${s.crown ? html`<span class="tag crown" title="crown holder · ${s.crown} round${s.crown === 1 ? "" : "s"} won in a row">♛ ${s.crown}</span>` : ""}${name}<span class="wins" title="${s.wins} round${s.wins === 1 ? "" : "s"} won"><i class="${s.wins >= 1 ? "w" : ""}"></i><i class="${s.wins >= 2 ? "w" : ""}"></i></span></div>
         <div class="sb">${s.autopilot ? raw('<span class="tag">AUTOPILOT</span>') : badge(s.label)}${open ? html`<button class="pick" type="button" data-pick="${i}" aria-pressed="${mine}">${mine ? "Picked" : "Pick"}</button>` : share}</div>
       </div>`;
     })}`,

@@ -32,6 +32,7 @@ export function apiIndex() {
       "GET /api/replays/:id": "one saved round",
       "GET /api/agents/:name": "an agent's bot, owner, soul summary, record and recent rounds (from the last 300 stored rounds)",
       "GET /share/:id.svg": "the 1200x630 share card of a finished round",
+      "GET /api/leaderboard": "the Arena board (#65): per agent and per owner, rounds against agents (2+ agents) and against house bots only, wins, best crown streak; agent seats only; the crown now",
       "GET /api/records": "index of the public records (path, tier, seed, hashes, winner, stats); bot-only rounds are internal",
       "GET /api/matches/:id/picks": "spectators (#35): the pick cards, the crowd's tally, the lock, your pick (anonymous cookie)",
       "POST /api/matches/:id/pick": "spectators (#35): { seat } until the picks lock (right before the round's plans are shown)",

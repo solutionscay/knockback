@@ -18,6 +18,7 @@ import type { IdentityWish } from "../sim/identity";
 import type { DecisionMeta } from "../sim/match";
 import type { PlanUpdate } from "../sim/fight";
 import type { Decision } from "../sim/voice";
+import type { Crown, PlayedRound } from "./crown";
 
 export type MatchStatus = "open" | "running" | "over" | "failed";
 
@@ -130,6 +131,38 @@ export interface RecordRow {
   stats: string;
 }
 
+/** The crown as stored (#65): the last Arena round applied to it, and the crown (null before any round was played). */
+export interface CrownRow {
+  round: number;
+  crown: Crown | null;
+}
+
+/** An agent's longest ranked crown streak (#65: rounds with 2 or more agents) and the round it reached it. */
+export interface StreakRow {
+  name: string;
+  owner: string;
+  best: number;
+  round: number;
+}
+
+/** An agent's played rounds of one tier (#65): agent seats only (house seats have no seat row). */
+export interface AgentRoundsRow {
+  name: string;
+  owner: string;
+  tier: "warm-up" | "featured";
+  rounds: number;
+  wins: number;
+}
+
+/** An agent's newest seat: what it last said it runs, and with which client. */
+export interface LatestSeatRow {
+  name: string;
+  owner: string;
+  model: string;
+  client: string;
+  lastRound: number;
+}
+
 export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt">>;
 export type SeatPatch = Partial<Pick<SeatRow, "leftAt" | "leftRound">>;
 
@@ -187,6 +220,21 @@ export interface MatchStore {
    * only warm-up or featured rounds.
    */
   listRecords(limit?: number, before?: number, tier?: Exclude<RoundTier, "bot-only">): Promise<RecordRow[]>;
+  /** the crown (#65) and the last Arena round applied to it */
+  getCrown(): Promise<CrownRow>;
+  /**
+   * Save the crown after applying rounds up to `round`, and raise agents' best streaks (a lower one never replaces a
+   * higher one), in one transaction.
+   */
+  saveCrown(c: CrownRow, streaks: StreakRow[]): Promise<void>;
+  /** played Arena rounds (over, with a record) after `round`, oldest first: who won each */
+  playedRounds(after: number): Promise<PlayedRound[]>;
+  /** agents' best ranked crown streaks, longest first */
+  listStreaks(): Promise<StreakRow[]>;
+  /** per agent and tier: rounds played and won (agent seats only; bot-only rounds have none) */
+  agentRounds(): Promise<AgentRoundsRow[]>;
+  /** each agent's newest seat */
+  latestSeats(): Promise<LatestSeatRow[]>;
   close(): Promise<void>;
 }
 
@@ -194,7 +242,7 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
@@ -293,6 +341,24 @@ export const SCHEMA = `
     stats TEXT NOT NULL               -- JSON SeatEntry[] (src/stats/models.ts) for GET /api/models
   );
   CREATE INDEX records_public ON records(tier, created_at);
+  CREATE TABLE crown (                -- the Arena's crown (#65): one row
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    round INTEGER NOT NULL,           -- the last Arena round applied to it
+    holder_kind TEXT CHECK (holder_kind IN ('agent','house')), -- NULL before any round was played
+    holder_name TEXT,                 -- an agent holder
+    holder_owner TEXT,
+    holder_seat INTEGER,              -- a house holder: the house bot's seat
+    streak INTEGER NOT NULL,          -- rounds won in a row
+    ranked INTEGER NOT NULL,          -- of those, rounds with 2 or more agents
+    won_round INTEGER NOT NULL
+  );
+  INSERT INTO crown (id, round, streak, ranked, won_round) VALUES (1, 0, 0, 0, 0);
+  CREATE TABLE streaks (              -- agents' longest crown streaks, ranked rounds only (#65); house bots have none
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    owner TEXT NOT NULL COLLATE NOCASE,
+    best INTEGER NOT NULL,
+    round INTEGER NOT NULL            -- the Arena round it reached it
+  );
   CREATE TABLE ruleset_presets (
     name TEXT PRIMARY KEY COLLATE NOCASE,
     body TEXT,
@@ -560,6 +626,41 @@ export class SqliteStore implements MatchStore {
     const where = `tier IN (${tiers.map(() => "?").join(",")})${before !== undefined ? " AND created_at < ?" : ""}`;
     const args = [...tiers, ...(before !== undefined ? [before] : []), limit];
     return (this.db.query(`SELECT * FROM records WHERE ${where} ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(...(args as never[])) as Row[]).map(recordOf);
+  }
+  async getCrown() {
+    const r = this.db.query("SELECT * FROM crown WHERE id = 1").get() as Row;
+    const holder = r.holder_kind === "agent" ? { kind: "agent" as const, name: r.holder_name as string, owner: r.holder_owner as string } : r.holder_kind === "house" ? { kind: "house" as const, seat: r.holder_seat as number } : null;
+    return { round: r.round as number, crown: holder ? { holder, streak: r.streak as number, ranked: r.ranked as number, wonRound: r.won_round as number } : null };
+  }
+  async saveCrown(c: CrownRow, streaks: StreakRow[]) {
+    const h = c.crown?.holder;
+    this.db.transaction(() => {
+      this.db
+        .query("UPDATE crown SET round = ?, holder_kind = ?, holder_name = ?, holder_owner = ?, holder_seat = ?, streak = ?, ranked = ?, won_round = ? WHERE id = 1")
+        .run(c.round, h?.kind ?? null, h?.kind === "agent" ? h.name : null, h?.kind === "agent" ? h.owner : null, h?.kind === "house" ? h.seat : null, c.crown?.streak ?? 0, c.crown?.ranked ?? 0, c.crown?.wonRound ?? 0);
+      for (const s of streaks)
+        this.db.query("INSERT INTO streaks (name, owner, best, round) VALUES (?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET owner = excluded.owner, best = excluded.best, round = excluded.round WHERE excluded.best > streaks.best").run(s.name, s.owner, s.best, s.round);
+    })();
+  }
+  async playedRounds(after: number) {
+    const rows = this.db
+      .query("SELECT m.arena_round, r.tier, r.winner, s.name, s.owner FROM matches m JOIN records r ON r.match_id = m.id LEFT JOIN seats s ON s.match_id = m.id AND s.seat = r.winner WHERE m.status = 'over' AND m.arena_round > ? ORDER BY m.arena_round")
+      .all(after) as Row[];
+    return rows.map((r) => ({ arenaRound: r.arena_round as number, tier: r.tier as RoundTier, winner: r.winner as number, winnerName: (r.name as string | null) ?? null, winnerOwner: (r.owner as string | null) ?? null }));
+  }
+  async listStreaks() {
+    return (this.db.query("SELECT * FROM streaks ORDER BY best DESC, round").all() as Row[]).map((r) => ({ name: r.name as string, owner: r.owner as string, best: r.best as number, round: r.round as number }));
+  }
+  async agentRounds() {
+    const rows = this.db
+      .query("SELECT MIN(s.name) AS name, MIN(s.owner) AS owner, r.tier, COUNT(*) AS rounds, SUM(r.winner = s.seat) AS wins FROM seats s JOIN records r ON r.match_id = s.match_id WHERE r.tier != 'bot-only' GROUP BY s.name COLLATE NOCASE, r.tier")
+      .all() as Row[];
+    return rows.map((r) => ({ name: r.name as string, owner: r.owner as string, tier: r.tier as "warm-up" | "featured", rounds: r.rounds as number, wins: r.wins as number }));
+  }
+  async latestSeats() {
+    // SQLite: the bare columns come from the row with the MAX (each agent's newest seat)
+    const rows = this.db.query("SELECT s.name, s.owner, s.model, s.client, MAX(m.arena_round) AS last FROM seats s JOIN matches m ON m.id = s.match_id GROUP BY s.name COLLATE NOCASE").all() as Row[];
+    return rows.map((r) => ({ name: r.name as string, owner: r.owner as string, model: r.model as string, client: r.client as string, lastRound: r.last as number }));
   }
   async close() {
     this.db.close();

@@ -75,6 +75,9 @@ body .kb-mb.md { --mb-fs: 14px; }
 .stage.idle { aspect-ratio: auto; min-height: 320px; display: grid; }
 .stage.idle .none { position: relative; inset: auto; padding: 28px 20px; }
 .tag { display: inline-block; font: 900 9px/1 var(--text); letter-spacing: 0.12em; background: var(--ink); color: #111; padding: 3px 5px; border-radius: 2px; vertical-align: middle; }
+.tag.crown { background: var(--yellow); letter-spacing: 0.04em; flex: none; }
+.crownline { margin: 0 0 10px; font-size: 13px; }
+.crownline .n { font: 900 15px/1 var(--display); text-decoration: none; }
 
 /* ---------------------------------------------------------------- lobby */
 .home { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
@@ -181,6 +184,15 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .rrow .rl > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .rrow .rl i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
 .rrow .dim { font-size: 12px; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- leaderboard (#65) */
+.lbs { overflow-x: auto; margin-bottom: 18px; }
+.lb { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--slab); border-radius: 2px; }
+.lb th { text-align: left; font: 800 11px/1.2 var(--text); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); padding: 8px 10px; }
+.lb td { padding: 8px 10px; border-top: 1px solid #ffffff10; vertical-align: middle; white-space: nowrap; }
+.lb .num { text-align: right; font-variant-numeric: tabular-nums; }
+.lb .n { font: 900 14px/1 var(--display); text-decoration: none; }
+.lbnote { font-size: 12px; max-width: 80ch; }
 
 /* ---------------------------------------------------------------- agent */
 .agent { max-width: 900px; }

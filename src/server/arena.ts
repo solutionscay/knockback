@@ -14,6 +14,9 @@
  * - With 4 agents seated and more waiting, the agent that placed last in a round goes to the back of the queue and
  *   the first waiting agent takes its seat.
  *
+ * The crown (#65, crown.ts): each round's winner holds it and defends it in the next round, with its streak. It is
+ * kept in the store and brought up to date from the stored rounds (catchUpCrown), so it survives a restart.
+ *
  * Seats and queue live in memory. After a restart the round in progress resumes (resume()) with its agent seats on
  * autopilot, and agents join again. The loop's pauses go through `sleep` (tests inject it, or drive playRound()).
  */
@@ -24,7 +27,10 @@ import { resolveRuleset } from "../sim/ruleset";
 import { claimName, hashKey, ownerOf } from "./keys";
 import { HttpError } from "./limits";
 import { LiveStream } from "./live";
+import { crownSeat, nextCrown, type Crown } from "./crown";
 import { checkJoin, SEATS_PER_IP } from "./match-input";
+import { fightStatsOf } from "../stats/models";
+import type { StreakRow } from "./store";
 import { selectRuleset, storedRuleset, type MatchRuleset } from "./match-rulesets";
 import type { MatchServer } from "./match-server";
 import { hashToken, hex } from "./seat-tokens";
@@ -108,6 +114,11 @@ export class Arena {
   current: ServerMatch | null = null;
   /** the last round number made */
   round = 0;
+  /** the crown (#65) as of the last played round; null before any */
+  crown: Crown | null = null;
+  /** the last round that was played to its end (the lobby shows its stats) */
+  last: ServerMatch | null = null;
+  private crownQ: Promise<unknown> = Promise.resolve();
   /** the stream that never ends: every round's events, from the current round's start (GET /api/live) */
   readonly live = new LiveStream(256);
   readonly deadlineMs: number;
@@ -167,6 +178,7 @@ export class Arena {
   /** Play one round to its end: the line-up as the seats stand now, then misses, rotation and claims. */
   async playRound(): Promise<ServerMatch> {
     const selection = arenaSelection(await selectRuleset(this.api.store));
+    await this.catchUpCrown(); // the crown this round defends (a resumed round may have just ended)
     for (const e of this.agents()) await this.keyLive(e); // revoked keys play no more rounds
     this.dropIdle();
     // from here to the start nothing awaits: the line-up is the seats as they are now
@@ -183,6 +195,9 @@ export class Arena {
       if (e.missed > 0 && e.lastSeen <= e.missedAt) away.set(seat, "still away after a missed round");
     });
     m.onChange = () => this.changed();
+    // the holder starts the round with the crown mark and its streak, if it plays this round
+    const cs = crownSeat(this.crown, lineup.map((e) => e?.name ?? null));
+    m.crown = cs !== null && this.crown ? { seat: cs, streak: this.crown.streak } : null;
     this.live.reset();
     m.live.mirror = this.live;
     this.current = m;
@@ -207,13 +222,41 @@ export class Arena {
     await m.done;
     m.live.mirror = null;
     this.settle(m);
+    await this.catchUpCrown().catch((e) => this.api.log(`arena: the crown could not be updated: ${e instanceof Error ? e.message : String(e)}`));
     this.changed();
     return m;
+  }
+
+  /**
+   * Bring the crown up to date (#65): apply every played round stored after the crown's last one (normally the round
+   * that just ended; after a restart, any the old process did not apply), raise best streaks, save. Serialized.
+   */
+  catchUpCrown(): Promise<void> {
+    const run = this.crownQ.then(async () => {
+      const store = this.api.store;
+      const st = await store.getCrown();
+      const rows = await store.playedRounds(st.round);
+      let c = st.crown;
+      const best: StreakRow[] = [];
+      for (const r of rows) {
+        c = nextCrown(c, r);
+        if (c.holder.kind === "agent" && c.ranked > 0) best.push({ name: c.holder.name, owner: c.holder.owner, best: c.ranked, round: r.arenaRound });
+      }
+      if (rows.length) {
+        await store.saveCrown({ round: rows.at(-1)!.arenaRound, crown: c }, best);
+        const h = c!.holder;
+        this.api.log(`arena: the crown: ${h.kind === "agent" ? h.name : `the house bot in seat ${h.seat}`}, streak ${c!.streak}${c!.ranked ? ` (${c!.ranked} against agents)` : ""}`);
+      }
+      this.crown = c;
+    });
+    this.crownQ = run.catch(() => undefined);
+    return run;
   }
 
   /** After a round: count misses (out after missLimit), rotate the last-placed agent when others wait, fill seats. */
   private settle(m: ServerMatch) {
     this.settledId = m.id;
+    if (m.status === "over") this.last = m;
     if (m.status !== "over" || !m.runner) return this.fillSeats();
     const meta = m.runner.match.record.rounds[0]?.meta ?? [];
     const order = placing(m.runner.match.facts[0]!);
@@ -289,6 +332,7 @@ export class Arena {
   async resume(): Promise<{ round: number | null }> {
     const store = this.api.store;
     this.round = await store.lastArenaRound();
+    await this.catchUpCrown();
     const rows = await store.listMatches(["open", "running"]);
     const running = rows.filter((r) => r.status === "running").sort((a, b) => b.arenaRound - a.arenaRound);
     for (const r of [...rows.filter((x) => x.status === "open"), ...running.slice(1)]) await store.updateMatch(r.id, { status: "failed", error: "the server restarted before the round ended", endedAt: Date.now() });
@@ -478,11 +522,37 @@ export class Arena {
     });
   }
 
+  /** The crown as the public sees it (#65): the holder, its streak, and the seat it plays next (null: not seated). */
+  crownView() {
+    const c = this.crown;
+    if (!c) return null;
+    return { holder: c.holder.kind === "agent" ? { kind: "agent", agent: c.holder.name, owner: c.holder.owner } : { kind: "house", seat: c.holder.seat }, streak: c.streak, ranked: c.ranked, wonRound: c.wonRound, seat: crownSeat(c, this.seats.map((e) => e?.name ?? null)) };
+  }
+
+  /** The stats of the last round played (#65): each seat's place, knockouts and damage; a replay link if it is public. */
+  lastRoundView() {
+    const m = this.last;
+    const r = m?.runner;
+    if (!m || !r || !r.match.over) return null;
+    const order = placing(r.match.facts[0]!);
+    const fs = fightStatsOf(r.match.facts).rounds[0]!;
+    return {
+      number: m.arenaRound,
+      match: m.id,
+      tier: m.tier,
+      replay: m.tier === "bot-only" ? null : `/replay/${m.id}`,
+      winner: r.match.winner,
+      seats: m.kinds.map((kind, seat) => ({ seat, kind, fighter: r.names[seat] ?? null, agent: m.agents[seat]?.name ?? null, owner: m.agents[seat]?.owner ?? null, place: order.indexOf(seat) + 1, kos: fs.seats[seat]!.kos, damage: Math.round(fs.seats[seat]!.damage) })),
+    };
+  }
+
   /** The public view (GET /api/queue, the lobby page, the JOIN panel): names only, never tokens or bodies. */
   summary(now = Date.now()) {
     const m = this.current;
     const live = m && (m.status === "open" || m.status === "running");
     return {
+      crown: this.crownView(),
+      lastRound: this.lastRoundView(),
       round: m ? { number: m.arenaRound, match: m.id, status: m.status, watch: `/watch/${m.id}`, playing: m.kinds.map((k, seat) => ({ seat, agent: m.agents[seat]?.name ?? null, owner: m.agents[seat]?.owner ?? null, kind: k })) } : null,
       /** the round the seats below play next */
       nextRound: live ? m!.arenaRound + 1 : this.round + 1,

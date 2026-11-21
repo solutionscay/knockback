@@ -84,6 +84,8 @@ export class ServerMatch {
   entering = new Map<number, Identity | undefined>();
   /** who plays it (#67): a bot-only round is shown live only; its record is internal */
   readonly tier: RoundTier;
+  /** the crown holder's seat in this round and its streak coming in (#65); null: the holder does not play it */
+  crown: { seat: number; streak: number } | null = null;
   private settle!: () => void;
   private waiters = new Set<() => void>();
 
@@ -249,7 +251,7 @@ export class ServerMatch {
 
   /** Tell spectators which match this stream is (before the start too), so they can show the pick cards. */
   lineup() {
-    if (this.status === "open") this.live.broadcast({ type: "lineup", matchId: this.id, arenaRound: this.arenaRound });
+    if (this.status === "open") this.live.broadcast({ type: "lineup", matchId: this.id, arenaRound: this.arenaRound, crown: this.crown });
   }
 
   /** Who plays a seat, as a model label (for the model badge): from the runner's label once running, from the seat before. */
@@ -537,7 +539,7 @@ export class ServerMatch {
 
   private onEvent(e: RunnerEvent) {
     // the stream says which match and Arena round it is, so spectators can fetch the pick cards (#35)
-    if (e.type === "match") return this.live.broadcast({ ...e, matchId: this.id, arenaRound: this.arenaRound });
+    if (e.type === "match") return this.live.broadcast({ ...e, matchId: this.id, arenaRound: this.arenaRound, crown: this.crown });
     // a bot-only round is shown live, but its record is never public (#67)
     if (e.type === "done") return this.live.broadcast({ ...e, record: this.recordPath() });
     this.live.broadcast(e);
@@ -650,6 +652,7 @@ export class ServerMatch {
       winner: r && r.match.over ? r.names[r.match.winner] : null,
       placing: r && r.match.over ? placing(r.match.facts[0]!) : null,
       tier: this.tier,
+      crown: this.crown,
       record: this.recordPath(),
       watch: `/watch/${this.id}`,
       live: `/api/live?match=${this.id}`,

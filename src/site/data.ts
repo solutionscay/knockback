@@ -86,8 +86,31 @@ export const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 
 // ------------------------------------------------------------------ the Arena (#64)
 
+/** The crown (#65): its holder (an agent, or the house bot in a seat), the streak, the seat it plays next. */
+export interface CrownInfo {
+  agent: string | null;
+  owner: string | null;
+  /** a house bot holder's seat */
+  houseSeat: number | null;
+  streak: number;
+  /** rounds of the streak with 2 or more agents */
+  ranked: number;
+  /** the seat the holder plays in the next round; null: it does not play it */
+  seat: number | null;
+}
+
+/** The last round played (#65): each seat's place, knockouts and damage; a replay link when it is public. */
+export interface LastRoundInfo {
+  number: number;
+  tier: string;
+  replay: string | null;
+  seats: { seat: number; fighter: string; agent: string | null; owner: string | null; place: number; kos: number; damage: number }[];
+}
+
 /** GET /api/queue: the Arena as the pages show it. */
 export interface ArenaInfo {
+  crown: CrownInfo | null;
+  lastRound: LastRoundInfo | null;
   /** the round on now (or the last one, between rounds) and who plays it */
   round: { number: number; match: string; status: string; playing: { seat: number; agent: string | null; owner: string | null }[] } | null;
   /** the round the seats below play next */
@@ -106,7 +129,23 @@ export function arenaInfo(raw: unknown): ArenaInfo | null {
   const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
   const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
   const r = o.round && typeof o.round === "object" ? (o.round as Record<string, unknown>) : null;
+  const name = (v: unknown) => (typeof v === "string" ? v.slice(0, 24) : null);
+  const c = o.crown && typeof o.crown === "object" ? (o.crown as Record<string, any>) : null;
+  const h = c?.holder && typeof c.holder === "object" ? (c.holder as Record<string, unknown>) : null;
+  const lr = o.lastRound && typeof o.lastRound === "object" ? (o.lastRound as Record<string, unknown>) : null;
   return {
+    crown: c && h ? { agent: h.kind === "agent" ? name(h.agent) : null, owner: h.kind === "agent" ? name(h.owner) : null, houseSeat: h.kind === "house" ? num(h.seat, 0) : null, streak: num(c.streak, 0), ranked: num(c.ranked, 0), seat: typeof c.seat === "number" ? c.seat : null } : null,
+    lastRound: lr
+      ? {
+          number: num(lr.number, 0),
+          tier: str(lr.tier, 16),
+          replay: typeof lr.replay === "string" && /^\/replay\/m_[0-9a-f]{8}$/.test(lr.replay) ? lr.replay : null,
+          seats: (Array.isArray(lr.seats) ? lr.seats : []).slice(0, 4).map((x0, i) => {
+            const x = (x0 ?? {}) as Record<string, unknown>;
+            return { seat: num(x.seat, i), fighter: str(x.fighter, 24), agent: name(x.agent), owner: name(x.owner), place: num(x.place, 4), kos: num(x.kos, 0), damage: num(x.damage, 0) };
+          }),
+        }
+      : null,
     round: r
       ? {
           number: num(r.number, 0),
@@ -130,6 +169,28 @@ export function arenaInfo(raw: unknown): ArenaInfo | null {
     }),
     deadlineSec: num(o.deadlineSec, 75),
   };
+}
+
+/** The crown's streak in words (#65): "streak 3 (2 against agents)"; a house bot's reign is not recorded (pure). */
+export function crownText(c: CrownInfo): string {
+  return `streak ${c.streak}${c.agent && c.ranked ? ` (${c.ranked} against agents)` : ""}`;
+}
+
+/** GET /api/leaderboard (#65): agents and owners by rounds, agent seats only. */
+export interface BoardRow {
+  vsAgents: { rounds: number; wins: number };
+  vsHouse: { rounds: number; wins: number };
+  bestStreak: number;
+}
+export interface LeaderboardInfo {
+  agents: (BoardRow & { name: string; owner: string; label: string })[];
+  owners: (BoardRow & { owner: string; agents: number; bestBy: string | null })[];
+  note: string;
+}
+
+/** Wins and rounds as "3 / 5 · 60%"; "–" with no rounds (pure). */
+export function tallyText(t: { rounds: number; wins: number }): string {
+  return t.rounds ? `${t.wins} / ${t.rounds} · ${Math.round((t.wins / t.rounds) * 100)}%` : "–";
 }
 
 /** Who sits in each seat for the next round: an agent (and the round it enters) or a house bot (pure). */

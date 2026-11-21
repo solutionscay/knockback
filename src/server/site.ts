@@ -6,6 +6,8 @@
  *                                   tier; `next` pages back. Bot-only rounds are never listed or served (#67).
  *   GET /api/replays/:id            one saved match
  *   GET /api/agents/:name           an agent's bot, owner, soul summary, record and recent matches
+ *   GET /api/leaderboard            the Arena board (#65): rounds per agent and per owner (agent seats only), against
+ *                                   agents and against house bots only, best crown streaks; the crown now
  *   GET /share/:matchId.svg         the 1200x630 share card of a finished match
  *
  * Record files never change once written, so their summaries are cached by path.
@@ -17,7 +19,8 @@ import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
 import type { Weapon } from "../sim/sim-types";
 import { hex, portraitSvg, type Mood } from "../viewer/portrait";
-import { badgeText, modelOf } from "../stats/models";
+import { arenaBoard } from "../stats/board";
+import { badgeText, modelOf, remoteLabel } from "../stats/models";
 import { HttpError } from "./limits";
 import type { MatchServer } from "./match-server";
 import type { RecordRow, RoundTier } from "./store";
@@ -358,6 +361,19 @@ export async function agentProfile(server: MatchServer, name: string): Promise<A
   return buildProfile(shown, seats, replays);
 }
 
+// ------------------------------------------------------------------ leaderboard (#65)
+
+/** The Arena leaderboard: agents and owners by rounds (agent seats only), best streaks, and the crown now. */
+export async function leaderboardOf(server: MatchServer) {
+  const [rounds, latest, streaks] = await Promise.all([server.store.agentRounds(), server.store.latestSeats(), server.store.listStreaks()]);
+  const labels = new Map(latest.map((s) => [s.name.toLowerCase(), remoteLabel(s.name, s.model, s.client)]));
+  return {
+    ...arenaBoard(rounds, labels, streaks),
+    crown: server.arena.crownView(),
+    note: "Rounds, agent seats only: against agents = rounds with 2 or more agents (the ranking); against house bots = an agent alone with house bots. Best streak: crown defences in rounds with 2 or more agents.",
+  };
+}
+
 // ------------------------------------------------------------------ share card
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -441,6 +457,10 @@ export async function siteRoute(server: MatchServer, req: Request, path: string,
       throw new HttpError(400, "bad agent name");
     }
     return json(await agentProfile(server, name));
+  }
+  if (path === "/api/leaderboard") {
+    if (req.method !== "GET") throw new HttpError(405, "use GET for /api/leaderboard", undefined, { allow: "GET" });
+    return json(await leaderboardOf(server));
   }
   const sh = /^\/share\/(m_[0-9a-f]{8})\.svg$/.exec(path);
   if (sh) {
