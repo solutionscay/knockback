@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { DT, initPhysics, NO_INPUT, Sim } from "../src/sim";
-import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, UNCAPPED_LAUNCH } from "../src/sim/ruleset";
+import { CLASSIC, CLOSE_QUARTERS, resolveRuleset } from "../src/sim/ruleset";
 import { ALL_MAX_VIEW_HEIGHT, viewAllTarget } from "../src/viewer/scene-camera";
 import { flatLevel, place, sandbox, stepN } from "./helpers";
 
@@ -64,8 +64,8 @@ describe("launch height (#41)", () => {
     expect(peak).toBeLessThan(sim.topY + CLASSIC.pickups.power.jetpack.ceiling + 0.5);
   });
 
-  test("Close Quarters keeps launches as they were", () => {
-    expect(CLOSE_QUARTERS.combat.launch).toEqual(UNCAPPED_LAUNCH);
+  test("Close Quarters has no launch cap, full stacking and no ceilings", () => {
+    expect(CLOSE_QUARTERS.combat.launch).toEqual({ maxUpSpeed: 36_000, stackRetention: 1, ceilingAbove: 0, ceilingDrag: 0 });
     const sim = new Sim(1, flatLevel(), undefined, CLOSE_QUARTERS);
     sim.zoneEnabled = false;
     stepN(sim, 30);

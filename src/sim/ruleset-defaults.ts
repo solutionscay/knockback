@@ -17,8 +17,6 @@ export const MORALE = {
   selfAnger: 12, rivalAnger: 40, scoreLimit: 100, angerLimit: 100,
 };
 
-const { ringOutX: _legacyRingOutX, ...fighter } = C.FIGHTER;
-const { startHalf: _legacyStartHalf, ...boundary } = C.ZONE;
 const { size: _blockSize, ...block } = C.BLOCK;
 const { size: _crateSize, ...crate } = C.CRATE;
 
@@ -56,7 +54,7 @@ const TACTICAL_WEAPONS = {
 
 export const RULESET_DEFAULTS = {
   schemaVersion: 1,
-  combat: { gravity: C.GRAVITY, fighter: { ...fighter, ringOutMargin: 6 }, launch: C.LAUNCH, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, blastCarveScale: 1.12, attributionTicks: 120 },
+  combat: { gravity: C.GRAVITY, fighter: { ...C.FIGHTER, ringOutMargin: 6 }, launch: C.LAUNCH, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, blastCarveScale: 1.12, attributionTicks: 120 },
   weapons: {
     enabled: WEAPON_LIST,
     table: { ...C.WEAPONS, shotgun: { ...C.WEAPONS.shotgun, spread: 0.16, jitter: 0.03 }, flamethrower: { ...C.WEAPONS.flamethrower, spreadScale: 1 } },
@@ -75,7 +73,7 @@ export const RULESET_DEFAULTS = {
     terrain: { hitPoints: MAT_HP.map(n => Number.isFinite(n) ? n : 0), density: MAT_DENSITY, crumbleDps: C.CRUMBLE_DPS, debris: C.DEBRIS },
     navigation: { headroomCells: 4, jumpMargin: 0.55, maxGap: 4.6, dropFall: 3 },
   },
-  zone: { boundary: { ...boundary, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: { ...C.STALEMATE, graceTicks: 20 * C.TICK_RATE } },
+  zone: { boundary: { ...C.ZONE, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: { ...C.STALEMATE, graceTicks: 20 * C.TICK_RATE } },
   fire: { ...C.FIRE, materials: [Mat.Wood, Mat.Crumble] as readonly Mat[], props: ["crate", "barrel", "tnt", "gas"] as readonly string[] },
   morale: MORALE,
   round: { maxRounds: 3, winsToTake: 2, fightTicks: C.FIGHT_TICKS, finishTicks: C.FINISH_TICKS },
