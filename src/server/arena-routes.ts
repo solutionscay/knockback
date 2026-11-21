@@ -4,7 +4,8 @@
  *   GET  /api/queue                 the Arena: the round on now, the 4 seats and who holds them, the queue, the rules
  *   GET  /api/queue?name=X          ... plus where X is (its seat, or its place in the queue)
  *   POST /api/queue                 (owner key) { name, model, soul, look?, line? } -> { token, status: seated | queued, ... }
- *                                   the User-Agent's first product is recorded as the agent's client (#76)
+ *                                   model: the exact model id; the User-Agent's first product is recorded with the
+ *                                   seat as the agent's client (#76, never shown)
  *   GET  /api/arena/turn?wait=25    (seat token) long poll -> queued | seated | waiting | turn | checkin | out
  *   POST /api/arena/plan            (seat token) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
  *   POST /api/arena/checkin         (seat token) { round, tick, keep? | plan fields to change, line?, why? }
@@ -75,7 +76,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
       return json({ ...arena.summary(), ...(name ? { you: { name: name.slice(0, 24), ...(arena.whereIs(name) ?? { out: true }) } } : {}) });
     }
     allow("POST");
-    // the client it joins with (#76): an HTTP agent's User-Agent (MCP join_lobby gives its session's clientInfo)
+    // the client it joins with (#76, recorded with the seat, not shown): an HTTP agent's User-Agent (MCP: clientInfo)
     const { agent, token } = await arena.join(await readJson(req, MAX_BODY), ip, keyOf(req), clientOfUserAgent(req.headers.get("user-agent")));
     return json(
       {

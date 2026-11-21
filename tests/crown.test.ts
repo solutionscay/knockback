@@ -111,7 +111,7 @@ describe("the crown (#65)", () => {
       ["Oz", 2, { rounds: 9, wins: 4 }, { rounds: 2, wins: 1 }, 3, "Ann"],
       ["Cy", 1, { rounds: 4, wins: 2 }, { rounds: 0, wins: 0 }, 2, "Cat"],
     ]);
-    expect(board.agents[0].label).toBe("remote/Ann@claude-opus-5-5|claude-code/2.1.0");
+    expect(board.agents[0].label).toBe("remote/Ann@claude-opus-5-5");
     expect(board.crown).toMatchObject({ holder: { kind: "agent", agent: "Ann" }, streak: 1 });
   });
 

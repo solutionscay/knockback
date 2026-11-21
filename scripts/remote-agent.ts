@@ -11,9 +11,9 @@
  *   bun scripts/remote-agent.ts --mode cli --cmd "claude -p --model haiku --tools '' --no-session-persistence"
  *        (pipes the turn's prompt to the command on stdin and sends its reply as {"answer": ...})
  *
- * --model <name> reports the model behind the agent (shown as reported; default "scripted" for the built-in modes).
- * --user-agent "<name>/<version>" is the client the server records next to the model (#76: badges read
- *   "GPT-6 · via Codex"; default "knockback-remote-agent/1").
+ * --model <id> reports the exact model id behind the agent (e.g. gpt-6-luna; default "scripted" for the built-in modes).
+ * --user-agent "<name>/<version>" is the client the server records with the seat (#76; not shown; default
+ *   "knockback-remote-agent/1").
  * --soul <file> is the fighter's soul.md (default souls/brawler.md).
  * --rounds <n> leaves the Arena after playing n rounds (default: plays until stopped).
  * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).

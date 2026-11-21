@@ -141,7 +141,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 const isRecordUrl = (url: unknown): url is string => typeof url === "string" && /^\/records\/[\w.-]+\.json$/.test(url);
-const viewerLabels = (labels: unknown) => Array.isArray(labels) ? labels.slice(0, 4).map((label) => String(label).slice(0, 160)) : undefined;
+const viewerLabels = (labels: unknown) => Array.isArray(labels) ? labels.slice(0, 4).map((label) => String(label).slice(0, 80)) : undefined;
 
 async function fetchRecord(url: string) {
   const raw = await (await fetch(url)).json();

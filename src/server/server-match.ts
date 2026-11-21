@@ -35,7 +35,8 @@ export interface SeatAgent {
   look: IdentityWish | null;
   /** the model the agent says it runs (reported at join, shown as reported) */
   model: string;
-  /** the client it joined with (#76): MCP clientInfo "name/version", or an HTTP agent's User-Agent; "" when none */
+  /** the client it joined with (#76): MCP clientInfo "name/version", or an HTTP agent's User-Agent; "" when none.
+   * Recorded with the seat for debugging and data; never shown. */
   client: string;
   /** sha256 (hex) of the agent's Arena seat token */
   tokenHash: string;
@@ -137,7 +138,7 @@ export class ServerMatch {
   }
 
   remoteSeat(seat: number, agent: SeatAgent): RemoteSeat {
-    const rs = new RemoteSeat(agent.name, this.deadlineMs, agent.model, agent.client);
+    const rs = new RemoteSeat(agent.name, this.deadlineMs, agent.model);
     rs.onChange = () => this.changed();
     // accepted plans are stored before the turn ends, so a restart in mid-ask keeps them
     rs.onAccept = (round, raw) => this.store.insertPlan({ matchId: this.id, round, seat, raw, at: Date.now() });
@@ -257,7 +258,7 @@ export class ServerMatch {
   /** Who plays a seat, as a model label (for the model badge): from the runner's label once running, from the seat before. */
   modelLabel(i: number): string {
     const a = this.agents[i];
-    return this.runner?.labels[i] ?? (a ? remoteLabel(a.name, a.model, a.client) : "house");
+    return this.runner?.labels[i] ?? (a ? remoteLabel(a.name, a.model) : "house");
   }
 
   /** The identities as they stand: the agents' join looks, settled in seat order (#19). */

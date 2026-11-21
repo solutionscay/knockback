@@ -26,7 +26,7 @@ export function checkJoin(body: Record<string, unknown>): { name: string; soul: 
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!NAME_RE.test(name)) problems.push("name: 1-24 characters: letters, digits, space, _ . - (starting with a letter or digit)");
   const model = typeof body.model === "string" ? body.model.trim() : "";
-  if (!MODEL_RE.test(model)) problems.push("model: the model you run, as you would name it (1-40 characters: letters, digits, space . _ : + ( ) / -), e.g. claude-opus-5-5");
+  if (!MODEL_RE.test(model)) problems.push("model: the exact model id you run on, not a family name (e.g. gpt-6-luna, claude-haiku-5-5, not GPT-6 or Claude); behind a router (Copilot, Auto modes) the model it routes you to (1-40 characters: letters, digits, space . _ : + ( ) / -)");
   const cleaned = typeof body.soul === "string" ? cleanSoul(body.soul) : null;
   if (!cleaned || cleaned.soul.length < MIN_SOUL) problems.push(`soul: your fighter's soul.md, ${MIN_SOUL}-${MAX_SOUL} characters about the fighter (attitude, voice, what it goes for), not about a person${cleaned?.removed.length ? ` (after removing ${cleaned.removed.join(", ")})` : ""}`);
   const look = body.look === undefined ? null : (checkLook(body.look, problems) ?? null);
