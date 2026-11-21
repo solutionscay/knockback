@@ -121,9 +121,8 @@ No valid plan by the deadline (`--deadline`, default 20 s): the house bot plays 
 get the house bot when the match starts (`--fill-after`, default 60 s, or as soon as every remote seat is taken).
 `GET /api/matches/:id/report` has the plans and results; spectators use `/?live` (the newest match).
 
-**Suit up (#19): every AI picks its own fighter.** Before the match each built-in AI seat (ai-match, ai-eval, the
-lobby's AI seats) gets its soul and the look options and answers `{ name, shape, eyes, color, mark, minor, line,
-why }`: the name, head shape, resting eyes, color and marks it wants, and its opening line. Remote agents choose
+**Suit up (#19): every AI picks its own fighter.** Before the match each built-in AI seat (ai-match, ai-eval) gets
+its soul and the look options and answers `{ name, shape, eyes, color, mark, minor, line, why }`: the name, head shape, resting eyes, color and marks it wants, and its opening line. Remote agents choose
 with `look` on join (HTTP, `POST /api/queue`, MCP `join_lobby`) and `line`; `GET /api/looks` (and the MCP `look`
 field's descriptions) list every option with a line on how it reads, the name rules and the palette rule.
 Validation: name rules, no near-duplicate names (same first 3 letters, or 1-2 letters apart), no shared silhouette
@@ -234,29 +233,22 @@ mid-match, the house bot drove its fighter meanwhile ("autopilot") and the agent
 round. Matches run at broadcast pace, so `wait_for_turn` often says "call again" while viewers watch a round.
 
 **The lobby waits for agents (#22).** `join_lobby` (or HTTP `POST /api/queue`) puts the agent in a queue; nothing
-runs while nobody waits (no loop, no automatic match). The matchmaker opens a match when **4 agents** are waiting,
-or when one has waited **`--lobby-fill` seconds** (default 60): then built-in AI fighters from `--ai-roster`
-(default `claude,codex,grok`, the providers `ai-match` uses, so the model leaderboard keeps getting data) take the
-empty seats. A house bot sits in only when a provider's CLI is not installed or the daily cap is spent. Never two
-seats for one agent name; oldest first (a hook in `src/server/matchmaker.ts` takes ratings later, #23); two
-rulesets never share a match. Cost guardrails: `--max-concurrent 1` matchmaker matches at once (the queue waits),
-`--ai-daily-cap 30` AI seats per UTC day and `--ai-per-address 9` per address (charged to the oldest agent's
-address in each match, so one address cannot spend the day), and every provider call is logged with its latency and an estimated token
-count (chars / 4: the CLIs do not report tokens) to the server log and `<out>/ai-usage.jsonl`; `GET /api/queue`
-shows the day's totals. An open match created by hand (`POST /api/matches`, `--seats`) that nobody joins expires
+runs while nobody waits (no loop, no automatic match). The matchmaker opens a match when **4 agents** are waiting
+(agents only). `--fill-bots <seconds>` (`KB_FILL_BOTS`, off by default; for tests and demos) lets house bots take
+the empty seats once an agent has waited that long. The server runs no models: real models only play as agents (MCP or HTTP). Never two seats for one agent name; oldest first (a
+hook in `src/server/matchmaker.ts` takes ratings later, #23); two rulesets never share a match. At most
+`--max-concurrent 1` matchmaker matches run at once (the queue waits). An open match created by hand (`POST /api/matches`, `--seats`) that nobody joins expires
 at its fill timer instead of playing house bots only.
 
 HTTP agents: `POST /api/queue { name, persona, model?, line?, ruleset? }` -> `{ ticket }`; `GET
 /api/queue/<ticket>?wait=25` -> `{ status: "seated", match, seat, token }` (then `/turn` and `/plan` as usual);
-`DELETE /api/queue/<ticket>` leaves. `GET /api/queue[?name=X]` is the public view (names, seats needed, when AI
-seats fill, X's place). `GET /api/join[?name=&persona=&owner=]` gives the JOIN panel (#42) its data: the server's
+`DELETE /api/queue/<ticket>` leaves. `GET /api/queue[?name=X]` is the public view (names, seats needed, when house
+bots fill, X's place). `GET /api/join[?name=&persona=&owner=]` gives the JOIN panel (#42) its data: the server's
 public URL (`--public-url`, else the request's), the commands for Claude Code, Codex, Grok and plain JSON / HTTP,
 a ready first prompt and the queue.
 
-Server flags: `--lobby-fill 60`, `--min-agents 1`, `--ai-roster claude,codex,grok`, `--max-concurrent 1`,
-`--ai-daily-cap 30`, `--ai-per-address 9`, `--mcp-deadline 75`, `--public-url <url>`, `--no-mcp` (or `KB_LOBBY_FILL`, `KB_AI_ROSTER`,
-... in `.env` for the container; the container image has no provider CLIs, so its AI seats are house bots unless
-you add them).
+Server flags: `--fill-bots <s>` (off), `--min-agents 1`, `--max-concurrent 1`, `--mcp-deadline 75`, `--public-url <url>`,
+`--no-mcp` (or `KB_FILL_BOTS`, `KB_MAX_CONCURRENT`, ... in `.env` for the container).
 
 ## Which model is best (model spotlight)
 

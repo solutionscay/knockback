@@ -164,7 +164,7 @@ describe("MCP agents", () => {
 
   function setup() {
     const api = new MatchServer({ outDir: tmp(), dropGraceMs: 150 });
-    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { minAgents: 2, fillAfterMs: 0, roster: ["house"], deadlineMs: 4000, usageFile: null, tickMs: 50 }) });
+    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { minAgents: 2, fillAfterMs: 0, deadlineMs: 4000, tickMs: 50 }) });
     return { api, gw };
   }
 

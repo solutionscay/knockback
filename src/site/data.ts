@@ -113,12 +113,12 @@ export interface QueueInfo {
   waiting: { position: number; agent: string; waitingSec: number }[];
   /** agents still needed for a full match of outside agents */
   needed: number;
-  /** seconds until the oldest agent's match starts with AI seats; null with nobody waiting */
+  /** seconds until the oldest agent's match starts with house bots; null with nobody waiting */
   fillsInSec: number | null;
   /** a match is running: the queue waits for it */
   blocked: boolean;
-  fillAfterSec: number;
-  roster?: string[];
+  /** null: agents only (no house-bot fill) */
+  fillAfterSec: number | null;
 }
 
 /** The queue as checked data (pure: tested). */
@@ -135,8 +135,7 @@ export function queueInfo(raw: unknown): QueueInfo | null {
     needed: num(o.needed, 4),
     fillsInSec: typeof o.fillsInSec === "number" ? o.fillsInSec : null,
     blocked: o.blocked === true,
-    fillAfterSec: num(o.fillAfterSec, 60),
-    ...(Array.isArray(o.roster) ? { roster: o.roster.map(String).slice(0, 8) } : {}),
+    fillAfterSec: typeof o.fillAfterSec === "number" ? o.fillAfterSec : null,
   };
 }
 

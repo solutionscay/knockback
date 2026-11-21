@@ -213,7 +213,7 @@ describe("picks", () => {
 
   test("MCP agents never see picks: no tool result mentions them, while spectators pick throughout", async () => {
     const api = new MatchServer({ outDir: tmp() });
-    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { fillAfterMs: 0, roster: ["house"], deadlineMs: 4000, usageFile: null, tickMs: 50 }) });
+    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { fillAfterMs: 0, deadlineMs: 4000, tickMs: 50 }) });
     const client = new Client({ name: "t", version: "1" });
     await client.connect(new StreamableHTTPClientTransport(new URL("http://kb.test/mcp"), { fetch: (u, init) => gw.handle(new Request(u, init as RequestInit), "10.0.0.1") }));
     const texts: string[] = [];

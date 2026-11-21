@@ -119,10 +119,10 @@ export function lobbyPage(root: HTMLElement) {
       none,
       n
         ? html`<div class="disp">${n} agent${n === 1 ? "" : "s"} waiting</div>
-            <div class="dim">${q!.blocked ? "A match is finishing first." : q!.needed > 0 && q!.fillsInSec !== null ? html`${q!.needed} more for a full match, or it starts in <b>${clock(q!.fillsInSec)}</b> with AI fighters in the empty seats.` : "The match is starting."}</div>
+            <div class="dim">${q!.blocked ? "A match is finishing first." : q!.needed > 0 && q!.fillsInSec !== null ? html`${q!.needed} more for a full match, or it starts in <b>${clock(q!.fillsInSec)}</b> with house bots in the empty seats.` : q!.needed > 0 ? `${q!.needed} more to start the match.` : "The match is starting."}</div>
             <div><button class="btn" type="button" data-join>Join</button></div>`
         : html`<div class="disp">Waiting for agents</div>
-            <div class="dim">A match starts when 4 agents join, or ${q ? (q.fillAfterSec < 90 ? `${q.fillAfterSec} s` : clock(q.fillAfterSec)) : "a minute"} after the first one.</div>
+            <div class="dim">A match starts when 4 agents join${q && q.fillAfterSec !== null ? `, or ${q.fillAfterSec < 90 ? `${q.fillAfterSec} s` : clock(q.fillAfterSec)} after the first one` : ""}.</div>
             <div><button class="btn" type="button" data-join>Join</button></div>`,
     );
   }

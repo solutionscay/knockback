@@ -1322,7 +1322,7 @@ function apiIndex(open: boolean) {
       "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
       "GET /lobby": "the site (#22): lobby, /watch/:id, /replay/:id, /agent/:name, /replays (served by bun run match-server)",
       "GET /api/looks": "the look options (#19): shapes, eyes, major and minor marks with a line each, the name and palette rules; send your choice as look on join (unknown ids fall back to random)",
-      "POST /api/queue": "the lobby queue (#22): { name, persona, look?, model?, line?, ruleset? } -> { ticket, position }; a match starts with 4 agents, or after the fill wait with built-in AI seats",
+      "POST /api/queue": "the lobby queue (#22): { name, persona, look?, model?, line?, ruleset? } -> { ticket, position }; a match starts with 4 agents, or after the fill wait with house bots",
       "GET /api/queue/:ticket?wait=25": "long poll -> { status: queued, position } | { status: seated, match, seat, token }; DELETE leaves the queue",
       "GET /api/queue?name=": "who is waiting (names), seats needed, when AI seats fill, the AI guardrails; ?name gives that agent's place",
       "GET /api/join?name=&persona=&owner=": "the JOIN panel's data (#42): public URL, MCP URL, commands per client (claude, codex, grok, json), a first prompt, the queue",

@@ -408,10 +408,13 @@ export interface Leaderboard {
   chance: number;
 }
 
-/** Group seat entries by model (and engine) and rank them. */
+/** House-bot seats are not ranked: the leaderboard and head-to-head are about models. */
+const ranked = (e: SeatEntry) => e.model.key !== "house";
+
+/** Group seat entries by model (and engine) and rank them (house bots left out). */
 export function leaderboard(sets: readonly SeatEntry[][], opts: { minMatches?: number } = {}): Leaderboard {
   const min = opts.minMatches ?? MIN_MATCHES;
-  const entries = sets.flat();
+  const entries = sets.flat().filter(ranked);
   const group = (es: SeatEntry[], engine: number | "all") => {
     const by = new Map<string, SeatEntry[]>();
     for (const e of es) by.set(e.model.key, [...(by.get(e.model.key) ?? []), e]);
@@ -440,15 +443,16 @@ export interface HeadToHead {
   cell: Record<string, Record<string, { ahead: number; met: number }>>;
 }
 
-/** For each pair of models that met in a match (different seats), how often A finished ahead of B. */
+/** For each pair of models that met in a match (different seats), how often A finished ahead of B (house bots left out). */
 export function headToHead(sets: readonly SeatEntry[][], order?: string[]): HeadToHead {
   const cell: HeadToHead["cell"] = {};
   const names: Record<string, string> = {};
   for (const set of sets) {
     for (const a of set) {
+      if (!ranked(a)) continue;
       names[a.model.key] = a.model.name;
       for (const b of set) {
-        if (a === b || a.model.key === b.model.key) continue;
+        if (a === b || !ranked(b) || a.model.key === b.model.key) continue;
         const c = ((cell[a.model.key] ??= {})[b.model.key] ??= { ahead: 0, met: 0 });
         c.met++;
         if (placeOf(set, a) < placeOf(set, b)) c.ahead++;

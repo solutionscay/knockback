@@ -155,6 +155,10 @@ describe("model stats over records", () => {
     const h = headToHead(sets);
     expect(h.cell.a!.b).toEqual({ ahead: 6, met: 10 });
     expect(h.cell.b!.a).toEqual({ ahead: 2, met: 10 });
+    // house-bot seats are left out of the rows and the head-to-head
+    const withHouse = [[mk("h1", "a", false), mk("h1", "house", true)]];
+    expect(leaderboard(withHouse, { minMatches: 1 }).all.rows.map((r) => r.key)).toEqual(["a"]);
+    expect(headToHead(withHouse).keys).toEqual(["a"]);
     const text = leaderboardText(lb, () => h);
     expect(text).toContain("ENGINE v4");
     expect(text).toContain("provisional");
@@ -214,7 +218,7 @@ describe("match server: self-reported models and GET /api/models", () => {
     expect(lb.minMatches).toBe(1);
     const row = lb.engines[0].rows.find((r: { key: string }) => r.key === "self:claude-opus-5-5");
     expect(row).toMatchObject({ matches: 1, selfReported: true, fightMatches: 1 });
-    expect(lb.all.rows.some((r: { key: string }) => r.key === "house")).toBe(true);
+    expect(lb.all.rows.some((r: { key: string }) => r.key === "house")).toBe(false); // house bots are not ranked
   });
 
   test("the seat's model survives a restart (stored with the seat)", async () => {
@@ -250,7 +254,7 @@ describe("match server: self-reported models and GET /api/models", () => {
     const lb = (await client(s)("GET", "/api/models")).data;
     expect(lb.all.matches).toBe(1);
     expect(lb.duplicates).toBe(1);
-    expect(lb.all.rows.map((r: { name: string }) => r.name).sort()).toEqual(["CLAUDE HAIKU", "GPT-6 LUNA (CODEX)", "GROK 4.6", "HOUSE BOT"]);
+    expect(lb.all.rows.map((r: { name: string }) => r.name).sort()).toEqual(["CLAUDE HAIKU", "GPT-6 LUNA (CODEX)", "GROK 4.6"]); // no HOUSE BOT row
     expect(lb.all.rows.every((r: { provisional: boolean }) => r.provisional)).toBe(true); // 1 match < 10
     expect((await store.getRecord("m1"))!.stats).toContain("claude-haiku"); // filled in
     expect((await store.getRecord("m4"))!.stats).toBe("[]"); // missing file: marked, never read again

@@ -90,7 +90,7 @@ describe("lobby data", () => {
     expect(upNext([])).toBeNull();
   });
   test("the matchmaker's queue (#22): waiting agents first, the oldest four with the fill countdown; joinStatus finds them", () => {
-    const q = queueInfo({ waiting: [1, 2, 3, 4, 5].map((i) => ({ position: i, agent: `W${i}`, waitingSec: 60 - i })), needed: 0, fillsInSec: 12, blocked: false, fillAfterSec: 60, roster: ["claude", "codex", "grok"] })!;
+    const q = queueInfo({ waiting: [1, 2, 3, 4, 5].map((i) => ({ position: i, agent: `W${i}`, waitingSec: 60 - i })), needed: 0, fillsInSec: 12, blocked: false, fillAfterSec: 60 })!;
     expect(q.waiting).toHaveLength(5);
     const e = queue(ms, q);
     expect(e.slice(0, 5).map((x) => [x.agent, x.match, x.startsInSec])).toEqual([
