@@ -138,6 +138,31 @@ export const WEAPONS = {
     igniteChance: 0.45,
     chainDamage: 1.2,
   },
+  /**
+   * Precision weapons (#38). All three are hitscan: the round stops at the first fighter, prop or terrain cell.
+   * Their aim follows the accuracy model (ACCURACY below), not the controller's aim noise.
+   * Rifle: the workhorse. Steady semi-auto, medium damage, a light shove.
+   */
+  rifle: {
+    ammo: 16, cooldown: 22, range: 24, damage: 3.4, knockback: 3, lift: 0.18,
+    propDamage: 6, terrainDamage: 9,
+  },
+  /**
+   * Sniper: very long range, slow, one big hit. Aiming takes aimTicks with the trigger held (the laser sight is on
+   * meanwhile); letting go cancels the aim. Pierces nothing.
+   */
+  sniper: {
+    ammo: 4, aimTicks: 36, cooldown: 100, range: 42, minRange: 4,
+    damage: 15, knockback: 13, lift: 0.3, propDamage: 24, terrainDamage: 30,
+  },
+  /**
+   * Crossbow (marksman): in between. A heavy bolt that knocks the target back, or pins it for pinTicks when a wall
+   * or prop is within pinReach behind it.
+   */
+  crossbow: {
+    ammo: 6, cooldown: 72, range: 28, damage: 6, knockback: 10, lift: 0.32,
+    pinReach: 1.1, pinTicks: 40, propDamage: 14, terrainDamage: 16,
+  },
   /** Hook: yanks a fighter (or a prop) toward the shooter. */
   grapple: {
     cooldown: 110,
@@ -148,6 +173,21 @@ export const WEAPONS = {
     stun: 26,
   },
 } as const;
+
+/**
+ * Accuracy model for precision weapons (#38). Deterministic: the shot's direction is turned by a perpendicular
+ * offset of spread * gauss() from the seeded sim RNG (sum of uniforms, no trig). Spread per weapon, in offset per
+ * meter: `still` when standing still on the ground, plus `move` when walking (scaled by speed / walk speed), `air`
+ * when jumping or falling, `jet` when the jetpack burns. Behind cover (`inCover`) the total is multiplied by
+ * coverMul. stillSpeed: below this horizontal speed (m/s) a grounded fighter counts as still.
+ */
+export const ACCURACY = {
+  stillSpeed: 0.6,
+  coverMul: 0.5,
+  rifle: { still: 0.012, move: 0.07, air: 0.12, jet: 0.16 },
+  sniper: { still: 0.003, move: 0.11, air: 0.2, jet: 0.25 },
+  crossbow: { still: 0.008, move: 0.08, air: 0.14, jet: 0.18 },
+};
 
 /**
  * Back-attack reflex (house bots and AI fighters alike): being hit this many

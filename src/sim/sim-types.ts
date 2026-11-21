@@ -4,10 +4,16 @@ import type { PieceCell } from "./terrain";
 import { generateIdentities, type Look } from "./identity";
 
 /** "fist" is what everyone starts with; the rest are picked up in the arena. */
-const PICKUP_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer"] as const;
+const PICKUP_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
 export type Weapon = (typeof PICKUP_WEAPONS)[number] | "fist";
 export const WEAPON_LIST: readonly Weapon[] = PICKUP_WEAPONS;
-export const LIMITED_WEAPONS = ["mine", "railgun", "hammer"] as const;
+export const LIMITED_WEAPONS = ["mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
+/** Precision weapons (#38): hitscan, and their spread follows the accuracy model (still or in cover = accurate). */
+export const PRECISION_WEAPONS = ["rifle", "sniper", "crossbow"] as const;
+export type PrecisionWeapon = (typeof PRECISION_WEAPONS)[number];
+export function isPrecision(weapon: unknown): weapon is PrecisionWeapon {
+  return (PRECISION_WEAPONS as readonly unknown[]).includes(weapon);
+}
 export type LimitedWeapon = (typeof LIMITED_WEAPONS)[number];
 export function usesAmmo(weapon: Weapon): weapon is LimitedWeapon {
   return (LIMITED_WEAPONS as readonly Weapon[]).includes(weapon);
@@ -21,7 +27,11 @@ export function isPickupWeapon(value: unknown): value is Exclude<Weapon, "fist">
 export const POWER_LIST = ["health", "shield", "speed", "heavy", "damage", "jump", "jetpack"] as const;
 export type PowerUp = (typeof POWER_LIST)[number];
 export type ItemType = PowerUp | Weapon;
-export type Stance = "rush" | "distance" | "cover" | "item";
+/**
+ * How a fighter positions itself. #38 adds overwatch (high ground, long gun, shoot whoever is in the open),
+ * flank (route around the target) and hold (defend a spot); cover now moves between engine-computed cover spots.
+ */
+export type Stance = "rush" | "distance" | "cover" | "item" | "overwatch" | "flank" | "hold";
 export type EntityKind = PropKind | "fighter" | "chunk" | "item" | "grenade";
 export type ExplosionKind = "mine" | "rocket" | "barrel" | "grenade" | "tnt" | "gas";
 
@@ -43,7 +53,7 @@ export type Retaliate = "attacker" | "turn" | "ignore";
  * See docs/rules.md. Validated in src/ai/parse.ts (AI answers) and
  * src/viewer/sanitize.ts (records, live stream); evaluated in controller.ts.
  */
-export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with"] as const;
+export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with", "in_open", "has_long_gun", "in_cover"] as const;
 export type RuleWhen = (typeof RULE_WHEN)[number];
 export const RULE_DO = ["target", "avoid", "seek", "use", "stance", "retaliate"] as const;
 export type RuleDo = (typeof RULE_DO)[number];
@@ -175,6 +185,10 @@ export interface Fighter {
   cooldown: Record<Weapon, number>;
   ammo: Record<LimitedWeapon, number>;
   railCharge: number;
+  /** sniper (#38): ticks spent aiming down the scope (the laser sight shows while > 0) */
+  scope: number;
+  /** ticks pinned by a crossbow bolt (#38): no movement, no firing */
+  pinned: number;
   stun: number;
   jumpCd: number;
   airJumped: boolean;
@@ -234,6 +248,12 @@ export type SimEvent =
   | { type: "mineStick" | "mineArm"; tick: number; x: number; y: number; entity: number }
   | { type: "railCharge"; tick: number; fighter: number }
   | { type: "rail"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number }
+  /** a precision shot (#38): rifle round, sniper round or crossbow bolt; spread = the perpendicular offset the accuracy model gave it */
+  | { type: "shot"; tick: number; fighter: number; weapon: "rifle" | "sniper" | "crossbow"; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number; spread: number }
+  /** a sniper started aiming (#38): the laser sight is on */
+  | { type: "scope"; tick: number; fighter: number }
+  /** a crossbow bolt pinned a fighter to a wall (#38) */
+  | { type: "pin"; tick: number; fighter: number; by: number; x: number; y: number }
   | { type: "shockwave"; tick: number; fighter: number; x: number; y: number; paths: { x: number; y: number }[][] }
   | { type: "pellet"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: boolean }
   | { type: "swing"; tick: number; fighter: number; x: number; y: number; dx: number; dy: number; hit: boolean; weapon: "bat" | "fist" }
