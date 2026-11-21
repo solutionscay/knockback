@@ -94,9 +94,6 @@ export function inferFromText(text: string): { stance?: Stance; target?: TargetP
   return out;
 }
 
-/** Front-matter keys a soul no longer has: the match generates names and looks (#17). */
-const IDENTITY_KEYS = ["name", "title", "color", "mark"];
-
 /** Parse a soul file. Never throws: problems are reported, defaults fill the gaps. `id` is the file's key. */
 export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulParse {
   const errors: string[] = [];
@@ -135,7 +132,6 @@ export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulP
     }
     return guessed ?? fallback;
   };
-  for (const k of IDENTITY_KEYS) if (front[k] !== undefined) warnings.push(`${k}: ignored; each match gives the fighters generated names and looks`);
   let weapons: Weapon[] = [];
   if (front.weapons) {
     for (const w of list(front.weapons)) {
