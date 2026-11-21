@@ -41,4 +41,33 @@ describe("fighter behavior", () => {
       expect(left.removed).toBe(false);
     }
   });
+
+  test("weapon range: a rush fighter with a rocket stops at rocket range, not at fist range", () => {
+    // open floor; the rusher starts 28 m from three fighters who hold their spots, and is the only one armed
+    const lv = level([[-20, 20]], [], [-15, 13, 15, 17]);
+    const ruleset = resolveRuleset({ weapons: { enabled: ["rocket"] }, pickups: { enabled: ["health"] } });
+    for (const seed of [1, 2]) {
+      const f = new Fight(seed, [0, 1, 2, 3].map(() => plan({ stance: "hold", weapons: ["rocket"] })), { level: lv, ruleset });
+      const sim = f.sim;
+      for (const it of sim.items()) sim.entityStore.remove(it);
+      const rusher = sim.fighters.find((x) => sim.pos(x).x < 0)!;
+      sim.applyItem(rusher, "rocket");
+      f.controllers[rusher.id]!.setStrategy(plan({ stance: "rush", weapons: ["rocket"] }), sim);
+      const { standOff, min } = ruleset.tactics.weapons.reach.rocket;
+      const dist: number[] = [];
+      // 7 s: before the first supply drop
+      while (!f.over && sim.tick < 420) {
+        f.step();
+        const t = f.controllers[rusher.id]!.targetId;
+        const target = t >= 0 ? sim.fighters[t]! : null;
+        if (sim.tick < 240 || !target || target.removed || rusher.removed || sim.weapon(rusher) !== "rocket") continue;
+        const a = sim.pos(rusher), b = sim.pos(target);
+        dist.push(Math.hypot(a.x - b.x, a.y - b.y));
+      }
+      dist.sort((a, b) => a - b);
+      expect(dist.length).toBeGreaterThan(30);
+      expect(dist[Math.floor(dist.length / 2)]!).toBeGreaterThan(standOff * 0.7);
+      expect(dist[0]!).toBeGreaterThan(min * 2);
+    }
+  });
 });

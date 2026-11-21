@@ -168,9 +168,9 @@ export class NavGraph {
 
   /**
    * Can a fighter make this jump or drop (#69)? Flies the controller's own arc (a run-up across a gap, a standing jump
-   * onto a platform overhead, or walking off for a drop; air control toward the landing; gravity) and moves the body
-   * through the grid: a ceiling stops the rise and the arc goes on, a wall or a landing out of reach makes the link
-   * unusable for fighters. Walks always pass.
+   * up beside a platform overhead, or walking off for a drop; air control toward the landing; gravity) and moves the body
+   * through the grid: a ceiling stops the rise, a wall stops the run (the body slides along both), and a landing out
+   * of reach makes the link unusable for fighters. Walks always pass.
    */
   arcClear(grid: Grid, l: Link, ruleset: Ruleset = CLASSIC): boolean {
     if (l.kind === "walk") return true;
@@ -186,17 +186,31 @@ export class NavGraph {
       return false;
     };
     let x = l.takeoffX, feet = from.y;
-    let vx = dir * F.walkSpeed * (runUp(this, l) ? 1 : 0.3), vy = l.kind === "jump" ? F.jumpSpeed : 0;
+    const run = runUp(this, l);
+    // a gap jump is run at, a drop is walked off at speed, a jump up beside a platform starts from standing
+    let vx = run || l.kind === "drop" ? dir * F.walkSpeed : 0, vy = l.kind === "jump" ? F.jumpSpeed : 0;
     for (let i = 0; i < 90; i++) {
-      const want = Math.max(-1, Math.min(1, (l.landX - x) / 0.7)) * F.walkSpeed;
+      // onto a platform overhead: straight up beside its edge until the feet clear its top, then over (the controller)
+      const aim = l.kind === "jump" && !run && feet < to.y + 0.15 && vy > 0 ? l.takeoffX : l.landX;
+      const want = Math.max(-1, Math.min(1, (aim - x) / 0.7)) * F.walkSpeed;
       vx += Math.max(-F.airAccel * dt, Math.min(F.airAccel * dt, want - vx));
       vy -= gravity * dt;
-      const nx = x + vx * dt, nf = feet + vy * dt;
+      const nx = x + vx * dt;
+      let nf = feet + vy * dt;
+      // still over the surface it left: standing on it
+      if (vy <= 0 && feet >= from.y - 0.01 && nf < from.y && nx >= from.x0 && nx <= from.x1) {
+        nf = from.y;
+        vy = 0;
+      }
       if (vy <= 0 && nf <= to.y + 0.05 && nx >= to.x0 - 0.1 && nx <= to.x1 + 0.1) return true;
       if (vy < 0 && nf < to.y - 0.4) return false;
       if (!blocked(nx, nf)) {
         x = nx;
         feet = nf;
+      } else if (!blocked(x, nf)) {
+        // against a wall: the body slides along it
+        feet = nf;
+        vx = 0;
       } else if (vy > 0 && !blocked(nx, feet)) {
         // head against a ceiling: the rise stops, the run goes on
         x = nx;

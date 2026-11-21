@@ -4,7 +4,14 @@ import { runUp, type Link, type Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
+import { RANGED_STANDOFF } from "./controller-weapons";
 import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } from "./tactical";
+
+/** Still, not firing, with a live target this long: the goal is not working (#69). */
+const IDLE_TICKS = 40;
+/** then look for a spot with a shot this long */
+const VANTAGE_TICKS = 120;
+const isRanged = (sim: Sim, w: Weapon) => w !== "fist" && sim.ruleset.tactics.weapons.reach[w].standOff >= RANGED_STANDOFF;
 
 export interface Goal {
   surface: number;
@@ -32,6 +39,14 @@ export class ControllerNavigation {
   private foothold: { x: number; y: number } | null = null;
   /** the link this fighter is walking to this tick: its edge is not a ledge to stop at */
   private edgeLink: Link | null = null;
+  /** wedged (#69): ticks stuck in the air (between two corners), and until when to push the other way */
+  private wedged = 0;
+  private rockUntil = 0;
+  private rockDir = 0;
+  /** idle watchdog (#69): ticks still, with a live target, not firing */
+  private idle = 0;
+  /** looking for a spot with a shot until this tick */
+  private vantageUntil = 0;
   /** digging out of a pocket: hit the wall toward the goal */
   dig: { until: number; dir: 1 | -1 } | null = null;
   /** times the watchdog fired this fight (stats, tests) */
@@ -57,6 +72,40 @@ export class ControllerNavigation {
     this.flankPlan = null;
     this.holdSpot = null;
     this.coverSpot = null;
+  }
+
+  /**
+   * No idle gaps (#69): called with each tick's input. Still, not firing, with a live target for IDLE_TICKS means
+   * the goal gives no shot; the fighter then moves to a spot with one for a while. True when it trips.
+   */
+  watchIdle(sim: Sim, me: Fighter, input: Input, target: Fighter | null): boolean {
+    const v = sim.vel(me);
+    const busy = input.fire || me.scope > 0 || me.railCharge > 0 || me.stun > 0 || Math.abs(v.x) > 0.6 || Math.abs(v.y) > 0.6;
+    if (!target || !target.alive || target.removed || busy) {
+      this.idle = 0;
+      return false;
+    }
+    if (++this.idle < IDLE_TICKS) return false;
+    this.idle = 0;
+    this.vantageUntil = sim.tick + VANTAGE_TICKS;
+    this.nextEval = sim.tick;
+    return true;
+  }
+
+  /** A reachable spot, not this one, that sees the target at the stand-off of the longest weapon carried (#69). */
+  private vantage(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<Sim["nav"]["plan"]>, zonePenalty: (x: number) => number, fragilePenalty: (s: number) => number): Goal {
+    const reach = sim.ruleset.tactics.weapons.reach;
+    const gun = me.weapons.reduce<Weapon>((best, w) => (reach[w].max > reach[best].max ? w : best), "fist");
+    const ideal = clamp(reach[gun].standOff, reach[gun].min, reach[gun].max);
+    const mp = sim.pos(me), tp = sim.pos(target), tFeet = sim.feetY(target);
+    const hold = this.controller.stanceNow(sim) === "hold" ? this.holdSpot : null;
+    return this.bestPoint(sim, plan, (px, py, sid) => {
+      let s = Math.abs(length2D(px - tp.x, py - tFeet) - ideal) * 0.3;
+      if (!sim.tactical.sees(px, py, tp.x, tFeet)) s += 8;
+      if (sid === me.surface && Math.abs(px - mp.x) < 1.5) s += 6;
+      if (hold && length2D(px - hold.x, py - hold.y) > sim.ruleset.tactics.stances.hold.radius) s += 1000;
+      return s + zonePenalty(px) + fragilePenalty(sid);
+    });
   }
 
   private zoneBounds(sim: Sim): [number, number] {
@@ -85,6 +134,9 @@ export class ControllerNavigation {
       return this.bestPoint(sim, plan, (x, y, sid) => Math.abs(x - tp.x) + Math.abs(y + 0.84 - tp.y) + zonePenalty(x) + fragilePenalty(sid));
     }
     let stance = this.controller.stanceNow(sim);
+    // overwatch and distance want a weapon that fights from range; without one they keep away and go for one (#69)
+    const ranged = me.weapons.some((w) => isRanged(sim, w));
+    const hangBack = (stance === "overwatch" || stance === "distance") && !ranged;
     const close = me.weapons.includes("hammer") || me.weapons.includes("bat") || me.weapons.includes("shotgun") || me.weapons.includes("flamethrower");
 
     // arm up: go for the pickups this fighter wants (fists only = go far for anything)
@@ -115,8 +167,8 @@ export class ControllerNavigation {
           const rank = me.prefs.indexOf(type as Weapon);
           extra = Math.max(0, rank) * sim.ruleset.tactics.pickup.rankCost;
           limit = !armed ? sim.ruleset.tactics.pickup.unarmedLimit : stance === "item" ? sim.ruleset.tactics.pickup.itemStanceLimit : sim.ruleset.tactics.pickup.upgradeLimit;
-          // overwatch (#38): a long gun first, from further away
-          if (stance === "overwatch" && isLongGun(sim.ruleset, type as Weapon) && !hasLongGun(sim, me)) {
+          // overwatch (#38) and distance (#69): a long gun first, from further away
+          if ((stance === "overwatch" && isLongGun(sim.ruleset, type as Weapon) && !hasLongGun(sim, me)) || (hangBack && isRanged(sim, type as Weapon))) {
             limit = Math.max(limit, sim.ruleset.tactics.stances.overwatch.longGunLimit);
             extra -= 10;
           }
@@ -149,13 +201,19 @@ export class ControllerNavigation {
       }
       this.chase = null;
       if (stance === "item") stance = close ? "rush" : "distance";
-      if (!armed) stance = "rush"; // nothing to grab: scrap with fists
+      if (!armed && !hangBack) stance = "rush"; // nothing to grab: scrap with fists
     }
 
+    const tactics = sim.ruleset.tactics.weapons;
+    const reach = weapon ? tactics.reach[weapon] : undefined;
+    // the held weapon's stand-off (#69): every stance fights at its weapon's range
+    const standOff = reach ? clamp(reach.standOff, reach.min, reach.max) : undefined;
+    if (sim.tick < this.vantageUntil) return this.vantage(sim, me, target, plan, zonePenalty, fragilePenalty);
     if (this.controller.pressing(sim)) {
-      // pressing: get beside the target, switching sides now and then (breaks vertical and wall deadlocks)
+      // pressing: get beside the target (at the weapon's range), switching sides now and then (breaks vertical and
+      // wall deadlocks)
       const flip = Math.floor(sim.tick / sim.ruleset.tactics.patience.pressFlip) % 2 === 0 ? 1 : -1;
-      const gx = tp.x + flip * 2.2;
+      const gx = tp.x + flip * Math.max(2.2, standOff ?? 0);
       return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - gx) + Math.abs(py + 0.9 - tp.y) * 0.7 + zonePenalty(px) + fragilePenalty(sid));
     }
 
@@ -167,22 +225,22 @@ export class ControllerNavigation {
       return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(Math.hypot(px - ap.x, py + 1 - ap.y) - 12) + zonePenalty(px) + fragilePenalty(sid));
     }
 
-    const tactics = sim.ruleset.tactics.weapons;
-    const reach = weapon ? tactics.reach[weapon] : undefined;
-    if (stance === "rush") {
+    // rush with a weapon that fights from distance: a spot at its range with a clear line, like distance (#69)
+    if (stance === "rush" && (standOff ?? 0) <= 4.5) {
       const side = mp.x < tp.x ? -1 : 1;
       const s = target.surface >= 0 ? nav.surfaces[target.surface] : undefined;
       if (!s || plan.cost[s.id] === Infinity || (this.badSurfaces.get(s.id) ?? -1) > sim.tick) {
         return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - tp.x) + Math.abs(py - tp.y) * 0.5 + zonePenalty(px) + fragilePenalty(sid));
       }
-      // explosives only: rush to blast range, not into your own blast
-      const gap = reach ? Math.min(reach.max, Math.max(tactics.rushGap, reach.min))
-        : close || !me.weapons.some((w) => w === "rocket" || w === "grenade" || w === "railgun" || w === "mine") ? 1.1 : 4;
+      // close to the held weapon's range (#69): a rocket stops at rocket range, a bat at bat range
+      const gap = standOff ?? (close || !me.weapons.some((w) => w === "rocket" || w === "grenade" || w === "railgun" || w === "mine") ? tactics.rushGap : 4);
       const x = clamp(tp.x + side * gap, Math.max(s.x0 + 0.3, zl), Math.min(s.x1 - 0.3, zr));
       return { surface: s.id, x: clamp(x, s.x0 + 0.3, s.x1 - 0.3) };
     }
 
-    const ideal = reach ? clamp(reach.standOff, reach.min, reach.max) : me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
+    // a spot closer than this to the target wastes a weapon that fights from range (#69)
+    const tooClose = (d: number) => (weapon && isRanged(sim, weapon) && standOff ? Math.max(0, standOff * 0.7 - d) * 1.5 : 0);
+    const ideal = hangBack ? 12 : standOff !== undefined ? standOff : me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
     const st = sim.ruleset.tactics.stances;
     const tac = sim.tactical;
     const tFeet = sim.feetY(target);
@@ -243,14 +301,27 @@ export class ControllerNavigation {
       }
       const side = f.side;
       if ((mp.x - tp.x) * side > 0.4) f.around = true;
+      if (weapon && isRanged(sim, weapon) && standOff) {
+        // a weapon that fights from range does not walk round past the target: a spot at its range on this side, off
+        // the straight line, with a clear line of fire (#69)
+        const mine = mp.x < tp.x ? -1 : 1;
+        return this.bestPoint(sim, plan, (px, py, sid) => {
+          const d = length2D(px - tp.x, py - tFeet);
+          let s = Math.abs(d - standOff) + tooClose(d) + ((px - tp.x) * mine < 0 ? fl.corridorPenalty : 0);
+          if (Math.abs(py - tFeet) < 1.5) s += 2;
+          if (!tac.sees(px, py, tp.x, tFeet)) s += tactics.terrainPenalty;
+          return s + zonePenalty(px) + fragilePenalty(sid);
+        });
+      }
       if (f.around) {
         const s = target.surface >= 0 ? nav.surfaces[target.surface] : undefined;
-        if (s && plan.cost[s.id] !== Infinity) return { surface: s.id, x: clamp(tp.x + side * Math.max(1.1, reach ? Math.min(reach.max, reach.standOff * 0.5) : 1.1), s.x0 + 0.3, s.x1 - 0.3) };
+        if (s && plan.cost[s.id] !== Infinity) return { surface: s.id, x: clamp(tp.x + side * Math.max(1.1, standOff ?? 1.1), s.x0 + 0.3, s.x1 - 0.3) };
       }
       const myFeet = sim.feetY(me);
       const lo = Math.min(mp.x, tp.x), hi = Math.max(mp.x, tp.x);
       return this.bestPoint(sim, plan, (px, py, sid) => {
-        let s = Math.abs(px - (tp.x + side * fl.gap)) + Math.abs(py - (tFeet + 2)) * 0.5;
+        // the far side at the weapon's range: a long gun goes round wide (#69)
+        let s = Math.abs(px - (tp.x + side * Math.max(fl.gap, standOff ?? 0))) + Math.abs(py - (tFeet + 2)) * 0.5;
         // the straight line: same level as both of us, between us
         if (px > lo && px < hi && Math.abs(py - tFeet) < 1.5 && Math.abs(py - myFeet) < 1.5) s += fl.corridorPenalty;
         // behind it: on the side it faces away from
@@ -282,7 +353,7 @@ export class ControllerNavigation {
           if (travel > cv.spotRange || zonePenalty(x) > 0) return;
           const d = length2D(x - tp.x, y - tFeet);
           // the nearest shelter wins: getting out of the line matters more than the ideal range
-          const sc = Math.abs(d - ideal) * cv.rangeWeight + fragilePenalty(surface) + travel - bonus;
+          const sc = Math.abs(d - ideal) * cv.rangeWeight + tooClose(d) + fragilePenalty(surface) + travel - bonus;
           if (sc >= bs || !shelters(sim, threat, x, y)) return;
           bs = sc;
           best = { surface, x, y, side };
@@ -297,7 +368,7 @@ export class ControllerNavigation {
       const myFeet = sim.feetY(me);
       return this.bestPoint(sim, plan, (px, py, sid) => {
         const d = length2D(px - tp.x, py - tFeet);
-        let s = Math.abs(d - ideal) * cv.rangeWeight + length2D(px - mp.x, py - myFeet) + zonePenalty(px) + fragilePenalty(sid);
+        let s = Math.abs(d - ideal) * cv.rangeWeight + tooClose(d) + length2D(px - mp.x, py - myFeet) + zonePenalty(px) + fragilePenalty(sid);
         const clear = tac.sees(px, py, tp.x, tFeet);
         if (peek ? clear : !clear) s -= 7;
         return s;
@@ -354,6 +425,9 @@ export class ControllerNavigation {
       // the zone is coming and no jump we can make leads into it: a risky jump beats being pushed into the pit
       const [zl, zr] = this.zoneBounds(sim);
       if ((mp.x < zl || mp.x > zr) && !nav.surfaces.some((s) => plan.cost[s.id] !== Infinity && s.x1 > zl && s.x0 < zr)) plan = nav.plan(me.surface, mp.x);
+      // a target inside a ranged weapon's reach: look again soon, to back off in time (#69)
+      const reach = weapon ? sim.ruleset.tactics.weapons.reach[weapon] : undefined;
+      if (reach && isRanged(sim, weapon!) && length2D(tp.x - mp.x, tp.y - mp.y) < reach.standOff * 0.6) this.nextEval = Math.min(this.nextEval, sim.tick + 8);
       if (sim.tick >= this.nextEval || !this.goal || !nav.surfaces[this.goal.surface] || plan.cost[this.goal.surface] === Infinity) {
         this.goal = this.chooseGoal(sim, me, target, plan, crossingWall, flank, weapon);
         this.nextEval = sim.tick + 24 + this.controller.fighterId * 3;
@@ -380,7 +454,10 @@ export class ControllerNavigation {
         this.nextEval = sim.tick;
       }
       if (this.activeLink) {
-        moveTarget = this.activeLink.landX;
+        const l = this.activeLink;
+        const to = nav.surfaces[l.to];
+        // onto a platform overhead (#69): straight up beside its edge until the feet clear its top, then over
+        moveTarget = !runUp(nav, l) && to && mv.y > 0 && sim.feetY(me) < to.y + 0.15 ? l.takeoffX : l.landX;
       } else if (!me.grounded) {
         // in the air with no jump planned (a hop, a knock, a nav rebuild): head for the landing, then the goal
         moveTarget = this.jumpTo ? this.jumpTo.x : goal.x;
@@ -421,6 +498,14 @@ export class ControllerNavigation {
 
     // in the air (#69): only steer where a surface can still catch us
     if (!me.grounded) moveTarget = this.landing(sim, me, mp, mv, moveTarget, input);
+    // wedged between two corners (not grounded, not moving): push the other way a moment to come free (#69)
+    this.wedged = !me.grounded && me.stun === 0 && Math.abs(mv.x) < 0.2 && Math.abs(mv.y) < 0.3 ? this.wedged + 1 : 0;
+    if (this.wedged >= 12) {
+      this.wedged = 0;
+      this.rockDir = moveTarget >= mp.x ? -1 : 1;
+      this.rockUntil = sim.tick + 10;
+    }
+    if (sim.tick < this.rockUntil) moveTarget = mp.x + this.rockDir * 2;
 
     const diff = moveTarget - mp.x;
     input.move = Math.abs(diff) < 0.15 ? 0 : clamp(diff / 0.7, -1, 1);
@@ -476,6 +561,11 @@ export class ControllerNavigation {
     };
     const spans: { surface: Surface; lo: number; hi: number }[] = [];
     for (const s of sim.nav.surfaces) {
+      // resting on its corner (not falling, feet just under its top): step onto it
+      if (feet < s.y && feet > s.y - 0.6 && mp.x > s.x0 - 0.6 && mp.x < s.x1 + 0.6 && Math.abs(mv.y) < 1) {
+        spans.push({ surface: s, lo: s.x0 + 0.15, hi: s.x1 - 0.15 });
+        continue;
+      }
       const disc = mv.y * mv.y + 2 * g * (feet - s.y);
       if (disc < 0) continue;
       const t = (mv.y + Math.sqrt(disc)) / g;

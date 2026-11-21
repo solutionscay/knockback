@@ -11,6 +11,8 @@ type RayHit = ReturnType<Sim["raycast"]>;
 type Shot = { aim: Point; lob?: boolean; wall?: boolean };
 export type WeaponChoice = { weapon: Weapon; shot?: Shot };
 const MELEE: readonly Weapon[] = ["fist", "bat", "hammer"];
+/** A weapon that fights from range (#69): its stand-off is this far or more (rocket, railgun, rifle, sniper, crossbow). */
+export const RANGED_STANDOFF = 10;
 const FIGHTER_ORDER: readonly Weapon[] = ["hammer", "bat", "flamethrower", "shotgun", "railgun", "sniper", "rocket", "crossbow", "rifle", "grenade", "mine", "grapple", "fist"];
 const BREACH_ORDER: readonly Weapon[] = ["shotgun", "rocket", "grenade", "bat", "fist", "hammer", "mine"];
 
@@ -78,7 +80,11 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   const direct = aimVector(dx0, dy0 - config.aimHeight);
   const carried = me.weapons.filter(w => w !== "fist" && usable(sim, me, w));
   const ranged = carried.some(w => !MELEE.includes(w));
-  const canHold = (w: Weapon) => (w === "fist" || carried.includes(w)) && (!ranged || !MELEE.includes(w) || inWeaponBand(w, dist, ruleset, dy0));
+  // a weapon that fights from range is kept in hand up close while the zone leaves room to back off to its range
+  // (#69): no fists then
+  const room = 2 * sim.zoneHalfAhead(0);
+  const longReach = carried.some(w => config.reach[w].standOff >= RANGED_STANDOFF && room >= config.reach[w].standOff);
+  const canHold = (w: Weapon) => (w === "fist" ? !longReach : carried.includes(w)) && (!ranged || !MELEE.includes(w) || inWeaponBand(w, dist, ruleset, dy0));
   const ready = (w: Weapon) => me.cooldown[w] <= (w === sim.weapon(me) ? 0 : ruleset.combat.swapTicks) + config.readyMarginTicks;
   const normal = FIGHTER_ORDER.filter(canHold);
   const preference = [preferred, ...(ledge ? ["grapple" as const] : [])].filter((w): w is Weapon => w !== undefined && normal.includes(w));
