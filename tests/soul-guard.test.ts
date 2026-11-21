@@ -4,7 +4,7 @@
  * the fighter's own words alone.
  */
 import { describe, expect, test } from "bun:test";
-import { checkJoin } from "../src/server/match-server";
+import { checkJoin } from "../src/server/match-input";
 import { cleanSoul, MAX_SOUL } from "../src/server/soul-guard";
 
 const PERSONA = "A cocky bruiser who loves the bat and a good ring-out. Talks in short, loud taunts and never backs down.\n\nGoes for whoever is winning, grabs the rocket when it can, and hates hiding behind cover. Best of 3, round 2 is where it wakes up.";

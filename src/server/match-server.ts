@@ -26,9 +26,6 @@ import { hashToken, hex } from "./seat-tokens";
 import { ServerMatch, type SeatKind } from "./server-match";
 import { SqliteStore, type MatchRow, type MatchStore } from "./store";
 
-export { checkJoin, lookWarnings, MATCHES_PER_IP, MAX_WAIT_S, SEATS_PER_IP } from "./match-input";
-export { hashToken } from "./seat-tokens";
-export { ServerMatch, type SeatAgent, type SeatKind } from "./server-match";
 
 /** GET /api/models reads at most this many of the newest records */
 const MODELS_MAX_RECORDS = 5000;

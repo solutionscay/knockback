@@ -11,7 +11,7 @@ import * as z from "zod";
 import { lookOptions } from "../ai/looks";
 import { CLASSIC, type Ruleset } from "../sim/ruleset";
 import type { MatchServer } from "./match-server";
-import { hashToken } from "./match-server";
+import { hashToken } from "./seat-tokens";
 import type { Matchmaker } from "./matchmaker";
 import { checkinBriefing, briefingOf, checkinInput, fixHints, MCP_WAIT_S, planDescription, planInput, reportInput, type strategySchema } from "./mcp-schema";
 import { MAX_SOUL, MIN_SOUL } from "./soul-guard";

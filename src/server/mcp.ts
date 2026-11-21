@@ -32,7 +32,7 @@ import { INSTRUCTIONS } from "./mcp-schema";
 import { registerTools, type Session } from "./mcp-tools";
 import type { Matchmaker } from "./matchmaker";
 import type { MatchServer } from "./match-server";
-import { hashToken } from "./match-server";
+import { hashToken } from "./seat-tokens";
 import { hashKey, keyOf } from "./keys";
 
 interface Live {

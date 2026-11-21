@@ -17,7 +17,9 @@
 import { randomBytes } from "node:crypto";
 import { HttpError } from "./limits";
 import { selectRuleset, type MatchRuleset } from "./match-rulesets";
-import { checkJoin, type MatchServer, type ServerMatch } from "./match-server";
+import type { MatchServer } from "./match-server";
+import { checkJoin } from "./match-input";
+import type { ServerMatch } from "./server-match";
 import { claimName, hashKey, ownerOf } from "./keys";
 import { soulLine } from "./soul-guard";
 
