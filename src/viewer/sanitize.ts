@@ -8,7 +8,7 @@ import { isPickupWeapon, MAX_RULES, TARGET_PREFERENCES, type Rule, type Strategy
 import { generateIdentities, sanitizeIdentity, type Identity } from "../sim/identity";
 import type { LineTemplate, Soul } from "../sim/soul";
 import type { Decision } from "../sim/voice";
-import { ENTRANCE_LINE_MAX, TIMED_POWERS, type Entrance, type StartPower, type TimedPower } from "../sim/entrance";
+import { ENTRANCE_LINE_MAX, type Entrance } from "../sim/entrance";
 
 const SAFE_TARGETS = [...TARGET_PREFERENCES, "grudge"];
 const SAFE_TEMPER = ["cocky", "confident", "calm", "nervous"];
@@ -114,17 +114,6 @@ export function sanitizeEntrances(v: unknown, seed = 0): Entrance[] | undefined 
   return out.length ? out.sort((a, b) => a.seat - b.seat) : undefined;
 }
 
-/** Start powers (#66) from a record or the live stream: known timed power-ups for real seats, at most a round long. */
-export function sanitizeStartPowers(v: unknown): StartPower[] | undefined {
-  if (!Array.isArray(v)) return undefined;
-  const out = v.slice(0, 20).flatMap((raw): StartPower[] => {
-    const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-    const ok = Number.isInteger(o.fighter) && (o.fighter as number) >= 0 && (o.fighter as number) < 4 && (TIMED_POWERS as readonly unknown[]).includes(o.power) && Number.isInteger(o.ticks) && (o.ticks as number) > 0 && (o.ticks as number) <= 36_000;
-    return ok ? [{ fighter: o.fighter as number, power: o.power as TimedPower, ticks: o.ticks as number }] : [];
-  });
-  return out.length ? out : undefined;
-}
-
 /** The suit-up entries (#19) from a record or the live stream: known values, short strings. */
 export function sanitizeSuitUp(v: unknown): SuitUpEntry[] | undefined {
   if (!Array.isArray(v)) return undefined;
@@ -223,7 +212,7 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
       const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(m?.hedged === true ? { hedged: true } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
       const planUpdates = sanitizePlanUpdates((rd as { planUpdates?: unknown }).planUpdates);
       // the sim replays planUpdates; the fight's own copy of them is not trusted (and not needed)
-      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: [], startPowers: sanitizeStartPowers(rd.fight.startPowers) } : rd.fight;
+      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: [] } : rd.fight;
       return { ...rd, fight, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}), ...(planUpdates.length ? { planUpdates } : { planUpdates: undefined }) };
     }),
   };

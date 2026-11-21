@@ -18,7 +18,7 @@ import { Match, type CheckinMeta, type DecisionMeta, type MatchRecord, type Suit
 import { type PlanUpdate } from "../sim/fight";
 import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
-import type { Entrance, StartPower } from "../sim/entrance";
+import type { Entrance } from "../sim/entrance";
 import { houseBrain, type Decision } from "../sim/voice";
 import { decideRound, type RoundAsk, type Seat } from "./decide";
 import { playbackAt, roundPlayback, tickAtFightSeconds, VIEWER_KO_EXTRA_S, type RoundPlayback } from "../flow/pacing";
@@ -30,7 +30,7 @@ import { playOutRound } from "./round";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
-  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string; ruleset?: Ruleset; suitUp?: SuitUpEntry[]; entrances?: Entrance[]; startPowers?: StartPower[] }
+  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string; ruleset?: Ruleset; suitUp?: SuitUpEntry[]; entrances?: Entrance[] }
   | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[]; checkinTicks?: number[] }
   | { type: "round"; round: number; winner: number; seconds: number; reason: string; wins: number[]; kos: RoundFacts["stats"]["kos"]; summary: string[] }
   | { type: "done"; record: string | null; winner: number; wins: number[] }
@@ -88,8 +88,6 @@ export interface RunnerOptions {
   identityWishes?: (IdentityWish | undefined)[];
   /** agents that enter the Arena in this match (#66): the viewer's entrance beats, in the record */
   entrances?: Entrance[];
-  /** power-ups fighters have from round 1's first tick (#66: the entry boost), in the record */
-  startPowers?: StartPower[];
   /** the suit-up step's result (#19, src/ai/suitup.ts): its wishes win over identityWishes; its entries go into the record */
   suitUp?: { wishes: (IdentityWish | undefined)[]; entries: SuitUpEntry[] };
   /** called for every live event, in order */
@@ -168,7 +166,7 @@ export class MatchRunner {
   constructor(readonly opts: RunnerOptions) {
     const souls: Soul[] = opts.seats.map((s) => s.soul);
     const wishes = opts.suitUp?.wishes ?? opts.identityWishes;
-    this.match = new Match(opts.seed, { souls, ruleset: opts.ruleset, preset: opts.preset, presetVersion: opts.presetVersion, ...(wishes ? { identityWishes: wishes } : {}), ...(opts.suitUp?.entries.length ? { suitUp: opts.suitUp.entries } : {}), ...(opts.entrances?.length ? { entrances: opts.entrances } : {}), ...(opts.startPowers?.length ? { startPowers: opts.startPowers } : {}) });
+    this.match = new Match(opts.seed, { souls, ruleset: opts.ruleset, preset: opts.preset, presetVersion: opts.presetVersion, ...(wishes ? { identityWishes: wishes } : {}), ...(opts.suitUp?.entries.length ? { suitUp: opts.suitUp.entries } : {}), ...(opts.entrances?.length ? { entrances: opts.entrances } : {}) });
     this.labels = opts.labels ?? opts.seats.map((s) => s.provider?.label ?? "house");
     this.lineup = opts.lineup ?? opts.seats.map((s) => s.providerName);
     this.checkin = opts.checkins ? { ...CHECKIN, ...(typeof opts.checkins === "object" ? opts.checkins : {}) } : null;
@@ -205,7 +203,7 @@ export class MatchRunner {
     this.t0 = performance.now();
     this.startedAtMs = Date.now();
     const m = this.match;
-    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme, ruleset: m.ruleset, ...(m.record.suitUp ? { suitUp: m.record.suitUp } : {}), ...(m.record.entrances ? { entrances: m.record.entrances } : {}), ...(this.opts.startPowers?.length ? { startPowers: this.opts.startPowers } : {}) });
+    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme, ruleset: m.ruleset, ...(m.record.suitUp ? { suitUp: m.record.suitUp } : {}), ...(m.record.entrances ? { entrances: m.record.entrances } : {}) });
   }
 
   private stratText(s: { stance: string; weapons: string[]; target: string; grudge?: number; retaliate?: string }) {

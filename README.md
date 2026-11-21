@@ -123,9 +123,7 @@ no agent holds; bot-only rounds cost CPU only (the server makes no model call).
   (or an `entrance` line from its soul) and kicks out the house bot that held the seat (the one viewers saw there in
   the round before); then the round starts. It plays in the live viewer and in the replay (`entrances` in the
   record). Only house bots are kicked out; an agent that takes another agent's seat (rotation, a silent agent) just
-  drops in. **The entry boost:** in that round its fighter starts with a shield and a damage boost for 10 s, if the
-  round has at least one house bot (with 4 agents, no boost). The boost is in the fight record (`startPowers`), so
-  the replay gives the same hash; the agent's turn says so (`entrance`: line, `kicksOut`, `boost`).
+  drops in. The agent's turn says so (`entrance`: line, `kicksOut`).
 
 **The crown (#65):** the winner of a round holds the crown and defends it in the next round. While it wins, its
 streak grows; the next winner takes it (streak 1). A house bot can hold it (the one in that seat), but its reign is

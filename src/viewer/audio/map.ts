@@ -174,17 +174,15 @@ export function cueForBeat(b: { kind: string; value?: number }): Cue | null {
 /**
  * The entrance (#66): the sounds of its steps (scene-entrance.ts ENTRANCE_AT), at the landing spot. The drop whistles
  * down, the landing slams, the shout is an angry beep in the agent's voice, the kick lands hard and the bot whooshes
- * off, the twinkle dings, the entry boost powers up. `kick` says which step the kick is ("land": the agent lands on the
- * bot); `boost`: the agent has an entry boost.
+ * off, the twinkle dings. `kick` says which step the kick is ("land": the agent lands on the bot).
  */
-export function cuesForEntrance(step: string, at: { x: number; y: number }, voice: number, o: { kick: string; boost: boolean; evicted: boolean }): Cue[] {
+export function cuesForEntrance(step: string, at: { x: number; y: number }, voice: number, o: { kick: string; evicted: boolean }): Cue[] {
   const out: Cue[] = [];
   if (step === "drop") out.push(cue("ringout.whoosh", at.x, at.y, 0.9, 1.35, 661));
   if (step === "land") out.push(cue("hammer.slam", at.x, at.y, 1, 0.9, 662), cue("land", at.x, at.y, 1, 0.85, 663));
   if (step === "shout") out.push(cue("mood.angry", undefined, undefined, 1, voice / 440, 664), cue("countdown.go", undefined, undefined, 0.55, 0.8, 665));
   if (o.evicted && step === o.kick) out.push(cue("bat.hit", at.x, at.y, 1, 0.9, 666), cue("hit.heavy", at.x, at.y, 1, 0.85, 667), cue("ringout.whoosh", at.x, at.y, 1, 0.9, 668));
   if (o.evicted && step === "twinkle") out.push(cue("pickup.weapon", undefined, undefined, 0.8, 1.9, 669));
-  if (o.boost && step === "boost") out.push(cue("pickup.power", at.x, at.y, 1, 1, 670));
   return out;
 }
 

@@ -271,7 +271,6 @@ body {
   text-wrap: balance;
 }
 #entrance .ent-out,
-#entrance .ent-boost,
 #entrance .ent-thinking {
   display: table;
   margin: calc(1.1 * var(--u)) auto 0;
@@ -285,10 +284,6 @@ body {
 }
 #entrance .ent-out b {
   color: var(--k);
-}
-#entrance .ent-boost {
-  color: #7de0ff;
-  border: calc(0.25 * var(--u)) solid #7de0ff;
 }
 #entrance .ent-thinking {
   font-weight: 600;

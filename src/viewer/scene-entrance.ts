@@ -18,8 +18,8 @@ import { drawWeapon } from "./props";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import { groundTop, type FighterViews } from "./scene-fighters";
 
-/** Seconds into the entrance beat: the bot waits, the agent drops, lands, shouts, kicks, the bot twinkles out, the boost shows. */
-export const ENTRANCE_AT = { drop: 0.45, land: 0.9, shout: 1.0, kick: 1.55, twinkle: 2.75, step: 2.9, boost: 3.0 } as const;
+/** Seconds into the entrance beat: the bot waits, the agent drops, lands, shouts, kicks, the bot twinkles out, the agent steps into its seat. */
+export const ENTRANCE_AT = { drop: 0.45, land: 0.9, shout: 1.0, kick: 1.55, twinkle: 2.75, step: 2.9 } as const;
 export type EntranceStep = keyof typeof ENTRANCE_AT;
 
 /** How high above its landing spot the agent's fighter starts its drop (m). */

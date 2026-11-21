@@ -8,7 +8,7 @@ import type { Ruleset } from "../sim/ruleset";
 import type { SoundDirector } from "./audio/director";
 import type { Application } from "pixi.js";
 import { arrivalBeats, betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
-import type { Entrance, StartPower } from "../sim/entrance";
+import type { Entrance } from "../sim/entrance";
 import { ENTRANCE_AT, stepsBetween } from "./scene-entrance";
 import { Tally } from "../flow/score";
 import type { Identity } from "../sim/identity";
@@ -162,12 +162,12 @@ export class Game {
    * exactly (all decisions from the record). `live`: decisions arrive later via
    * pushDecisions() (AI fighters thinking on the server).
    */
-  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; suitUp?: SuitUpEntry[]; control?: unknown; ruleset?: Ruleset; entrances?: Entrance[]; startPowers?: StartPower[] } = {}) {
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; suitUp?: SuitUpEntry[]; control?: unknown; ruleset?: Ruleset; entrances?: Entrance[] } = {}) {
     this.apUntil = 0;
     document.getElementById("autopilot-callout")?.classList.remove("show");
     this.endEntrance();
     // live: the server settled the identities (and how the seats suited up, #19): taken exactly as they are
-    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, ...(opts.identities ? { identities: opts.identities } : {}), ...(opts.suitUp ? { suitUp: opts.suitUp } : {}), ...(opts.entrances ? { entrances: opts.entrances } : {}), ...(opts.startPowers ? { startPowers: opts.startPowers } : {}) });
+    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, ...(opts.identities ? { identities: opts.identities } : {}), ...(opts.suitUp ? { suitUp: opts.suitUp } : {}), ...(opts.entrances ? { entrances: opts.entrances } : {}) });
     this.ap.reset(sanitizeControl(opts.control, this.match.ruleset.round.maxRounds));
     this.match.onEvent = (e) => this.onEvent(e);
     this.labels = opts.labels ?? null;
@@ -181,8 +181,7 @@ export class Game {
       // show the arena while the fighters think about round 1
       this.waitingRound = 1;
       this.shown = null as unknown as Fight;
-      // the preview has the entry boost too: the agent drops in with its shield and damage glow
-      const preview = new Match(seed, { ruleset: this.match.ruleset, souls: this.match.souls, identities: this.match.identities, ...(opts.startPowers ? { startPowers: opts.startPowers } : {}) });
+      const preview = new Match(seed, { ruleset: this.match.ruleset, souls: this.match.souls, identities: this.match.identities });
       preview.prepareRound();
       this.shown = preview.fight!;
       this.scene.load(this.shown.sim);
@@ -477,12 +476,10 @@ export class Game {
     return el;
   }
 
-  /** The entrance banner: who enters, its shout, who is out, its boost. Its parts show as the beat reaches them (renderEntrance). */
+  /** The entrance banner: who enters, its shout, who is out. Its parts show as the beat reaches them (renderEntrance). */
   private showEntranceBanner(e: Entrance) {
     const el = this.entranceEl();
     const who = this.match.identities[e.seat]!;
-    // the shown fight has the round's start powers (live: the preview of round 1, before its plans are in)
-    const boost = (this.shown.record.startPowers ?? []).filter((p) => p.fighter === e.seat);
     const label = this.seatLabels()[e.seat]!;
     el.style.setProperty("--c", hex(who.color));
     if (e.evicted) el.style.setProperty("--k", hex(e.evicted.color));
@@ -491,7 +488,6 @@ export class Game {
       <div class="ent-name">${esc(who.name.toUpperCase())}<span class="ent-model">${modelBadgeHtml(label, "lg")}</span></div>
       <div class="ent-shout">${esc(e.line)}</div>
       ${e.evicted ? `<div class="ent-out"><b>${esc(e.evicted.name.toUpperCase())}</b> · HOUSE BOT · KICKED OUT</div>` : ""}
-      ${boost.length ? `<div class="ent-boost">ENTRY BOOST · ${boost.map((p) => (p.power === "damage" ? "DAMAGE" : p.power.toUpperCase())).join(" + ")} · ${Math.round(boost[0]!.ticks / 60)} s</div>` : ""}
       ${this.live && this.waitingRound === 1 ? `<div class="ent-thinking thinking">the fighters are thinking</div>` : ""}`;
     el.className = "show";
     this.renderEntrance(0);
@@ -514,8 +510,7 @@ export class Game {
     part(".ent-name", 0.1, 0.25);
     part(".ent-shout", A.shout, 0.18);
     part(".ent-out", this.scene.entranceInfo?.kick === "land" ? A.land : A.kick, 0.2);
-    part(".ent-boost", A.boost, 0.2);
-    part(".ent-thinking", A.boost + 0.6, 0.3);
+    part(".ent-thinking", A.step + 0.7, 0.3);
     el.style.opacity = u > (this.flow.beat.duration ?? 0) - 0.25 && !(this.live && this.waitingRound === 1) ? String(Math.max(0, ((this.flow.beat.duration ?? 0) - u) / 0.25)) : "1";
   }
 
@@ -528,9 +523,8 @@ export class Game {
     this.renderEntrance(u);
     const info = this.scene.entranceInfo;
     const rec = this.match.record.entrances?.find((x) => x.seat === e.seat);
-    const boost = (this.shown.record.startPowers ?? []).some((p) => p.fighter === e.seat);
     for (const step of stepsBetween(e.u, u)) {
-      if (info && rec) this.sound?.entrance(step, info.where, this.match.identities[e.seat]!, { kick: info.kick, boost, evicted: !!rec.evicted }, this.clock);
+      if (info && rec) this.sound?.entrance(step, info.where, this.match.identities[e.seat]!, { kick: info.kick, evicted: !!rec.evicted }, this.clock);
       if (rec?.evicted && step === info?.kick) this.moments.push({ time: this.clock, kind: "entrance", weight: 10 });
     }
     e.u = u;

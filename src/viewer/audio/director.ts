@@ -67,7 +67,7 @@ export class SoundDirector {
   }
 
   /** A step of an agent's entrance (#66). */
-  entrance(step: string, at: { x: number; y: number }, identity: { name: string; shape: string; color: number }, o: { kick: string; boost: boolean; evicted: boolean }, clock: number) {
+  entrance(step: string, at: { x: number; y: number }, identity: { name: string; shape: string; color: number }, o: { kick: string; evicted: boolean }, clock: number) {
     for (const c of cuesForEntrance(step, at, voiceHz(identity), o)) this.play(c, clock);
   }
 

@@ -8,7 +8,7 @@ import type { Seat } from "../ai/decide";
 import { MatchRunner, type ControlEvent, type RunnerEvent, type StoredRound } from "../ai/runner";
 import { settleSuitUp, type SuitUpAnswer, type SuitUpResult } from "../ai/suitup";
 import { assignIdentities, type Identity, type IdentityWish } from "../sim/identity";
-import { entranceLine, entryBoost, type Entrance, type StartPower } from "../sim/entrance";
+import { entranceLine, type Entrance } from "../sim/entrance";
 import { parseSoul, type Soul } from "../sim/soul";
 import { exampleSouls } from "../sim/souls";
 import { modelOf, remoteLabel, seatEntries } from "../stats/models";
@@ -279,11 +279,6 @@ export class ServerMatch {
     return [...this.entering].sort(([a], [b]) => a - b).map(([seat, evicted]) => ({ seat, line: entranceLine(souls[seat]!, identities[seat]!.name, this.seed + seat), ...(evicted ? { evicted } : {}) }));
   }
 
-  /** The entry boost of this round (#66): shield and damage for the entering agents, if a house bot plays too. */
-  startPowers(): StartPower[] {
-    return entryBoost([...this.entering.keys()], this.kinds);
-  }
-
   /** The 4 fighters as spectators see them on the pick cards: name, look, who plays it, the opening line. */
   pickFighters() {
     const souls = this.souls();
@@ -362,14 +357,12 @@ export class ServerMatch {
     const su = this.settledLooks();
     const broadcast = this.server.opts.pace === "broadcast";
     const entrances = this.entrances(souls, su.identities);
-    const startPowers = this.startPowers();
     const runner = new MatchRunner({
       seed: this.seed,
       ...this.selection,
       seats,
       ...(su.wishes.some(Boolean) ? { suitUp: su } : {}),
       ...(entrances.length ? { entrances } : {}),
-      ...(startPowers.length ? { startPowers } : {}),
       onEvent: (e) => this.onEvent(e),
       onDecided: async (round, ask) => {
         await this.store.insertRound({ matchId: this.id, round, decisions: ask.decisions, meta: ask.meta, prompts: ask.prompts, raw: ask.raw, finalHash: null });
@@ -422,8 +415,6 @@ export class ServerMatch {
     this.server.log(`round ${this.arenaRound} (${this.id}): started, seed ${this.seed}, seats ${this.runner.labels.join(", ")}`);
     for (const e of this.runner.match.record.entrances ?? [])
       this.server.log(`round ${this.arenaRound} (${this.id}): ${this.runner.names[e.seat]} enters seat ${e.seat}${e.evicted ? ` and kicks out ${e.evicted.name}` : ""}: "${e.line}"`);
-    const boost = this.startPowers();
-    if (boost.length) this.server.log(`round ${this.arenaRound} (${this.id}): entry boost ${boost.map((p) => `${this.runner!.names[p.fighter]} ${p.power} ${p.ticks / 60} s`).join(", ")}`);
     this.runner.start();
     this.awayAtStart(away);
     this.changed();
@@ -605,12 +596,11 @@ export class ServerMatch {
     return { ...base, status: "waiting", message: m.phase === "fighting" ? "the round is being fought" : "the other seats are planning" };
   }
 
-  /** The seat's entrance in this round (#66), for its turn: what it shouts, whom it kicks out, its entry boost. */
+  /** The seat's entrance in this round (#66), for its turn: what it shouts, whom it kicks out. */
   private entranceFor(seat: number) {
     const e = this.runner?.match.record.entrances?.find((x) => x.seat === seat);
     if (!e) return {};
-    const boost = this.startPowers().filter((p) => p.fighter === seat);
-    return { entrance: { line: e.line, ...(e.evicted ? { kicksOut: e.evicted.name } : {}), boost: boost.map((p) => ({ power: p.power, seconds: p.ticks / 60 })), message: `you enter the Arena this round${e.evicted ? ` and kick out the house bot ${e.evicted.name}` : ""}${boost.length ? `; entry boost: you start with ${boost.map((p) => `${p.power === "damage" ? "a damage boost" : `a ${p.power}`}`).join(" and ")} for ${boost[0]!.ticks / 60} s` : "; no entry boost (no house bot in this round)"}` } };
+    return { entrance: { line: e.line, ...(e.evicted ? { kicksOut: e.evicted.name } : {}), message: `you enter the Arena this round${e.evicted ? ` and kick out the house bot ${e.evicted.name}` : ""}` } };
   }
 
   /** The round's result for one seat: winner, the seat's place (1-4), links. */

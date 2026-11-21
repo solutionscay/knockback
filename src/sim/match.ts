@@ -22,7 +22,7 @@ import { assignIdentities, sanitizeIdentity, type Identity, type IdentityWish } 
 import { soulRecord, TEMPERAMENT_MORALE, type Soul } from "./soul";
 import { exampleSouls } from "./souls";
 import { houseBrain, VoiceSession, type Brain, type Decision, type DecideContext } from "./voice";
-import type { Entrance, StartPower } from "./entrance";
+import type { Entrance } from "./entrance";
 
 export const ROUNDS_TO_WIN = 2;
 export const MAX_ROUNDS = 3;
@@ -150,8 +150,6 @@ export interface MatchOptions {
   houseRules?: boolean;
   /** agents that enter in this match (#66), kept in the record for the viewer */
   entrances?: Entrance[];
-  /** power-ups fighters have from round 1's first tick (#66: the entry boost); kept in round 1's fight record */
-  startPowers?: StartPower[];
 }
 
 export type MatchPhase = "planning" | "fighting" | "between" | "over";
@@ -267,12 +265,10 @@ export class Match {
     this.moraleAtStart.push(this.morale.map((m) => ({ ...m })));
     // a replay applies the record's mid-round plan updates at their ticks (#8)
     const updates = rec?.planUpdates ?? [];
-    // the round's start powers (#66): a replay's from its record, else the entry boost in round 1
-    const startPowers = this.opts.recorded ? rec?.fight.startPowers : this.round === 1 ? this.opts.startPowers : undefined;
     this.fight = new Fight(
       ps,
       decisions.map((d) => d.strategy),
-      { level: this.level, ruleset: this.ruleset, embedRuleset: false, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities, startPowers },
+      { level: this.level, ruleset: this.ruleset, embedRuleset: false, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities },
       updates,
     );
     this.fight.onEvent = (e) => this.onEvent?.(e);
