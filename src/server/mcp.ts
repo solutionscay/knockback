@@ -29,7 +29,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { MAX_LINE, MAX_WHY } from "../ai/parse";
-import { enabledRuleExamples, weaponHelp } from "../ai/prompt";
+import { enabledRuleExamples, stanceChoices, weaponHelp } from "../ai/prompt";
 import { MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
 import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 import { HttpError, RateLimiter } from "./limits";
@@ -120,7 +120,7 @@ function buildStrategySchema(ruleset: Ruleset) {
       .max(3)
       .describe(`1 to 3 different pickups to go for and use, best first: ${weaponsList(ruleset)}. Everyone starts with fists.`),
     target: z.string().max(24).describe(`a rival's name, or one of ${TARGET_CHOICES.join(" | ")}`),
-    stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).describe("rush (close in) | distance (keep range) | cover (stay behind cover) | item (detour for every pickup)"),
+    stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).describe(stanceChoices()),
     retaliate: z
       .enum(RULE_RETALIATE as unknown as [string, ...string[]])
       .optional()
@@ -144,7 +144,7 @@ function planHelp(ruleset: Ruleset) {
     "THE PLAN (you only plan; the engine moves, picks up, aims and shoots for your fighter):",
     `- weapons: 1-3 different pickups, best first: ${weaponsList(ruleset)}.`,
     `- target: a rival's name, or ${TARGET_CHOICES.join(" | ")}. Never yourself.`,
-    `- stance: ${RULE_STANCES.join(" | ")}. retaliate (optional): ${RULE_RETALIATE.join(" | ")}.`,
+    `- stance: ${stanceChoices()}. retaliate (optional): ${RULE_RETALIATE.join(" | ")}.`,
     `- rules (optional, at most ${MAX_RULES}, first wins): {when, who?, value?, item?, do, do_item?, stance?, retaliate?, label?}. when: ${RULE_WHEN.join(", ")}. do: ${RULE_DO.join(", ")}. value ranges: ${valueRanges}. Items: ${enabledItems(ruleset).join(", ")}.`,
     `  Rule examples: ${examples.slice(0, 4).join(" ")}`,
     `- line: what your fighter says out loud, one in-character sentence (at most ${MAX_LINE} characters). Lines must match the facts of the last round.`,
