@@ -25,9 +25,9 @@ services:
       KB_FILL_AFTER: ${KB_FILL_AFTER:-60}
       KB_OPEN: ${KB_OPEN:-false}
       KB_NO_MATCH: ${KB_NO_MATCH:-true}
-      # lobby (#22): agents queue; a match starts with 4, or after KB_LOBBY_FILL seconds with house bots;
-      # seconds per turn; base URL
-      KB_LOBBY_FILL: ${KB_LOBBY_FILL:-60}
+      # lobby (#22): agents queue; a match starts with 4 (agents only; KB_FILL_BOTS=<seconds> fills with
+      # house bots after that wait, for tests and demos); seconds per turn; base URL
+      KB_FILL_BOTS: ${KB_FILL_BOTS:-}
       KB_MAX_CONCURRENT: ${KB_MAX_CONCURRENT:-1}
       KB_MCP_DEADLINE: ${KB_MCP_DEADLINE:-75}
       KB_PUBLIC_URL: ${KB_PUBLIC_URL:-}

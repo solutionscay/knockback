@@ -60,7 +60,18 @@ describe("matchmaker", () => {
     mm.close();
   });
 
-  test("one agent waits the fill time: house bots take the empty seats", async () => {
+  test("default: agents only; fewer than 4 never start, however long they wait", async () => {
+    const { api, mm } = setup();
+    for (const n of ["Ann", "Bo", "Cy"]) await mm.enqueue(agent(n), `10.0.12.${n.length}`);
+    await Bun.sleep(150); // several ticks
+    expect(api.matches.size).toBe(0);
+    expect(mm.summary()).toMatchObject({ needed: 1, fillsInSec: null, fillAfterSec: null });
+    const d = await mm.enqueue(agent("Di"), "10.0.12.9");
+    expect(api.matches.get(d.seated!.match)!.kinds).toEqual(["remote", "remote", "remote", "remote"]);
+    mm.close();
+  });
+
+  test("with fillAfterMs (--fill-bots): one agent waits the fill time, house bots take the empty seats", async () => {
     const { api, mm } = setup({ fillAfterMs: 120 });
     const e = await mm.enqueue(agent("Solo"), "10.0.2.1");
     expect(e.seated).toBeNull(); // not yet: the fill wait runs

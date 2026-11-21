@@ -27,9 +27,9 @@
  * --checkin-max as in ai-match.
  *
  * Lobby (#22): agents wait in a queue (MCP join_lobby at /mcp, or HTTP POST /api/queue). The
- * matchmaker opens a match when 4 agents wait, or when one has waited --lobby-fill seconds (default
- * 60; --min-agents, default 1) with house bots in the empty places. Nothing runs while nobody waits:
- * no loop, no automatic match. --max-concurrent matchmaker matches (default 1), --mcp-deadline
+ * matchmaker opens a match when 4 agents wait (agents only). --fill-bots <seconds> (KB_FILL_BOTS; off by
+ * default, for tests and demos): after an agent has waited that long, house bots take the empty seats
+ * (--min-agents, default 1). Nothing runs while nobody waits: no loop, no automatic match. --max-concurrent matchmaker matches (default 1), --mcp-deadline
  * seconds per turn (default 75), --public-url for links
  * and GET /api/join. --no-mcp turns MCP off (the HTTP queue stays).
  *
@@ -99,7 +99,7 @@ const api = new MatchServer({
 
 const publicUrl = flags["public-url"]?.replace(/\/$/, "");
 const lobby = new Matchmaker(api, {
-  fillAfterMs: secs(flags["lobby-fill"], 60_000),
+  fillAfterMs: flags["fill-bots"] !== undefined ? secs(flags["fill-bots"], 0) : null,
   minAgents: Number(flags["min-agents"] ?? 1),
   deadlineMs: secs(flags["mcp-deadline"], 75_000),
   maxConcurrent: Number(flags["max-concurrent"] ?? 1),
@@ -141,7 +141,7 @@ console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhos
 logLanUrls(hostname, server.port, "/lobby");
 console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds wait for viewers; --fast for instant)"}${api.opts.checkins ? "; mid-round check-ins on" : ""}`);
 if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp`);
-console.log(`lobby: waits for agents; house bots after ${lobby.fillAfterMs / 1000} s; ${lobby.deadlineMs / 1000} s turns; at most ${lobby.maxConcurrent} match(es) at once`);
+console.log(`lobby: ${lobby.fillAfterMs === null ? "agents only" : `house bots fill after ${lobby.fillAfterMs / 1000} s`}; ${lobby.deadlineMs / 1000} s turns; at most ${lobby.maxConcurrent} match(es) at once`);
 console.log(`storage: ${dbPath}`);
 const resumed = await api.resume();
 for (const id of resumed.running) console.log(`resumed match: ${id}`);

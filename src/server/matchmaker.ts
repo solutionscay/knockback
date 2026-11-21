@@ -3,9 +3,9 @@
  * first agent and let house bots fill it.
  *
  * - Outside agents (MCP join_lobby, or HTTP POST /api/queue) wait in a queue, oldest first.
- * - A match opens when 4 agents are waiting (distinct names: never the same agent twice in a match). When at least
- *   one agent has waited `fillAfterMs` (default 60 s), house bots take the empty seats. The server runs no models:
- *   real models only play as agents (MCP or HTTP).
+ * - A match opens when 4 agents are waiting (distinct names: never the same agent twice in a match). Agents only by
+ *   default. With `fillAfterMs` set (match-server --fill-bots, for tests and demos), house bots take the empty seats
+ *   once an agent has waited that long. The server runs no models: real models only play as agents (MCP or HTTP).
  * - Nobody queued: nothing runs. There is no loop and no automatic match.
  * - At most `maxConcurrent` matchmaker matches at once (default 1; the queue waits).
  * - Ratings (#23): `order` picks who plays with the oldest waiting agent (default: oldest first).
@@ -20,9 +20,9 @@ import { selectRuleset, type MatchRuleset } from "./match-rulesets";
 import { checkJoin, type MatchServer, type ServerMatch } from "./match-server";
 
 export interface MatchmakerOptions {
-  /** an agent that waited this long gets house bots around it (default 60 s) */
-  fillAfterMs?: number;
-  /** agents a match needs before house bots fill the rest (default 1) */
+  /** an agent that waited this long gets house bots around it; null (default): agents only, no fill */
+  fillAfterMs?: number | null;
+  /** with fillAfterMs: agents a match needs before house bots fill the rest (default 1) */
   minAgents?: number;
   /** turn deadline of matchmaker matches (default 75 s: agents that think with a full model need it) */
   deadlineMs?: number;
@@ -51,7 +51,7 @@ export interface QueueEntry {
 }
 
 export class Matchmaker {
-  readonly fillAfterMs: number;
+  readonly fillAfterMs: number | null;
   readonly minAgents: number;
   readonly deadlineMs: number;
   readonly maxConcurrent: number;
@@ -69,7 +69,7 @@ export class Matchmaker {
     readonly api: MatchServer,
     readonly opts: MatchmakerOptions = {},
   ) {
-    this.fillAfterMs = opts.fillAfterMs ?? 60_000;
+    this.fillAfterMs = opts.fillAfterMs ?? null;
     this.minAgents = Math.max(1, Math.min(4, opts.minAgents ?? 1));
     this.deadlineMs = opts.deadlineMs ?? 75_000;
     this.maxConcurrent = Math.max(1, opts.maxConcurrent ?? 1);
@@ -181,10 +181,10 @@ export class Matchmaker {
     return this.made.map((id) => this.api.matches.get(id)!);
   }
 
-  /** When the oldest waiting agent gets house bots (ms since epoch), or null. */
+  /** When the oldest waiting agent gets house bots (ms since epoch), or null (nobody waiting, or agents only). */
   fillsAt(): number | null {
     const o = this.waiting()[0];
-    return o ? o.joinedAt + this.fillAfterMs : null;
+    return o && this.fillAfterMs !== null ? o.joinedAt + this.fillAfterMs : null;
   }
 
   /** The public view (GET /api/queue, the lobby page). Names only: tickets and bodies stay here. */
@@ -196,12 +196,13 @@ export class Matchmaker {
       waiting: w.map((e, i) => ({ position: i + 1, agent: e.name, waitingSec: Math.floor((now - e.joinedAt) / 1000), ruleset: e.selection.preset })),
       /** agents still needed for a full match of outside agents */
       needed: Math.max(0, 4 - w.length),
-      /** seconds until the oldest agent's match starts with house bots (null: nobody waiting) */
+      /** seconds until the oldest agent's match starts with house bots (null: nobody waiting, or agents only) */
       fillsInSec: fillsAt === null ? null : Math.max(0, Math.ceil((fillsAt - now) / 1000)),
       /** the queue waits for a running match to end (max concurrent) */
       blocked: live.length >= this.maxConcurrent,
       live: live.map((m) => ({ match: m.id, status: m.status })),
-      fillAfterSec: this.fillAfterMs / 1000,
+      /** null: agents only (no house-bot fill) */
+      fillAfterSec: this.fillAfterMs === null ? null : this.fillAfterMs / 1000,
       minAgents: this.minAgents,
       maxConcurrent: this.maxConcurrent,
     };
@@ -234,7 +235,7 @@ export class Matchmaker {
         names.add(e.name.toLowerCase());
         group.push(e);
       }
-      const ready = group.length === 4 || (group.length >= this.minAgents && now - oldest.joinedAt >= this.fillAfterMs);
+      const ready = group.length === 4 || (this.fillAfterMs !== null && group.length >= this.minAgents && now - oldest.joinedAt >= this.fillAfterMs);
       if (!ready) return;
       await this.open(group);
     }

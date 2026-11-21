@@ -146,9 +146,9 @@ export function lobbyPage(root: HTMLElement) {
     const n = q?.waiting.length ?? 0;
     const head = n
       ? html`<div class="disp punch">${n} agent${n === 1 ? "" : "s"} waiting</div>
-          <div class="dim">${q!.blocked ? "A match is finishing first." : q!.needed > 0 && q!.fillsInSec !== null ? html`<b>${q!.needed}</b> more for a full match, or the fight starts in <b>${clock(q!.fillsInSec)}</b> with house bots in the empty seats.` : "The match is starting."}</div>`
+          <div class="dim">${q!.blocked ? "A match is finishing first." : q!.needed > 0 && q!.fillsInSec !== null ? html`<b>${q!.needed}</b> more for a full match, or the fight starts in <b>${clock(q!.fillsInSec)}</b> with house bots in the empty seats.` : q!.needed > 0 ? html`<b>${q!.needed}</b> more to start the match.` : "The match is starting."}</div>`
       : html`<div class="disp punch">Waiting for agents</div>
-          <div class="dim">Nobody in the queue. A match starts when <b>4 agents</b> join, or ${q ? (q.fillAfterSec < 90 ? `${q.fillAfterSec} s` : clock(q.fillAfterSec)) : "a minute"} after the first one, with house bots in the empty seats.</div>`;
+          <div class="dim">Nobody in the queue. A match starts when <b>4 agents</b> join${q && q.fillAfterSec !== null ? `, or ${q.fillAfterSec < 90 ? `${q.fillAfterSec} s` : clock(q.fillAfterSec)} after the first one, with house bots in the empty seats` : ""}.</div>`;
     const recent = replays.slice(0, 4);
     mount(
       none,
@@ -182,7 +182,7 @@ export function lobbyPage(root: HTMLElement) {
       $("#n-sub")!.textContent = q!.blocked ? "after the current fight" : "until the bell";
       mount(
         body,
-        html`<div class="row"><div class="count" id="n-count" data-left="${q!.fillsInSec ?? ""}">${q!.fillsInSec !== null && !q!.blocked ? clock(q!.fillsInSec) : "–:––"}</div><span class="dim">${w.length} of 4 agents · ${q!.needed ? `house bots fill ${q!.needed} seat${q!.needed === 1 ? "" : "s"}` : "full"}</span></div>
+        html`<div class="row"><div class="count" id="n-count" data-left="${q!.fillsInSec ?? ""}">${q!.fillsInSec !== null && !q!.blocked ? clock(q!.fillsInSec) : "–:––"}</div><span class="dim">${w.length} of 4 agents · ${q!.needed ? (q!.fillsInSec !== null ? `house bots fill ${q!.needed} seat${q!.needed === 1 ? "" : "s"}` : `${q!.needed} more to start`) : "full"}</span></div>
           <div class="seats">${[0, 1, 2, 3].map((i) =>
             w[i]
               ? html`<a href="/agent/${encodeURIComponent(w[i]!.agent)}" style="${colorVars(null)}">${bot({ ...HOUSE_LOOK, name: w[i]!.agent, color: 0xd8dce6 }, "fist", "cocky")}<span>${w[i]!.agent}</span></a>`

@@ -117,7 +117,8 @@ export interface QueueInfo {
   fillsInSec: number | null;
   /** a match is running: the queue waits for it */
   blocked: boolean;
-  fillAfterSec: number;
+  /** null: agents only (no house-bot fill) */
+  fillAfterSec: number | null;
 }
 
 /** The queue as checked data (pure: tested). */
@@ -134,7 +135,7 @@ export function queueInfo(raw: unknown): QueueInfo | null {
     needed: num(o.needed, 4),
     fillsInSec: typeof o.fillsInSec === "number" ? o.fillsInSec : null,
     blocked: o.blocked === true,
-    fillAfterSec: num(o.fillAfterSec, 60),
+    fillAfterSec: typeof o.fillAfterSec === "number" ? o.fillAfterSec : null,
   };
 }
 
