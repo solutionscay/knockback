@@ -12,7 +12,8 @@ import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 import { CHECKIN, parseCheckin, type CheckinStatus } from "../ai/checkin";
 import { remoteLabel } from "../stats/models";
 import { parseAnswer, MAX_LINE, MAX_WHY } from "../ai/parse";
-import { lastPlanLines, ruleResultLine, whatHappenedLines, weaponHelp, enabledRuleExamples } from "../ai/prompt";
+import { lastPlanLines, ruleResultLine, whatHappenedLines, weaponHelp, enabledRuleExamples, STANCE_HELP } from "../ai/prompt";
+import { levelTactics, longGunsLastRound } from "../ai/tactics";
 import type { Provider } from "../ai/providers";
 import type { Match } from "../sim/match";
 import type { Strategy } from "../sim/sim";
@@ -33,7 +34,7 @@ export function planSchema(ruleset: Ruleset = CLASSIC) {
   return {
     weapons: { type: "array of 1-3 different weapons, best first", values: weaponHelp(ruleset) },
     target: { type: "string", values: ["<a rival's name>", ...TARGET_CHOICES] },
-    stance: { type: "string", values: RULE_STANCES },
+    stance: { type: "string", values: RULE_STANCES, help: STANCE_HELP },
     retaliate: { type: "string, optional (default turn)", values: RULE_RETALIATE },
     rules: {
       type: `array of 0-${MAX_RULES} rules, optional, first = highest priority`,
@@ -82,6 +83,8 @@ export function turnContext(match: Match, me: number) {
       pits: lv.pits.length,
       props: Object.fromEntries(["crate", "barrel", "tnt", "glass", "pad", "weight"].map((k) => [k, count(k)])),
     },
+    // high ground, cover, sightlines and long guns (#38): the same facts as the prompt's TACTICS paragraph
+    tactics: { ...levelTactics(lv, match.ruleset), longGunsLastRound: last ? longGunsLastRound(last.stats, names, match.ruleset) : null },
     lastRound: last
       ? {
           round: last.round,
