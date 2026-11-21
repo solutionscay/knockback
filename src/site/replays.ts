@@ -1,7 +1,9 @@
 /**
- * /replays (#22): saved fights, newest first, one row each: the winner, the score, the line-up with models, the
- * arena and when. Only gallery matches (agents and house bots; data.ts isGalleryMatch): server-run model seats are
- * training data. "Older fights" pages back (GET /api/replays?before=), so every finished match is reachable.
+ * /replays (#22, #67): saved rounds, newest first, one row each: the winner, the line-up with models, the arena and
+ * when. Featured rounds (2 or more agents) come first; warm-ups (one agent against house bots) follow in their own
+ * list. Bot-only rounds are never listed (the server keeps them internal). Only gallery matches (agents and house
+ * bots; data.ts isGalleryMatch): server-run model seats are training data. "Older" pages back each list
+ * (GET /api/replays?tier=&before=), so every public round is reachable.
  */
 import { badge } from "./badge";
 import { cleanIdentity, colorVars } from "./bots";
@@ -18,35 +20,42 @@ const row = (x: ReplayInfo): Raw => {
   </a>`;
 };
 
+/** One tier's list: its rows and the cursor for its next (older) page. */
+interface List {
+  tier: "featured" | "warm-up";
+  title: string;
+  none: string;
+  rows: ReplayInfo[];
+  next: number | null;
+  failed: boolean;
+}
+
 export async function replaysPage(root: HTMLElement) {
   mount(root, html`<div class="wrap"><div class="wbar"><span class="meta">Replays</span></div><div class="empty">Loading…</div></div>`);
-  const rs: ReplayInfo[] = [];
-  let next: number | null = null;
-  let failed = false;
-  const more = async () => {
-    const r = await getJson<{ replays: ReplayInfo[]; next?: number | null }>(`/api/replays?limit=60${next !== null ? `&before=${next}` : ""}`);
-    if (!r.ok) failed = true;
+  const lists: List[] = [
+    { tier: "featured", title: "Featured · agents against agents", none: "No round with 2 or more agents yet.", rows: [], next: null, failed: false },
+    { tier: "warm-up", title: "Warm-ups · one agent against the house bots", none: "No warm-up rounds yet.", rows: [], next: null, failed: false },
+  ];
+  const more = async (l: List) => {
+    const r = await getJson<{ replays: ReplayInfo[]; next?: number | null }>(`/api/replays?tier=${l.tier}&limit=60${l.next !== null ? `&before=${l.next}` : ""}`);
+    if (!r.ok) l.failed = true;
     else {
-      rs.push(...galleryReplays(r.data.replays));
-      next = typeof r.data.next === "number" ? r.data.next : null;
+      l.rows.push(...galleryReplays(r.data.replays));
+      l.next = typeof r.data.next === "number" ? r.data.next : null;
     }
     render();
   };
-  const render = () =>
-    mount(
-      root,
-      html`<div class="wrap"><div class="wbar"><span class="meta">Replays · ${rs.length}${next !== null ? "+" : ""}</span></div>
-        ${
-          rs.length
-            ? html`<div class="rlist">${rs.map(row)}</div>${next !== null ? html`<div style="text-align:center;margin-top:12px"><button class="btn small ghost" type="button" id="rp-more">Older fights</button></div>` : ""}`
-            : html`<div class="card empty">${failed ? "Couldn't load the replays." : next !== null ? "No agent fights in this page." : "No finished matches yet."}</div>${!failed && next !== null ? html`<div style="text-align:center;margin-top:12px"><button class="btn small ghost" type="button" id="rp-more">Older fights</button></div>` : ""}`
-        }</div>`,
-    );
+  const section = (l: List): Raw =>
+    html`<div class="wbar"><span class="meta">${l.title} · ${l.rows.length}${l.next !== null ? "+" : ""}</span></div>
+      ${l.rows.length ? html`<div class="rlist">${l.rows.map(row)}</div>` : html`<div class="card empty">${l.failed ? "Couldn't load these replays." : l.next !== null ? "No agent rounds in this page." : l.none}</div>`}
+      ${!l.failed && l.next !== null ? html`<div style="text-align:center;margin:12px 0 20px"><button class="btn small ghost" type="button" data-more="${l.tier}">Older rounds</button></div>` : html`<div style="height:20px"></div>`}`;
+  const render = () => mount(root, html`<div class="wrap">${lists.map(section)}</div>`);
   root.addEventListener("click", (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("#rp-more");
-    if (!b) return;
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-more]");
+    const l = b && lists.find((x) => x.tier === b.dataset.more);
+    if (!b || !l) return;
     b.disabled = true;
-    void more();
+    void more(l);
   });
-  await more();
+  await Promise.all(lists.map(more));
 }

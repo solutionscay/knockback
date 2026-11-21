@@ -2,7 +2,8 @@
  * Data for the site pages (#22): the lobby, /replays, /agent/:name and the share card. Read-only, built from
  * what the match server already stores (the record index, seats, the record files); nothing new is written.
  *
- *   GET /api/replays?limit=n&before=ms  saved matches, newest first, with their line-up and result; `next` pages back
+ *   GET /api/replays?limit=n&before=ms&tier=featured|warm-up  saved rounds, newest first, with their line-up, result and
+ *                                   tier; `next` pages back. Bot-only rounds are never listed or served (#67).
  *   GET /api/replays/:id            one saved match
  *   GET /api/agents/:name           an agent's bot, owner, soul summary, record and recent matches
  *   GET /share/:matchId.svg         the 1200x630 share card of a finished match
@@ -19,11 +20,17 @@ import { hex, portraitSvg, type Mood } from "../viewer/portrait";
 import { modelOf } from "../stats/models";
 import { HttpError } from "./limits";
 import type { MatchServer } from "./match-server";
+import type { RecordRow, RoundTier } from "./store";
+
+/** The tiers the public sees (#67): a bot-only round is never shown after it is over. */
+export type PublicTier = Exclude<RoundTier, "bot-only">;
 
 /** A saved match as the site pages show it (plain values; names and lines are not escaped). */
 export interface ReplaySummary {
   match: string;
   record: string;
+  /** featured (2+ agents) or warm-up (1 agent and house bots) (#67) */
+  tier: PublicTier;
   createdAt: string;
   seed: number;
   theme: string;
@@ -53,7 +60,7 @@ const int = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "nu
 const SEATS = [0, 1, 2, 3];
 
 /** Summarize a record's JSON (pure). null unless it is a match record. */
-export function summarizeReplay(raw: unknown, match: string, record: string, createdAt: number): ReplaySummary | null {
+export function summarizeReplay(raw: unknown, match: string, record: string, createdAt: number, tier: PublicTier): ReplaySummary | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (!Number.isFinite(r.seed) || !Array.isArray(r.rounds)) return null;
@@ -90,6 +97,7 @@ export function summarizeReplay(raw: unknown, match: string, record: string, cre
   return {
     match,
     record,
+    tier,
     createdAt: new Date(createdAt).toISOString(),
     seed,
     theme,
@@ -139,23 +147,23 @@ const cacheOf = (s: MatchServer) => {
   return c;
 };
 
-/** Saved matches, newest first; `before` (ms) pages back through older ones. */
-export async function listReplays(server: MatchServer, limit = 30, before?: number): Promise<ReplaySummary[]> {
-  return (await pageReplays(server, limit, before)).replays;
+/** A record row's summary; null for a bot-only round (never public, #67) or a record that cannot be read. */
+async function summaryOf(server: MatchServer, row: RecordRow | null): Promise<ReplaySummary | null> {
+  if (!row || row.tier === "bot-only") return null;
+  return summarizeReplay(await cacheOf(server).raw(row.path), row.matchId, row.path, row.createdAt, row.tier);
 }
 
-/** A page of saved matches and the cursor for the next (older) page, null at the end. */
-export async function pageReplays(server: MatchServer, limit = 30, before?: number): Promise<{ replays: ReplaySummary[]; next: number | null }> {
+/** A page of saved rounds (never bot-only) and the cursor for the next (older) page, null at the end. */
+export async function pageReplays(server: MatchServer, limit = 30, before?: number, tier?: PublicTier): Promise<{ replays: ReplaySummary[]; next: number | null }> {
   const n = Math.max(1, Math.min(100, limit));
-  const rows = await server.store.listRecords(n, before);
-  const out = await Promise.all(rows.map(async (row) => summarizeReplay(await cacheOf(server).raw(row.path), row.matchId, row.path, row.createdAt)));
+  const rows = await server.store.listRecords(n, before, tier);
+  const out = await Promise.all(rows.map((row) => summaryOf(server, row)));
   return { replays: out.filter((x): x is ReplaySummary => x !== null), next: rows.length === n ? rows.at(-1)!.createdAt : null };
 }
 
-/** One saved match by id. */
+/** One saved round by id (null for a bot-only one). */
 export async function replayOf(server: MatchServer, match: string): Promise<ReplaySummary | null> {
-  const rec = await server.store.getRecord(match);
-  return rec ? summarizeReplay(await cacheOf(server).raw(rec.path), match, rec.path, rec.createdAt) : null;
+  return summaryOf(server, await server.store.getRecord(match));
 }
 
 // ------------------------------------------------------------------ agents
@@ -343,9 +351,7 @@ export async function agentProfile(server: MatchServer, name: string): Promise<A
   await Promise.all(
     seats.map(async (s) => {
       if (s.status !== "over") return;
-      const rec = await server.store.getRecord(s.match);
-      if (!rec) return;
-      const sum = summarizeReplay(await cacheOf(server).raw(rec.path), s.match, rec.path, rec.createdAt);
+      const sum = await replayOf(server, s.match);
       if (sum) replays.set(s.match, sum);
     }),
   );
@@ -414,7 +420,9 @@ export async function siteRoute(server: MatchServer, req: Request, path: string,
     if (req.method !== "GET") throw new HttpError(405, "use GET for /api/replays", undefined, { allow: "GET" });
     const n = Number(url.searchParams.get("limit") ?? "30");
     const b = Number(url.searchParams.get("before"));
-    return json({ ...(await pageReplays(server, Number.isFinite(n) ? n : 30, url.searchParams.has("before") && Number.isFinite(b) ? b : undefined)) });
+    const t = url.searchParams.get("tier");
+    if (t !== null && t !== "featured" && t !== "warm-up") throw new HttpError(400, "tier: featured or warm-up");
+    return json({ ...(await pageReplays(server, Number.isFinite(n) ? n : 30, url.searchParams.has("before") && Number.isFinite(b) ? b : undefined, t ?? undefined)) });
   }
   const rp = /^\/api\/replays\/(m_[0-9a-f]{8})$/.exec(path);
   if (rp) {
@@ -436,8 +444,7 @@ export async function siteRoute(server: MatchServer, req: Request, path: string,
   }
   const sh = /^\/share\/(m_[0-9a-f]{8})\.svg$/.exec(path);
   if (sh) {
-    const rec = await server.store.getRecord(sh[1]!);
-    const sum = rec ? summarizeReplay(await cacheOf(server).raw(rec.path), sh[1]!, rec.path, rec.createdAt) : null;
+    const sum = await replayOf(server, sh[1]!);
     if (!sum) throw new HttpError(404, `no finished match ${sh[1]}`);
     return new Response(shareCardSvg(sum), { headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=3600" } });
   }

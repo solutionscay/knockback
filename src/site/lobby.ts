@@ -5,7 +5,7 @@
  * Data: the Arena stream, GET /api/queue (every 3 s), /api/replays (every 20 s).
  */
 import { cleanIdentity, colorVars } from "./bots";
-import { ago, arenaInfo, cap, feedEntries, galleryReplays, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type ReplayInfo } from "./data";
+import { ago, arenaInfo, cap, featuredFirst, feedEntries, galleryReplays, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type ReplayInfo } from "./data";
 import { $, every, getJson, html, mount } from "./dom";
 import { openJoin } from "./join";
 import { Picks } from "./picks";
@@ -109,7 +109,7 @@ export function lobbyPage(root: HTMLElement) {
 
   function renderResults() {
     const body = $("#r-body")!;
-    const rs = galleryReplays(replays).slice(0, 6);
+    const rs = featuredFirst(galleryReplays(replays)).slice(0, 6);
     if (!rs.length) {
       body.className = "empty";
       body.textContent = "No finished rounds yet.";
@@ -120,7 +120,7 @@ export function lobbyPage(root: HTMLElement) {
       body,
       html`<ul class="results">${rs.map((r) => {
         const w = r.winner >= 0 ? r.winner : 0;
-        return html`<li style="${colorVars(cleanIdentity(r.identities[w], w).color)}"><a href="/replay/${r.match}"><b>${r.names[w]}</b> wins</a><span class="dim">${cap(r.theme)} · ${ago(r.createdAt)}</span></li>`;
+        return html`<li style="${colorVars(cleanIdentity(r.identities[w], w).color)}"><a href="/replay/${r.match}"><b>${r.names[w]}</b> wins</a><span class="dim">${r.tier === "warm-up" ? "Warm-up · " : ""}${cap(r.theme)} · ${ago(r.createdAt)}</span></li>`;
       })}</ul>`,
     );
   }

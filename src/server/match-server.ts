@@ -15,7 +15,7 @@ import { apiRoute, health } from "./match-routes";
 import { storedRuleset } from "./match-rulesets";
 import { modelsPage } from "./models-page";
 import { PICK_MIN_WINDOW_MS, PICKS_PER_ADDRESS } from "./picks";
-import { ServerMatch, type SeatKind } from "./server-match";
+import { ServerMatch, tierOf, type SeatKind } from "./server-match";
 import { SqliteStore, type MatchStore } from "./store";
 
 /** GET /api/models reads at most this many of the newest records */
@@ -95,15 +95,29 @@ export class MatchServer {
         }
   }
 
-  /** A round in memory, or a finished one loaded from storage (deduplicated and rate limited: it replays the physics). */
+  /**
+   * Shown in public (#67): every round while the Arena shows it live (on now, or the last one between rounds); after
+   * that only rounds an agent played. A bot-only round is kept internal.
+   */
+  isPublic(m: ServerMatch): boolean {
+    return m.tier !== "bot-only" || m === this.arena.current;
+  }
+
+  /**
+   * A public round in memory, or a finished one loaded from storage (deduplicated and rate limited: it replays the
+   * physics). A bot-only round the Arena no longer shows is 404, as if it never was (#67).
+   */
   async matchOr404(mid: string, ip = "local"): Promise<ServerMatch> {
     const m = this.matches.get(mid);
-    if (m) return m;
+    if (m) {
+      if (!this.isPublic(m)) throw new HttpError(404, `no match ${mid}`);
+      return m;
+    }
     const pending = this.loading.get(mid);
     if (pending) return pending;
     if (!/^m_[0-9a-f]{8}$/.test(mid)) throw new HttpError(404, `no match ${mid}`);
     const row = await this.store.getMatch(mid);
-    if (!row || (row.status !== "over" && row.status !== "failed")) throw new HttpError(404, `no match ${mid}`);
+    if (!row || (row.status !== "over" && row.status !== "failed") || tierOf(row.kinds) === "bot-only") throw new HttpError(404, `no match ${mid}`);
     if (this.loading.has(mid)) return this.loading.get(mid)!;
     this.loadLimit.take(ip, "loads of old rounds");
     const load = (async () => {

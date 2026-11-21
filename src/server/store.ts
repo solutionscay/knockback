@@ -106,10 +106,20 @@ export interface PlanRow {
   at: number;
 }
 
+/**
+ * Who played a round (#67): "bot-only" (house bots in every seat: kept for evaluation, never public), "warm-up" (one
+ * agent and house bots) or "featured" (2 or more agents).
+ */
+export type RoundTier = "bot-only" | "warm-up" | "featured";
+
 export interface RecordRow {
   matchId: string;
-  /** e.g. /records/remote-42-....json (local file) or an object key when hosted */
+  /**
+   * A public record: /records/<file>.json (served). A bot-only round's record: internal/<file>.json under the records
+   * folder (never served).
+   */
   path: string;
+  tier: RoundTier;
   seed: number;
   hashes: string[];
   winner: number;
@@ -168,9 +178,13 @@ export interface MatchStore {
   upsertPick(p: PickRow): Promise<void>;
   listPicks(matchId: string): Promise<PickRow[]>;
   insertRecord(r: RecordRow): Promise<void>;
+  /** any round's record row, bot-only ones too (the public routes refuse those) */
   getRecord(matchId: string): Promise<RecordRow | null>;
-  /** records, newest first; `before` (ms) pages back through older ones */
-  listRecords(limit?: number, before?: number): Promise<RecordRow[]>;
+  /**
+   * The public records (#67: never bot-only), newest first; `before` (ms) pages back through older ones; `tier` keeps
+   * only warm-up or featured rounds.
+   */
+  listRecords(limit?: number, before?: number, tier?: Exclude<RoundTier, "bot-only">): Promise<RecordRow[]>;
   close(): Promise<void>;
 }
 
@@ -178,7 +192,7 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
@@ -267,13 +281,15 @@ export const SCHEMA = `
   );
   CREATE TABLE records (
     match_id TEXT PRIMARY KEY REFERENCES matches(id) ON DELETE CASCADE,
-    path TEXT NOT NULL,
+    path TEXT NOT NULL,               -- /records/<file> (served) or internal/<file> (a bot-only round: never served)
+    tier TEXT NOT NULL CHECK (tier IN ('bot-only','warm-up','featured')), -- who played (#67): bot-only is never public
     seed INTEGER NOT NULL,
     hashes TEXT NOT NULL,             -- JSON string[] (final hash per round)
     winner INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
     stats TEXT NOT NULL               -- JSON SeatEntry[] (src/stats/models.ts) for GET /api/models
   );
+  CREATE INDEX records_public ON records(tier, created_at);
   CREATE TABLE ruleset_presets (
     name TEXT PRIMARY KEY COLLATE NOCASE,
     body TEXT,
@@ -529,15 +545,17 @@ export class SqliteStore implements MatchStore {
     }));
   }
   async insertRecord(r: RecordRow) {
-    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, stats) VALUES (?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.stats);
+    this.db.query("INSERT OR REPLACE INTO records (match_id, path, tier, seed, hashes, winner, created_at, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.tier, r.seed, j(r.hashes), r.winner, r.createdAt, r.stats);
   }
   async getRecord(matchId: string) {
     const r = this.db.query("SELECT * FROM records WHERE match_id = ?").get(matchId) as Row | null;
     return r ? recordOf(r) : null;
   }
-  async listRecords(limit = 100, before?: number) {
-    if (before !== undefined) return (this.db.query("SELECT * FROM records WHERE created_at < ? ORDER BY created_at DESC LIMIT ?").all(before, limit) as Row[]).map(recordOf);
-    return (this.db.query("SELECT * FROM records ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map(recordOf);
+  async listRecords(limit = 100, before?: number, tier?: Exclude<RoundTier, "bot-only">) {
+    const tiers = tier ? [tier] : ["warm-up", "featured"];
+    const where = `tier IN (${tiers.map(() => "?").join(",")})${before !== undefined ? " AND created_at < ?" : ""}`;
+    const args = [...tiers, ...(before !== undefined ? [before] : []), limit];
+    return (this.db.query(`SELECT * FROM records WHERE ${where} ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(...(args as never[])) as Row[]).map(recordOf);
   }
   async close() {
     this.db.close();
@@ -547,6 +565,7 @@ export class SqliteStore implements MatchStore {
 const recordOf = (r: Row): RecordRow => ({
   matchId: r.match_id as string,
   path: r.path as string,
+  tier: r.tier as RoundTier,
   seed: r.seed as number,
   hashes: p<string[]>(r.hashes),
   winner: r.winner as number,

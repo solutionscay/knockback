@@ -38,6 +38,8 @@ export interface MatchInfo {
 export interface ReplayInfo {
   match: string;
   record: string;
+  /** featured (2+ agents) or warm-up (1 agent, house bots in the other seats) (#67) */
+  tier: "featured" | "warm-up";
   createdAt: string;
   seed: number;
   theme: string;
@@ -174,6 +176,9 @@ export function isGalleryMatch(labels: string[]): boolean {
   });
 }
 export const galleryReplays = (rs: ReplayInfo[]) => rs.filter((r) => isGalleryMatch(r.labels));
+
+/** Featured rounds (2+ agents) first, then warm-ups; newest first within each (pure, #67). */
+export const featuredFirst = (rs: ReplayInfo[]) => [...rs.filter((r) => r.tier === "featured"), ...rs.filter((r) => r.tier !== "featured")];
 
 export function scoreline(wins: number[]): string {
   const s = [...wins].sort((a, b) => b - a);

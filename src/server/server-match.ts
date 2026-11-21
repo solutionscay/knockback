@@ -21,7 +21,8 @@ import type { MatchServer } from "./match-server";
 import { PICK_THROTTLE_MS, PickBook, soulOpeningLine } from "./picks";
 import { checkinSchema, planSchema, RemoteSeat } from "./remote";
 import { soulLine } from "./soul-guard";
-import type { MatchRow, MatchStore, SeatRow } from "./store";
+import { join } from "node:path";
+import type { MatchRow, MatchStore, RoundTier, SeatRow } from "./store";
 
 /** Who sits in an agent seat for this round. */
 export interface SeatAgent {
@@ -53,6 +54,15 @@ export interface SeatAgent {
 /** "remote" (an agent's seat) or "house" (a house bot). */
 export type SeatKind = "remote" | "house";
 
+/** Who plays a round (#67): no agent -> bot-only (never public), 1 agent -> warm-up, 2 or more -> featured. */
+export function tierOf(kinds: readonly string[]): RoundTier {
+  const agents = kinds.filter((k) => k === "remote").length;
+  return agents === 0 ? "bot-only" : agents === 1 ? "warm-up" : "featured";
+}
+
+/** Where a bot-only round's record goes, under the records folder: never served (GET /records/ serves plain names only). */
+export const INTERNAL_DIR = "internal";
+
 export class ServerMatch {
   status: "open" | "running" | "over" | "failed" = "open";
   readonly remote: (RemoteSeat | null)[];
@@ -70,6 +80,8 @@ export class ServerMatch {
    * another agent's). Set from the round before it as stored (loadEntrances), so a resumed round gets the same.
    */
   entering = new Map<number, Identity | undefined>();
+  /** who plays it (#67): a bot-only round is shown live only; its record is internal */
+  readonly tier: RoundTier;
   private settle!: () => void;
   private waiters = new Set<() => void>();
 
@@ -84,6 +96,7 @@ export class ServerMatch {
     readonly selection: MatchRuleset,
   ) {
     this.remote = kinds.map(() => null);
+    this.tier = tierOf(kinds);
     this.createdAt = createdAt;
     this.done = new Promise((resolve) => (this.settle = resolve));
   }
@@ -461,7 +474,7 @@ export class ServerMatch {
     this.runner.start();
     for (const r of rounds) await this.runner.replayRound(r);
     await this.restoreControl();
-    this.runner.recordFile = recordPath ? recordPath.replace(/^\/records\//, "") : null;
+    this.runner.recordFile = recordPath?.startsWith("/records/") ? recordPath.slice("/records/".length) : null;
   }
 
   /** After a restart: the control timeline and who is on autopilot (the last event per seat). */
@@ -486,11 +499,13 @@ export class ServerMatch {
   protected async finish() {
     try {
       const r = this.runner!;
-      const file = r.save(this.server.opts.outDir, "arena");
+      // a bot-only round's record is kept for evaluation in the internal folder, which is never served (#67)
+      const internal = this.tier === "bot-only";
+      const file = r.save(internal ? join(this.server.opts.outDir, INTERNAL_DIR) : this.server.opts.outDir, "arena");
       const m = r.match;
       // the per-seat model stats go into the record index too: GET /api/models reads them without opening files
       const stats = JSON.stringify(seatEntries(r.savedRecord()));
-      await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), stats });
+      await this.store.insertRecord({ matchId: this.id, path: internal ? `${INTERNAL_DIR}/${file}` : `/records/${file}`, tier: this.tier, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), stats });
       this.server.modelsCache = null;
       await this.store.updateMatch(this.id, { status: "over", winner: m.winner, endedAt: Date.now() });
       this.status = "over";
@@ -512,9 +527,18 @@ export class ServerMatch {
     this.settle();
   }
 
+  /** The record's public path; null before it is saved and for a bot-only round (its record is internal, #67). */
+  recordPath(): string | null {
+    const f = this.runner?.recordFile;
+    return f && this.tier !== "bot-only" ? `/records/${f}` : null;
+  }
+
   private onEvent(e: RunnerEvent) {
     // the stream says which match and Arena round it is, so spectators can fetch the pick cards (#35)
-    this.live.broadcast(e.type === "match" ? { ...e, matchId: this.id, arenaRound: this.arenaRound } : e);
+    if (e.type === "match") return this.live.broadcast({ ...e, matchId: this.id, arenaRound: this.arenaRound });
+    // a bot-only round is shown live, but its record is never public (#67)
+    if (e.type === "done") return this.live.broadcast({ ...e, record: this.recordPath() });
+    this.live.broadcast(e);
     if (e.type === "round") this.changed();
   }
 
@@ -590,7 +614,7 @@ export class ServerMatch {
     if (!r || this.status !== "over") return {};
     const m = r.match;
     const order = placing(m.facts[0]!);
-    return { winner: m.names[m.winner], youWon: m.winner === seat, place: order.indexOf(seat) + 1, record: r.recordFile ? `/records/${r.recordFile}` : null, report: `/api/matches/${this.id}/report` };
+    return { winner: m.names[m.winner], youWon: m.winner === seat, place: order.indexOf(seat) + 1, record: this.recordPath(), report: `/api/matches/${this.id}/report` };
   }
 
   info() {
@@ -623,7 +647,8 @@ export class ServerMatch {
       wins: r ? r.match.wins.slice() : null,
       winner: r && r.match.over ? r.names[r.match.winner] : null,
       placing: r && r.match.over ? placing(r.match.facts[0]!) : null,
-      record: r?.recordFile ? `/records/${r.recordFile}` : null,
+      tier: this.tier,
+      record: this.recordPath(),
       watch: `/watch/${this.id}`,
       live: `/api/live?match=${this.id}`,
       ...(this.error ? { error: this.error } : {}),

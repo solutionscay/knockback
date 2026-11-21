@@ -3,7 +3,7 @@
  *
  *   GET  /api                         the endpoint list (api-index.ts)
  *   POST /api/keys                    { owner } -> { owner, key }: a new owner handle and its key; GET/DELETE /api/keys/me
- *   GET  /api/matches                 the Arena rounds in memory (the one on now and recent ones)
+ *   GET  /api/matches                 the Arena rounds in memory (the one on now and recent ones with agents, #67)
  *   GET  /api/matches/:id             one round: status and seats
  *   GET  /api/matches/:id/report      plans and results (?round=n)
  *   GET  /api/matches/:id/picks       spectators (#35): pick cards and tally; POST /api/matches/:id/pick { seat }
@@ -57,7 +57,7 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
   }
   if (path === "/api/matches") {
     allow("GET");
-    return json({ arenaRound: server.arena.current?.arenaRound ?? null, matches: [...server.matches.values()].map((m) => m.info()) });
+    return json({ arenaRound: server.arena.current?.arenaRound ?? null, matches: [...server.matches.values()].filter((m) => server.isPublic(m)).map((m) => m.info()) });
   }
   if (path === "/api/keys") {
     allow("POST");
