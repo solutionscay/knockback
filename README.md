@@ -351,7 +351,7 @@ bun run typecheck
 
 - `src/sim/` - pure TypeScript simulation (Rapier 2D deterministic build). No
   rendering, no wall clock, no `Math.random`. Runs in Bun and the browser.
-  - `levelgen.ts` seeded level generator + validation; `level-walls.ts` jumpable, cracked barricades and route checks; `grid.ts` the cell grid
+  - `levelgen.ts` seeded level generator; `level-validate.ts` its playability checks; `level-walls.ts` jumpable, cracked barricades and route checks; `grid.ts` the cell grid
   - `terrain.ts` destructible terrain physics (chunked colliders, support check, loose pieces)
   - `sim-chains.ts` breakable platform chains (#34): chain hit points (`CHAIN` in `constants.ts`); explosions,
     shotgun pellets, bats, heavy fists and heavy flying things damage them; one chain gone, the platform swings

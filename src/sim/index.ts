@@ -12,6 +12,7 @@ export * from "./bots";
 export * from "./nav";
 export * from "./grid";
 export * from "./levelgen";
+export * from "./level-validate";
 export { Rng } from "./rng";
 export * from "./roundstats";
 export * from "./rules";

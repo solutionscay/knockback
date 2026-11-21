@@ -6,7 +6,7 @@ import { clamp, length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { damagePiece } from "./sim-terrain";
 import { blastChains } from "./sim-chains";
-import { blastIgnite } from "./sim-fire";
+import { blastIgnite } from "./sim-ignite";
 
 export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: ExplosionKind, owner: number, depth: number, chainFrom: string | null) {
   sim.stats.explosions++;
