@@ -12,14 +12,14 @@ Classic is the built-in ruleset and the initial default for new server and MCP l
 }
 ```
 
-This example removes railgun pickups and doubles the probability of fire spreading between terrain cells per fire step. Engine version 5 uses Classic for records of its own engine version that lack a ruleset. The viewer shows a summary for records made by earlier engines. New records embed the resolved ruleset in full and include the name and version when selected from a preset. Editing a preset or changing the lobby default affects future matches. Replay, the live viewer, and server recovery all use the match's saved settings.
+This example removes railgun pickups and doubles the probability of fire spreading between terrain cells per fire step. Engine version 6 uses Classic for records of its own engine version that lack a ruleset. The viewer shows a summary for records made by earlier engines. New records embed the resolved ruleset in full and include the name and version when selected from a preset. Editing a preset or changing the lobby default affects future matches. Replay, the live viewer, and server recovery all use the match's saved settings.
 
 ## Settings
 
 | Section | Controls |
 | --- | --- |
 | `schemaVersion` | The ruleset format version, currently 1. |
-| `combat` | Fighter dimensions, health, movement, density, impact damage, ring-outs, weapon switching, and explosion carve scale. |
+| `combat` | Fighter dimensions, health, movement, density, impact damage, ring-outs, launch height, weapon switching, and explosion carve scale. |
 | `weapons` | Enabled pickup weapons, weapon stats and effect tuning, including ammo, cooldowns, charge, reach, knockback and spread. Fists are built in. |
 | `pickups` | Enabled power-ups, weighted drops, power-up strengths and durations, and the armory and supply schedule. An empty power-up list turns off power-ups. |
 | `arena` | Size, generation, themes and their prop and material mixtures, spawn constraints, walls, terrain, prop dimensions, chain tuning and navigation. |
@@ -54,6 +54,17 @@ Classic waits for the first fighter-on-fighter damage before the sudden-death co
 `tactics.weapons.reach` sets each weapon's effective range for aiming, choosing shots, attacking obstructions and positioning. The settings also set vertical reach for melee and a preferred stand-off distance within the band. The controller favors ready weapons and treats obstructing destructibles as targets. Ammunition and fuel still come from the weapon table and carried inventory.
 
 Close Quarters keeps its original opening timer and weapon selection through its ruleset settings.
+
+## Launch height
+
+Classic keeps launched fighters near the fight, so View all can follow it (#41). Heights are measured from the highest walkable surface when the round starts.
+
+- `combat.launch.maxUpSpeed` caps how fast knockback and blasts make a fighter rise (15 m/s). Sideways speed is kept, so ring-outs still happen. A fighter who is already rising faster, for example off a launch pad, is not slowed by a hit.
+- `combat.launch.stackRetention` softens kicks that land in the same tick, such as shotgun pellets or chain blasts. The n-th extra kick keeps `stackRetention`ⁿ of its upward push (0.5). Sideways pushes still add up in full.
+- `combat.launch.ceilingAbove` and `ceilingDrag` set a soft ceiling. More than 5 m above the top platform, upward speed decays by 4 per second, like air drag. It is not a wall.
+- `pickups.power.jetpack.ceiling` and `fade` stop jetpack thrust 4 m above the top platform. The thrust starts to fade 1.5 m below that height.
+
+Close Quarters keeps launches as they were before #41: no cap, full stacking and no ceilings.
 
 ## Choose a ruleset
 
