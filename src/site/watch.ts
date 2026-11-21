@@ -5,7 +5,7 @@
  * reached.
  */
 import { cleanIdentity, colorVars } from "./bots";
-import { clock, feedEntries, visibleFeed, type FeedEntry, type MatchInfo, scoreline } from "./data";
+import { clock, feedEntries, visibleFeed, type FeedEntry, type MatchInfo } from "./data";
 import { $, every, getJson, html, mount } from "./dom";
 import { Picks } from "./picks";
 import { renderSeats, wirePicks } from "./seats";
@@ -64,7 +64,7 @@ export function watchPage(root: HTMLElement, id: string) {
     const pickLine = picks.status();
     $("#w-meta")!.textContent =
       winner >= 0
-        ? [`${who(winner)} wins ${scoreline(done!.kind === "done" ? done!.wins : wins)}`, pickLine].filter(Boolean).join(" · ")
+        ? ["Final", pickLine].filter(Boolean).join(" · ") // the viewer's win screen says who won, once
         : info?.status === "open"
           ? `Waiting for players · starts in ${clock(info.startsInSec ?? 0)}`
           : pickLine || (stage.pos ? `Live · round ${stage.pos.round} of 3` : "Live");
@@ -82,7 +82,7 @@ export function watchPage(root: HTMLElement, id: string) {
     lastKeys = keys;
     const items = vis.map(item).filter((x) => x.s);
     const feed = $("#w-feed")!;
-    feed.hidden = !items.length;
+    feed.hidden = !items.length || winner >= 0; // gone at the end: the win screen is the moment
     mount(feed, html`${items}`);
   }
 

@@ -1157,7 +1157,12 @@ body.embed #dialogue .ai,
 body.embed #dialogue .rules:not(.next),
 body.embed #lineup .chip .fn,
 body.embed #lineup .chip .kb-mb,
-body.embed #clock .pips {
+body.embed #clock .pips,
+body.embed #celebrate .winner .model,
+body.embed #celebrate .winner .pips,
+body.embed:has(#celebrate.show) #cam,
+body.embed:has(#celebrate.show) #sound,
+body.embed:has(#celebrate.show) #lineup {
   display: none;
 }
 

@@ -8,7 +8,7 @@
  * (src/flow/pacing.ts), the same numbers the server paces broadcasts with.
  */
 import { cleanIdentity, colorVars } from "./bots";
-import { clock, posAtTime, timeOfPos, timeline, visibleFeed, type FeedEntry, type MatchInfo, type ReplayInfo, type ReportRound, type Timeline, scoreline } from "./data";
+import { clock, posAtTime, timeOfPos, timeline, visibleFeed, type FeedEntry, type MatchInfo, type ReplayInfo, type ReportRound, type Timeline } from "./data";
 import { $, getJson, html, mount, raw } from "./dom";
 import { Picks } from "./picks";
 import { renderSeats } from "./seats";
@@ -43,7 +43,7 @@ export async function replayPage(root: HTMLElement, id: string) {
     root,
     html`<div class="wrap live">
       <div class="main">
-        <div class="wbar"><span class="meta">Replay · ${when}${w >= 0 && rp ? ` · ${names[w]} wins ${scoreline(rp.wins)}` : ""}</span><span class="sp"></span><input id="r-link" hidden readonly value="${location.origin}/replay/${id}" /><button class="btn small ghost" type="button" data-copy="#r-link">Copy link</button></div>
+        <div class="wbar"><span class="meta">Replay · ${when}</span><span class="sp"></span><input id="r-link" hidden readonly value="${location.origin}/replay/${id}" /><button class="btn small ghost" type="button" data-copy="#r-link">Copy link</button></div>
         <div class="stage" id="r-stage"><div class="seeking" id="r-seek" hidden>Rewinding…</div></div>
         ${old ? "" : html`<div class="scrub" id="r-scrub"><button class="play" id="r-play" type="button" aria-label="Pause">❚❚</button><div class="track" id="r-track" role="slider" aria-label="Replay position" tabindex="0"></div><span class="tm" id="r-tm"></span><div class="speed"><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="2" aria-pressed="false">2×</button></div></div>`}
         <div class="seatrow" id="r-seats"></div>

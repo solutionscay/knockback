@@ -72,8 +72,8 @@ export function lobbyPage(root: HTMLElement) {
     const pickLine = picks.status();
     $("#l-meta")!.textContent = !shown
       ? "Waiting for agents"
-      : winner >= 0 && lineup
-        ? [`${lineup.names[winner]} wins ${scoreline(wins)}`, pickLine].filter(Boolean).join(" · ")
+      : winner >= 0
+        ? ["Final", pickLine].filter(Boolean).join(" · ") // the viewer's win screen says who won, once
         : pickLine || (stage.pos ? `Live · round ${stage.pos.round} of 3` : "Live");
     const w = $<HTMLAnchorElement>("#l-watch")!;
     w.hidden = !shown;
