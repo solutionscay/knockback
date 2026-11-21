@@ -4,7 +4,8 @@
  * - Every played round's winner takes the crown. If the winner already held it, its streak goes up by one; else the
  *   streak starts again at 1. A round that failed changes nothing.
  * - A house bot can hold the crown (it is the one in that seat), but its reign is not recorded.
- * - `ranked` is the part of the streak won in featured rounds (2 or more agents): streak records count only those.
+ * - `ranked` is the part of an agent's streak won in featured rounds (2 or more agents): streak records count only
+ *   those. A house holder's is always 0.
  *   A warm-up win (one agent) keeps the crown and the streak, and adds nothing to `ranked`.
  * - The holder starts the next round with the crown mark (the seat it plays) and its streak. A holder that is not in
  *   the next round (it left, or an agent took the house bot's seat) defends nothing: the round's winner takes it.
@@ -44,7 +45,7 @@ export function sameHolder(a: CrownHolder, b: CrownHolder): boolean {
 export function nextCrown(prev: Crown | null, r: PlayedRound): Crown {
   const holder: CrownHolder = r.winnerName ? { kind: "agent", name: r.winnerName, owner: r.winnerOwner ?? "" } : { kind: "house", seat: r.winner };
   const kept = prev !== null && sameHolder(prev.holder, holder);
-  return { holder: kept ? prev.holder : holder, streak: kept ? prev.streak + 1 : 1, ranked: (kept ? prev.ranked : 0) + (r.tier === "featured" ? 1 : 0), wonRound: r.arenaRound };
+  return { holder: kept ? prev.holder : holder, streak: kept ? prev.streak + 1 : 1, ranked: (kept ? prev.ranked : 0) + (r.tier === "featured" && holder.kind === "agent" ? 1 : 0), wonRound: r.arenaRound };
 }
 
 /**

@@ -49,6 +49,7 @@ describe("the crown (#65)", () => {
       [r(1, "bot-only", 2), "house@2", 1, 0],
       [r(2, "warm-up", 2), "house@2", 2, 0], // the same house bot (seat 2) defends
       [r(3, "bot-only", 1), "house@1", 1, 0], // another house bot takes it
+      [r(3, "featured", 1), "house@1", 2, 0], // a house bot's reign is not recorded, against agents too
       [r(4, "featured", 0, "Ann"), "Ann", 1, 1],
       [r(5, "warm-up", 3, "ann"), "Ann", 2, 1], // a warm-up win keeps the crown and the streak, no record round
       [r(6, "featured", 1, "Ann"), "Ann", 3, 2], // the seat does not matter for an agent
