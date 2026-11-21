@@ -38,7 +38,8 @@ describe("SqliteStore", () => {
       UPDATE ruleset_presets SET body = json_remove(body, ${fields}) WHERE name = 'Old Fast Fire';
       UPDATE ruleset_presets SET version = 1 WHERE name = 'Classic';
       UPDATE ruleset_presets SET body = NULL WHERE name = 'Close Quarters';
-      DELETE FROM schema_migrations WHERE version = 7;`);
+      DROP TABLE picks; ALTER TABLE matches DROP COLUMN picks_locked_at; ALTER TABLE seats DROP COLUMN opening_line; -- undo 8 (#35) too
+      DELETE FROM schema_migrations WHERE version >= 7;`);
     await old.close();
 
     const upgraded = new SqliteStore(path);
