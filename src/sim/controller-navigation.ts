@@ -1,6 +1,6 @@
 import { arenaQuarter } from "./level-spawns";
 import type { Controller } from "./controller";
-import { runUp, type Link, type Surface } from "./nav";
+import { runUp, type Link, type NavGraph, type Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
@@ -98,7 +98,7 @@ export class ControllerNavigation {
   }
 
   /** A reachable spot, not this one, that sees the target at the stand-off of the longest weapon carried (#69). */
-  private vantage(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<Sim["nav"]["plan"]>, zonePenalty: (x: number) => number, fragilePenalty: (s: number) => number): Goal {
+  private vantage(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<NavGraph["plan"]>, zonePenalty: (x: number) => number, fragilePenalty: (s: number) => number): Goal {
     const reach = (w: Weapon) => weaponReach(sim.ruleset, me, w);
     const gun = me.weapons.reduce<Weapon>((best, w) => (reach(w).max > reach(best).max ? w : best), "fist");
     const ideal = clamp(reach(gun).standOff, reach(gun).min, reach(gun).max);
@@ -119,8 +119,8 @@ export class ControllerNavigation {
     return [sim.zone.center - h, sim.zone.center + h];
   }
 
-  private chooseGoal(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<Sim["nav"]["plan"]>, crossingWall: boolean, flank: number, weapon?: Weapon): Goal {
-    const nav = sim.nav;
+  private chooseGoal(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<NavGraph["plan"]>, crossingWall: boolean, flank: number, weapon?: Weapon): Goal {
+    const nav = sim.navFor(me);
     const mp = sim.pos(me);
     const tp = sim.pos(target);
     const [zl, zr] = this.zoneBounds(sim);
@@ -393,12 +393,14 @@ export class ControllerNavigation {
     });
   }
 
-  private bestPoint(sim: Sim, plan: ReturnType<Sim["nav"]["plan"]>, score: (x: number, y: number, s: number, i: number) => number): Goal {
+  private bestPoint(sim: Sim, plan: ReturnType<NavGraph["plan"]>, score: (x: number, y: number, s: number, i: number) => number): Goal {
     let best: Goal | null = null;
     let bs = Infinity;
     const live = sim.liveGround.length > 0;
-    for (let i = 0; i < sim.nav.points.length; i++) {
-      const p = sim.nav.points[i]!;
+    const me = sim.fighters[this.controller.fighterId]!;
+    const points = sim.navFor(me).points;
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i]!;
       const c = plan.cost[p.surface]!;
       if (c === Infinity) continue;
       let s = score(p.x, p.y, p.surface, i) + (c + Math.abs(plan.arriveX[p.surface]! - p.x)) * 0.12;
@@ -408,13 +410,12 @@ export class ControllerNavigation {
         best = { surface: p.surface, x: p.x };
       }
     }
-    const me = sim.fighters[this.controller.fighterId]!;
     return best ?? { surface: me.surface, x: sim.pos(me).x };
   }
 
   steer(sim: Sim, me: Fighter, target: Fighter, mp: ReturnType<Sim["pos"]>, mv: ReturnType<Sim["vel"]>, input: Input, crossingWall: boolean, flank: number, weapon?: Weapon): Surface | undefined {
     const tp = sim.pos(target);
-    const nav = sim.nav;
+    const nav = sim.navFor(me);
 
     if (this.navVersion !== sim.navVersion) {
       this.navVersion = sim.navVersion;
@@ -428,7 +429,7 @@ export class ControllerNavigation {
     if (me.grounded) this.foothold = { x: mp.x, y: sim.feetY(me) };
     if (me.grounded && me.jumpCd === 0) this.jumpTo = null;
     if (surf) {
-      let plan = nav.fighterPlan(sim.grid, me.surface, mp.x, sim.ruleset);
+      let plan = nav.fighterPlan(sim.grid, me.surface, mp.x);
       // the zone is coming and no jump we can make leads into it: a risky jump beats being pushed into the pit
       const [zl, zr] = this.zoneBounds(sim);
       if ((mp.x < zl || mp.x > zr) && !nav.surfaces.some((s) => plan.cost[s.id] !== Infinity && s.x1 > zl && s.x0 < zr)) plan = nav.plan(me.surface, mp.x);
@@ -552,7 +553,7 @@ export class ControllerNavigation {
       // off the near end, unless that end is a ledge with nothing below
       let dir = left <= right ? -1 : 1;
       const end = (d: number) => (d < 0 ? first.x - 0.8 : last.x + 0.8);
-      if (sim.nav.fallBelow(sim.grid, end(dir), feet) === Infinity) dir = -dir;
+      if (sim.navFor(me).fallBelow(sim.grid, end(dir), feet) === Infinity) dir = -dir;
       input.move = dir;
       input.jump = false;
       return;
@@ -574,7 +575,8 @@ export class ControllerNavigation {
    */
   guardLedge(sim: Sim, me: Fighter, mp: { x: number }, mv: { x: number }, input: Input) {
     if (!me.grounded || me.surface < 0 || input.move === 0) return;
-    const s = sim.nav.surfaces[me.surface];
+    const nav = sim.navFor(me);
+    const s = nav.surfaces[me.surface];
     if (!s) return;
     const dir = input.move > 0 ? 1 : -1;
     const edge = dir > 0 ? s.x1 : s.x0;
@@ -583,7 +585,7 @@ export class ControllerNavigation {
     const v = Math.max(0, mv.x * dir);
     const room = (edge - mp.x) * dir - v * v / (2 * me.stats.groundAccel);
     if (room > 0.35) return;
-    if (sim.nav.fallBelow(sim.grid, edge + dir * 0.6, s.y) !== Infinity) return;
+    if (nav.fallBelow(sim.grid, edge + dir * 0.6, s.y) !== Infinity) return;
     input.move = 0;
   }
 
@@ -602,7 +604,7 @@ export class ControllerNavigation {
       return t <= t1 ? mv.x * t + to * acc * t * t / 2 : (mv.x + v1) / 2 * t1 + v1 * (t - t1);
     };
     const spans: { surface: Surface; lo: number; hi: number }[] = [];
-    for (const s of sim.nav.surfaces) {
+    for (const s of sim.navFor(me).surfaces) {
       // resting on its corner (not falling, feet just under its top): step onto it
       if (feet < s.y && feet > s.y - 0.6 && mp.x > s.x0 - 0.6 && mp.x < s.x1 + 0.6 && Math.abs(mv.y) < 1) {
         spans.push({ surface: s, lo: s.x0 + 0.15, hi: s.x1 - 0.15 });
@@ -648,7 +650,7 @@ export class ControllerNavigation {
     // nothing can catch us: the nearest ledge below, and the double jump
     let bx = want, bd = Infinity;
     const feet = sim.feetY(me);
-    for (const s of sim.nav.surfaces) {
+    for (const s of sim.navFor(me).surfaces) {
       if (s.y > feet) continue;
       const ex = mp.x < s.x0 ? s.x0 + 0.6 : mp.x > s.x1 ? s.x1 - 0.6 : mp.x;
       const d = Math.abs(ex - mp.x) + (feet - s.y) * 0.3;

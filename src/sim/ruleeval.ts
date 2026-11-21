@@ -81,11 +81,12 @@ export class RuleEngine {
         return this.some(cand().filter((f) => ctl.hitBy(f.id, sim.tick - this.tuning.hitTicks)));
       case "item_near": {
         if (me.surface < 0) return { on: false, who: [] };
-        const plan = sim.nav.fighterPlan(sim.grid, me.surface, pos(me).x, sim.ruleset);
+        const nav = sim.navFor(me);
+        const plan = nav.fighterPlan(sim.grid, me.surface, pos(me).x);
         for (const it of sim.items()) {
           if (it.itemType !== r.item) continue;
           const t = it.body.translation();
-          const s = sim.nav.surfaceAt(t.x, t.y + 0.3, 0.2);
+          const s = nav.surfaceAt(t.x, t.y + 0.3, 0.2);
           if (s && plan.cost[s.id]! + Math.abs(plan.arriveX[s.id]! - t.x) <= this.tuning.itemCost) return { on: true, who: [] };
         }
         return { on: false, who: [] };
@@ -112,7 +113,7 @@ export class RuleEngine {
     const others = who.filter((f) => f.id !== me.id);
     if (!others.length) return -1;
     const mp = sim.pos(me);
-    const plan = me.surface >= 0 ? sim.nav.fighterPlan(sim.grid, me.surface, mp.x, sim.ruleset) : null;
+    const plan = me.surface >= 0 ? sim.navFor(me).fighterPlan(sim.grid, me.surface, mp.x) : null;
     let best = -1;
     let bc = Infinity;
     for (const f of others) {
@@ -203,7 +204,7 @@ export class RuleEngine {
 export function nearLedge(sim: Sim, f: Fighter): boolean {
   const p = sim.pos(f);
   if (p.x - sim.level.minX < sim.ruleset.tactics.ruleEval.ledgeM || sim.level.maxX - p.x < sim.ruleset.tactics.ruleEval.ledgeM) return true;
-  const s = f.surface >= 0 ? sim.nav.surfaces[f.surface] : undefined;
+  const s = f.surface >= 0 ? sim.navFor(f).surfaces[f.surface] : undefined;
   if (!s || !f.grounded) return false;
   return (s.dropLeft && p.x - s.x0 < sim.ruleset.tactics.ruleEval.ledgeM) || (s.dropRight && s.x1 - p.x < sim.ruleset.tactics.ruleEval.ledgeM);
 }

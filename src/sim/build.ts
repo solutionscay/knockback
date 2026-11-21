@@ -107,7 +107,7 @@ export function fighterStats(ruleset: Ruleset, build: Build): FighterStats {
 }
 
 /** The mobility profile of a build: (speed, jump). Fighters with the same profile share a navigation graph. */
-export function mobilityKey(build: Build): string {
+export function mobilityKey(build: Pick<Build, "speed" | "jump">): string {
   return `${build.speed},${build.jump}`;
 }
 

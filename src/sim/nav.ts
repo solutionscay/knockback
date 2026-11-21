@@ -2,7 +2,12 @@
  * Side-view navigation built from the destructible grid: walkable surfaces
  * (tops of solid cells with headroom) and jump/drop/walk links between them.
  * Rebuilt as explosions carve the level.
+ *
+ * A graph is made for one mobility profile (#79): the walk speed, jump speed and air control its jump links and arcs
+ * are worked out with. Graphs of the same grid share their surfaces and points (same ids, same objects); only the
+ * links differ. Level generation and validation use the base profile (the ruleset's `combat.fighter`).
  */
+import type { Mobility } from "./build";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { CELL, F_BRIDGE, Mat, type Grid } from "./grid";
 
@@ -40,6 +45,12 @@ export function runUp(nav: NavGraph, l: Link): boolean {
   return Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) <= 0;
 }
 
+/** The base mobility profile: the ruleset's own fighter values (a neutral build). */
+export function baseMobility(ruleset: Ruleset): Mobility {
+  const F = ruleset.combat.fighter;
+  return { walkSpeed: F.walkSpeed, jumpSpeed: F.jumpSpeed, airAccel: F.airAccel };
+}
+
 export class NavGraph {
   surfaces: Surface[] = [];
   links: Link[] = [];
@@ -48,9 +59,11 @@ export class NavGraph {
   /** arcClear per link, worked out the first time a fighter's plan needs it */
   private readonly arcs = new Map<Link, boolean>();
 
-  static fromGrid(grid: Grid, minRun = 2, ruleset: Ruleset = CLASSIC): NavGraph {
+  private constructor(readonly ruleset: Ruleset, readonly mobility: Mobility) {}
+
+  static fromGrid(grid: Grid, minRun = 2, ruleset: Ruleset = CLASSIC, mobility: Mobility = baseMobility(ruleset)): NavGraph {
     const { headroomCells, dropFall } = ruleset.arena.navigation;
-    const nav = new NavGraph();
+    const nav = new NavGraph(ruleset, mobility);
     const { cols, rows } = grid;
     for (let cy = 0; cy < rows; cy++) {
       let run = -1;
@@ -93,15 +106,28 @@ export class NavGraph {
       s.dropLeft = nav.fallBelow(grid, s.x0 - 0.3, s.y) > dropFall;
       s.dropRight = nav.fallBelow(grid, s.x1 + 0.3, s.y) > dropFall;
     }
-    nav.buildLinks(ruleset);
-    nav.out = nav.surfaces.map(() => []);
-    for (const l of nav.links) nav.out[l.from]!.push(l);
+    nav.linkUp();
     for (const s of nav.surfaces) {
       const len = s.x1 - s.x0;
       const n = Math.max(1, Math.floor((len - 0.8) / 1.0));
       for (let i = 0; i <= n; i++) nav.points.push({ surface: s.id, x: s.x0 + 0.4 + ((len - 0.8) * i) / n, y: s.y });
     }
     return nav;
+  }
+
+  /** The same surfaces and points (shared, same ids) with the links of another mobility profile (#79). */
+  withMobility(mobility: Mobility): NavGraph {
+    const nav = new NavGraph(this.ruleset, mobility);
+    nav.surfaces = this.surfaces;
+    nav.points = this.points;
+    nav.linkUp();
+    return nav;
+  }
+
+  private linkUp() {
+    this.buildLinks();
+    this.out = this.surfaces.map(() => []);
+    for (const l of this.links) this.out[l.from]!.push(l);
   }
 
   /** How far something at (x, y) falls before hitting a solid cell (Infinity = void). */
@@ -117,10 +143,11 @@ export class NavGraph {
     this.links.push({ ...l, cost: dist + (l.kind === "walk" ? 0 : 2.5) });
   }
 
-  private buildLinks(ruleset: Ruleset) {
-    const { jumpMargin, maxGap } = ruleset.arena.navigation;
-    const { fighter: F, gravity } = ruleset.combat;
-    const maxJumpUp = (F.jumpSpeed * F.jumpSpeed) / (2 * gravity) - jumpMargin;
+  private buildLinks() {
+    const { jumpMargin, maxGap } = this.ruleset.arena.navigation;
+    const { gravity } = this.ruleset.combat;
+    const { jumpSpeed } = this.mobility;
+    const maxJumpUp = (jumpSpeed * jumpSpeed) / (2 * gravity) - jumpMargin;
     const S = this.surfaces;
     for (const a of S) {
       for (const b of S) {
@@ -154,12 +181,12 @@ export class NavGraph {
     }
   }
 
-  /** The plan fighters follow (#69): only the jumps and drops a fighter's body can make (arcClear). */
-  fighterPlan(grid: Grid, start: number, x: number, ruleset: Ruleset = CLASSIC) {
+  /** The plan fighters follow (#69): only the jumps and drops a body of this graph's mobility can make (arcClear). */
+  fighterPlan(grid: Grid, start: number, x: number) {
     return this.plan(start, x, (l) => {
       let ok = this.arcs.get(l);
       if (ok === undefined) {
-        ok = this.arcClear(grid, l, ruleset);
+        ok = this.arcClear(grid, l);
         this.arcs.set(l, ok);
       }
       return ok;
@@ -170,12 +197,13 @@ export class NavGraph {
    * Can a fighter make this jump or drop (#69)? Flies the controller's own arc (a run-up across a gap, a standing jump
    * up beside a platform overhead, or walking off for a drop; air control toward the landing; gravity) and moves the body
    * through the grid: a ceiling stops the rise, a wall stops the run (the body slides along both), and a landing out
-   * of reach makes the link unusable for fighters. Walks always pass.
+   * of reach makes the link unusable for fighters. Walks always pass. The arc uses this graph's mobility (#79).
    */
-  arcClear(grid: Grid, l: Link, ruleset: Ruleset = CLASSIC): boolean {
+  arcClear(grid: Grid, l: Link): boolean {
     if (l.kind === "walk") return true;
     const from = this.surfaces[l.from]!, to = this.surfaces[l.to]!;
-    const { fighter: F, gravity } = ruleset.combat;
+    const { fighter: F, gravity } = this.ruleset.combat;
+    const M = this.mobility;
     const dt = 1 / 30;
     const dir = Math.sign(l.landX - l.takeoffX) || 1;
     const r = F.radius - 0.08;
@@ -188,12 +216,12 @@ export class NavGraph {
     let x = l.takeoffX, feet = from.y;
     const run = runUp(this, l);
     // a gap jump is run at, a drop is walked off at speed, a jump up beside a platform starts from standing
-    let vx = run || l.kind === "drop" ? dir * F.walkSpeed : 0, vy = l.kind === "jump" ? F.jumpSpeed : 0;
+    let vx = run || l.kind === "drop" ? dir * M.walkSpeed : 0, vy = l.kind === "jump" ? M.jumpSpeed : 0;
     for (let i = 0; i < 90; i++) {
       // onto a platform overhead: straight up beside its edge until the feet clear its top, then over (the controller)
       const aim = l.kind === "jump" && !run && feet < to.y + 0.15 && vy > 0 ? l.takeoffX : l.landX;
-      const want = Math.max(-1, Math.min(1, (aim - x) / 0.7)) * F.walkSpeed;
-      vx += Math.max(-F.airAccel * dt, Math.min(F.airAccel * dt, want - vx));
+      const want = Math.max(-1, Math.min(1, (aim - x) / 0.7)) * M.walkSpeed;
+      vx += Math.max(-M.airAccel * dt, Math.min(M.airAccel * dt, want - vx));
       vy -= gravity * dt;
       const nx = x + vx * dt;
       let nf = feet + vy * dt;
