@@ -6,7 +6,7 @@
 import type { Sim } from "../../sim/sim";
 import type { SimEvent } from "../../sim/sim-types";
 import type { AudioEngine } from "./engine";
-import { blipsFor, cueForBeat, cueForMood, cuesForEvent, voiceHz, type Cue, type Listener } from "./map";
+import { blipsFor, cueForBeat, cueForMood, cuesForEntrance, cuesForEvent, voiceHz, type Cue, type Listener } from "./map";
 
 interface Body {
   linvel(): { x: number; y: number };
@@ -64,6 +64,11 @@ export class SoundDirector {
   beat(b: { kind: string; value?: number }, clock: number) {
     if (b.kind !== "dialogue") this.typed = -1;
     this.play(cueForBeat(b), clock);
+  }
+
+  /** A step of an agent's entrance (#66). */
+  entrance(step: string, at: { x: number; y: number }, identity: { name: string; shape: string; color: number }, o: { kick: string; boost: boolean; evicted: boolean }, clock: number) {
+    for (const c of cuesForEntrance(step, at, voiceHz(identity), o)) this.play(c, clock);
   }
 
   /** Each frame of a dialogue card: blips for the letters typed since the last frame. */

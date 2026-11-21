@@ -2,7 +2,7 @@
  * The match loop as data: beats. Pure (no DOM, no Pixi), so the look can
  * change without touching the flow, and the flow can be tested.
  *
- *   level card -> intro lines (one fighter at a time) -> round 1
+ *   level card -> entrances (#66: agents that enter the Arena now) -> intro lines (one fighter at a time) -> round 1
  *   round = 3 2 1 FIGHT! -> fight (open-ended) -> round result
  *   after a round: between-round lines -> next round ... or -> celebrate
  *
@@ -12,6 +12,7 @@
 
 export type Beat =
   | { kind: "level"; duration: number } // the generated arena, seen whole
+  | { kind: "entrance"; seat: number; duration: number } // an agent drops in and kicks out the house bot (#66)
   | { kind: "dialogue"; fighter: number; phase: "intro" | "between"; round: number; duration: number } // one fighter speaks
   | { kind: "countdown"; value: 3 | 2 | 1; round: number; duration: number }
   | { kind: "go"; round: number; duration: number } // "FIGHT!" — the fight is already running
@@ -28,6 +29,8 @@ export function simRuns(b: Beat): "fight" | "afterglow" | "frozen" {
 
 export interface BeatTiming {
   level: number;
+  /** one agent's entrance (#66): drop in, shout, kick the house bot out, land in the seat */
+  entrance: number;
   count: number;
   go: number;
   roundEnd: number;
@@ -38,15 +41,20 @@ export interface BeatTiming {
   readMin: number;
 }
 
-export const DEFAULT_TIMING: BeatTiming = { level: 2.4, count: 0.75, go: 0.9, roundEnd: 4.5, celebrate: 9, readBase: 1.1, readPerChar: 0.045, readMin: 2.6 };
+export const DEFAULT_TIMING: BeatTiming = { level: 2.4, entrance: 3.8, count: 0.75, go: 0.9, roundEnd: 4.5, celebrate: 9, readBase: 1.1, readPerChar: 0.045, readMin: 2.6 };
 
 export function readTime(line: string, t: BeatTiming = DEFAULT_TIMING): number {
   return Math.max(t.readMin, t.readBase + line.length * t.readPerChar);
 }
 
-/** Level card, then each fighter's intro line in the given order. */
-export function openingBeats(order: number[], lines: string[], t: BeatTiming = DEFAULT_TIMING): Beat[] {
-  return [{ kind: "level", duration: t.level }, ...order.map((f) => ({ kind: "dialogue" as const, fighter: f, phase: "intro" as const, round: 1, duration: readTime(lines[f]!, t) }))];
+/** The beats a match opens with before anyone has to plan: the level card, then each entering agent's entrance (#66), in seat order. */
+export function arrivalBeats(entering: readonly number[], t: BeatTiming = DEFAULT_TIMING): Beat[] {
+  return [{ kind: "level", duration: t.level }, ...[...entering].sort((a, b) => a - b).map((seat) => ({ kind: "entrance" as const, seat, duration: t.entrance }))];
+}
+
+/** Level card, the entrances, then each fighter's intro line in the given order. */
+export function openingBeats(order: number[], lines: string[], entering: readonly number[], t: BeatTiming = DEFAULT_TIMING): Beat[] {
+  return [...arrivalBeats(entering, t), ...order.map((f) => ({ kind: "dialogue" as const, fighter: f, phase: "intro" as const, round: 1, duration: readTime(lines[f]!, t) }))];
 }
 
 /** Between rounds: each fighter speaks, in the given order. */

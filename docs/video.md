@@ -41,7 +41,8 @@ So a slow or network `--out` costs one copy of the results. With the frames on t
 
 | Rule | How |
 |---|---|
-| View all the whole video, never closer | Viewer video mode, `?capture&video` (`src/viewer/video.ts`). The game doesn't zoom on the talking bot or the winner, and the camera is View all. The arena card's overview is wider still. |
+| View all the whole video, never closer | Viewer video mode, `?capture&video` (`src/viewer/video.ts`). The game doesn't zoom on the talking bot or the winner, and the camera is View all. The arena card's overview is wider still. One exception: an agent's entrance (#66) frames its seat, 12 m high (seen whole, the arena makes it too small for a clip). |
+| Every entrance in full | An agent that takes a house bot's seat drops in, shouts and kicks the bot out after the arena card (3.8 s each, `scripts/teaser/plan.ts`) |
 | All 4 trash-talk cards before every round, fully typed and readable | Each card runs to its end, starting 0.6 s before its line is fully typed, for at most 2.6 s (`scripts/teaser/plan.ts`) |
 | Every round in full, continuous, no jump cuts | 3·2·1·FIGHT! and the whole fight. Only **dead stretches** play at 2× with a "2×" tag: 3 s or more with no two fighters within 7 m and no action event within 1.5 s, found by replaying the record in the sim. Busy matches have none. |
 | Round-end and win screens with the scoreboard | Every round-end screen in full, and 8 s of the win screen |
@@ -102,7 +103,7 @@ How the cuts are made (`scripts/montage/cuts.ts`):
 - A burst starts 0.8 s before a big moment and takes the big moments that follow within 1 s of each other; it ends 1.2 s after the last one, 2 to 4 s long, inside the fight. A cut that reaches the fight's last K.O. ends on it (with nobody left, the camera drifts off at once).
 - Score: each K.O. counts in full; n moments of another kind count weight × √n, so variety beats a ninth explosion.
 - The best bursts are kept until they make about 22 s (6 to 8 cuts), at most 2 per record, never two of the same moment.
-- Order: the smaller half (its strongest first), then 2 agents' cards (the record with the most agents, its rarest models) under the models caption, then the bigger half rising to the biggest cut, then 2.5 s of that record's win screen with the title caption. Two cuts of one record are not adjacent.
+- Order: the smaller half (its strongest first), then an agent's entrance (#66: the record where the most agents drop in and kick a house bot out; the first of them, in full), then 2 agents' cards (the record with the most agents, its rarest models) under the models caption, then the bigger half rising to the biggest cut, then 2.5 s of that record's win screen with the title caption. Two cuts of one record are not adjacent.
 
 Out: `knockback-montage-1080x1920.mp4` and `knockback-montage-1920x1080.mp4` (60 fps, H.264 + AAC, `+faststart`, each under 30 MB: re-encoded at the bitrate that fits when needed), `README.md` with the cut list, `cuts.json`.
 

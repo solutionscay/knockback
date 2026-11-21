@@ -105,6 +105,7 @@ Each line is `- context [morale states]: text`. The states are optional (`cocky`
 | Context | When |
 |---|---|
 | `intro` | before round 1 |
+| `entrance` | an agent takes a house bot's seat in the Arena (#66): what it shouts as it drops in and kicks the bot out (at most 60 characters; without one: "GET OUT OF HERE!") |
 | `win:flawless`, `win:comeback`, `win:multi`, `win` | this fighter won the round |
 | `hum:own`, `hum:bat`, `hum:hook`, `hum:crush`, `hum:barrel` | humiliations: own explosive, batted or hooked off the level, crushed, a barrel |
 | `kod` | knocked out by {killer} with {weapon} |

@@ -4,7 +4,8 @@
  *   bun run montage a.json b.json c.json      # or a list
  *   bun run montage --server http://localhost:5176
  * The sim pass scores every fight's big moments; the best bursts (2-5 s, never the same moment twice, many rounds)
- * are cut in the rhythm mayhem, mayhem, mayhem, the agents' cards, mayhem, mayhem, mayhem, and the title card.
+ * are cut in the rhythm mayhem, mayhem, mayhem, an agent's entrance (#66: it drops in and kicks a house bot out),
+ * the agents' cards, mayhem, mayhem, mayhem, and the title card.
  * Each cut is captured by the teaser pipeline (real viewer, video mode) with its own game sound, crossfaded at the
  * cuts. Out: a 1080x1920 vertical cut and a 1920x1080 cut, H.264 + AAC, +faststart, under 30 MB, and a README.
  */
@@ -98,10 +99,13 @@ const cardSeats = agentSeats(recs[cardsRec]!.rec)
   .map((s) => s.i)
   .sort((a, b) => a - b);
 const titleRec = order.after[order.after.length - 1]!.rec;
+// the entrance (#66): the round where the most agents drop in and kick a house bot out (the newest first on a tie)
+const kicks = (rec: Rec) => (rec.entrances ?? []).filter((e) => e.evicted).length;
+const entranceRec = recs.map((r, i) => ({ i, n: kicks(r.rec) })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n || a.i - b.i)[0]?.i ?? -1;
 const caption = planCaption([...new Set(recs.flatMap((r) => r.rec.labels ?? []))]);
 
 // ---- capture, record by record
-type Part = { kind: "cut"; burst: Burst } | { kind: "card"; seat: number } | { kind: "title" };
+type Part = { kind: "cut"; burst: Burst } | { kind: "entrance"; seat: number } | { kind: "card"; seat: number } | { kind: "title" };
 interface Shot {
   part: Part;
   rec: number;
@@ -115,7 +119,7 @@ interface Shot {
 }
 const shots: Shot[] = [];
 const captures = new Map<number, CaptureResult>();
-const needed = [...new Set([...picked.map((b) => b.rec), cardsRec, titleRec])].sort((a, b) => a - b);
+const needed = [...new Set([...picked.map((b) => b.rec), cardsRec, titleRec, ...(entranceRec >= 0 ? [entranceRec] : [])])].sort((a, b) => a - b);
 const browser = await launch();
 try {
   for (const ri of needed) {
@@ -132,6 +136,12 @@ try {
           const beat = ranges.find((b) => b.kind === "dialogue" && b.round === 1 && (b as { fighter?: number }).fighter === seat);
           if (beat) mine.push({ part: { kind: "card", seat }, rec: ri, ...cardWindow(beat.from, beat.to) });
         }
+      if (ri === entranceRec) {
+        // the first entrance that kicks a house bot out, in full
+        const seat = recs[ri]!.rec.entrances!.find((e) => e.evicted)!.seat;
+        const beat = ranges.filter((b) => b.kind === "entrance")[recs[ri]!.rec.entrances!.findIndex((e) => e.seat === seat)];
+        if (beat) mine.push({ part: { kind: "entrance", seat }, rec: ri, from: beat.from, to: beat.to });
+      }
       if (ri === titleRec) {
         const cel = ranges.find((b) => b.kind === "celebrate");
         if (!cel) throw new Error(`${basename(r.file)} has no win screen for the title card`);
@@ -181,6 +191,7 @@ try {
 const cutShot = (b: Burst) => shots.find((s) => s.part.kind === "cut" && s.part.burst === b)!;
 const seq: Shot[] = [
   ...order.before.map(cutShot),
+  ...shots.filter((s) => s.part.kind === "entrance"),
   ...shots.filter((s) => s.part.kind === "card").sort((a, b) => a.from - b.from),
   ...order.after.map(cutShot),
   shots.find((s) => s.part.kind === "title")!,
@@ -243,6 +254,10 @@ const rows = seq.map((s, i) => {
     const b = s.part.burst;
     return `| ${i + 1} | ${t} | ${file} | ${b.round + 1} | ${mmss(b.from / 60)}-${mmss(b.to / 60)} | ${describe(b, names)} (score ${b.score.toFixed(1)}) |`;
   }
+  if (s.part.kind === "entrance") {
+    const e = r.rec.entrances!.find((x) => x.seat === (s.part as { seat: number }).seat)!;
+    return `| ${i + 1} | ${t} | ${file} | 1 | before the fight | Entrance: ${names[e.seat]} (${modelOf(r.rec.labels?.[e.seat]).name}) drops in, "${e.line.replace(/\|/g, "/")}", kicks out ${e.evicted?.name ?? "?"} (house bot) |`;
+  }
   if (s.part.kind === "card") {
     const seat = s.part.seat;
     return `| ${i + 1} | ${t} | ${file} | 1 | before the fight | Card: ${names[seat]} (${modelOf(r.rec.labels?.[seat]).name}): "${(r.rec.rounds[0]?.lines[seat] ?? "").replace(/\|/g, "/")}" and its plan chips${caption ? `; caption "${caption}"` : ""} |`;
@@ -255,7 +270,7 @@ writeFileSync(
   [
     "# Knockback montage",
     "",
-    `Made with \`bun run montage\` (docs/video.md) from ${recs.length} records. The cuts are the best bursts of big moments the sim pass found (explosions, chain snaps, platform falls, ring-outs, K.O.s, fire), at most 2 per record and never the same moment twice; then the agents' cards, the biggest cuts last, and the title card.`,
+    `Made with \`bun run montage\` (docs/video.md) from ${recs.length} records. The cuts are the best bursts of big moments the sim pass found (explosions, chain snaps, platform falls, ring-outs, K.O.s, fire), at most 2 per record and never the same moment twice; then ${entranceRec >= 0 ? "an agent's entrance and " : ""}the agents' cards, the biggest cuts last, and the title card.`,
     "",
     "## Files",
     "",

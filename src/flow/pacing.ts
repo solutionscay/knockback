@@ -41,6 +41,8 @@ export interface RoundPlaybackInput {
   round: number;
   /** each fighter's line for this round (intro lines in round 1) */
   lines: string[];
+  /** round 1: the seats whose agent enters the Arena now (#66: an entrance beat each) */
+  entering?: readonly number[];
   fightTicks: number;
   /** knockouts in the round */
   kos: number;
@@ -55,7 +57,7 @@ const sum = (beats: Beat[]) => beats.reduce((a, b) => a + (b.duration ?? 0), 0);
 export function roundPlayback(x: RoundPlaybackInput): RoundPlayback {
   const t = x.timing ?? DEFAULT_TIMING;
   const order = x.lines.map((_, i) => i);
-  const talk = x.round === 1 ? openingBeats(order, x.lines, t) : betweenBeats(order, x.lines, x.round, t);
+  const talk = x.round === 1 ? openingBeats(order, x.lines, x.entering ?? [], t) : betweenBeats(order, x.lines, x.round, t);
   const beats = roundBeats(x.round, t);
   const countdown = sum(beats.filter((b) => b.kind === "countdown"));
   const roundEnd = sum(beats.filter((b) => b.kind === "roundEnd"));

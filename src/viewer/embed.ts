@@ -26,6 +26,7 @@ export interface PlaybackPos {
 export function posOfBeat(beat: Beat, tick: number, lastRound: number): PlaybackPos {
   switch (beat.kind) {
     case "level":
+    case "entrance":
       return { round: 1, phase: "plan", tick: 0 };
     case "dialogue":
     case "countdown":

@@ -7,7 +7,9 @@ import type { Ruleset } from "../sim/ruleset";
  */
 import type { SoundDirector } from "./audio/director";
 import type { Application } from "pixi.js";
-import { betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
+import { arrivalBeats, betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
+import type { Entrance, StartPower } from "../sim/entrance";
+import { ENTRANCE_AT, stepsBetween } from "./scene-entrance";
 import { Tally } from "../flow/score";
 import type { Identity } from "../sim/identity";
 import type { Soul } from "../sim/soul";
@@ -94,6 +96,8 @@ export class Game {
   sound: SoundDirector | null = null;
   /** video mode (?capture&video): no zoom on the talking bot or the winner, no K.O. slow motion (docs/video.md) */
   videoMode = false;
+  /** the entrance beat on now (#66): its seat and how far it was drawn (seconds into the beat) */
+  private entrance: { seat: number; u: number } | null = null;
 
   constructor(
     app: Application,
@@ -158,11 +162,12 @@ export class Game {
    * exactly (all decisions from the record). `live`: decisions arrive later via
    * pushDecisions() (AI fighters thinking on the server).
    */
-  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; suitUp?: SuitUpEntry[]; control?: unknown; ruleset?: Ruleset } = {}) {
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; suitUp?: SuitUpEntry[]; control?: unknown; ruleset?: Ruleset; entrances?: Entrance[]; startPowers?: StartPower[] } = {}) {
     this.apUntil = 0;
     document.getElementById("autopilot-callout")?.classList.remove("show");
+    this.endEntrance();
     // live: the server settled the identities (and how the seats suited up, #19): taken exactly as they are
-    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, ...(opts.identities ? { identities: opts.identities } : {}), ...(opts.suitUp ? { suitUp: opts.suitUp } : {}) });
+    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, ...(opts.identities ? { identities: opts.identities } : {}), ...(opts.suitUp ? { suitUp: opts.suitUp } : {}), ...(opts.entrances ? { entrances: opts.entrances } : {}), ...(opts.startPowers ? { startPowers: opts.startPowers } : {}) });
     this.ap.reset(sanitizeControl(opts.control, this.match.ruleset.round.maxRounds));
     this.match.onEvent = (e) => this.onEvent(e);
     this.labels = opts.labels ?? null;
@@ -176,12 +181,13 @@ export class Game {
       // show the arena while the fighters think about round 1
       this.waitingRound = 1;
       this.shown = null as unknown as Fight;
-      const preview = new Match(seed, { ruleset: this.match.ruleset, souls: this.match.souls, identities: this.match.identities });
+      // the preview has the entry boost too: the agent drops in with its shield and damage glow
+      const preview = new Match(seed, { ruleset: this.match.ruleset, souls: this.match.souls, identities: this.match.identities, ...(opts.startPowers ? { startPowers: opts.startPowers } : {}) });
       preview.prepareRound();
       this.shown = preview.fight!;
       this.scene.load(this.shown.sim);
       this.resetHud();
-      this.flow = new FlowRunner([{ kind: "level", duration: 2.4 }], (b) => this.enter(b));
+      this.flow = new FlowRunner(arrivalBeats(this.entering), (b) => this.enter(b));
       this.hud.cam.className = "show";
       this.renderCamBar();
       return;
@@ -192,11 +198,16 @@ export class Game {
     this.plans.startLineup(this.hud.lineup, this.shown, this.decisions, this.seatLabels());
     const order = introOrder(this.match.morale.map((m) => m.score));
     this.flow = new FlowRunner(
-      [...openingBeats(order, this.decisions.map((d) => d.line)), ...roundBeats(1)],
+      [...openingBeats(order, this.decisions.map((d) => d.line), this.entering), ...roundBeats(1)],
       (b) => this.enter(b),
     );
     this.hud.cam.className = "show";
     this.renderCamBar();
+  }
+
+  /** the seats whose agent enters the Arena in this match (#66) */
+  get entering(): number[] {
+    return (this.match.record.entrances ?? []).map((e) => e.seat);
   }
 
   private resetHud() {
@@ -305,10 +316,11 @@ export class Game {
     for (const u of this.liveUpdates.get(round) ?? []) this.addLiveUpdate(u);
     this.liveUpdates.delete(round);
     if (round === 1) {
-      this.showFight(this.match.fight!);
-      this.plans.startLineup(this.hud.lineup, this.shown, this.decisions, this.seatLabels());
+      // during an entrance its arena stays on screen: the first card brings the round's own (same seats, same tick 0)
+      if (this.flow.beat.kind !== "entrance") this.showFight(this.match.fight!);
+      this.plans.startLineup(this.hud.lineup, this.match.fight!, this.decisions, this.seatLabels());
       const order = introOrder(this.match.morale.map((m) => m.score));
-      this.flow.append([...openingBeats(order, this.decisions.map((d) => d.line)).slice(1), ...roundBeats(1)]);
+      this.flow.append([...openingBeats(order, this.decisions.map((d) => d.line), this.entering).slice(arrivalBeats(this.entering).length), ...roundBeats(1)]);
     } else {
       const facts = this.match.facts[this.match.facts.length - 1]!;
       const order = betweenOrder(facts.winner, facts.fighters.map((f) => f.outOrder));
@@ -330,7 +342,20 @@ export class Game {
   private enter(b: Beat) {
     const h = this.hud;
     this.sound?.beat(b as { kind: string; value?: number }, this.clock);
+    this.endEntrance();
     switch (b.kind) {
+      case "entrance": {
+        const e = this.match.record.entrances?.find((x) => x.seat === b.seat);
+        if (!e) break;
+        h.intro.className = "";
+        this.scene.camera.overview = false;
+        // the one zoom video mode keeps (docs/video.md): seen whole, the arena makes the entrance too small for a clip
+        this.scene.camera.focus = { id: b.seat, offsetX: 0, heightM: 12 };
+        this.scene.startEntrance(b.seat, e.evicted);
+        this.entrance = { seat: b.seat, u: 0 };
+        this.showEntranceBanner(e);
+        break;
+      }
       case "level": {
         const lv = this.match.level;
         // the arena name only: the line-up is on the page (and on the pick cards), the arena stats told nobody anything
@@ -351,7 +376,7 @@ export class Game {
         h.intro.className = "";
         h.callout.className = "";
         h.clock.className = "";
-        if (!this.videoMode) this.scene.camera.focus = { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
+        this.scene.camera.focus = this.videoMode ? null : { id: b.fighter, offsetX: 0.22, heightM: 8.5 };
         this.scene.blam(b.fighter);
         h.lineup.querySelector(`[data-id="${b.fighter}"]`)?.classList.add("in");
         h.dialogue.innerHTML = dialogueHtml(this.match, this.decisions[b.fighter]!, this.seatLabels()[b.fighter]!, b);
@@ -427,6 +452,89 @@ export class Game {
   }
 
   private matchesPlayed = 0;
+
+  // ------------------------------------------------------------- the entrance (#66)
+
+  /** The entrance beat is over (or a new match starts): the agent stands in its seat, the banner goes. */
+  private endEntrance() {
+    if (!this.entrance) return;
+    this.entrance = null;
+    this.scene.endEntrance();
+    const el = document.getElementById("entrance");
+    if (el) {
+      el.className = "";
+      el.style.opacity = "";
+    }
+  }
+
+  private entranceEl(): HTMLElement {
+    let el = document.getElementById("entrance");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "entrance";
+      (document.getElementById("hud") ?? document.body).appendChild(el);
+    }
+    return el;
+  }
+
+  /** The entrance banner: who enters, its shout, who is out, its boost. Its parts show as the beat reaches them (renderEntrance). */
+  private showEntranceBanner(e: Entrance) {
+    const el = this.entranceEl();
+    const who = this.match.identities[e.seat]!;
+    // the shown fight has the round's start powers (live: the preview of round 1, before its plans are in)
+    const boost = (this.shown.record.startPowers ?? []).filter((p) => p.fighter === e.seat);
+    const label = this.seatLabels()[e.seat]!;
+    el.style.setProperty("--c", hex(who.color));
+    if (e.evicted) el.style.setProperty("--k", hex(e.evicted.color));
+    el.innerHTML = `
+      <div class="ent-kicker">AN AGENT TAKES SEAT ${e.seat + 1}</div>
+      <div class="ent-name">${esc(who.name.toUpperCase())}<span class="ent-model">${modelBadgeHtml(label, "lg")}</span></div>
+      <div class="ent-shout">${esc(e.line)}</div>
+      ${e.evicted ? `<div class="ent-out"><b>${esc(e.evicted.name.toUpperCase())}</b> · HOUSE BOT · KICKED OUT</div>` : ""}
+      ${boost.length ? `<div class="ent-boost">ENTRY BOOST · ${boost.map((p) => (p.power === "damage" ? "DAMAGE" : p.power.toUpperCase())).join(" + ")} · ${Math.round(boost[0]!.ticks / 60)} s</div>` : ""}
+      ${this.live && this.waitingRound === 1 ? `<div class="ent-thinking thinking">the fighters are thinking</div>` : ""}`;
+    el.className = "show";
+    this.renderEntrance(0);
+  }
+
+  /** Each frame of the entrance: the banner's parts by the beat's clock (not CSS time: a capture steps frames). */
+  private renderEntrance(u: number) {
+    const el = document.getElementById("entrance");
+    if (!el) return;
+    const A = ENTRANCE_AT;
+    const part = (sel: string, from: number, pop: number) => {
+      const p = el.querySelector<HTMLElement>(sel);
+      if (!p) return;
+      const k = Math.max(0, Math.min(1, (u - from) / pop));
+      const over = k < 1 ? 1 + (1 - k) * (1 - k) * 1.6 : 1;
+      p.style.opacity = String(k > 0 ? 1 : 0);
+      p.style.transform = `scale(${over.toFixed(3)})`;
+    };
+    part(".ent-kicker", 0, 0.2);
+    part(".ent-name", 0.1, 0.25);
+    part(".ent-shout", A.shout, 0.18);
+    part(".ent-out", this.scene.entranceInfo?.kick === "land" ? A.land : A.kick, 0.2);
+    part(".ent-boost", A.boost, 0.2);
+    part(".ent-thinking", A.boost + 0.6, 0.3);
+    el.style.opacity = u > (this.flow.beat.duration ?? 0) - 0.25 && !(this.live && this.waitingRound === 1) ? String(Math.max(0, ((this.flow.beat.duration ?? 0) - u) / 0.25)) : "1";
+  }
+
+  /** Each frame of the entrance beat: the scene's clock, the banner, the sounds of the steps passed. */
+  private updateEntrance() {
+    const e = this.entrance;
+    if (!e) return;
+    const u = this.flow.t;
+    this.scene.entranceTime = u;
+    this.renderEntrance(u);
+    const info = this.scene.entranceInfo;
+    const rec = this.match.record.entrances?.find((x) => x.seat === e.seat);
+    const boost = (this.shown.record.startPowers ?? []).some((p) => p.fighter === e.seat);
+    for (const step of stepsBetween(e.u, u)) {
+      if (info && rec) this.sound?.entrance(step, info.where, this.match.identities[e.seat]!, { kick: info.kick, boost, evicted: !!rec.evicted }, this.clock);
+      if (rec?.evicted && step === info?.kick) this.moments.push({ time: this.clock, kind: "entrance", weight: 10 });
+    }
+    e.u = u;
+  }
 
   // ------------------------------------------------------------- events
 
@@ -539,6 +647,7 @@ export class Game {
     this.scene.setCallouts(this.plans.update(this.clock, beat.kind !== "fight" || this.slow > 0), this.clock);
     if (beat.kind === "go" || beat.kind === "fight") this.plans.renderChips(this.hud.lineup, this.match, this.shown, this.decisions);
 
+    if (beat.kind === "entrance") this.updateEntrance();
     if (beat.kind === "dialogue") {
       const line = this.decisions[beat.fighter]!.line;
       const typed = renderDialogueLine(this.hud.dialogue, line, this.flow.t, beat.duration);

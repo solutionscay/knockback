@@ -4,7 +4,7 @@
  * forces contact. Ends with one fighter left, or at time-out.
  * (match.ts runs best of 3 of these.)
  *
- * A FightRecord (seed + strategies + plan updates) replays to the same state hash.
+ * A FightRecord (seed + strategies + plan updates + start powers) replays to the same state hash.
  *
  * Plan updates (#8, mid-round check-ins #9): a fighter's plan can change at a
  * given tick. The update list is part of the record, so a replay applies the
@@ -22,6 +22,8 @@ import { Sim } from "./sim";
 import { type Look } from "./identity";
 import { NO_INPUT, SEAT_LOOKS, type SimEvent, type Strategy } from "./sim-types";
 import { inCover } from "./tactical";
+import { TIMED_POWERS, type StartPower } from "./entrance";
+import { startPower } from "./sim-items";
 
 export interface FightOptions {
   ruleset?: Ruleset;
@@ -35,6 +37,8 @@ export interface FightOptions {
   noMoraleEffect?: boolean;
   /** Names/colors from the souls (cosmetic: never affects the fight). */
   looks?: Look[];
+  /** power-ups fighters have from the first tick (#66: the entry boost); part of the record */
+  startPowers?: readonly StartPower[];
 }
 
 /**
@@ -62,6 +66,8 @@ export interface FightRecord {
   strategies: Strategy[];
   /** mid-round plan updates, sorted by tick then fighter */
   updates: PlanUpdate[];
+  /** power-ups fighters have from the first tick (#66: the entry boost); absent: none */
+  startPowers?: StartPower[];
   /** State hash every CHECKPOINT_TICKS, for pinpointing a divergence. */
   checkpoints: string[];
   finalHash: string;
@@ -125,6 +131,12 @@ export class Fight {
     updates: readonly PlanUpdate[] = [],
   ) {
     this.sim = new Sim(seed, opts.level, opts.looks ?? SEAT_LOOKS, opts.ruleset);
+    const startPowers = (opts.startPowers ?? []).map((p) => ({ ...p }));
+    for (const p of startPowers) {
+      if (!Number.isInteger(p.fighter) || p.fighter < 0 || p.fighter >= this.sim.fighters.length) throw new Error(`start power for fighter ${p.fighter}: no such fighter`);
+      if (!(TIMED_POWERS as readonly string[]).includes(p.power) || !Number.isInteger(p.ticks) || p.ticks <= 0) throw new Error(`start power ${p.power} for ${p.ticks} ticks: not a timed power-up`);
+      startPower(this.sim, this.sim.fighters[p.fighter]!, p.power, p.ticks);
+    }
     const botRng = new Rng((seed ^ 0x5bd1e995) >>> 0);
     this.strategies = recorded ? recorded.map((s) => ({ ...s, weapons: (s.weapons ?? []).slice() })) : this.sim.fighters.map(() => neutralStrategy(botRng));
     this.controllers = this.sim.fighters.map((f) => {
@@ -136,7 +148,7 @@ export class Fight {
       c.peers = this.controllers;
       c.setStrategy(this.strategies[i]!, this.sim);
     }
-    this.record = { ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), updates: this.updates, checkpoints: [], finalHash: "", ticks: 0 };
+    this.record = { ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), updates: this.updates, ...(startPowers.length ? { startPowers } : {}), checkpoints: [], finalHash: "", ticks: 0 };
     for (const u of updates) this.addUpdate(u);
   }
 
@@ -336,7 +348,7 @@ export class Fight {
  * throws FightDivergedError: a different hash is never returned as if it were the record's.
  */
 export function replayFight(record: FightRecord): { finalHash: string; checkpoints: string[]; match: Fight } {
-  const m = new Fight(record.seed, record.strategies, { ruleset: resolveRuleset(record.ruleset) }, record.updates);
+  const m = new Fight(record.seed, record.strategies, { ruleset: resolveRuleset(record.ruleset), startPowers: record.startPowers }, record.updates);
   m.playToEnd();
   if (record.finalHash && m.record.finalHash !== record.finalHash) {
     const at = record.checkpoints.findIndex((h, i) => m.record.checkpoints[i] !== h);

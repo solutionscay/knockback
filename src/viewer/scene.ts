@@ -11,6 +11,8 @@ import { SceneCamera, type CameraFrame } from "./scene-camera";
 import { CalloutViews } from "./scene-callouts";
 import { SceneEffects } from "./scene-effects";
 import { FighterViews } from "./scene-fighters";
+import { EntranceView } from "./scene-entrance";
+import type { Identity } from "../sim/identity";
 import { ProjectileViews } from "./scene-projectiles";
 import { PropViews } from "./scene-props";
 import { ChainView } from "./chains";
@@ -52,13 +54,18 @@ export class Scene {
   private readonly fireView = new FireView();
   private readonly projectiles = new ProjectileViews();
   private readonly calloutViews = new CalloutViews();
+  /** the entrance (#66): an agent drops in and kicks the house bot out */
+  private readonly entrance = new EntranceView();
+  /** seconds into the entrance beat, this frame and the last one drawn */
+  private entranceU = 0;
+  private entranceDrawn = 0;
   readonly camera = new SceneCamera();
   private prev = new Map<number, Xform>();
   private time = 0;
 
   constructor(private readonly app: Application) {
     app.stage.addChild(this.sky, this.hills, this.world, this.overlay, this.effects.flashScreen);
-    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.projectiles.graphics, this.effects.front);
+    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.entrance.layer, this.projectiles.graphics, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
   }
 
@@ -125,6 +132,7 @@ export class Scene {
   }
 
   load(sim: Sim) {
+    this.entrance.end(this.fighters);
     this.calloutViews.clear();
     this.sim = sim;
     this.props.clear();
@@ -245,6 +253,28 @@ export class Scene {
     this.calloutViews.setCallouts(list, now);
   }
 
+  /** Start an agent's entrance (#66): the house bot `evicted` (none: nobody to kick) stands in the seat. */
+  startEntrance(seat: number, evicted: Identity | undefined) {
+    this.entrance.start(this.sim, seat, evicted, this.fighters);
+    this.entranceU = 0;
+    this.entranceDrawn = 0;
+  }
+
+  /** The entrance is `u` seconds in (drawn at the next render). */
+  set entranceTime(u: number) {
+    this.entranceU = u;
+  }
+
+  /** The entrance is over: the agent's fighter stands in its seat. */
+  endEntrance() {
+    this.entrance.end(this.fighters);
+  }
+
+  /** The entrance on now: when its kick lands, and where it happens (sound). */
+  get entranceInfo() {
+    return this.entrance.active ? { kick: this.entrance.kickStep(), where: this.entrance.where()! } : null;
+  }
+
   blam(id: number) {
     this.effects.blam(id, this.sim, this.camera, this.fighters);
   }
@@ -269,6 +299,10 @@ export class Scene {
     projectiles.clear();
     this.props.render(this.pal, fx, projectiles, this.time, dt, alpha, this.xform);
     this.projectiles.render(sim, fx, dt, alpha, fxDt, this.xform);
+    if (this.entrance.active) {
+      this.entrance.update(this.entranceU, this.entranceDrawn, this.time, sim, this.fighters, fx, this.camera, frame, W, H);
+      this.entranceDrawn = this.entranceU;
+    }
     this.fighters.render(sim, fx, this.camera, frame, W, H, this.time, dt, alpha, fxDt, this.xform);
     this.props.drawDropMarks(sim, this.time, alpha, this.xform);
     this.calloutViews.render(sim, this.fighters, W, this.ui);

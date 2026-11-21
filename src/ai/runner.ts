@@ -18,10 +18,11 @@ import { Match, type CheckinMeta, type DecisionMeta, type MatchRecord, type Suit
 import { type PlanUpdate } from "../sim/fight";
 import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
+import type { Entrance, StartPower } from "../sim/entrance";
 import { houseBrain, type Decision } from "../sim/voice";
 import { decideRound, type RoundAsk, type Seat } from "./decide";
 import { playbackAt, roundPlayback, tickAtFightSeconds, VIEWER_KO_EXTRA_S, type RoundPlayback } from "../flow/pacing";
-import { DEFAULT_TIMING } from "../flow/beats";
+import { arrivalBeats } from "../flow/beats";
 import { answeredTickFast, applyTick, buildCheckinPrompt, CHECKIN, checkinStatus, checkinTicks, parseCheckin, type CheckinAsk, type CheckinConfig } from "./checkin";
 import type { Fight } from "../sim/fight";
 import { checkinSummaryLines, planChangeSummary } from "./checkin-log";
@@ -29,7 +30,7 @@ import { playOutRound } from "./round";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
-  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string; ruleset?: Ruleset; suitUp?: SuitUpEntry[] }
+  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string; ruleset?: Ruleset; suitUp?: SuitUpEntry[]; entrances?: Entrance[]; startPowers?: StartPower[] }
   | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[]; checkinTicks?: number[] }
   | { type: "round"; round: number; winner: number; seconds: number; reason: string; wins: number[]; kos: RoundFacts["stats"]["kos"]; summary: string[] }
   | { type: "done"; record: string | null; winner: number; wins: number[] }
@@ -85,6 +86,10 @@ export interface RunnerOptions {
   /** provider name per seat, saved in the record (default: seat.providerName) */
   lineup?: string[];
   identityWishes?: (IdentityWish | undefined)[];
+  /** agents that enter the Arena in this match (#66): the viewer's entrance beats, in the record */
+  entrances?: Entrance[];
+  /** power-ups fighters have from round 1's first tick (#66: the entry boost), in the record */
+  startPowers?: StartPower[];
   /** the suit-up step's result (#19, src/ai/suitup.ts): its wishes win over identityWishes; its entries go into the record */
   suitUp?: { wishes: (IdentityWish | undefined)[]; entries: SuitUpEntry[] };
   /** called for every live event, in order */
@@ -163,7 +168,7 @@ export class MatchRunner {
   constructor(readonly opts: RunnerOptions) {
     const souls: Soul[] = opts.seats.map((s) => s.soul);
     const wishes = opts.suitUp?.wishes ?? opts.identityWishes;
-    this.match = new Match(opts.seed, { souls, ruleset: opts.ruleset, preset: opts.preset, presetVersion: opts.presetVersion, ...(wishes ? { identityWishes: wishes } : {}), ...(opts.suitUp?.entries.length ? { suitUp: opts.suitUp.entries } : {}) });
+    this.match = new Match(opts.seed, { souls, ruleset: opts.ruleset, preset: opts.preset, presetVersion: opts.presetVersion, ...(wishes ? { identityWishes: wishes } : {}), ...(opts.suitUp?.entries.length ? { suitUp: opts.suitUp.entries } : {}), ...(opts.entrances?.length ? { entrances: opts.entrances } : {}), ...(opts.startPowers?.length ? { startPowers: opts.startPowers } : {}) });
     this.labels = opts.labels ?? opts.seats.map((s) => s.provider?.label ?? "house");
     this.lineup = opts.lineup ?? opts.seats.map((s) => s.providerName);
     this.checkin = opts.checkins ? { ...CHECKIN, ...(typeof opts.checkins === "object" ? opts.checkins : {}) } : null;
@@ -172,6 +177,16 @@ export class MatchRunner {
 
   get names(): string[] {
     return this.match.names;
+  }
+
+  /** the seats whose agent enters the Arena in this match (#66) */
+  get entering(): number[] {
+    return (this.match.record.entrances ?? []).map((e) => e.seat);
+  }
+
+  /** seconds of the beats the viewer plays as soon as the match is announced: the level card and the entrances */
+  get arrivalS(): number {
+    return arrivalBeats(this.entering).reduce((a, b) => a + (b.duration ?? 0), 0);
   }
 
   private emit(e: RunnerEvent) {
@@ -190,7 +205,7 @@ export class MatchRunner {
     this.t0 = performance.now();
     this.startedAtMs = Date.now();
     const m = this.match;
-    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme, ruleset: m.ruleset, ...(m.record.suitUp ? { suitUp: m.record.suitUp } : {}) });
+    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme, ruleset: m.ruleset, ...(m.record.suitUp ? { suitUp: m.record.suitUp } : {}), ...(m.record.entrances ? { entrances: m.record.entrances } : {}), ...(this.opts.startPowers?.length ? { startPowers: this.opts.startPowers } : {}) });
   }
 
   private stratText(s: { stance: string; weapons: string[]; target: string; grudge?: number; retaliate?: string }) {
@@ -311,10 +326,10 @@ export class MatchRunner {
     this.say("");
     this.emit({ type: "round", round, winner: f.winner, seconds: f.seconds, reason: f.reason, wins: match.wins.slice(), kos: f.stats.kos, summary: f.stats.summary.slice() });
     const ticks = match.record.rounds[round - 1]!.fight.ticks;
-    const p = roundPlayback({ round, lines: ask.decisions.map((d) => d.line), fightTicks: ticks, kos: f.stats.kos.length, endsWithKo: f.reason !== "time-out" });
+    const p = roundPlayback({ round, lines: ask.decisions.map((d) => d.line), entering: this.entering, fightTicks: ticks, kos: f.stats.kos.length, endsWithKo: f.reason !== "time-out" });
     if (round === 1) {
-      // the level card started when the match was announced; only what's left of it is still ahead
-      const shown = Math.min(DEFAULT_TIMING.level, (decidedAt - this.startedAtMs) / 1000);
+      // the level card and the entrances started when the match was announced; only what's left of them is still ahead
+      const shown = Math.min(this.arrivalS, (decidedAt - this.startedAtMs) / 1000);
       p.preFight -= shown;
       p.total -= shown;
     }
@@ -325,8 +340,8 @@ export class MatchRunner {
 
   /** When viewers see the start of this round's fight (tick 0), at broadcast pace. */
   private fightStartAt(round: number, lines: string[], decidedAt: number): number {
-    let pre = roundPlayback({ round, lines, fightTicks: 0, kos: 0, endsWithKo: false }).preFight;
-    if (round === 1) pre -= Math.min(DEFAULT_TIMING.level, (decidedAt - this.startedAtMs) / 1000);
+    let pre = roundPlayback({ round, lines, entering: this.entering, fightTicks: 0, kos: 0, endsWithKo: false }).preFight;
+    if (round === 1) pre -= Math.min(this.arrivalS, (decidedAt - this.startedAtMs) / 1000);
     return decidedAt + pre * 1000 * (this.opts.paceScale ?? 1);
   }
 

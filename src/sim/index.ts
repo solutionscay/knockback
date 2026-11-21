@@ -3,6 +3,7 @@ export * from "./sim";
 export * from "./sim-types";
 export * from "./fight";
 export * from "./match";
+export * from "./entrance";
 export * from "./morale";
 export * from "./soul";
 export * from "./identity";

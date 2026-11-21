@@ -61,6 +61,11 @@ export class FighterViews {
   celebrateId = -1;
   /** a dot face changed mood (sound): fighter, mood, where */
   onMood: ((id: number, mood: FaceMood, x: number, y: number) => void) | null = null;
+  /**
+   * The entrance (#66, view only): a fighter drawn away from its sim position (dx, dy meters; dy > 0 is in the air),
+   * with a face of its own while it drops in and kicks the house bot out.
+   */
+  readonly offsets = new Map<number, { dx: number; dy: number; mood?: FaceMood }>();
 
   clear() {
     for (const v of this.fighters) {
@@ -162,6 +167,8 @@ export class FighterViews {
       if (Math.abs(v.spin) < 0.01 && f.alive) v.spin = 0;
       const rot = f.alive ? v.spin : -p.a;
       const hop = this.celebrateId === f.id ? Math.abs(Math.sin(time * 5.5)) * 0.9 : 0;
+      const off = this.offsets.get(f.id);
+      const air = (!f.grounded && f.alive) || (!!off && off.dy > 0.05);
       v.root.position.set(p.x, -p.y - hop);
       v.root.rotation = rot;
       if (this.celebrateId === f.id) {
@@ -195,16 +202,18 @@ export class FighterViews {
       const aimLocalY = -f.aimY;
       const weapon = sim.weapon(f);
       const aiming = f.alive && weapon !== "fist" && weapon !== "bat";
-      const bodyKey = `${!f.grounded && f.alive ? 1 : 0}${flapStep(f.look, time)}${f.look.mark === "antenna" && aiming ? 1 : 0}`;
+      const bodyKey = `${air ? 1 : 0}${flapStep(f.look, time)}${f.look.mark === "antenna" && aiming ? 1 : 0}`;
       if (bodyKey !== v.bodyKey) {
         v.bodyKey = bodyKey;
         v.body.clear();
-        drawBody(pixiPen(v.body), f.look, { t: time, air: !f.grounded && f.alive, aiming, feet: false });
+        drawBody(pixiPen(v.body), f.look, { t: time, air, aiming, feet: false });
       }
       if (v.flashT > v.lastFlash) v.hitT = 0.42;
       v.lastFlash = v.flashT;
       v.hitT = Math.max(0, v.hitT - dt);
-      const mood: FaceMood = !f.alive
+      const mood: FaceMood = off?.mood
+        ? off.mood
+        : !f.alive
         ? "ko"
         : v.hitT > 0.35
           ? "white"
@@ -297,7 +306,7 @@ export class FighterViews {
       //   ground at any zoom.
       // (a bot thrown upward, e.g. kicked by a tumbling crate, is not standing even while the sim's ground check still
       // touches something under it: it keeps its airborne feet)
-      const standing = f.alive && f.grounded && vel.y < 1.5 && Math.abs(rot) < 0.05 && this.celebrateId !== f.id;
+      const standing = f.alive && f.grounded && !air && vel.y < 1.5 && Math.abs(rot) < 0.05 && this.celebrateId !== f.id;
       const ky = v.root.scale.y;
       let dl = 0, dr = 0, xl = 0, xr = 0, al = 0, ar = 0;
       v.soles = null;
@@ -350,11 +359,12 @@ export class FighterViews {
         [dl, dr] = feet.map((q) => (sink - q.d) / ky) as [number, number]; // local y grows downward
         [al, ar] = feet.map((q) => q.a) as [number, number];
       }
-      const feetKey = `${!f.grounded && f.alive ? 1 : 0}|${dl.toFixed(3)}|${dr.toFixed(3)}|${xl.toFixed(2)}|${xr.toFixed(2)}|${al.toFixed(2)}|${ar.toFixed(2)}`;
+      if (off) v.root.position.set(v.root.position.x + off.dx, v.root.position.y - off.dy);
+      const feetKey = `${air ? 1 : 0}|${dl.toFixed(3)}|${dr.toFixed(3)}|${xl.toFixed(2)}|${xr.toFixed(2)}|${al.toFixed(2)}|${ar.toFixed(2)}`;
       if (feetKey !== v.feetKey) {
         v.feetKey = feetKey;
         v.feet.clear();
-        drawFeet(pixiPen(v.feet), f.look, { air: !f.grounded && f.alive, dl, dr, xl, xr, al, ar });
+        drawFeet(pixiPen(v.feet), f.look, { air, dl, dr, xl, xr, al, ar });
       }
       // hit flash
       v.flashT = Math.max(0, v.flashT - dt);
@@ -370,8 +380,8 @@ export class FighterViews {
 
       // off-screen marker
       if (f.alive) {
-        const sx0 = W / 2 + (p.x - cx - shx) * s;
-        const sy0 = H / 2 - (p.y - cy - shy) * s;
+        const sx0 = W / 2 + (p.x + (off?.dx ?? 0) - cx - shx) * s;
+        const sy0 = H / 2 - (p.y + (off?.dy ?? 0) - cy - shy) * s;
         const m = 26 * ui;
         if (sx0 < -10 || sx0 > W + 10 || sy0 < -10 || sy0 > H + 10) {
           const ex = Math.max(m, Math.min(W - m, sx0));
@@ -390,8 +400,8 @@ export class FighterViews {
       if (f.alive) {
         v.ghostHp += (f.hp - v.ghostHp) * Math.min(1, dt * 3);
         if (v.ghostHp < f.hp) v.ghostHp = f.hp;
-        const sx = W / 2 + (p.x - cx - shx) * s;
-        const sy = H / 2 - (p.y - cy - shy) * s;
+        const sx = W / 2 + (p.x + (off?.dx ?? 0) - cx - shx) * s;
+        const sy = H / 2 - (p.y + (off?.dy ?? 0) - cy - shy) * s;
         const top = sy - (sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.45) * s;
         const bw = 92 * ui;
         const bh = 12 * ui;

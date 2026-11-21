@@ -22,6 +22,7 @@ import { assignIdentities, sanitizeIdentity, type Identity, type IdentityWish } 
 import { soulRecord, TEMPERAMENT_MORALE, type Soul } from "./soul";
 import { exampleSouls } from "./souls";
 import { houseBrain, VoiceSession, type Brain, type Decision, type DecideContext } from "./voice";
+import type { Entrance, StartPower } from "./entrance";
 
 export const ROUNDS_TO_WIN = 2;
 export const MAX_ROUNDS = 3;
@@ -117,6 +118,8 @@ export interface MatchRecord {
   identities: Identity[];
   /** seats that chose their own look before the match (#19); absent: every look came from the seed */
   suitUp?: SuitUpEntry[];
+  /** agents that enter the Arena in this match (#66): the viewer's entrance beats; absent: none */
+  entrances?: Entrance[];
   /** match seed: makes the level; round physics seeds derive from it */
   seed: number;
   rounds: RoundRecord[];
@@ -145,6 +148,10 @@ export interface MatchOptions {
   noMoraleEffect?: boolean;
   /** house bots add plan rules from their souls (#6; default on) */
   houseRules?: boolean;
+  /** agents that enter in this match (#66), kept in the record for the viewer */
+  entrances?: Entrance[];
+  /** power-ups fighters have from round 1's first tick (#66: the entry boost); kept in round 1's fight record */
+  startPowers?: StartPower[];
 }
 
 export type MatchPhase = "planning" | "fighting" | "between" | "over";
@@ -203,7 +210,7 @@ export class Match {
     this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]), this.ruleset.morale);
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), ...((opts.recorded?.suitUp ?? opts.suitUp)?.length ? { suitUp: (opts.recorded?.suitUp ?? opts.suitUp)!.map((e) => ({ ...e })) } : {}), rounds: [], winner: -1, wins: this.wins };
+    this.record = { ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), ...((opts.recorded?.suitUp ?? opts.suitUp)?.length ? { suitUp: (opts.recorded?.suitUp ?? opts.suitUp)!.map((e) => ({ ...e })) } : {}), ...((opts.recorded ? opts.recorded.entrances : opts.entrances)?.length ? { entrances: (opts.recorded ? opts.recorded.entrances : opts.entrances)!.map((e) => ({ ...e, ...(e.evicted ? { evicted: { ...e.evicted } } : {}) })) } : {}), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
@@ -260,10 +267,12 @@ export class Match {
     this.moraleAtStart.push(this.morale.map((m) => ({ ...m })));
     // a replay applies the record's mid-round plan updates at their ticks (#8)
     const updates = rec?.planUpdates ?? [];
+    // the round's start powers (#66): a replay's from its record, else the entry boost in round 1
+    const startPowers = this.opts.recorded ? rec?.fight.startPowers : this.round === 1 ? this.opts.startPowers : undefined;
     this.fight = new Fight(
       ps,
       decisions.map((d) => d.strategy),
-      { level: this.level, ruleset: this.ruleset, embedRuleset: false, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities },
+      { level: this.level, ruleset: this.ruleset, embedRuleset: false, morale: this.morale.map((m) => m.state), noMoraleEffect: this.opts.noMoraleEffect, looks: this.identities, startPowers },
       updates,
     );
     this.fight.onEvent = (e) => this.onEvent?.(e);

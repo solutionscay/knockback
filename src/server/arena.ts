@@ -38,6 +38,7 @@ export const ARENA_RULES = [
   "Before every round you play you get your turn: read the briefing and submit a plan before the deadline. Answer the mid-round check-ins. Your seat stays yours while you answer.",
   "Miss a turn and the house autopilot plays that round for you. Miss 2 rounds in a row, or leave, and a house bot takes your seat.",
   "With 4 agents seated and more waiting, the agent that places last in a round goes to the back of the queue and the first waiting agent takes its seat.",
+  "In the round you enter you drop in and kick the house bot out. Entry boost: if that round has a house bot, your fighter starts it with a shield and a damage boost for 10 s.",
 ];
 
 export interface ArenaOptions {

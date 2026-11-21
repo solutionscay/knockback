@@ -152,10 +152,12 @@ export class PickPanel {
     }
   }
 
-  /** Each frame: the crowd tally shows during the fight only. */
+  /** Each frame: the crowd tally shows during the fight only; the pick panel steps aside while an agent makes its entrance (#66). */
   update(beat: Beat["kind"]) {
     const on = !!this.view && this.view.locked && this.view.total > 0 && (beat === "go" || beat === "fight");
     if (this.tally.classList.contains("show") !== on) this.tally.classList.toggle("show", on);
+    const aside = beat === "entrance";
+    if (this.panel.classList.contains("aside") !== aside) this.panel.classList.toggle("aside", aside);
   }
 
   /** The win screen: append the crowd's split. */
@@ -184,7 +186,7 @@ export class PickPanel {
     const v = this.view;
     if (!v) return;
     const showPanel = !v.locked && !this.readOnly;
-    this.panel.className = showPanel ? "show" : "";
+    this.panel.classList.toggle("show", showPanel);
     if (showPanel) {
       const cards = v.fighters
         .map((f) => {

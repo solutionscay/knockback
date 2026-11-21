@@ -7,7 +7,8 @@
 import type { Seat } from "../ai/decide";
 import { MatchRunner, type ControlEvent, type RunnerEvent, type StoredRound } from "../ai/runner";
 import { settleSuitUp, type SuitUpAnswer, type SuitUpResult } from "../ai/suitup";
-import type { IdentityWish } from "../sim/identity";
+import { assignIdentities, type Identity, type IdentityWish } from "../sim/identity";
+import { entranceLine, entryBoost, type Entrance, type StartPower } from "../sim/entrance";
 import { parseSoul, type Soul } from "../sim/soul";
 import { exampleSouls } from "../sim/souls";
 import { modelOf, remoteLabel, seatEntries } from "../stats/models";
@@ -64,6 +65,11 @@ export class ServerMatch {
   onChange: () => void = () => {};
   /** resolves when the round is over or failed */
   readonly done: Promise<void>;
+  /**
+   * The agents that enter the Arena in this round (#66): seat -> the house bot it kicks out (undefined: the seat was
+   * another agent's). Set from the round before it as stored (loadEntrances), so a resumed round gets the same.
+   */
+  entering = new Map<number, Identity | undefined>();
   private settle!: () => void;
   private waiters = new Set<() => void>();
 
@@ -239,11 +245,25 @@ export class ServerMatch {
 
   /** The identities as they stand: the agents' join looks, settled in seat order (#19). */
   settledLooks(): SuitUpResult {
-    const answers: SuitUpAnswer[] = [];
-    this.agents.forEach((a, seat) => {
-      if (a?.look && Object.keys(a.look).length) answers.push({ seat, by: "agent", outcome: "answered", wish: { ...a.look }, ...(a.openingLine ? { line: a.openingLine } : {}) });
-    });
-    return settleSuitUp(this.seed, answers);
+    return settledLooksOf(this.seed, this.agents);
+  }
+
+  /** Who enters the Arena in this round (#66): from the round before it and its seats, as stored. */
+  async loadEntrances() {
+    const prev = await this.store.getArenaRound(this.arenaRound - 1);
+    const seats = prev ? await this.store.listSeats(prev.id) : [];
+    const before = prev ? { kinds: prev.kinds, names: [0, 1, 2, 3].map((s) => seats.find((r) => r.seat === s)?.name ?? null), identities: settledLooksOf(prev.seed, [0, 1, 2, 3].map((s) => seats.find((r) => r.seat === s) ?? null)).identities } : null;
+    this.entering = enteringSeats(this.agents.map((a) => a?.name ?? null), before, assignIdentities(this.seed));
+  }
+
+  /** The entrances of this round (#66): each entering agent's line (from its soul) and the house bot it kicks out. */
+  entrances(souls: Soul[], identities: Identity[]): Entrance[] {
+    return [...this.entering].sort(([a], [b]) => a - b).map(([seat, evicted]) => ({ seat, line: entranceLine(souls[seat]!, identities[seat]!.name, this.seed + seat), ...(evicted ? { evicted } : {}) }));
+  }
+
+  /** The entry boost of this round (#66): shield and damage for the entering agents, if a house bot plays too. */
+  startPowers(): StartPower[] {
+    return entryBoost([...this.entering.keys()], this.kinds);
   }
 
   /** The 4 fighters as spectators see them on the pick cards: name, look, who plays it, the opening line. */
@@ -323,11 +343,15 @@ export class ServerMatch {
     // the agents' join looks (#19); the entries go into the record
     const su = this.settledLooks();
     const broadcast = this.server.opts.pace === "broadcast";
+    const entrances = this.entrances(souls, su.identities);
+    const startPowers = this.startPowers();
     const runner = new MatchRunner({
       seed: this.seed,
       ...this.selection,
       seats,
       ...(su.wishes.some(Boolean) ? { suitUp: su } : {}),
+      ...(entrances.length ? { entrances } : {}),
+      ...(startPowers.length ? { startPowers } : {}),
       onEvent: (e) => this.onEvent(e),
       onDecided: async (round, ask) => {
         await this.store.insertRound({ matchId: this.id, round, decisions: ask.decisions, meta: ask.meta, prompts: ask.prompts, raw: ask.raw, finalHash: null });
@@ -361,6 +385,13 @@ export class ServerMatch {
    */
   async start(away: Map<number, string> = new Map()) {
     if (this.status !== "open") return;
+    try {
+      await this.loadEntrances();
+    } catch (e) {
+      this.fail(e);
+      return;
+    }
+    if (this.status !== "open") return;
     this.status = "running";
     this.startedAtMs = Date.now();
     try {
@@ -371,6 +402,10 @@ export class ServerMatch {
       return;
     }
     this.server.log(`round ${this.arenaRound} (${this.id}): started, seed ${this.seed}, seats ${this.runner.labels.join(", ")}`);
+    for (const e of this.runner.match.record.entrances ?? [])
+      this.server.log(`round ${this.arenaRound} (${this.id}): ${this.runner.names[e.seat]} enters seat ${e.seat}${e.evicted ? ` and kicks out ${e.evicted.name}` : ""}: "${e.line}"`);
+    const boost = this.startPowers();
+    if (boost.length) this.server.log(`round ${this.arenaRound} (${this.id}): entry boost ${boost.map((p) => `${this.runner!.names[p.fighter]} ${p.power} ${p.ticks / 60} s`).join(", ")}`);
     this.runner.start();
     this.awayAtStart(away);
     this.changed();
@@ -395,6 +430,7 @@ export class ServerMatch {
   async resumeRunning(rounds: StoredRound[], away: Map<number, string> = new Map()) {
     this.status = "running";
     try {
+      await this.loadEntrances();
       this.runner = this.buildRunner();
       this.runner.start();
       // the round was decided before the restart: its decisions go out again now, so picks must be closed
@@ -420,6 +456,7 @@ export class ServerMatch {
     this.error = row.error;
     this.settle();
     if (row.status === "failed" && !rounds.length) return;
+    await this.loadEntrances();
     this.runner = this.buildRunner();
     this.runner.start();
     for (const r of rounds) await this.runner.replayRound(r);
@@ -532,10 +569,19 @@ export class ServerMatch {
         attempts: t.attempts,
         context: t.context,
         prompt: t.prompt,
+        ...this.entranceFor(seat),
         schema: planSchema(this.selection.ruleset),
         submit: `POST /api/arena/plan with {"round":${this.arenaRound}, ...plan} or {"round":${this.arenaRound},"answer":"<model reply with the JSON>"}`,
       };
     return { ...base, status: "waiting", message: m.phase === "fighting" ? "the round is being fought" : "the other seats are planning" };
+  }
+
+  /** The seat's entrance in this round (#66), for its turn: what it shouts, whom it kicks out, its entry boost. */
+  private entranceFor(seat: number) {
+    const e = this.runner?.match.record.entrances?.find((x) => x.seat === seat);
+    if (!e) return {};
+    const boost = this.startPowers().filter((p) => p.fighter === seat);
+    return { entrance: { line: e.line, ...(e.evicted ? { kicksOut: e.evicted.name } : {}), boost: boost.map((p) => ({ power: p.power, seconds: p.ticks / 60 })), message: `you enter the Arena this round${e.evicted ? ` and kick out the house bot ${e.evicted.name}` : ""}${boost.length ? `; entry boost: you start with ${boost.map((p) => `${p.power === "damage" ? "a damage boost" : `a ${p.power}`}`).join(" and ")} for ${boost[0]!.ticks / 60} s` : "; no entry boost (no house bot in this round)"}` } };
   }
 
   /** The round's result for one seat: winner, the seat's place (1-4), links. */
@@ -618,6 +664,31 @@ export class ServerMatch {
     const over = this.status === "over" && m.over;
     return { ...this.info(), rounds, ...(over ? { picks: this.picks.split(m.winner) } : {}) };
   }
+}
+
+/** The identities of a round from its seed and the join looks of its agents, settled in seat order (#19). */
+export function settledLooksOf(seed: number, agents: readonly ({ look: IdentityWish | null; openingLine?: string | null } | null)[]): SuitUpResult {
+  const answers: SuitUpAnswer[] = [];
+  agents.forEach((a, seat) => {
+    if (a?.look && Object.keys(a.look).length) answers.push({ seat, by: "agent", outcome: "answered", wish: { ...a.look }, ...(a.openingLine ? { line: a.openingLine } : {}) });
+  });
+  return settleSuitUp(seed, answers);
+}
+
+/**
+ * Who enters the Arena in a round (#66), from who held each seat in the round before (`before`; null: there was
+ * none, every seat was a house bot's, as `house` shows them). An agent enters when it did not hold its seat in the
+ * round before. It kicks out the house bot that held the seat; a seat that was another agent's has no one to kick.
+ */
+export function enteringSeats(names: readonly (string | null)[], before: { kinds: readonly string[]; names: readonly (string | null)[]; identities: readonly Identity[] } | null, house: readonly Identity[]): Map<number, Identity | undefined> {
+  const out = new Map<number, Identity | undefined>();
+  names.forEach((name, seat) => {
+    if (!name) return;
+    if (!before) out.set(seat, house[seat]);
+    else if (before.kinds[seat] === "house") out.set(seat, before.identities[seat]);
+    else if (before.names[seat]?.toLowerCase() !== name.toLowerCase()) out.set(seat, undefined);
+  });
+  return out;
 }
 
 /** A soul id from an agent name. */

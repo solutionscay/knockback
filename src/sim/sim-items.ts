@@ -6,6 +6,7 @@ import type { Sim } from "./sim";
 import { hasAmmo, isPickupWeapon, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
+import type { TimedPower } from "./entrance";
 
 /** Starting weapons near each spawn, in the middle and up high, plus a central jetpack. */
 export function stockArmory(sim: Sim, spawns: { x: number; y: number }[]) {
@@ -213,6 +214,17 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
     sim.entityStore.remove(e);
     return;
   }
+}
+
+/**
+ * A start power (#66 entry boost): the fighter has this power-up from the first tick, for `ticks` ticks. Set as a
+ * pickup sets it (the shield's hit count starts at 0, heavy makes the body heavier), but it is no pickup (no stats).
+ */
+export function startPower(sim: Sim, f: Fighter, power: TimedPower, ticks: number) {
+  f.power[power] = ticks;
+  if (power === "shield") f.power.shieldHits = 0;
+  if (power === "heavy") f.entity.collider.setDensity(sim.ruleset.combat.density * sim.ruleset.pickups.power.heavy.densityMul);
+  sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power, on: true });
 }
 
 export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {

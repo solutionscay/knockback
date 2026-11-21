@@ -134,6 +134,8 @@ export interface MatchStore {
   listMatches(statuses?: MatchStatus[]): Promise<MatchRow[]>;
   /** the highest Arena round stored (0 for a fresh database) */
   lastArenaRound(): Promise<number>;
+  /** the match of an Arena round, or null */
+  getArenaRound(round: number): Promise<MatchRow | null>;
   insertSeat(s: SeatRow): Promise<void>;
   updateSeat(matchId: string, seat: number, patch: SeatPatch): Promise<void>;
   /** the owner of a key (sha256 hex) that is not revoked, or null */
@@ -421,6 +423,10 @@ export class SqliteStore implements MatchStore {
   }
   async lastArenaRound() {
     return ((this.db.query("SELECT MAX(arena_round) AS n FROM matches").get() as { n: number | null }).n ?? 0);
+  }
+  async getArenaRound(round: number) {
+    const r = this.db.query("SELECT * FROM matches WHERE arena_round = ?").get(round) as Row | null;
+    return r ? matchOf(r) : null;
   }
   async ownerOfKey(keyHash: string) {
     const r = this.db.query("SELECT owner FROM owner_keys WHERE key_hash = ? AND revoked_at IS NULL").get(keyHash) as Row | null;

@@ -5,7 +5,7 @@
  * The golden hashes below move only when the sim changes on purpose. Then update them in the same commit, and say why.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { CLOSE_QUARTERS, Fight, FightDivergedError, initPhysics, Match, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
+import { CLOSE_QUARTERS, entryBoost, Fight, FightDivergedError, initPhysics, Match, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
 
 beforeAll(async () => {
   await initPhysics();
@@ -24,6 +24,8 @@ const GOLDEN = {
   fight: "0536500d",
   fightWithUpdate: "300002f2",
   closeQuarters: "1a38fbe3",
+  /** fight 1001 with seat 1's entry boost (#66: shield and damage from tick 0, start powers in the record) */
+  fightWithBoost: "00b07ebc",
   match: ["9b8a6bcd", "5f4402d5", "9022ca7a"],
 };
 
@@ -52,6 +54,7 @@ describe("determinism", () => {
     expect(fight(1001).record.finalHash).toBe(GOLDEN.fight);
     expect(fightWithUpdate().record.finalHash).toBe(GOLDEN.fightWithUpdate);
     expect(fight(1001, { ruleset: CLOSE_QUARTERS }).record.finalHash).toBe(GOLDEN.closeQuarters);
+    expect(fight(1001, { startPowers: entryBoost([1], ["house", "remote", "house", "house"]) }).record.finalHash).toBe(GOLDEN.fightWithBoost);
     expect(match().record.rounds.map((r) => r.fight.finalHash)).toEqual(GOLDEN.match);
   });
 

@@ -8,6 +8,7 @@ import { isPickupWeapon, MAX_RULES, TARGET_PREFERENCES, type Rule, type Strategy
 import { generateIdentities, sanitizeIdentity, type Identity } from "../sim/identity";
 import type { LineTemplate, Soul } from "../sim/soul";
 import type { Decision } from "../sim/voice";
+import { ENTRANCE_LINE_MAX, TIMED_POWERS, type Entrance, type StartPower, type TimedPower } from "../sim/entrance";
 
 const SAFE_TARGETS = [...TARGET_PREFERENCES, "grudge"];
 const SAFE_TEMPER = ["cocky", "confident", "calm", "nervous"];
@@ -98,6 +99,31 @@ export function sanitizeIdentities(v: unknown, seed = 0): Identity[] | undefined
 
 const SUIT_OUTCOMES = ["ok", "partial", "fallback-timeout", "fallback-error", "fallback-invalid"];
 const LOOK_FIELDS = ["name", "shape", "eyes", "color", "mark", "minor"];
+
+/** Entrances (#66) from a record or the live stream: one per seat at most, a short line, a valid identity for the bot kicked out. */
+export function sanitizeEntrances(v: unknown, seed = 0): Entrance[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const gen = generateIdentities(seed);
+  const out: Entrance[] = [];
+  for (const raw of v.slice(0, 4)) {
+    const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const seat = o.seat;
+    if (!Number.isInteger(seat) || (seat as number) < 0 || (seat as number) > 3 || out.some((e) => e.seat === seat)) continue;
+    out.push({ seat: seat as number, line: str(o.line, ENTRANCE_LINE_MAX), ...(o.evicted && typeof o.evicted === "object" ? { evicted: sanitizeIdentity(o.evicted, seat as number, gen[seat as number]!) } : {}) });
+  }
+  return out.length ? out.sort((a, b) => a.seat - b.seat) : undefined;
+}
+
+/** Start powers (#66) from a record or the live stream: known timed power-ups for real seats, at most a round long. */
+export function sanitizeStartPowers(v: unknown): StartPower[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.slice(0, 20).flatMap((raw): StartPower[] => {
+    const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const ok = Number.isInteger(o.fighter) && (o.fighter as number) >= 0 && (o.fighter as number) < 4 && (TIMED_POWERS as readonly unknown[]).includes(o.power) && Number.isInteger(o.ticks) && (o.ticks as number) > 0 && (o.ticks as number) <= 36_000;
+    return ok ? [{ fighter: o.fighter as number, power: o.power as TimedPower, ticks: o.ticks as number }] : [];
+  });
+  return out.length ? out : undefined;
+}
 
 /** The suit-up entries (#19) from a record or the live stream: known values, short strings. */
 export function sanitizeSuitUp(v: unknown): SuitUpEntry[] | undefined {
@@ -191,12 +217,13 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
     souls,
     identities,
     suitUp: sanitizeSuitUp(r.suitUp),
+    entrances: sanitizeEntrances(r.entrances, Number(r.seed) >>> 0),
     rounds: r.rounds.map((rd) => {
       const ds = [0, 1, 2, 3].map((i) => sanitizeDecision({ line: rd.lines?.[i], strategy: rd.strategies?.[i] }, i));
       const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(m?.hedged === true ? { hedged: true } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
       const planUpdates = sanitizePlanUpdates((rd as { planUpdates?: unknown }).planUpdates);
       // the sim replays planUpdates; the fight's own copy of them is not trusted (and not needed)
-      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: [] } : rd.fight;
+      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: [], startPowers: sanitizeStartPowers(rd.fight.startPowers) } : rd.fight;
       return { ...rd, fight, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}), ...(planUpdates.length ? { planUpdates } : { planUpdates: undefined }) };
     }),
   };

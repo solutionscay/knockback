@@ -2,7 +2,7 @@
  * The segment planner: the operator's video rules, applied to a match's beat timeline (docs/video.md).
  * Pure (tested in tests/teaser.test.ts).
  *
- * - the arena card in full
+ * - the arena card in full, then each agent's entrance in full (#66: it drops in and kicks the house bot out)
  * - every trash-talk card before every round, from just before its line is fully typed to its end (at most
  *   CARD_MAX_S of it: readable, not a wait)
  * - 3, 2, 1, FIGHT! and every round in full, continuous; only dead stretches (from the sim: nobody near anyone,
@@ -97,6 +97,9 @@ export function planVideo(t: Timeline, deadTicks: [number, number][][], fps: 30 
     switch (b.kind) {
       case "level":
         add(b.from, b.to, "arena card");
+        break;
+      case "entrance":
+        add(b.from, b.to, "entrance");
         break;
       case "dialogue": {
         if (!lastWasCard) roundOfCards++;

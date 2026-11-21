@@ -217,6 +217,85 @@ body {
   opacity: 0.85;
 }
 
+/* ---------------------------------------------------------- the entrance (#66) */
+/* its parts pop in by the beat's clock (game.ts renderEntrance sets opacity and scale per frame) */
+#entrance {
+  position: absolute;
+  top: calc(6 * var(--u));
+  left: 0;
+  right: 0;
+  text-align: center;
+  line-height: 1;
+}
+#entrance > div {
+  opacity: 0;
+  transform-origin: 50% 60%;
+}
+#entrance .ent-kicker {
+  display: inline-block;
+  padding: calc(0.7 * var(--u)) calc(2 * var(--u));
+  border-radius: 99px;
+  background: rgba(7, 8, 13, 0.78);
+  font-size: max(calc(2 * var(--u)), 11px);
+  letter-spacing: 0.35em;
+  color: #fff3c4;
+}
+#entrance .ent-name {
+  margin-top: calc(0.8 * var(--u));
+  font-size: calc(6.2 * var(--u));
+  color: var(--c);
+  text-shadow: 0 calc(0.6 * var(--u)) 0 var(--shadow);
+  -webkit-text-stroke: calc(0.3 * var(--u)) var(--shadow);
+  paint-order: stroke fill;
+}
+#entrance .ent-model {
+  display: inline-block;
+  margin-left: calc(1.4 * var(--u));
+  vertical-align: middle;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+#entrance .ent-shout {
+  margin-top: calc(1 * var(--u));
+  font-size: calc(12 * var(--u));
+  color: #ffde4a;
+  font-style: italic;
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 calc(1 * var(--u)) 0 var(--shadow),
+    0 0 calc(5 * var(--u)) rgba(255, 120, 40, 0.55);
+  -webkit-text-stroke: calc(0.55 * var(--u)) var(--shadow);
+  paint-order: stroke fill;
+  transform-origin: 50% 50%;
+  padding: 0 calc(3 * var(--u));
+  text-wrap: balance;
+}
+#entrance .ent-out,
+#entrance .ent-boost,
+#entrance .ent-thinking {
+  display: table;
+  margin: calc(1.1 * var(--u)) auto 0;
+  padding: calc(0.7 * var(--u)) calc(1.8 * var(--u));
+  border-radius: calc(1 * var(--u));
+  background: rgba(7, 8, 13, 0.8);
+  font-family: "Helvetica Neue", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: max(calc(2.3 * var(--u)), 11px);
+  letter-spacing: 0.12em;
+}
+#entrance .ent-out b {
+  color: var(--k);
+}
+#entrance .ent-boost {
+  color: #7de0ff;
+  border: calc(0.25 * var(--u)) solid #7de0ff;
+}
+#entrance .ent-thinking {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
 /* ---------------------------------------------------------- countdown */
 #count {
   position: absolute;
@@ -1185,6 +1264,10 @@ body.embed:has(#celebrate.show) #lineup {
 }
 #picks-panel.show {
   pointer-events: auto;
+}
+#picks-panel.show.aside {
+  opacity: 0;
+  pointer-events: none;
 }
 #picks-panel .ptitle {
   text-align: center;
