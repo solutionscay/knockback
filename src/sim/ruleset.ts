@@ -27,7 +27,7 @@ const lists: Readonly<Record<string, readonly (string | number)[]>> = {
   "fire.materials": [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Brick],
   "fire.props": RULESET_DEFAULTS.fire.props,
 };
-const signed = new Set(["ringOutY", "bottom", "minHeight", "groundMin", "desperateBelow", "confidentAt"]);
+const signed = new Set(["hpBonus", "ringOutY", "bottom", "minHeight", "groundMin", "desperateBelow", "confidentAt"]);
 const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density"]);
 const ranges = new Set(["halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
 const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "skyDrops", "skyDropTicks", "betweenCaches", "holdTicks", "firstTick"]);
@@ -134,6 +134,14 @@ export function validateRuleset(input: unknown): Ruleset {
     const physics = r.weapons.table[weapon as Weapon];
     if ("range" in physics) require(reach.max <= physics.range, `tactics.weapons.reach.${weapon}.max`, "must not exceed the weapon's physical range");
   }
+  const B = r.builds, P = r.pickups.power;
+  require(B.health.hpBonus[2] === 0 && B.speed.mul[0] === 1 && B.jump.mul[0] === 1 && B.weight.knockback[2] === 1 && B.weight.density[2] === 1 && B.power.mul[2] === 1, "builds", "level 0 must be the base: hpBonus 0, every multiplier 1");
+  require(r.combat.fighter.maxHp + Math.min(...B.health.hpBonus) > 0, "builds.health.hpBonus", "every level must leave a positive max HP");
+  require([...B.speed.mul, ...B.jump.mul, ...B.weight.knockback, ...B.weight.density, ...B.power.mul].every((m) => m > 0), "builds", "multipliers must be positive");
+  // the caps limit a build stacked with a power-up; none may bind a neutral build (neutral is the old game)
+  require(B.caps.walkSpeed >= P.speed.mul && B.caps.groundAccel >= 1.3 && B.caps.airJump >= 0.95, "builds.caps", "walkSpeed must be at least the Speed power-up's mul, groundAccel at least 1.3, airJump at least 0.95");
+  require(B.caps.knockbackTaken > 0 && B.caps.knockbackTaken <= P.heavy.kbMul && B.caps.density >= P.heavy.densityMul, "builds.caps", "knockbackTaken must be positive and at most the Heavy power-up's kbMul, density at least its densityMul");
+  require(B.caps.damage >= P.damage.mul && B.caps.knockbackDealt >= P.damage.kbMul, "builds.caps", "damage and knockbackDealt must be at least the Damage power-up's mul and kbMul");
   require(r.tactics.weapons.lobCheckStep >= 0.05, "tactics.weapons.lobCheckStep", "expected at least 0.05 seconds");
   return r;
 }

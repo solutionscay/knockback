@@ -9,6 +9,7 @@ import { generateIdentities, sanitizeIdentity, type Identity } from "../sim/iden
 import type { LineTemplate, Soul } from "../sim/soul";
 import type { Decision } from "../sim/voice";
 import { ENTRANCE_LINE_MAX, type Entrance } from "../sim/entrance";
+import { buildProblem, strategyBuild, type Build } from "../sim/build";
 
 const SAFE_TARGETS = [...TARGET_PREFERENCES, "grudge"];
 const SAFE_TEMPER = ["cocky", "confident", "calm", "nervous"];
@@ -39,6 +40,8 @@ export function sanitizeDecision(d: unknown, fighter: number): Decision {
   };
   const rules = sanitizeRules(s.rules, fighter);
   if (rules.length) strategy.rules = rules;
+  // a legal build replays as recorded (#79); anything else is no build (neutral), and the replay check refuses the record
+  if (s.build !== undefined && buildProblem(s.build) === null) strategy.build = strategyBuild(s.build as Build);
   const line = str(o.line, 200);
   return { line, strategy: { ...strategy, line } };
 }

@@ -13,6 +13,7 @@ import { Mat, type Grid } from "./grid";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { type PropKind } from "./level-config";
 import { NavGraph } from "./nav";
+import { strategyBuild, type Build } from "./build";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { Rng } from "./rng";
 import { explode } from "./sim-blast";
@@ -118,7 +119,8 @@ export class Sim {
     flamePulses: 0,
   };
 
-  constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS, readonly ruleset: Ruleset = CLASSIC) {
+  /** builds: each seat's build for the round (#79); a missing one is neutral */
+  constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS, readonly ruleset: Ruleset = CLASSIC, builds: readonly (Build | undefined)[] = []) {
     this.lastClashTick = ruleset.zone.suddenDeath.graceTicks > 0 ? -1 : 0;
     this.level = level ?? generateLevel(seed, undefined, ruleset);
     this.grid = this.level.grid.clone();
@@ -147,7 +149,7 @@ export class Sim {
     }
     // seat order is shuffled by seed so no seat owns a spawn
     const spawns = this.rng.shuffle(this.level.spawns.slice());
-    for (let i = 0; i < 4; i++) addFighter(this, i, looks[i] ?? SEAT_LOOKS[i]!, spawns[i]!.x, spawns[i]!.y);
+    for (let i = 0; i < 4; i++) addFighter(this, i, looks[i] ?? SEAT_LOOKS[i]!, spawns[i]!.x, spawns[i]!.y, strategyBuild(builds[i]));
     stockArmory(this, spawns);
   }
 

@@ -1,6 +1,7 @@
 import type RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import type { PropKind } from "./level-config";
 import type { PieceCell } from "./terrain";
+import type { Build, FighterStats } from "./build";
 import { generateIdentities, type Look } from "./identity";
 
 /** "fist" is what everyone starts with; the rest are picked up in the arena. */
@@ -106,6 +107,8 @@ export interface Strategy {
   weapons: Weapon[];
   /** conditional rules, highest priority first (at most MAX_RULES; optional) */
   rules?: Rule[];
+  /** the fighter's body for the round (#79): fixed at the round start, so a mid-round plan update never changes it; none = neutral */
+  build?: Build;
   line: string;
 }
 
@@ -183,7 +186,12 @@ export interface Fighter {
   /** weapon pickups this fighter wants, best first (from its strategy) */
   prefs: Weapon[];
   entity: Entity;
+  /** this round's build (#79) and the body values it gives */
+  build: Build;
+  stats: FighterStats;
   hp: number;
+  /** max HP from the build (#79) */
+  maxHp: number;
   alive: boolean;
   koTick: number;
   koCause: "ringout" | "hp" | null;

@@ -92,6 +92,31 @@ const STANCES = {
   hold: { radius: 3.5, leash: 9, riseWeight: 0.8, coverBonus: 3, itemBonus: 5, homeWeight: 0.25, calmTicks: 600 },
 };
 
+/**
+ * Fighter builds (#79): what each attribute level does (build.ts). Tables of five run from level -2 to +2; speed and
+ * jump never go below the base, so their tables run from 0 to +2. Level 0 is always the base (validated), so a neutral
+ * build plays the `combat.fighter` values exactly. Set every entry to its level-0 value to turn builds off.
+ *   health.hpBonus     added to combat.fighter.maxHp
+ *   speed.mul          walk speed and ground acceleration
+ *   jump.mul           jump speed (jump height grows with its square)
+ *   weight.knockback   knockback taken; weight.density: the body's density (mass)
+ *   power.mul          damage and knockback dealt
+ * caps: a build and a power-up multiply, within these (multipliers of the base values; none binds a neutral build):
+ *   walkSpeed / groundAccel   highest (build speed with the Speed power-up)
+ *   airJump                   highest Jump power-up air jump, as a share of the base jump speed
+ *   knockbackTaken            lowest (weight with the Heavy power-up)
+ *   density                   highest (weight with the Heavy power-up)
+ *   damage / knockbackDealt   highest (power with the Damage power-up)
+ */
+const BUILDS = {
+  health: { hpBonus: [-30, -15, 0, 15, 30] },
+  speed: { mul: [1, 1.08, 1.16] },
+  jump: { mul: [1, 1.06, 1.12] },
+  weight: { knockback: [1.3, 1.15, 1, 0.87, 0.75], density: [0.8, 0.9, 1, 1.12, 1.25] },
+  power: { mul: [0.8, 0.9, 1, 1.1, 1.2] },
+  caps: { walkSpeed: 1.6, groundAccel: 1.43, airJump: 1, knockbackTaken: 0.4, density: 3.5, damage: 2.2, knockbackDealt: 1.4 },
+};
+
 export const RULESET_DEFAULTS = {
   combat: { gravity: C.GRAVITY, fighter: { ...C.FIGHTER, ringOutMargin: 6 }, launch: C.LAUNCH, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, blastCarveScale: 1.12, attributionTicks: 120 },
   weapons: {
@@ -115,6 +140,7 @@ export const RULESET_DEFAULTS = {
   },
   zone: { boundary: { ...C.ZONE, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: { ...C.STALEMATE, graceTicks: 20 * C.TICK_RATE } },
   fire: { ...C.FIRE, materials: [Mat.Wood, Mat.Crumble] as readonly Mat[], props: ["crate", "barrel", "tnt", "gas"] as readonly string[] },
+  builds: BUILDS,
   morale: MORALE,
   round: { maxRounds: 3, winsToTake: 2, fightTicks: C.FIGHT_TICKS, finishTicks: C.FINISH_TICKS },
   tactics: { weapons: TACTICAL_WEAPONS, stances: STANCES, aimNoise: AIM_NOISE, patience: PATIENCE, pickup: PICKUP, wall: WALL_PURSUIT, ruleEval: RULE_EVAL, reflex: C.REFLEX },

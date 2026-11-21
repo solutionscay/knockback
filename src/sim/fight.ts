@@ -124,9 +124,10 @@ export class Fight {
     readonly opts: FightOptions = {},
     updates: readonly PlanUpdate[] = [],
   ) {
-    this.sim = new Sim(seed, opts.level, opts.looks ?? SEAT_LOOKS, opts.ruleset);
     const botRng = new Rng((seed ^ 0x5bd1e995) >>> 0);
-    this.strategies = recorded ? recorded.map((s) => ({ ...s, weapons: (s.weapons ?? []).slice() })) : this.sim.fighters.map(() => neutralStrategy(botRng));
+    this.strategies = recorded ? recorded.map((s) => ({ ...s, weapons: (s.weapons ?? []).slice(), ...(s.build ? { build: { ...s.build } } : {}) })) : [0, 1, 2, 3].map(() => neutralStrategy(botRng));
+    // the build is the body for the whole round (#79): set here, never by a plan update
+    this.sim = new Sim(seed, opts.level, opts.looks ?? SEAT_LOOKS, opts.ruleset, this.strategies.map((s) => s.build));
     this.controllers = this.sim.fighters.map((f) => {
       const m = opts.morale?.[f.id];
       const k = m && !opts.noMoraleEffect ? this.sim.ruleset.morale.aim[m].aim : 1;
@@ -136,7 +137,7 @@ export class Fight {
       c.peers = this.controllers;
       c.setStrategy(this.strategies[i]!, this.sim);
     }
-    this.record = { ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), updates: this.updates, checkpoints: [], finalHash: "", ticks: 0 };
+    this.record = { ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s, ...(s.build ? { build: { ...s.build } } : {}) })), updates: this.updates, checkpoints: [], finalHash: "", ticks: 0 };
     for (const u of updates) this.addUpdate(u);
   }
 

@@ -5,8 +5,10 @@ import { ALL_WEAPONS, type Entity, type Fighter, type Input } from "./sim-types"
 import { type Look } from "./identity";
 import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
+import { fighterStats, type Build } from "./build";
 
-export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number) {
+export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number, build: Build) {
+  const stats = fighterStats(sim.ruleset, build);
   const body = sim.world.createRigidBody(
     RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(x, y + sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.05)
@@ -16,7 +18,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
   );
   const collider = sim.world.createCollider(
     RAPIER.ColliderDesc.capsule(sim.ruleset.combat.fighter.halfHeight, sim.ruleset.combat.fighter.radius)
-      .setDensity(sim.ruleset.combat.density)
+      .setDensity(stats.density)
       .setFriction(0)
       .setRestitution(0)
       .setCollisionGroups(groups(G.FIGHTER, G.TERRAIN | G.FIGHTER | G.PROP | G.GRENADE)),
@@ -29,8 +31,8 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     collider,
     hw: sim.ruleset.combat.fighter.radius,
     hh: sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius,
-    hp: sim.ruleset.combat.fighter.maxHp,
-    maxHp: sim.ruleset.combat.fighter.maxHp,
+    hp: stats.maxHp,
+    maxHp: stats.maxHp,
     dead: false,
     born: 0,
   };
@@ -42,7 +44,10 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     look: { ...def },
     prefs: sim.ruleset.weapons.enabled.slice(),
     entity: e,
-    hp: sim.ruleset.combat.fighter.maxHp,
+    build: { ...build },
+    stats,
+    hp: stats.maxHp,
+    maxHp: stats.maxHp,
     alive: true,
     koTick: -1,
     koCause: null,
