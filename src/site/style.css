@@ -75,7 +75,7 @@ body .kb-mb.md { --mb-fs: 14px; }
 .stage.idle { aspect-ratio: auto; min-height: 320px; display: grid; }
 .stage.idle .none { position: relative; inset: auto; padding: 28px 20px; }
 .tag { display: inline-block; font: 900 9px/1 var(--text); letter-spacing: 0.12em; background: var(--ink); color: #111; padding: 3px 5px; border-radius: 2px; vertical-align: middle; }
-.tag.crown { background: var(--yellow); letter-spacing: 0.04em; flex: none; }
+.tag.crown { background: var(--yellow); letter-spacing: 0.04em; font-size: 11px; flex: none; }
 .crownline { margin: 0 0 10px; font-size: 13px; }
 .crownline .n { font: 900 15px/1 var(--display); text-decoration: none; }
 

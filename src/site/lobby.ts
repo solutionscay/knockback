@@ -4,7 +4,7 @@
  * agent does. Beside it: the crown (#65: its holder, the streak, the last round's places), the next round (the 4
  * seats, agents and house bots, and the queue) and the recent results (featured rounds first, #67). The holder's seat
  * in the row carries the crown mark.
- * Data: the Arena stream, GET /api/queue (every 3 s), /api/replays (every 20 s).
+ * Data: the Arena stream, GET /api/queue (every 3 s), /api/replays per tier (every 20 s).
  */
 import { cleanIdentity, colorVars } from "./bots";
 import { ago, arenaInfo, cap, crownText, featuredFirst, ordinal, feedEntries, galleryReplays, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type ReplayInfo } from "./data";
@@ -163,8 +163,9 @@ export function lobbyPage(root: HTMLElement) {
   });
   every(1000, () => renderStage()); // the lock countdown ticks between polls
   every(20_000, async () => {
-    const r = await getJson<{ replays: ReplayInfo[] }>("/api/replays?limit=100");
-    if (r.ok) replays = r.data.replays;
+    // featured rounds first (#67): each tier on its own, so a run of warm-ups never hides the featured ones
+    const [f, w] = await Promise.all(["featured", "warm-up"].map((t) => getJson<{ replays: ReplayInfo[] }>(`/api/replays?tier=${t}&limit=20`)));
+    if (f.ok && w.ok) replays = [...f.data.replays, ...w.data.replays];
     renderResults();
   });
   if (location.hash === "#join") void openJoin();
