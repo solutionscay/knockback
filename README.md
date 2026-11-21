@@ -100,12 +100,12 @@ updates, latency and estimated tokens per provider. Details: [docs/checkins.md](
 ## Match server (remote agents over HTTP)
 
 ```sh
-bun run match-server                                   # http://localhost:5176/api, one open match, 4 remote seats
+bun run match-server                                   # http://localhost:5176/api; the lobby waits for agents (no match until one queues)
 bun run match-server --host 0.0.0.0                    # also on the LAN; watch at http://<lan-ip>:5176/?live
 bun run match-server --host 0.0.0.0 --open             # trusted LAN: no seat tokens (turn/plan/leave take ?seat=N)
 bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
 bun run match-server --db records/match-server.db      # the default storage file; --db :memory: keeps nothing
-bun scripts/remote-agent.ts --server http://localhost:5176 --mode random   # or fixed | silent | cli --cmd "claude -p ..."
+bun scripts/remote-agent.ts --server http://localhost:5176 --mode random   # queues (POST /api/queue); or fixed | silent | cli --cmd "claude -p ..."
 ```
 
 Agents play over a plain JSON API (`GET /api` lists it). There is no registration: one call,
@@ -220,8 +220,29 @@ Add `--session-file <path>` and a restarted agent reattaches to the same session
 mid-match, the house bot drove its fighter meanwhile ("autopilot") and the agent plans again from the next
 round. Matches run at broadcast pace, so `wait_for_turn` often says "call again" while viewers watch a round.
 
-Server flags: `--lobby-seats remote,remote,remote,house`, `--mcp-deadline 75`, `--lobby-fill 120`,
-`--public-url <url>`, `--no-mcp` (or `KB_LOBBY_SEATS`, `KB_MCP_DEADLINE`, ... in `.env` for the container).
+**The lobby waits for agents (#22).** `join_lobby` (or HTTP `POST /api/queue`) puts the agent in a queue; nothing
+runs while nobody waits (no loop, no automatic match). The matchmaker opens a match when **4 agents** are waiting,
+or when one has waited **`--lobby-fill` seconds** (default 60): then built-in AI fighters from `--ai-roster`
+(default `claude,codex,grok`, the providers `ai-match` uses, so the model leaderboard keeps getting data) take the
+empty seats. A house bot sits in only when a provider's CLI is not installed or the daily cap is spent. Never two
+seats for one agent name; oldest first (a hook in `src/server/matchmaker.ts` takes ratings later, #23); two
+rulesets never share a match. Cost guardrails: `--max-concurrent 1` matchmaker matches at once (the queue waits),
+`--ai-daily-cap 30` AI seats per UTC day, and every provider call is logged with its latency and an estimated token
+count (chars / 4: the CLIs do not report tokens) to the server log and `<out>/ai-usage.jsonl`; `GET /api/queue`
+shows the day's totals. An open match created by hand (`POST /api/matches`, `--seats`) that nobody joins expires
+at its fill timer instead of playing house bots only.
+
+HTTP agents: `POST /api/queue { name, persona, model?, line?, ruleset? }` -> `{ ticket }`; `GET
+/api/queue/<ticket>?wait=25` -> `{ status: "seated", match, seat, token }` (then `/turn` and `/plan` as usual);
+`DELETE /api/queue/<ticket>` leaves. `GET /api/queue[?name=X]` is the public view (names, seats needed, when AI
+seats fill, X's place). `GET /api/join[?name=&persona=&owner=]` gives the JOIN panel (#42) its data: the server's
+public URL (`--public-url`, else the request's), the commands for Claude Code, Codex, Grok and plain JSON / HTTP,
+a ready first prompt and the queue.
+
+Server flags: `--lobby-fill 60`, `--min-agents 1`, `--ai-roster claude,codex,grok`, `--max-concurrent 1`,
+`--ai-daily-cap 30`, `--mcp-deadline 75`, `--public-url <url>`, `--no-mcp` (or `KB_LOBBY_FILL`, `KB_AI_ROSTER`,
+... in `.env` for the container; the container image has no provider CLIs, so its AI seats are house bots unless
+you add them).
 
 ## Which model is best (model spotlight)
 
