@@ -9,7 +9,7 @@
  * types) so a Cloudflare backend (#26: D1, or a Durable Object's own SQLite)
  * can implement it; SqliteStore is the bun:sqlite one for local and LAN use.
  */
-import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, type Ruleset } from "../sim/ruleset";
+import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, UNCAPPED_LAUNCH, type Ruleset } from "../sim/ruleset";
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
@@ -271,6 +271,18 @@ export const MIGRATIONS: string[] = [
    ALTER TABLE seats ADD COLUMN opening_line TEXT;`,
   // 9 (#19): the built-in AI seats' suit-up answers (their chosen looks and opening lines)
   `ALTER TABLE matches ADD COLUMN suit_up TEXT;`,
+  // 10 (#41): pinned snapshots and saved presets keep the launches they were made with; Classic takes the launch cap.
+  `UPDATE matches SET ruleset_body = json_set(ruleset_body,
+       '$.combat.launch', json('${JSON.stringify(UNCAPPED_LAUNCH)}'),
+       '$.pickups.power.jetpack.ceiling', ${CLOSE_QUARTERS.pickups.power.jetpack.ceiling},
+       '$.pickups.power.jetpack.fade', ${CLOSE_QUARTERS.pickups.power.jetpack.fade})
+     WHERE ruleset_body IS NOT NULL AND json_type(ruleset_body, '$.combat.launch') IS NULL;
+   UPDATE ruleset_presets SET body = json_set(body,
+       '$.combat.launch', json('${JSON.stringify(UNCAPPED_LAUNCH)}'),
+       '$.pickups.power.jetpack.ceiling', ${CLOSE_QUARTERS.pickups.power.jetpack.ceiling},
+       '$.pickups.power.jetpack.fade', ${CLOSE_QUARTERS.pickups.power.jetpack.fade})
+     WHERE body IS NOT NULL AND json_type(body, '$.combat.launch') IS NULL;
+   UPDATE ruleset_presets SET body = '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', version = version + 1 WHERE name = 'Classic';`,
 ];
 
 type Row = Record<string, unknown>;

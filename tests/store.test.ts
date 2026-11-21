@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CLASSIC, CLOSE_QUARTERS } from "../src/sim/ruleset";
+import { CLASSIC, CLOSE_QUARTERS, UNCAPPED_LAUNCH } from "../src/sim/ruleset";
 import { MIGRATIONS, SqliteStore, type MatchRow, type SeatRow } from "../src/server/store";
 
 const file = () => join(mkdtempSync(join(tmpdir(), "kb-store-")), "server.db");
@@ -33,7 +33,7 @@ describe("SqliteStore", () => {
     const custom = await old.putRulesetPreset("Old Fast Fire", { fire: { spread: 0.18 }, arena: { spawns: CLOSE_QUARTERS.arena.spawns } });
     await old.insertMatch(match("m_old", { ruleset: custom.ruleset!, preset: custom.name, presetVersion: custom.version }));
     // Reconstruct a database written by engine v4 before the spread keys existed.
-    const fields = "'$.arena.spawns.spread', '$.pickups.armory.spread', '$.pickups.supply.avoidDistance'";
+    const fields = "'$.arena.spawns.spread', '$.pickups.armory.spread', '$.pickups.supply.avoidDistance', '$.combat.launch', '$.pickups.power.jetpack.ceiling', '$.pickups.power.jetpack.fade'";
     old.db.exec(`UPDATE matches SET ruleset_body = json_remove(ruleset_body, ${fields});
       UPDATE ruleset_presets SET body = json_remove(body, ${fields}) WHERE name = 'Old Fast Fire';
       UPDATE ruleset_presets SET version = 1 WHERE name = 'Classic';
@@ -45,12 +45,41 @@ describe("SqliteStore", () => {
 
     const upgraded = new SqliteStore(path);
     try {
-      expect(await upgraded.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: 2, ruleset: CLASSIC });
+      // migration 7 makes Classic version 2; migration 10 (#41) makes it version 3
+      expect(await upgraded.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: 3, ruleset: CLASSIC });
       expect((await upgraded.getRulesetPreset("Close Quarters"))?.ruleset).toEqual(CLOSE_QUARTERS);
       const pinned = (await upgraded.getMatch("m_old"))!.ruleset!;
       expect(pinned.arena.spawns).toEqual(CLOSE_QUARTERS.arena.spawns);
       expect(pinned.pickups.armory.spread.enabled).toBe(false);
       expect(pinned.pickups.supply.avoidDistance).toBe(0);
+      expect(pinned.combat.launch).toEqual(UNCAPPED_LAUNCH);
+      expect(pinned.fire.spread).toBe(0.18);
+      expect((await upgraded.getRulesetPreset(custom.name))!.ruleset).toEqual(pinned);
+    } finally {
+      await upgraded.close();
+    }
+  });
+
+  test("the launch height migration keeps pinned launches and bumps Classic (#41)", async () => {
+    const path = file();
+    const old = new SqliteStore(path);
+    const custom = await old.putRulesetPreset("Old Fast Fire", { fire: { spread: 0.18 } });
+    await old.insertMatch(match("m_old", { ruleset: custom.ruleset!, preset: custom.name, presetVersion: custom.version }));
+    // Reconstruct a database written by engine v5, before the launch keys existed.
+    const fields = "'$.combat.launch', '$.pickups.power.jetpack.ceiling', '$.pickups.power.jetpack.fade'";
+    old.db.exec(`UPDATE matches SET ruleset_body = json_remove(ruleset_body, ${fields});
+      UPDATE ruleset_presets SET body = json_remove(body, ${fields}) WHERE body IS NOT NULL;
+      UPDATE ruleset_presets SET version = 2 WHERE name = 'Classic';
+      DELETE FROM schema_migrations WHERE version = 10;`);
+    await old.close();
+
+    const upgraded = new SqliteStore(path);
+    try {
+      expect(await upgraded.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: 3, ruleset: CLASSIC });
+      expect((await upgraded.getRulesetPreset("Close Quarters"))?.ruleset).toEqual(CLOSE_QUARTERS);
+      const pinned = (await upgraded.getMatch("m_old"))!.ruleset!;
+      expect(pinned.combat.launch).toEqual(UNCAPPED_LAUNCH);
+      expect(pinned.pickups.power.jetpack.ceiling).toBe(CLOSE_QUARTERS.pickups.power.jetpack.ceiling);
       expect(pinned.fire.spread).toBe(0.18);
       expect((await upgraded.getRulesetPreset(custom.name))!.ruleset).toEqual(pinned);
     } finally {
