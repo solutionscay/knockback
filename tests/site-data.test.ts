@@ -2,11 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { roundPlayback } from "../src/flow/pacing";
 import {
   ago,
-  boardFromModels,
-  boardFromReplays,
   clock,
   feedEntries,
   firstPrompt,
+  isGalleryMatch,
   joinSnippet,
   joinStatus,
   liveMatch,
@@ -134,19 +133,12 @@ describe("lobby data", () => {
     expect(modelOf("remote/Brixel")).toMatchObject({ name: "MODEL NOT REPORTED", agent: "Brixel" });
     expect(modelOf("remote/Brixel@claude-opus-5-5")).toMatchObject({ name: "CLAUDE OPUS 5.5", provider: "anthropic", selfReported: true, agent: "Brixel" });
   });
-  test("leaderboard: /api/models rows when there, else wins per model from replays (once per match)", () => {
-    expect(boardFromModels({ all: { rows: [{ key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", matches: 4, wins: 2, winRate: 0.5, provisional: true }] } })).toEqual([
-      { model: { key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", selfReported: false, test: false }, name: "CLAUDE HAIKU", matches: 4, wins: 2, winRate: 0.5, provisional: true },
-    ]);
-    expect(boardFromModels({ nope: 1 })).toBeNull();
-    const rp = (labels: string[], winner: number, old = false) => ({ labels, winner, old }) as unknown as ReplayInfo;
-    const rows = boardFromReplays([rp(["claude/haiku", "claude/haiku", "house", "remote/X"], 0), rp(["claude/haiku", "grok/grok-4.6", "house", "house"], 2), rp(["grok", "house", "house", "house"], 0), rp(["claude/haiku", "house", "house", "house"], 0, true)], 2);
-    const by = Object.fromEntries(rows.map((r) => [r.name, r]));
-    expect(by["CLAUDE HAIKU"]).toMatchObject({ matches: 2, wins: 1, winRate: 0.5, provisional: false });
-    expect(by["HOUSE BOT"]).toMatchObject({ matches: 3, wins: 1 });
-    expect(by["GROK 4.6"]).toMatchObject({ matches: 2, wins: 1 });
-    expect(by["MODEL NOT REPORTED"]).toBeUndefined();
-    for (const r of rows) expect(r.winRate).toBeLessThanOrEqual(1);
+  test("the gallery shows agent and house-bot matches only; server-run models and test providers are training data", () => {
+    expect(isGalleryMatch(["remote/Brixel@claude-opus-5-5", "remote/Zap", "house", "house bot"])).toBe(true);
+    expect(isGalleryMatch(["house", "house", "house", "house"])).toBe(true);
+    expect(isGalleryMatch(["remote/Brixel", "claude/haiku", "house", "house"])).toBe(false);
+    expect(isGalleryMatch(["codex/gpt-6-luna", "grok", "house", "house"])).toBe(false);
+    expect(isGalleryMatch(["remote/A", "stub", "house", "house"])).toBe(false);
   });
 });
 

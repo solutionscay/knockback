@@ -1,43 +1,12 @@
 /**
- * Spectator picks on the site (#35).
- *  - picksSlot: the read-only crowd tally (/watch).
- *  - PicksCard: the lobby's "Pick the winner" card: the 4 fighters (bot, name, model badge, opening line, share),
- *    a PICK button each until the server locks the picks (right before round 1's plans are shown), the crowd's
- *    bar and the earliest lock; after the match, the crowd's pick and whether this browser called it.
- * The server owns the lock and the anonymous spectator cookie; this only shows and sends picks. Values from the
- * server go through html`` (escaped); the bots are drawn here from the checked identity.
+ * Spectator picks on the site (#35): the state behind the seat row's PICK buttons and crowd shares (seats.ts).
+ * The server owns the lock (right before round 1's plans are shown) and the anonymous spectator cookie; this only
+ * reads and sends picks.
  */
-import { badge } from "./badge";
-import { bot, cleanIdentity, colorVars } from "./bots";
+import { cleanIdentity } from "./bots";
 import { clock } from "./data";
-import { getJson, html, mount, raw, toast } from "./dom";
+import { getJson, toast } from "./dom";
 import type { Identity } from "../sim/identity";
-
-interface Tally {
-  counts?: number[];
-  total?: number;
-  locked?: boolean;
-}
-
-/** Fill `el` with the crowd tally of a match; leave it empty when picks are not available. */
-let unavailable = false;
-export async function picksSlot(el: HTMLElement, matchId: string, colors: (number | null)[] | null): Promise<boolean> {
-  if (unavailable) return false;
-  const r = await getJson<Tally & { tally?: Tally }>(`/api/matches/${encodeURIComponent(matchId)}/picks`);
-  if (!r.ok) {
-    if (r.status === 404) unavailable = true; // not on this server: stop asking
-    el.replaceChildren();
-    return false;
-  }
-  const t = r.data.tally ?? r.data;
-  const counts = Array.isArray(t.counts) ? t.counts.slice(0, 4).map((n) => Math.max(0, Number(n) || 0)) : [0, 0, 0, 0];
-  const total = Number(t.total) || counts.reduce((a, b) => a + b, 0);
-  mount(
-    el,
-    html`<div class="crowd"><span>Crowd</span><div class="tally">${counts.map((n, i) => html`<span style="flex-grow:${total ? n : 1};${colorVars(colors?.[i] ?? null)}"></span>`)}</div><span>${total} pick${total === 1 ? "" : "s"}${t.locked ? " · 🔒" : ""}</span></div>`,
-  );
-  return true;
-}
 
 interface PickFighter {
   seat: number;
@@ -61,7 +30,7 @@ export interface PicksView {
 }
 
 const seatOf = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 3 ? (v as number) : null);
-const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total) : 0);
+export const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total) : 0);
 
 /** The server's GET /picks answer, checked (pure: tested). */
 export function picksView(raw: unknown, now = Date.now()): PicksView | null {
@@ -87,39 +56,46 @@ export function picksView(raw: unknown, now = Date.now()): PicksView | null {
   };
 }
 
-/** The lobby's pick card. `show(matchId)` on each poll; null hides it. */
-export class PicksCard {
-  private view: PicksView | null = null;
+/** One match's picks: load on each poll, send a pick, say when they lock. `onChange` re-renders the seat row. */
+export class Picks {
+  view: PicksView | null = null;
   private busy = false;
+  private missing = false;
 
-  constructor(private card: HTMLElement) {
-    card.addEventListener("click", (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-pick]");
-      if (b) void this.pick(Number(b.dataset.pick));
-    });
-    setInterval(() => this.tick(), 1000);
-  }
+  constructor(private onChange: () => void) {}
 
-  async show(matchId: string | null) {
-    if (!matchId) {
-      this.view = null;
-      this.card.hidden = true;
+  async load(matchId: string | null) {
+    if (!matchId || this.missing) {
+      if (this.view && this.view.match !== matchId) (this.view = null), this.onChange();
       return;
     }
     const r = await getJson<unknown>(`/api/matches/${encodeURIComponent(matchId)}/picks`);
+    if (!r.ok && r.status === 404 && !this.view) this.missing = true; // no picks on this server: stop asking
     const v = r.ok ? picksView(r.data) : null;
-    if (!v) {
-      if (!r.ok && r.status === 404 && this.view?.match === matchId) this.view = null;
-      this.card.hidden = !this.view;
-      return;
-    }
-    this.view = v;
-    this.render();
+    if (v || this.view?.match !== matchId) this.view = v;
+    this.onChange();
   }
 
-  private async pick(seat: number) {
+  /** picks are open: show the PICK buttons */
+  get open() {
+    return !!this.view && !this.view.locked && this.view.winner === null;
+  }
+
+  /** "picks lock in 0:21", "you called it", or "" */
+  status(): string {
     const v = this.view;
-    if (!v || v.locked || this.busy) return;
+    if (!v) return "";
+    if (v.winner !== null) return v.yours === null ? "" : v.yours === v.winner ? "You called it" : `You picked ${v.fighters[v.yours]!.name}`;
+    if (!v.locked) {
+      const left = v.locksAt === null ? 0 : Math.ceil((v.locksAt - Date.now()) / 1000);
+      return left > 0 ? `Pick a winner · locks in ${clock(left)}` : "Pick a winner · locks soon";
+    }
+    return "";
+  }
+
+  async pick(seat: number) {
+    const v = this.view;
+    if (!v || !this.open || this.busy) return;
     this.busy = true;
     try {
       const r = await fetch(`/api/matches/${encodeURIComponent(v.match)}/pick`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ seat }) });
@@ -129,54 +105,9 @@ export class PicksCard {
         if (r.status === 409) v.locked = true;
         toast(data.error ?? `pick failed (${r.status})`);
       }
-      this.render();
+      this.onChange();
     } finally {
       this.busy = false;
     }
-  }
-
-  private tick() {
-    const el = this.card.querySelector<HTMLElement>("[data-locks]");
-    const v = this.view;
-    if (!el || !v) return;
-    const left = v.locksAt === null ? 0 : Math.ceil((v.locksAt - Date.now()) / 1000);
-    el.textContent = left > 0 ? `locks in ${clock(left)}` : "locks soon";
-  }
-
-  private render() {
-    const v = this.view;
-    if (!v) return;
-    this.card.hidden = false;
-    const over = v.winner !== null;
-    const open = !v.locked && !over;
-    const lead = Math.max(...v.counts);
-    const rows = v.fighters.map((f) => {
-      const mine = v.yours === f.seat;
-      const won = v.winner === f.seat;
-      const crowd = (v.locked || over) && v.total > 0 && v.counts[f.seat] === lead;
-      return html`<div class="pk${mine ? " mine" : ""}${won ? " won" : ""}" style="${colorVars(f.id.color)}">
-        ${bot(f.id, "fist", won ? "win" : "fight", true)}
-        <div class="pi"><div class="pn">${f.name}${crowd ? raw(' <span class="star" title="the crowd\'s pick">★</span>') : ""}</div>
-          <div class="pb">${f.model !== null ? badge(f.model) : ""}${f.label.startsWith("agent") || f.label === "open seat" ? html`<span class="pa">${f.label}</span>` : ""}</div>
-          ${f.line ? html`<p>“${f.line}”</p>` : ""}</div>
-        <div class="pr"><b>${pct(v.counts[f.seat]!, v.total)}%</b>${open ? html`<button class="btn small${mine ? "" : " ghost"}" type="button" data-pick="${f.seat}" aria-pressed="${mine}">${mine ? "Picked" : "Pick"}</button>` : mine ? html`<span class="tag">YOURS</span>` : ""}</div>
-      </div>`;
-    });
-    const you =
-      over && v.yours !== null
-        ? v.yours === v.winner
-          ? html`<div class="pyou yes"><b>You called it!</b> ${v.fighters[v.winner!]!.name} won.</div>`
-          : html`<div class="pyou"><b>You picked ${v.fighters[v.yours]!.name}.</b> ${v.fighters[v.winner!]!.name} won.</div>`
-        : "";
-    const sub = over ? `${pct(v.counts[v.winner!]!, v.total)}% called it` : v.locked ? "🔒 locked" : raw(`<span data-locks></span>`);
-    mount(
-      this.card,
-      html`<h2>${over ? "The crowd’s pick" : "Pick the winner"} <small>${sub}</small></h2>
-        ${rows}
-        <div class="pfoot"><div class="tally">${v.fighters.map((f) => html`<span style="flex-grow:${v.total ? v.counts[f.seat] : 1};${colorVars(f.id.color)}"></span>`)}</div><span>${v.total} pick${v.total === 1 ? "" : "s"}</span></div>
-        ${you}
-        ${open ? html`<div class="pnote">One pick per browser, changeable until round 1. The bots never see it.</div>` : ""}`,
-    );
-    this.tick();
   }
 }
