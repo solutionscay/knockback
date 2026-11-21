@@ -13,11 +13,12 @@ import { chunks, type Plan, type Timeline } from "./plan";
 
 /**
  * The start caption over the cards: the agents' models, as their badges name them ("Claude Haiku 5.5, GPT-6 and
- * Big Pickle plan the fight"). House bots are not named; with no agent there is no caption (null).
+ * Big Pickle plan the fight"). House bots and agents with no reported model are not named; with no named model
+ * there is no caption (null).
  */
 export function planCaption(labels: readonly (string | undefined)[]): string | null {
   const word = (w: string) => (/\d/.test(w) || ["GPT", "CLI", "AI", "XAI"].includes(w) ? w : w.charAt(0) + w.slice(1).toLowerCase());
-  const names = [...new Set(labels.map((l) => modelOf(l ?? null)).filter((m) => m.provider !== "house").map((m) => m.name.replace(/\s*\(.*\)\s*$/, "").split(/\s+/).map(word).join(" ").replace(/-/g, "\u2011")))]; // a model name never breaks at its hyphen
+  const names = [...new Set(labels.map((l) => modelOf(l ?? null)).filter((m) => m.provider !== "house" && m.key !== "remote:unreported").map((m) => m.name.replace(/\s*\(.*\)\s*$/, "").split(/\s+/).map(word).join(" ").replace(/-/g, "\u2011")))]; // a model name never breaks at its hyphen
   if (!names.length) return null;
   const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   return `${list} plan${names.length === 1 ? "s" : ""} the fight`;

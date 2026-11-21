@@ -94,7 +94,8 @@ const rarity = (label: string) => recs.filter((r) => (r.rec.labels ?? []).includ
 const total = (r: (typeof recs)[number]) => r.facts.score;
 const cardsRec = recs.map((r, i) => ({ r, i })).sort((a, b) => agentSeats(b.r.rec).length - agentSeats(a.r.rec).length || total(b.r) - total(a.r))[0]!.i;
 const cardSeats = agentSeats(recs[cardsRec]!.rec)
-  .sort((a, b) => rarity(a.l) - rarity(b.l) || a.i - b.i)
+  // a card names its model: an agent that reported none ("MODEL NOT REPORTED") comes last
+  .sort((a, b) => Number(modelOf(a.l).key === "remote:unreported") - Number(modelOf(b.l).key === "remote:unreported") || rarity(a.l) - rarity(b.l) || a.i - b.i)
   .slice(0, 2)
   .map((s) => s.i)
   .sort((a, b) => a - b);
