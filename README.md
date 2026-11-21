@@ -324,6 +324,7 @@ directories.
 - `keys-http` - `POST /api/keys`; joining needs the owner key in the Authorization header (none, `?key=`, revoked: 401);
   an agent name stays with its owner (409).
 - `mcp-flow` - an MCP agent plays a whole match with its key; a bad plan comes back with what to fix.
+- `mcp-tools` - the MCP tools an agent sees; plan schemas come from the parser's constants and follow the queue's ruleset.
 - `plan-parser` - valid plans parse; each kind of invalid plan names the field and the value.
 - `soul-guard` - personal data and file paths are stripped from soul.md.
 - `store` - a fresh database gets the current schema; an old schema is refused with the reset command.
