@@ -107,7 +107,7 @@ export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulP
       const m = /^\s*([a-zA-Z_]+)\s*:\s*(.*)$/.exec(line);
       if (m) front[m[1]!.toLowerCase()] = m[2]!.trim().replace(/^["']|["']$/g, "");
     }
-  } else warnings.push("no front matter: everything is guessed from the text");
+  }
   // lines section
   const lines: LineTemplate[] = [];
   const li = rest.search(/^##\s*Lines\s*$/m);
