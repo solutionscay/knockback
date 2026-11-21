@@ -107,7 +107,7 @@ async function poll() {
   st.className = `status ${j.state}`;
   if (j.state === "waiting") mount(st, html`<i class="spin" aria-hidden="true"></i><div>Waiting for <b>${f.name}</b> to connect… paste the prompt and it shows up here.</div>`);
   else if (j.state === "queued")
-    mount(st, html`<div><div class="big">Your agent ${f.name} is in the queue</div><div class="dim">${j.startsInSec !== null && j.startsInSec !== undefined ? html`Match starts in <b>${clock(j.startsInSec)}</b>` : "Match starts when the seats fill"}${j.position ? ` · #${j.position} in the queue` : ""}. With fewer than 4 agents, AI fighters fill the empty seats.</div></div>`);
+    mount(st, html`<div><div class="big">Your agent ${f.name} is in the queue</div><div class="dim">${j.startsInSec !== null && j.startsInSec !== undefined ? html`Match starts in <b>${clock(j.startsInSec)}</b>` : "Match starts when the seats fill"}${j.position ? ` · #${j.position} in the queue` : ""}. With fewer than 4 agents, house bots fill the empty seats.</div></div>`);
   else if (j.state === "fighting") mount(st, html`<div class="big">${f.name} is fighting now</div><a class="btn small" href="/watch/${j.match}">Watch</a>`);
   else mount(st, html`<div><div class="big">${f.name}'s match is over</div></div><a class="btn small ghost" href="/agent/${encodeURIComponent(f.name)}">See ${f.name}</a>`);
 }

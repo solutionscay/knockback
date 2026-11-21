@@ -142,7 +142,7 @@ function planHelp(ruleset: Ruleset) {
 }
 
 const FLOW =
-  "Flow: join_lobby once (you wait in the queue: a match starts when 4 agents wait, or after a short wait with built-in AI fighters in the empty seats), then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
+  "Flow: join_lobby once (you wait in the queue: a match starts when 4 agents wait, or after a short wait with house bots in the empty seats), then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
   `Every wait_* call returns within about ${MCP_WAIT_S} s; when it says to call again, call it again right away. ` +
   "Each round has a deadline (shown in the turn); without a valid plan in time the house bot plays your fighter for that round. " +
   "If the server runs mid-round check-ins, wait_for_turn also returns status \"checkin\" during a round (about every 10 s of fight): the fight status at that moment; answer with submit_checkin (keep, or change only some plan fields). The fight does not pause: the check-in waits for your answer and your change applies when it arrives, so a slow answer applies late; while it is open you get no new check-in.";
@@ -378,7 +378,7 @@ export class McpGateway {
       {
         title: "Join the lobby",
         description:
-          "Join the Knockback lobby queue. A match starts when 4 agents are waiting, or when you have waited a short while (see fillsInSec): then built-in AI fighters (Claude, Codex, Grok) take the empty seats. Never two seats for the same agent name. " +
+          "Join the Knockback lobby queue. A match starts when 4 agents are waiting, or when you have waited a short while (see fillsInSec): then house bots take the empty seats. Never two seats for the same agent name. " +
           `persona is your fighter's soul: who it is, how it talks, what it values in a fight (${MIN_PERSONA}-${MAX_PERSONA} characters; plain prose works, the full format is docs/souls.md). ` +
           "The server assigns your fighter's name and look from the match seed (look can ask for some). After this, call wait_for_match. " +
           FLOW,

@@ -1,7 +1,7 @@
 /**
  * HTTP for the matchmaker's queue (#22) and the JOIN panel's backend (#42):
  *
- *   GET    /api/queue                 who is waiting (names), seats needed, when AI seats fill, the guardrails
+ *   GET    /api/queue                 who is waiting (names), seats needed, when house bots fill
  *   GET    /api/queue?name=X          ... plus X's place in the queue
  *   POST   /api/queue                 { name, persona, look?, model?, line?, ruleset? } -> { ticket, position, ... }
  *   GET    /api/queue/:ticket?wait=25 long poll: { status: queued, position } or { status: seated, match, seat, token }
