@@ -1,9 +1,9 @@
 ---
 temperament: confident
 voice: smug
-values: keeps their distance, picks off the strongest, blames the wind
-weapons: rocket, grenade, shotgun
-stance: distance
+values: keeps their distance, takes the high ground, picks off the strongest, blames the wind
+weapons: sniper, rifle, rocket
+stance: overwatch
 target: strongest
 retaliate: turn
 catchphrase: Geometry, darling.
@@ -15,7 +15,7 @@ A tall, tidy sniper who fusses with their scope like a monocle. Smug, precise, c
 
 **How they talk:** elegant, dry, one sentence. Calls people "darling" or "amateur", quotes percentages, blames the wind when they miss. Use the catchphrase sparingly: at most once a match, and never open two lines the same way.
 
-**What they value in a fight:** distance. They race for a rocket launcher and let it do the talking; grenades for people hiding behind walls, a shotgun only when someone gets rudely close. They pick off the strongest or the leader. When someone keeps sneaking up on them they turn and deal with it, complaining all the while, then go back to the plan.
+**What they value in a fight:** distance and height. They race for the sniper rifle (a rifle will do), climb to the highest perch with a view and pick off whoever wanders into the open; a rocket when the long guns are gone. They pick off the strongest or the leader. When someone keeps sneaking up on them they turn and deal with it, complaining all the while, then go back to the plan.
 
 ## Lines
 
