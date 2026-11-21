@@ -1,32 +1,30 @@
 /**
- * A small HTTP client for the match server (#20, #25): joins a match (one
- * call: name + model + soul -> seat token), long-polls for turns and sends plans.
- * Also the reference for writing an agent.
+ * A small HTTP client for the Arena (#20, #25, #64): joins (one call: name + model + soul -> seat token), long-polls
+ * for its turns and sends plans, round after round. Also the reference for writing an agent.
  *
  * Joining needs an owner key (the JOIN panel, or POST /api/keys { owner }): --key kbk_... or KB_KEY.
  *
  *   bun scripts/remote-agent.ts --server http://localhost:5176 --key kbk_... --name Rando --mode random
  *   bun scripts/remote-agent.ts --mode fixed  --soul souls/sniper.md
- *   bun scripts/remote-agent.ts --mode silent              # joins, never answers (the house bot plays)
+ *   bun scripts/remote-agent.ts --mode silent              # joins, never answers (the autopilot plays; after 2 missed
+ *                                                          # rounds a house bot takes the seat and the agent is out)
  *   bun scripts/remote-agent.ts --mode cli --cmd "claude -p --model haiku --tools '' --no-session-persistence"
  *        (pipes the turn's prompt to the command on stdin and sends its reply as {"answer": ...})
  *
  * --model <name> reports the model behind the agent (shown as reported; default "scripted" for the built-in modes).
  * --soul <file> is the fighter's soul.md (default souls/brawler.md).
- * --match <id> joins that match; without it, the lobby queue (POST /api/queue: the matchmaker seats it, #22).
- * --create remote,house,house,house creates a match first (seats over HTTP: remote or house) and joins it.
+ * --rounds <n> leaves the Arena after playing n rounds (default: plays until stopped).
  * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).
  * --seed <n> makes the random plans repeatable.
  * --line "<text>" gives an opening line at join (spectators see it on the pick cards, #35).
- * --leave-after <round> leaves the match when that round's turn comes (the house bot takes over).
- * --no-token: don't send the seat token (works only against a server started with --open).
- * If the server restarts, the client keeps retrying with the same seat token and plays on.
+ * If the server restarts, the round in progress resumes without the agent; the client joins again (same name).
  *
- * Mid-round check-ins (#9, when the server runs them): GET /turn returns status
- * "checkin" with the fight status; the agent answers with POST /checkin.
- * random: a random stance or target change half the time, else keep; fixed:
- * take cover below 40 health, else keep; cli: the check-in prompt goes to the
- * command; silent: no answer (the check-in stays open until the round ends; the plan stays).
+ * The Arena: POST /api/queue claims a house bot's seat from the next round (or a place in the queue). Then
+ * GET /api/arena/turn?wait=25 answers queued | seated | waiting | turn | checkin | out; a turn carries the
+ * briefing (prompt), the context and the plan schema; POST /api/arena/plan sends the plan with the turn's round.
+ * Mid-round check-ins (#9, when the server runs them): status "checkin" with the fight status; the agent answers
+ * with POST /api/arena/checkin. random: a random stance or target change half the time, else keep; fixed: take
+ * cover below 40 health, else keep; cli: the check-in prompt goes to the command; silent: no answer.
  */
 import { readFileSync } from "node:fs";
 import { Rng } from "../src/sim/rng";
@@ -92,7 +90,7 @@ function fixedPlan(t: any) {
     retaliate: "turn",
     rules: [{ when: "hit_me", who: "enemy", do: "retaliate", retaliate: "attacker", label: "bite back" }],
     why: "keep range on whoever leads",
-    line: t.round === 1 ? "Same plan every round. It works." : `Round ${t.round}. Still the same plan.`,
+    line: `Round ${t.round}. Same plan as always. It works.`,
   };
 }
 
@@ -123,69 +121,63 @@ async function cliAnswer(prompt: string, msLeft: number): Promise<string> {
 }
 
 // ------------------------------------------------------------ join, play
-let matchId = flags.match;
-if (!matchId && flags.create) {
-  const c = await call("POST", "/api/matches", { seats: flags.create.split(","), ...(flags.deadline ? { deadlineSec: Number(flags.deadline) } : {}), fillAfterSec: 30 });
-  if (c.status !== 201) throw new Error(`create failed: ${c.status} ${JSON.stringify(c.data)}`);
-  matchId = c.data.id as string;
-  log(`created match ${matchId} (seed ${c.data.seed}): ${flags.create}`);
-}
 const body = { name, model: flags.model ?? "scripted", soul, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.line ? { line: flags.line } : {}) };
-let join: { status: number; data: any };
-if (matchId) {
-  join = await call("POST", `/api/matches/${matchId}/join`, { ...body, ...(flags.seat ? { seat: Number(flags.seat) } : {}) }, ownerKey);
-  if (join.status !== 201) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
-} else {
-  // the lobby queue (#22): wait until the matchmaker seats this agent
-  const q = await call("POST", "/api/queue", body, ownerKey);
-  if (q.status !== 201) throw new Error(`queue failed: ${q.status} ${JSON.stringify(q.data)}`);
-  log(`in the queue: place ${q.data.position ?? "-"}, ${q.data.needed} more agents for a full match${q.data.fillsInSec !== null ? `, AI seats fill in ${q.data.fillsInSec} s` : ""}`);
-  let r = q;
-  while (r.data.status !== "seated") {
-    r = await call("GET", `/api/queue/${q.data.ticket}?wait=25`);
-    if (r.status !== 200) throw new Error(`queue: ${r.status} ${JSON.stringify(r.data)}`);
-  }
-  matchId = r.data.match as string;
-  join = r;
-}
-const seat: number = join.data.seat;
-// the seat token: sent on turn, plan and leave; in --open mode the seat number can stand in for it
-const key: string | undefined = flags["no-token"] === "true" ? undefined : join.data.token;
-const q = key ? "" : `seat=${seat}&`;
-log(`joined match ${matchId}, seat ${seat}, mode ${mode}${key ? "" : " (no token: open mode)"}${join.data.warnings?.length ? ` (soul warnings: ${join.data.warnings.join("; ")})` : ""}`);
-const leaveAfter = flags["leave-after"] ? Number(flags["leave-after"]) : Infinity;
+const maxRounds = flags.rounds ? Number(flags.rounds) : Infinity;
 
+/** Join the Arena: the seat token, and where the agent is. */
+async function join(): Promise<string> {
+  const j = await call("POST", "/api/queue", body, ownerKey);
+  if (j.status !== 201) throw new Error(`join failed: ${j.status} ${JSON.stringify(j.data)}`);
+  log(`joined the Arena: ${j.data.status === "seated" ? `seat ${j.data.seat}, plays from round ${j.data.entersRound}` : `place ${j.data.position} in the queue`}; mode ${mode}${j.data.warnings?.length ? ` (soul warnings: ${j.data.warnings.join("; ")})` : ""}`);
+  return j.data.token as string;
+}
+
+let key = await join();
+let played = 0;
+let lastSeen = "";
+let lastRound = 0;
 for (;;) {
-  const r = await call("GET", `/api/matches/${matchId}/turn?${q}wait=25`, undefined, key);
+  const r = await call("GET", "/api/arena/turn?wait=25", undefined, key);
+  if (r.status === 401) {
+    log("the server does not know this seat token (it restarted?): joining again");
+    key = await join();
+    continue;
+  }
   if (r.status !== 200) {
     log(`turn: ${r.status} ${JSON.stringify(r.data)}`);
     await Bun.sleep(1000);
     continue;
   }
   const t = r.data;
-  if (t.status === "over") {
-    log(`match over: ${t.winner} wins ${t.wins?.join("-")}${t.youWon ? " (that's me)" : ""}; record ${t.record}`);
-    break;
+  const lr = t.lastRound;
+  if (lr && lr.round !== lastRound) {
+    lastRound = lr.round;
+    played++;
+    log(`round ${lr.round} over: ${lr.winner} wins; I placed ${lr.place}${lr.youWon ? " (that's me)" : ""}${lr.played ? "" : " (on autopilot: I did not plan it)"}; record ${lr.record}`);
+    if (played >= maxRounds) {
+      const l = await call("POST", "/api/arena/leave", undefined, key);
+      log(`left after ${played} round${played === 1 ? "" : "s"}: ${JSON.stringify(l.data)}`);
+      break;
+    }
   }
-  if (t.status === "left") {
-    log(t.message);
+  if (t.status === "out") {
+    log(`out of the Arena: ${t.message}`);
     break;
   }
   if (t.status === "checkin") {
     if (mode === "silent") {
-      // the check-in waits for an answer (GET /turn keeps returning it) until the round ends: look again in a while
+      // the check-in waits for an answer until the round ends: look again in a while
       await Bun.sleep(Math.min(2000, t.msLeft + 100));
       continue;
     }
-    const c = await call("POST", `/api/matches/${matchId}/checkin?${q}`, await checkinAnswer(t), key);
-    log(`check-in at ${t.second} s (${t.checkin.you.health} health): ${c.status === 200 ? `${c.data.result}${c.data.changed?.length ? ` (${c.data.changed.join(", ")})` : ""}` : `rejected ${c.status} ${c.data?.error}`}`);
+    const c = await call("POST", "/api/arena/checkin", await checkinAnswer(t), key);
+    log(`round ${t.round} check-in at ${t.second} s (${t.checkin.you.health} health): ${c.status === 200 ? `${c.data.result}${c.data.changed?.length ? ` (${c.data.changed.join(", ")})` : ""}` : `rejected ${c.status} ${c.data?.error}`}`);
     continue;
   }
-  if (t.status !== "turn") continue;
-  if (t.round >= leaveAfter) {
-    const l = await call("POST", `/api/matches/${matchId}/leave?${q}`, undefined, key);
-    log(`left: ${JSON.stringify(l.data)}`);
-    break;
+  if (t.status !== "turn") {
+    const where = t.status === "queued" ? `place ${t.position} in the queue` : t.status === "seated" ? `seat ${t.seat}, plays from round ${t.entersRound}` : `round ${t.round}: ${t.message ?? t.status}`;
+    if (where !== lastSeen) log((lastSeen = where));
+    continue;
   }
   log(`round ${t.round}: I am ${t.context.you.name}; ${Math.round(t.msLeft / 1000)} s to plan`);
   if (mode === "silent") {
@@ -193,8 +185,8 @@ for (;;) {
     await Bun.sleep(t.msLeft + 200);
     continue;
   }
-  const body = mode === "fixed" ? fixedPlan(t) : mode === "cli" ? { round: t.round, answer: (await cliAnswer(t.prompt, t.msLeft)).slice(0, 8000) } : randomPlan(t);
-  const p = await call("POST", `/api/matches/${matchId}/plan?${q}`, body, key);
-  if (p.status === 200) log(`plan accepted: ${p.data.plan.stance}, ${p.data.plan.weapons.join(">")} -> ${p.data.plan.target}: "${p.data.plan.line}"${p.data.warnings.length ? ` (warnings: ${p.data.warnings.join("; ")})` : ""}`);
+  const plan = mode === "fixed" ? fixedPlan(t) : mode === "cli" ? { round: t.round, answer: (await cliAnswer(t.prompt, t.msLeft)).slice(0, 8000) } : randomPlan(t);
+  const p = await call("POST", "/api/arena/plan", plan, key);
+  if (p.status === 200) log(`round ${t.round} plan accepted: ${p.data.plan.stance}, ${p.data.plan.weapons.join(">")} -> ${p.data.plan.target}: "${p.data.plan.line}"${p.data.warnings.length ? ` (warnings: ${p.data.warnings.join("; ")})` : ""}`);
   else log(`plan rejected: ${p.status} ${p.data?.error}${p.data?.problems ? `: ${p.data.problems.join("; ")}` : ""}`);
 }

@@ -1,23 +1,23 @@
 /**
- * /watch/:id (#22): one match live. The fight is the page: the real viewer (fight and plan chips only), one status
+ * /watch (#64): the Arena live, round after round on its one stream; /watch/:id (#22): one round live. The fight is the page: the real viewer (fight and plan chips only), one status
  * line, the seat row under it (name, model, wins, picks; seats.ts) and, once there is something to read, a short
  * feed beside it: the agents' lines, plan changes, autopilot, round results. The feed only shows what viewers have
  * reached.
  */
 import { cleanIdentity, colorVars } from "./bots";
-import { clock, feedEntries, visibleFeed, type FeedEntry, type MatchInfo } from "./data";
+import { feedEntries, visibleFeed, type FeedEntry, type MatchInfo } from "./data";
 import { $, every, getJson, html, mount } from "./dom";
 import { Picks } from "./picks";
 import { renderSeats, wirePicks } from "./seats";
 import { Stage } from "./stage";
 import type { Identity } from "../sim/identity";
 
-export function watchPage(root: HTMLElement, id: string) {
+export function watchPage(root: HTMLElement, id: string | null) {
   mount(
     root,
     html`<div class="wrap live">
       <div class="main">
-        <div class="wbar"><span class="meta" id="w-meta">Connecting…</span><span class="sp"></span><a class="btn small" id="w-replay" href="/replay/${id}" hidden>Replay</a></div>
+        <div class="wbar"><span class="meta" id="w-meta">Connecting…</span><span class="sp"></span><a class="btn small" id="w-replay" hidden>Replay</a></div>
         <div class="stage" id="w-stage"></div>
         <div class="seatrow" id="w-seats"></div>
       </div>
@@ -30,13 +30,22 @@ export function watchPage(root: HTMLElement, id: string) {
   let entries: FeedEntry[] = [];
   let info: MatchInfo | null = null;
   let lastKeys = "";
+  /** the round on stage: the page's id, or (on /watch) the round the Arena stream is on */
+  let current = id;
+  let arenaRound = 0;
   const picks = new Picks(() => render());
   wirePicks($("#w-seats")!, picks);
 
   const stage = new Stage($("#w-stage")!, {
     live: (msg) => {
-      const m = msg as { type?: string; names?: string[]; labels?: string[]; identities?: unknown[] };
+      const m = msg as { type?: string; matchId?: unknown; arenaRound?: unknown; names?: string[]; labels?: string[]; identities?: unknown[] };
       if (m.type === "match") {
+        if (typeof m.arenaRound === "number") arenaRound = m.arenaRound;
+        if (!id && typeof m.matchId === "string" && m.matchId !== current) {
+          current = m.matchId;
+          info = null;
+          void picks.load(current);
+        }
         names = (m.names ?? []).map(String);
         labels = (m.labels ?? []).map(String);
         ids = [0, 1, 2, 3].map((i) => cleanIdentity(m.identities?.[i], i));
@@ -47,7 +56,8 @@ export function watchPage(root: HTMLElement, id: string) {
     },
     pos: () => render(),
   });
-  stage.live(id);
+  if (id) stage.live(id);
+  else stage.arena();
 
   const who = (seat: number) => (seat >= 0 ? (names[seat] ?? `Seat ${seat + 1}`) : "?");
 
@@ -65,10 +75,10 @@ export function watchPage(root: HTMLElement, id: string) {
     $("#w-meta")!.textContent =
       winner >= 0
         ? ["Final", pickLine].filter(Boolean).join(" · ") // the viewer's win screen says who won, once
-        : info?.status === "open"
-          ? `Waiting for players · starts in ${clock(info.startsInSec ?? 0)}`
-          : pickLine || (stage.pos ? `Live · round ${stage.pos.round} of 3` : "Live");
-    $("#w-replay")!.hidden = winner < 0;
+        : pickLine || ((info?.arenaRound ?? arenaRound) ? `Live · Arena round ${info?.arenaRound ?? arenaRound}` : "Live");
+    const replay = $<HTMLAnchorElement>("#w-replay")!;
+    replay.hidden = winner < 0 || !current;
+    if (current) replay.href = `/replay/${current}`;
     // before the stream's line-up arrives (an open match), the seats come from the match info, once they have bots
     if (ids.length)
       renderSeats(
@@ -102,15 +112,18 @@ export function watchPage(root: HTMLElement, id: string) {
     }
   }
 
-  every(1000, () => render()); // the lock countdown and "starts in" tick
+  every(1000, () => render()); // the lock countdown ticks
   every(4000, async () => {
-    const r = await getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`);
+    if (!current) return;
+    const at = current;
+    const r = await getJson<MatchInfo>(`/api/matches/${encodeURIComponent(at)}`);
+    if (at !== current) return; // the Arena moved on meanwhile
     if (!r.ok) {
-      if (r.status === 404) mount($("#w-meta"), html`No match ${id}. <a href="/lobby">Back to the lobby</a>`);
+      if (r.status === 404 && id) mount($("#w-meta"), html`No round ${id}. <a href="/watch">Watch the Arena</a>`);
       return;
     }
     info = r.data;
     if (!names.length && info.seats.some((s) => s.fighter)) labels = info.seats.map((s) => s.label ?? "house");
-    await picks.load(id);
+    await picks.load(at);
   });
 }

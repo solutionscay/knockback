@@ -168,7 +168,7 @@ export function checkPlanShape(body: Record<string, unknown>): string[] {
   const p: string[] = [];
   const unknown = Object.keys(body).filter((k) => !(PLAN_KEYS as readonly string[]).includes(k));
   if (unknown.length) p.push(`unknown field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")} (allowed: ${PLAN_KEYS.join(", ")})`);
-  if (!Number.isInteger(body.round)) p.push(`round: an integer is required (the round from GET /turn)`);
+  if (!Number.isInteger(body.round)) p.push(`round: an integer is required (the round from your turn)`);
   if (body.answer !== undefined) {
     if (!isStr(body.answer, MAX_ANSWER)) p.push(`answer: a string of at most ${MAX_ANSWER} characters`);
     const extra = Object.keys(body).filter((k) => k !== "answer" && k !== "round");
@@ -212,6 +212,8 @@ export class RemoteSeat {
   stored: (round: number) => Promise<string | null> = async () => null;
   /** called with each accepted plan before the turn ends (to persist it) */
   onAccept: (round: number, raw: string) => Promise<void> | void = () => {};
+  /** the round number the agent knows for a match round (the Arena's round, #64); used in error messages */
+  shown: (round: number) => number = (r) => r;
 
   constructor(
     readonly agentName: string,
@@ -340,10 +342,10 @@ export class RemoteSeat {
     if (body.why !== undefined && !isStr(body.why, 400)) problems.push("why: a string");
     if (JSON.stringify(body).length > MAX_ANSWER + 200) problems.push("the answer is too big");
     if (problems.length) return { ok: false, status: 400, error: "malformed check-in answer", problems };
-    if (!match) return { ok: false, status: 409, error: "the match has not started" };
+    if (!match) return { ok: false, status: 409, error: "the round has not started" };
     const t = this.checkinTurn;
-    if (!t) return { ok: false, status: 409, error: "no check-in is open now (it was answered, or the round ended); wait with GET /turn" };
-    if (t.round !== body.round || t.tick !== body.tick) return { ok: false, status: 409, error: `wrong check-in: the open one is round ${t.round}, tick ${t.tick}` };
+    if (!t) return { ok: false, status: 409, error: "no check-in is open now (it was answered, or the round ended); wait for your turn" };
+    if (t.round !== body.round || t.tick !== body.tick) return { ok: false, status: 409, error: `wrong check-in: the open one is round ${this.shown(t.round)}, tick ${t.tick}` };
     if (++t.attempts > MAX_ATTEMPTS) return { ok: false, status: 429, error: `more than ${MAX_ATTEMPTS} invalid answers; your plan stays` };
     const fields: Record<string, unknown> = Object.fromEntries(Object.entries(body).filter(([k]) => k !== "round" && k !== "tick"));
     // no plan field and no answer: a keep (with its line, if any)
@@ -368,11 +370,11 @@ export class RemoteSeat {
     const shape = checkPlanShape(body);
     if (shape.length) return { ok: false, status: 400, error: "malformed plan", problems: shape };
     const round = body.round as number;
-    if (!match) return { ok: false, status: 409, error: "the match has not started" };
-    if (this.done.has(round)) return { ok: false, status: 409, error: `round ${round} is already planned (a plan was accepted, or the deadline passed)` };
+    if (!match) return { ok: false, status: 409, error: "the round has not started" };
+    if (this.done.has(round)) return { ok: false, status: 409, error: `round ${this.shown(round)} is already planned (a plan was accepted, or the deadline passed)` };
     const turn = this.turn;
-    if (!turn) return { ok: false, status: 409, error: `no plan is wanted now (next round: ${match.round + 1}); wait with GET /turn` };
-    if (turn.round !== round) return { ok: false, status: 409, error: `wrong round: the turn is for round ${turn.round}` };
+    if (!turn) return { ok: false, status: 409, error: `no plan is wanted now; wait for your turn` };
+    if (turn.round !== round) return { ok: false, status: 409, error: `wrong round: the turn is for round ${this.shown(turn.round)}` };
     if (++turn.attempts > MAX_ATTEMPTS) return { ok: false, status: 429, error: `more than ${MAX_ATTEMPTS} invalid plans this round; the house bot plays it at the deadline` };
     const raw = body.answer !== undefined ? (body.answer as string) : JSON.stringify(Object.fromEntries(Object.entries(body).filter(([k]) => k !== "round")));
     const p = parseAnswer(raw, this.seat, match.names, match.ruleset);
@@ -394,7 +396,7 @@ export class RemoteSeat {
     };
     // decideRound parses this same text with the same parser, so it gets exactly this plan
     await this.onAccept(round, raw);
-    if (this.turn !== turn) return { ok: false, status: 409, error: `round ${round} ended while the plan was being saved` };
+    if (this.turn !== turn) return { ok: false, status: 409, error: `round ${this.shown(round)} ended while the plan was being saved` };
     turn.resolve(raw);
     return { ok: true, plan, warnings: p.ruleProblems ?? [] };
   }

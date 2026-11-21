@@ -1,10 +1,12 @@
 /**
- * Contract 3: the MCP flow an agent told "play Knockback" goes through: with its owner key it calls get_started,
- * join_lobby, wait_for_match and then wait_for_turn / submit_plan until the match is over. A bad plan comes back as
- * an error that says what to fix. Without the key in the Authorization header there is no session.
+ * Contract 3: the MCP flow an agent told "play Knockback" goes through in the Arena (#64): with its owner key it
+ * calls get_started, join_lobby (it claims a house bot's seat), wait_for_match, then wait_for_turn / submit_plan
+ * round after round, reads its rounds' results and reports, and leaves. A bad plan comes back as an error that says
+ * what to fix. Without the key in the Authorization header there is no session; a closed session leaves the Arena.
  *
- * Everything runs in-process: the MCP client's fetch goes straight into the gateway, the match runs at fast pace and
- * house bots fill the other seats at once. Turn deadlines are far away, so no result depends on time.
+ * Everything runs in-process: the MCP client's fetch goes straight into the gateway, rounds run at fast pace (the
+ * test drives the Arena's rounds), house bots hold the other seats. Turn deadlines are far away, so no result
+ * depends on time.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -13,20 +15,17 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MatchServer } from "../src/server/match-server";
-import { Matchmaker } from "../src/server/matchmaker";
 import { McpGateway } from "../src/server/mcp";
 import { initPhysics, replayMatch, type MatchRecord } from "../src/sim";
 
 const outDir = mkdtempSync(join(tmpdir(), "kb-mcp-"));
-const api = new MatchServer({ outDir, pace: "fast" });
-const lobby = new Matchmaker(api, { fillAfterMs: 0, minAgents: 1, deadlineMs: 600_000, tickMs: 60_000 });
-const gw = new McpGateway(api, { lobby, publicUrl: "http://kb.test" });
+const api = new MatchServer({ outDir, pace: "fast", arena: { deadlineMs: 600_000 } });
+const gw = new McpGateway(api, { publicUrl: "http://kb.test" });
 beforeAll(async () => {
   await initPhysics();
 });
 afterAll(() => {
   gw.close();
-  lobby.close();
   rmSync(outDir, { recursive: true, force: true });
 });
 
@@ -57,7 +56,7 @@ async function connect(opts: { key?: string; url?: string }) {
     }
     return { data, isError: !!r.isError };
   };
-  return { client, call };
+  return { client, transport, call };
 }
 
 describe("MCP flow", () => {
@@ -76,38 +75,37 @@ describe("MCP flow", () => {
     await expect(connect({ key })).rejects.toThrow(/unknown or revoked/);
   });
 
-  test("an agent plays a whole match; a bad plan is refused with what to fix", async () => {
+  test("an agent plays round after round in the Arena; a bad plan is refused with what to fix", async () => {
     const a = await connect({ key: await ownerKey("Ada") });
     const start = await a.call("get_started");
     expect(start.isError).toBe(false);
     expect(start.data).toMatchObject({ owner: "Ada", next: "call join_lobby" });
+    expect(start.data.arena.rules.join(" ")).toContain("2 rounds in a row");
 
     const joined = await a.call("join_lobby", { name: "Basher", model: "claude-opus-5-5", soul: SOUL });
     expect(joined.isError).toBe(false);
+    expect(joined.data).toMatchObject({ joined: true, status: "seated", seat: 0, entersRound: 1 });
+
+    // the Arena plays its rounds meanwhile (each one waits for Basher's plan)
+    let stop = false;
+    const rounds = (async () => {
+      while (!stop) await api.arena.playRound();
+    })();
+
     let w = await a.call("wait_for_match");
-    while (w.data.status === "waiting") w = await a.call("wait_for_match");
-    expect(w.data.status).toBe("started");
+    while (w.data.status !== "started") w = await a.call("wait_for_match");
+    expect(w.data).toMatchObject({ status: "started", round: 1, you: { seat: 0 } });
     const me: string = w.data.you.fighter;
-    const fighters: string[] = w.data.lineUp.map((s: { fighter: string }) => s.fighter);
+    expect(w.data.lineUp.map((s: { player: string }) => s.player)).toEqual(["agent Basher", "house bot", "house bot", "house bot"]);
 
     const fixes: string[][] = [];
-    let rounds = 0;
-    for (;;) {
+    const planned: number[] = [];
+    while (planned.length < 2) {
       const t = await a.call("wait_for_turn");
       expect(t.isError).toBe(false);
-      if (t.data.status === "over") {
-        expect(fighters).toContain(t.data.winner);
-        // the record the agent is pointed to replays to the same match
-        const path = new URL(t.data.record).pathname.replace(/^\/records\//, "");
-        const rec = JSON.parse(readFileSync(join(outDir, path), "utf8")) as MatchRecord;
-        expect(rec.rounds).toHaveLength(rounds);
-        const replay = replayMatch(rec);
-        expect(replay.names[replay.winner]).toBe(t.data.winner);
-        break;
-      }
       if (t.data.status !== "turn") continue;
-      rounds++;
       expect(t.data.targets).not.toContain(me);
+      expect(t.data.arena.length).toBeGreaterThan(0); // the briefing carries the Arena rules
       // one bad plan per round: itself as the target, the same weapon twice
       const bad = await a.call("submit_plan", { line: "Wrong on purpose.", strategy: { ...PLAN, target: me, weapons: ["bat", "bat"] } });
       expect(bad.isError).toBe(true);
@@ -116,12 +114,40 @@ describe("MCP flow", () => {
       const ok = await a.call("submit_plan", { line: `Round ${t.data.round}, here I come.`, strategy: { ...PLAN, target: t.data.targets[0] } });
       expect(ok.isError).toBe(false);
       expect(ok.data).toMatchObject({ accepted: true, round: t.data.round, plan: { stance: "rush", weapons: ["rocket", "bat"] } });
+      planned.push(t.data.round);
     }
-    expect(rounds).toBeGreaterThanOrEqual(2);
+    expect(planned).toEqual([1, 2]);
     for (const fix of fixes) {
       expect(fix.find((f) => f.startsWith("target"))).toContain("never your own name");
       expect(fix.find((f) => f.startsWith("weapons"))).toContain("different");
     }
+
+    // round 2's result comes with the next answer; its record replays to the same fight
+    let t = await a.call("wait_for_turn");
+    while (t.data.lastRound?.round !== 2) t = await a.call("wait_for_turn");
+    expect(t.data.lastRound).toMatchObject({ round: 2, youPlanned: true });
+    const report = await a.call("get_round_report", { round: 2 });
+    expect(report.data.plans[0].line).toBe("Round 2, here I come.");
+    const path = new URL(t.data.lastRound.replay).searchParams.get("record")!.replace(/^\/records\//, "");
+    const rec = JSON.parse(readFileSync(join(outDir, path), "utf8")) as MatchRecord;
+    expect(rec.rounds).toHaveLength(1);
+    const replay = replayMatch(rec);
+    expect(replay.names[replay.winner]).toBe(report.data.winner);
+
+    stop = true;
+    expect((await a.call("leave")).data).toMatchObject({ left: true, agent: "Basher" });
+    expect((await a.call("wait_for_turn")).data.error).toContain("not in the Arena");
+    await rounds;
+    expect(api.arena.seats[0]).toBeNull();
     await a.client.close();
+  });
+
+  test("a closed MCP session leaves the Arena: a house bot takes its seat", async () => {
+    const b = await connect({ key: await ownerKey("Bo") });
+    expect((await b.call("join_lobby", { name: "Ghost", model: "claude-opus-5-5", soul: SOUL })).data).toMatchObject({ status: "seated" });
+    expect(api.arena.seats.some((e) => e?.name === "Ghost")).toBe(true);
+    await b.transport.terminateSession(); // DELETE /mcp: the session is over
+    await b.client.close();
+    expect(api.arena.seats.some((e) => e?.name === "Ghost")).toBe(false);
   });
 });

@@ -1,10 +1,9 @@
 /**
- * The Knockback site (#22, #42), served by the match server: /lobby, /watch/:id, /replay/:id, /agent/:name,
+ * The Knockback site (#22, #42, #64), served by the match server: /lobby, /watch (the Arena), /watch/:id, /replay/:id, /agent/:name,
  * /replays. One page shell; the route is the path. The fight itself is the viewer (/?live, /?record) embedded.
  */
 import { agentPage } from "./agent";
-import { liveMatch, type MatchInfo } from "./data";
-import { $, every, getJson, wireCopy } from "./dom";
+import { $, wireCopy } from "./dom";
 import { openJoin } from "./join";
 import { lobbyPage } from "./lobby";
 import { replayPage } from "./replay";
@@ -30,7 +29,7 @@ switch (r.page) {
     lobbyPage(root);
     break;
   case "watch":
-    document.title = `Live · ${r.id} · Knockback`;
+    document.title = r.id ? `Live · ${r.id} · Knockback` : "The Arena live · Knockback";
     watchPage(root, r.id);
     break;
   case "replay":
@@ -49,12 +48,7 @@ switch (r.page) {
 }
 if (r.page !== "lobby" && location.hash === "#join") void openJoin();
 
-// the header's LIVE link and the phone tab point at the match on now
-every(10_000, async () => {
-  const m = await getJson<{ matches: MatchInfo[] }>("/api/matches");
-  const live = m.ok ? liveMatch(m.data.matches) : null;
-  const on = $<HTMLAnchorElement>("#onair")!;
-  on.hidden = !live;
-  if (live) on.href = `/watch/${live.id}`;
-  $<HTMLAnchorElement>("#tab-live")!.href = live ? `/watch/${live.id}` : "/lobby";
-});
+// the header's LIVE link and the phone tab: the Arena is always on (#64)
+$<HTMLAnchorElement>("#onair")!.hidden = false;
+$<HTMLAnchorElement>("#onair")!.href = "/watch";
+$<HTMLAnchorElement>("#tab-live")!.href = "/watch";

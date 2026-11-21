@@ -39,12 +39,17 @@ export class Stage {
     this.load(`/?live&embed&match=${encodeURIComponent(matchId)}`);
   }
 
+  /** Show the Arena live (#64): its stream goes on from round to round; the viewer starts each new round itself. */
+  arena() {
+    this.load("/?live&embed");
+  }
+
   /** Show a saved record. */
   record(path: string) {
     this.load(`/?record=${encodeURIComponent(path)}&embed`);
   }
 
-  /** Nothing on stage (the lobby's waiting state, #22): unload the viewer. */
+  /** Nothing on stage: unload the viewer. */
   stop() {
     if (!this.src) return;
     this.src = "";

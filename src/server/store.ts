@@ -1,9 +1,11 @@
 /**
  * Match server storage (#27). The server keeps its working state in memory
  * and writes every change through a MatchStore, so a restart can rebuild it:
- * matches, seats (with hashed seat tokens), the decisions of every round
- * played, plans accepted for the round being asked, and an index of the
- * saved records (the records themselves stay JSON files).
+ * the Arena's rounds (#64: each one a one-round match, numbered), their seats
+ * (with hashed seat tokens), the decisions of every round played, plans
+ * accepted for the round being asked, and an index of the saved records (the
+ * records themselves stay JSON files). The Arena's seats and queue live in
+ * memory: after a restart the round in progress resumes and agents join again.
  *
  * The interface is async and row-shaped (plain JSON-able values, no driver
  * types) so a Cloudflare backend (#26: D1, or a Durable Object's own SQLite)
@@ -31,24 +33,21 @@ export interface MatchRow {
   preset?: string;
   presetVersion?: number;
   id: string;
+  /** the Arena round this match is (#64): 1, 2, 3, ... across the server's life */
+  arenaRound: number;
   seed: number;
-  /** per seat: "remote", "house" or a local provider name */
+  /** per seat: "remote" (an agent) or "house" (a house bot) */
   kinds: string[];
   deadlineMs: number;
-  fillAfterMs: number;
   status: MatchStatus;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
-  /** address that created it over HTTP (null for CLI matches) */
-  creator: string | null;
   error: string | null;
   /** winning seat once over */
   winner: number | null;
   /** when spectator picks locked (#35): right before round 1's decisions were broadcast */
   picksLockedAt?: number | null;
-  /** the built-in AI seats' suit-up answers (#19, JSON SuitUpAnswer[]): a resumed match keeps their looks */
-  suitUp?: string | null;
 }
 
 export interface SeatRow {
@@ -60,7 +59,7 @@ export interface SeatRow {
   /** the owner whose key joined this agent */
   owner: string;
   look: IdentityWish | null;
-  /** sha256 of the seat token (hex) */
+  /** sha256 of the agent's Arena seat token (hex): the same in every round the agent plays */
   tokenHash: string;
   joinedAt: number;
   /** set when the agent left; the seat is played by the house bot from then on */
@@ -119,7 +118,7 @@ export interface RecordRow {
   stats: string;
 }
 
-export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt" | "suitUp">>;
+export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt">>;
 export type SeatPatch = Partial<Pick<SeatRow, "leftAt" | "leftRound">>;
 
 export interface MatchStore {
@@ -133,6 +132,8 @@ export interface MatchStore {
   getMatch(id: string): Promise<MatchRow | null>;
   /** newest first; `statuses` filters */
   listMatches(statuses?: MatchStatus[]): Promise<MatchRow[]>;
+  /** the highest Arena round stored (0 for a fresh database) */
+  lastArenaRound(): Promise<number>;
   insertSeat(s: SeatRow): Promise<void>;
   updateSeat(matchId: string, seat: number, patch: SeatPatch): Promise<void>;
   /** the owner of a key (sha256 hex) that is not revoked, or null */
@@ -151,8 +152,6 @@ export interface MatchStore {
   claimAgent(name: string, owner: string): Promise<string>;
   /** the agent names bound to an owner */
   listAgents(owner: string): Promise<string[]>;
-  /** a seat freed before the start */
-  deleteSeat(matchId: string, seat: number): Promise<void>;
   listSeats(matchId: string): Promise<SeatRow[]>;
   insertRound(r: RoundRow): Promise<void>;
   /** the round was played: its final hash and its mid-round plan updates (a resume replays them) */
@@ -177,28 +176,26 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
   CREATE TABLE matches (
     id TEXT PRIMARY KEY,
+    arena_round INTEGER NOT NULL UNIQUE, -- the Arena round this one-round match is (#64)
     seed INTEGER NOT NULL,
-    kinds TEXT NOT NULL,              -- JSON array of 4 seat kinds
+    kinds TEXT NOT NULL,              -- JSON array of 4 seat kinds: remote (an agent) or house
     deadline_ms INTEGER NOT NULL,
-    fill_after_ms INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('open','running','over','failed')),
     created_at INTEGER NOT NULL,
     started_at INTEGER,
     ended_at INTEGER,
-    creator TEXT,
     error TEXT,
     winner INTEGER,
     ruleset_body TEXT NOT NULL,       -- JSON Ruleset pinned at creation: later preset edits cannot affect the match
     ruleset_preset TEXT,
     ruleset_version INTEGER,
-    picks_locked_at INTEGER,          -- spectator picks locked (#35)
-    suit_up TEXT                      -- JSON SuitUpAnswer[] of the built-in AI seats (#19)
+    picks_locked_at INTEGER           -- spectator picks locked (#35)
   );
   CREATE INDEX matches_status ON matches(status);
   CREATE TABLE owners (
@@ -224,7 +221,7 @@ export const SCHEMA = `
     soul TEXT NOT NULL,               -- the agent's soul.md (personal data stripped)
     owner TEXT NOT NULL COLLATE NOCASE,
     look TEXT,                        -- JSON identity wish or NULL
-    token_hash TEXT NOT NULL UNIQUE,  -- sha256 hex of the seat token; the token itself is never stored
+    token_hash TEXT NOT NULL,         -- sha256 hex of the agent's Arena seat token (one per agent, every round); never the token
     joined_at INTEGER NOT NULL,
     left_at INTEGER,
     left_round INTEGER,
@@ -304,21 +301,19 @@ const p = <T>(v: unknown): T => JSON.parse(v as string) as T;
 
 const matchOf = (r: Row): MatchRow => ({
   id: r.id as string,
+  arenaRound: r.arena_round as number,
   seed: r.seed as number,
   kinds: p(r.kinds),
   ruleset: resolveRuleset(p(r.ruleset_body)),
   ...(r.ruleset_preset ? { preset: r.ruleset_preset as string, presetVersion: r.ruleset_version as number } : {}),
   deadlineMs: r.deadline_ms as number,
-  fillAfterMs: r.fill_after_ms as number,
   status: r.status as MatchStatus,
   createdAt: r.created_at as number,
   startedAt: (r.started_at as number | null) ?? null,
   endedAt: (r.ended_at as number | null) ?? null,
-  creator: (r.creator as string | null) ?? null,
   error: (r.error as string | null) ?? null,
   winner: (r.winner as number | null) ?? null,
   picksLockedAt: (r.picks_locked_at as number | null) ?? null,
-  suitUp: (r.suit_up as string | null) ?? null,
 });
 
 const presetOf = (r: Row): RulesetPreset => ({
@@ -343,7 +338,7 @@ const seatOf = (r: Row): SeatRow => ({
   openingLine: (r.opening_line as string | null) ?? null,
 });
 
-const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round", picksLockedAt: "picks_locked_at", suitUp: "suit_up" };
+const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round", picksLockedAt: "picks_locked_at" };
 
 export class SqliteStore implements MatchStore {
   readonly db: Database;
@@ -400,7 +395,7 @@ export class SqliteStore implements MatchStore {
   async setDefaultRulesetPreset(name: string) {
     this.db.transaction(() => {
       const row = this.db.query("SELECT body FROM ruleset_presets WHERE name = ?").get(name) as Row | null;
-      if (!row?.body) throw new Error("lobby default must be a preset with settings");
+      if (!row?.body) throw new Error("the Arena's default ruleset must be a preset with settings");
       this.db.query("UPDATE ruleset_presets SET is_default = 0 WHERE is_default = 1").run();
       this.db.query("UPDATE ruleset_presets SET is_default = 1 WHERE name = ?").run(name);
     })();
@@ -408,8 +403,8 @@ export class SqliteStore implements MatchStore {
 
   async insertMatch(m: MatchRow) {
     this.db
-      .query("INSERT INTO matches (id, seed, kinds, deadline_ms, fill_after_ms, status, created_at, started_at, ended_at, creator, error, winner, ruleset_body, ruleset_preset, ruleset_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(m.id, m.seed, j(m.kinds), m.deadlineMs, m.fillAfterMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.creator, m.error, m.winner, j(m.ruleset), m.preset ?? null, m.presetVersion ?? null);
+      .query("INSERT INTO matches (id, arena_round, seed, kinds, deadline_ms, status, created_at, started_at, ended_at, error, winner, ruleset_body, ruleset_preset, ruleset_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(m.id, m.arenaRound, m.seed, j(m.kinds), m.deadlineMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.error, m.winner, j(m.ruleset), m.preset ?? null, m.presetVersion ?? null);
   }
   async updateMatch(id: string, patch: MatchPatch) {
     this.patch("matches", "id = ?", [id], patch);
@@ -423,6 +418,9 @@ export class SqliteStore implements MatchStore {
       ? (this.db.query(`SELECT * FROM matches WHERE status IN (${statuses.map(() => "?").join(",")}) ORDER BY created_at DESC, rowid DESC`).all(...statuses) as Row[])
       : (this.db.query("SELECT * FROM matches ORDER BY created_at DESC, rowid DESC").all() as Row[]);
     return rows.map(matchOf);
+  }
+  async lastArenaRound() {
+    return ((this.db.query("SELECT MAX(arena_round) AS n FROM matches").get() as { n: number | null }).n ?? 0);
   }
   async ownerOfKey(keyHash: string) {
     const r = this.db.query("SELECT owner FROM owner_keys WHERE key_hash = ? AND revoked_at IS NULL").get(keyHash) as Row | null;
@@ -472,9 +470,6 @@ export class SqliteStore implements MatchStore {
   }
   async updateSeat(matchId: string, seat: number, patch: SeatPatch) {
     this.patch("seats", "match_id = ? AND seat = ?", [matchId, seat], patch);
-  }
-  async deleteSeat(matchId: string, seat: number) {
-    this.db.query("DELETE FROM seats WHERE match_id = ? AND seat = ?").run(matchId, seat);
   }
   async listSeats(matchId: string) {
     return (this.db.query("SELECT * FROM seats WHERE match_id = ? ORDER BY seat").all(matchId) as Row[]).map(seatOf);

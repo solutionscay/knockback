@@ -2,12 +2,12 @@
  * The JOIN panel (#42), plug and play: the person enters an owner handle and gets an MCP key; the panel then shows
  * only the MCP config per client (with that key and the server's public URL from GET /api/join), and one line:
  * tell your agent "play Knockback". The MCP server teaches the agent the rest. The confirmation is the owner's agent
- * showing up in the queue with its name and soul line.
+ * showing up in the Arena (#64) with its name and soul line: in a seat it took from a house bot, or in the queue.
  *
  * The key stays in this browser (localStorage); the server keeps only its hash. Every agent joined with the key
  * belongs to the owner; an agent name stays bound to its owner across sessions.
  */
-import { clock, joinSnippet, joinStatus, mcpUrlFrom, PLAY, queueInfo, validHandle, type JoinTab, type MatchInfo } from "./data";
+import { arenaInfo, joinSnippet, joinStatus, mcpUrlFrom, PLAY, validHandle, type JoinTab } from "./data";
 import { $, every, getJson, html, mount } from "./dom";
 
 const TABS: [JoinTab, string][] = [
@@ -27,7 +27,6 @@ interface Saved {
 let dialog: HTMLDialogElement | null = null;
 let mcp = `${location.origin}/mcp`;
 let stopPoll: (() => void) | null = null;
-let since = "";
 
 function load(): Saved {
   try {
@@ -127,23 +126,22 @@ async function poll() {
   const st = dialog && $("#j-status", dialog);
   const s = load();
   if (!st || !s.key) return;
-  const [r, q] = await Promise.all([getJson<{ matches: MatchInfo[] }>("/api/matches"), getJson<unknown>("/api/queue")]);
-  if (!r.ok) return;
-  const j = joinStatus(r.data.matches, s.owner, since, q.ok ? queueInfo(q.data) : null);
+  const q = await getJson<unknown>("/api/queue");
+  if (!q.ok) return;
+  const j = joinStatus(arenaInfo(q.data), s.owner);
   st.className = `status ${j.state}`;
   const soul = j.soulLine ? html`<div class="sl">“${j.soulLine}”</div>` : "";
-  if (j.state === "waiting") mount(st, html`<i class="spin" aria-hidden="true"></i><div>Waiting for an agent of <b>${s.owner}</b>… it shows up here when it joins.</div>`);
+  if (j.state === "waiting") mount(st, html`<i class="spin" aria-hidden="true"></i><div>Waiting for an agent of <b>${s.owner}</b>… it shows up here when it joins the Arena.</div>`);
   else if (j.state === "queued")
-    mount(st, html`<div><div class="big">${j.agent} is in the queue</div><div class="dim">owner ${s.owner}</div>${soul}<div class="dim">${j.startsInSec !== null && j.startsInSec !== undefined ? html`Match starts in <b>${clock(j.startsInSec)}</b>` : "Match starts when the seats fill"}${j.position ? ` · #${j.position} in the queue` : ""}. ${j.startsInSec !== null && j.startsInSec !== undefined ? "With fewer than 4 agents, house bots fill the empty seats." : "A match starts when 4 agents are in the queue."}</div></div>`);
-  else if (j.state === "fighting") mount(st, html`<div><div class="big">${j.agent} is fighting now</div>${soul}</div><a class="btn small" href="/watch/${j.match}">Watch</a>`);
-  else mount(st, html`<div><div class="big">${j.agent}'s match is over</div>${soul}</div><a class="btn small ghost" href="/agent/${encodeURIComponent(j.agent ?? "")}">See ${j.agent}</a>`);
+    mount(st, html`<div><div class="big">${j.agent} is in the queue</div><div class="dim">owner ${s.owner}</div>${soul}<div class="dim">#${j.position} in the queue. Every seat is an agent's now: ${j.agent} takes the first seat that frees up (an agent leaves, goes silent, or places last in a round).</div></div>`);
+  else if (j.state === "seated")
+    mount(st, html`<div><div class="big">${j.agent} took a seat</div><div class="dim">owner ${s.owner}</div>${soul}<div class="dim">It kicks out a house bot and fights from round ${j.entersRound}.</div></div><a class="btn small" href="/watch">Watch</a>`);
+  else mount(st, html`<div><div class="big">${j.agent} is fighting now</div>${soul}</div><a class="btn small" href="/watch">Watch</a>`);
 }
 
 /** Open the panel (the big JOIN button, the nav link, or /lobby#join). */
 export async function openJoin() {
   dialog ??= build();
-  // only matches made after the panel opened count as "your agent arrived"
-  since = new Date(Date.now() - 60_000).toISOString();
   const s = load();
   if (s.key) {
     // a revoked key: forget it and ask for an owner again

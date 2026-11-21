@@ -13,10 +13,12 @@
  * the match server at /mcp; scripts/mcp-stdio.ts bridges stdio clients to it.
  *
  * Sessions: one McpServer per MCP session. The session holds the agent's
- * match, seat and seat token, so the agent never handles the token: every
- * tool calls the match server's own HTTP API in-process with that token, and
- * gets its validation, rate limits, deadlines and house-bot fallback exactly
- * as an HTTP agent does.
+ * Arena seat token (#64), so the agent never handles it: every tool calls the
+ * match server's own HTTP API in-process with that token, and gets its
+ * validation, rate limits, deadlines and house-bot fallback exactly as an HTTP
+ * agent does. A session that closes or expires leaves the Arena (a house bot
+ * takes its seat); a tool call whose connection drops is a disconnect (the
+ * autopilot plays until the agent is back).
  *
  * Modules: this file is the gateway (transport, session lifetime, auth, rate limits, HTTP adaptation);
  * src/server/mcp-tools.ts registers the tools on each session's server; src/server/mcp-schema.ts builds the tool
@@ -30,7 +32,6 @@ import { HttpError, RateLimiter } from "./limits";
 import { McpAdmission } from "./mcp-admission";
 import { INSTRUCTIONS } from "./mcp-schema";
 import { registerTools, type Session } from "./mcp-tools";
-import type { Matchmaker } from "./matchmaker";
 import type { MatchServer } from "./match-server";
 import { hashToken } from "./seat-tokens";
 import { hashKey, keyOf } from "./keys";
@@ -42,8 +43,6 @@ interface Live {
 }
 
 export interface McpOptions {
-  /** the lobby queue (#22): join_lobby waits here until the matchmaker seats the agent */
-  lobby: Matchmaker;
   /** public base URL for links in tool results (e.g. https://kb.example.com); default: from the request */
   publicUrl?: string;
   maxSessions?: number;
@@ -74,7 +73,7 @@ export class McpGateway {
 
   constructor(
     readonly api: MatchServer,
-    readonly opts: McpOptions,
+    readonly opts: McpOptions = {},
   ) {
     this.admission = new McpAdmission(opts.maxInFlight, opts.maxInFlightPerIp, opts.maxInFlightPerSession);
     this.maxSessions = opts.maxSessions ?? 200;
@@ -96,12 +95,11 @@ export class McpGateway {
     await s.transport.close().catch(() => undefined);
   }
 
-  /** The session is gone for good: the house bot takes its fighter (#22). */
+  /** The session is gone for good: its agent leaves the Arena, a house bot takes its seat (#64). */
   private handOver(state: Session, reason: string) {
-    if (state.ticket) this.opts.lobby.leave(state.ticket);
-    if (state.match === undefined || state.seat === undefined || !state.token) return;
-    // only this session's own agent: the seat may have been freed and taken by someone else
-    this.api.matches.get(state.match)?.takeover(state.seat, reason, undefined, hashToken(state.token));
+    if (!state.token) return;
+    // only this session's own agent (by its token): the agent may have joined again from another session
+    void this.api.arena.leaveByHash(hashToken(state.token), reason).catch((e) => this.api.log(`mcp: leave failed: ${e instanceof Error ? e.message : String(e)}`));
   }
 
   private sweep(now = Date.now()) {
@@ -136,7 +134,7 @@ export class McpGateway {
       const live = this.sessions.get(sid);
       if (!live)
         return Response.json(
-          { jsonrpc: "2.0", error: { code: -32001, message: "MCP session not found (expired or the server restarted): reconnect and call join_lobby again" }, id: null },
+          { jsonrpc: "2.0", error: { code: -32001, message: "MCP session not found (expired or the server restarted): reconnect and call join_lobby again (the same name takes your seat back while you still hold it)" }, id: null },
           { status: 404 },
         );
       // a revoked key ends its sessions at their next request
@@ -148,10 +146,9 @@ export class McpGateway {
       live.state.lastSeen = Date.now();
       // a tool call whose connection drops (the agent's process died, the network went) is a disconnect (#22);
       // the seat goes on autopilot unless the session sends something again within the grace period
-      if (req.method === "POST" && live.state.match !== undefined && live.state.seat !== undefined && live.state.token) {
-        const { match, seat } = live.state;
+      if (req.method === "POST" && live.state.token) {
         const expect = hashToken(live.state.token);
-        req.signal.addEventListener("abort", () => this.api.matches.get(match)?.dropped(seat, "connection lost", expect), { once: true });
+        req.signal.addEventListener("abort", () => this.api.arena.dropped(expect, "connection lost"), { once: true });
       }
       return live.transport.handleRequest(req);
     }
@@ -214,10 +211,10 @@ export class McpGateway {
     const server = new McpServer(
       { name: "knockback", version: "0.2.0" },
       {
-        instructions: `${INSTRUCTIONS} Watch at ${base}/lobby.`,
+        instructions: `${INSTRUCTIONS} Watch at ${base}/watch.`,
       },
     );
-    registerTools(server, { state, api: this.api, lobby: this.opts.lobby, base, call: (method, path, body, signal) => this.call(state, method, path, body, signal) });
+    registerTools(server, { state, api: this.api, base, call: (method, path, body, signal) => this.call(state, method, path, body, signal) });
     return server;
   }
 }

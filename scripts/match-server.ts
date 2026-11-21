@@ -1,59 +1,46 @@
 /**
- * The match server (#20, #25, #27): remote agents play Knockback over HTTP; the viewer
- * watches live. API: src/server/match-server.ts (GET /api lists it).
+ * The match server (#20, #25, #27, #64): the always-on Arena. Remote agents play Knockback over MCP or HTTP; the
+ * viewer watches live. API: src/server/match-server.ts (GET /api lists it).
  *
- *   bun run match-server                              # localhost:5176: the lobby waits for agents (no match until one joins)
+ *   bun run match-server                              # localhost:5176: the Arena runs at once, house bots in every seat
  *   bun run match-server --host 0.0.0.0               # also on the LAN
- *   bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
- *   bun run match-server --seats remote,claude,house,house   # local providers allowed from the CLI
- *   bun run match-server --seats remote,remote,remote,remote   # also open one match at startup (it expires if nobody joins)
- *   bun run match-server --host 0.0.0.0 --open        # trusted LAN: no seat token checks (?seat=N instead)
+ *   bun run match-server --deadline 75                # seconds an agent has for its turn (default 75)
  *   bun run match-server --db records/match-server.db # storage (the default); --db :memory: keeps nothing
  *   bun run match-server --trust-proxy                # behind a reverse proxy (Caddy): client address from X-Forwarded-For,
  *                                                     # only when the request comes from --trusted-proxies (default: loopback and private addresses)
  *
- * Pace (#22): matches run at broadcast speed (the server waits until each round
- * has played out for viewers before asking for the next one); --fast keeps the
- * instant mode (tests, scripted demos). Agents that drop or miss a deadline
- * hand their fighter to the house bot until they come back.
+ * The Arena (#64): one fight with 4 seats, rounds back to back (each round a one-round match). House bots hold the
+ * seats no agent holds, so something is always on. An agent joins (MCP join_lobby at /mcp, or HTTP POST /api/queue)
+ * and claims a house bot's seat from the next round, or waits in the queue. It keeps its seat while it answers; 2
+ * missed rounds in a row, or leaving, give the seat back to a house bot. With 4 agents seated and more waiting, the
+ * one that placed last goes to the back of the queue. The server makes no model call. --public-url for links and
+ * GET /api/join; --no-mcp turns MCP off (HTTP stays).
  *
- * Check-ins (#9, on by default; --checkins off or KB_CHECKINS=false): every
- * agent (and local AI seat) gets a status every 10 s of fight and may change
- * its plan (GET /turn status "checkin", POST /checkin; MCP: wait_for_turn +
- * submit_checkin). At broadcast pace the check-in comes when viewers reach
- * that moment; it waits for the answer, and the change applies at the tick
- * viewers have reached when it arrives (+ a lead), so a slow answer applies
- * late. --checkin-cap (s, default 60) only stops hung calls; --checkin-every,
- * --checkin-max as in ai-match.
+ * Pace (#22): rounds run at broadcast speed, whether or not anyone watches (the win screen plays between rounds);
+ * --fast runs them instantly (tests, scripted demos, scripts/remote-agent.ts against a local server).
  *
- * Lobby (#22): agents wait in a queue (MCP join_lobby at /mcp, or HTTP POST /api/queue). The
- * matchmaker opens a match when 4 agents wait (agents only). --fill-bots <seconds> (KB_FILL_BOTS; off by
- * default, for tests and demos): after an agent has waited that long, house bots take the empty seats
- * (--min-agents, default 1). Nothing runs while nobody waits: no loop, no automatic match. --max-concurrent matchmaker matches (default 1), --mcp-deadline
- * seconds per turn (default 75), --public-url for links
- * and GET /api/join. --no-mcp turns MCP off (the HTTP queue stays).
+ * Check-ins (#9, on by default; --checkins off or KB_CHECKINS=false): every agent gets a status every 10 s of fight
+ * and may change its plan (GET /api/arena/turn status "checkin", POST /api/arena/checkin; MCP: wait_for_turn +
+ * submit_checkin). At broadcast pace the check-in comes when viewers reach that moment; it waits for the answer,
+ * and the change applies at the tick viewers have reached when it arrives (+ a lead), so a slow answer applies late.
+ * --checkin-cap (s, default 60) only stops hung calls; --checkin-every, --checkin-max as in ai-match.
  *
- * Every flag can also come from the environment as KB_<FLAG> (KB_FILL_AFTER=60,
- * KB_OPEN=true, KB_NO_MATCH=true, ...), plus PORT and HOST; command-line flags
- * win. KB_VERSION is shown by GET /api/health. SIGTERM/SIGINT close the
- * database cleanly (a SIGKILL is safe too: SQLite WAL, and matches resume).
+ * Every flag can also come from the environment as KB_<FLAG> (KB_DEADLINE=75, KB_FAST=true, ...), plus PORT and
+ * HOST; command-line flags win. KB_VERSION is shown by GET /api/health. SIGTERM/SIGINT close the database cleanly (a
+ * SIGKILL is safe too: SQLite WAL, and the round in progress resumes).
  *
- * State lives in a SQLite file (--db, default <out>/match-server.db). After a
- * restart, open matches wait again and running ones resume where they were
- * (stored rounds replay deterministically); a new match is created only when
- * none was resumed.
+ * State lives in a SQLite file (--db, default <out>/match-server.db). After a restart the Arena round in progress
+ * resumes where it was (its stored decisions replay deterministically) and agents join again.
  *
- * Site (#22): http://<host>:5176/lobby (live fight, up next, queue, results, JOIN), /watch/:id,
- * /replay/:id, /agent/:name, /replays. Watch: http://<host>:5176/?live (the newest match). Records land in
- * records/ and replay with ?record=/records/<file>.json.
+ * Site (#22): http://<host>:5176/lobby (the Arena live, the seats, the queue, results, JOIN), /watch (the Arena
+ * live), /watch/:id, /replay/:id, /agent/:name, /replays. Watch: http://<host>:5176/?live. Records land in records/
+ * and replay with ?record=/records/<file>.json.
  */
 import { checkinFlags } from "../src/ai/checkin";
 import { join, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import { registerStubs } from "../src/ai/providers";
 import { MAX_BODY } from "../src/server/limits";
 import { MatchServer } from "../src/server/match-server";
-import { Matchmaker } from "../src/server/matchmaker";
 import { McpGateway } from "../src/server/mcp";
 import { inCidrs, parseCidrs } from "../src/server/net";
 import { SchemaError, SqliteStore } from "../src/server/store";
@@ -66,7 +53,7 @@ import { logLanUrls, serveRecord } from "./viewer-server";
 import { parseFlags } from "./flags";
 
 const flags = parseFlags(process.argv.slice(2));
-// environment: KB_FILL_AFTER -> --fill-after, PORT -> --port, HOST -> --host (command-line flags win)
+// environment: KB_DEADLINE -> --deadline, PORT -> --port, HOST -> --host (command-line flags win)
 for (const [k, v] of Object.entries(process.env)) {
   if (v === undefined || v === "") continue;
   const name = k === "PORT" || k === "HOST" ? k.toLowerCase() : k.startsWith("KB_") && k !== "KB_VERSION" ? k.slice(3).toLowerCase().replace(/_/g, "-") : null;
@@ -74,7 +61,6 @@ for (const [k, v] of Object.entries(process.env)) {
 }
 const trustProxy = flags["trust-proxy"] === "true";
 const trustedProxies = parseCidrs(flags["trusted-proxies"] ?? "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7");
-registerStubs();
 await initPhysics();
 const outDir = resolve(flags.out ?? "records");
 const hostname = flags.host ?? "localhost";
@@ -92,28 +78,18 @@ try {
 }
 const secs = (s: string | undefined, dflt: number) => (s !== undefined ? Math.round(Number(s) * 1000) : dflt);
 
+const publicUrl = flags["public-url"]?.replace(/\/$/, "");
 const api = new MatchServer({
   outDir,
-  open: flags.open === "true",
   store,
-  defaultDeadlineMs: secs(flags.deadline, 20_000),
-  defaultFillAfterMs: secs(flags["fill-after"], 60_000),
   version: process.env.KB_VERSION ?? "dev",
   pace: flags.fast === "true" ? "fast" : "broadcast",
   // mid-round check-ins are on by default here (--checkins off / KB_CHECKINS=false turns them off)
   checkins: checkinFlags(flags, true),
+  arena: { deadlineMs: secs(flags.deadline, 75_000), ...(publicUrl ? { publicUrl } : {}) },
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
-
-const publicUrl = flags["public-url"]?.replace(/\/$/, "");
-const lobby = new Matchmaker(api, {
-  fillAfterMs: flags["fill-bots"] !== undefined ? secs(flags["fill-bots"], 0) : null,
-  minAgents: Number(flags["min-agents"] ?? 1),
-  deadlineMs: secs(flags["mcp-deadline"], 75_000),
-  maxConcurrent: Number(flags["max-concurrent"] ?? 1),
-  ...(publicUrl ? { publicUrl } : {}),
-});
-const mcp = flags["no-mcp"] === "true" ? null : new McpGateway(api, { lobby, ...(publicUrl ? { publicUrl } : {}) });
+const mcp = flags["no-mcp"] === "true" ? null : new McpGateway(api, publicUrl ? { publicUrl } : {});
 
 /**
  * The client's address for rate limits: behind a proxy, the last X-Forwarded-For
@@ -145,25 +121,18 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (site: /lobby, viewer: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
+console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (site: /lobby, viewer: /?live)`);
 logLanUrls(hostname, server.port, "/lobby");
-console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds wait for viewers; --fast for instant)"}${api.opts.checkins ? "; mid-round check-ins on" : ""}`);
+console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds take the time viewers need; --fast for instant)"}${api.opts.checkins ? "; mid-round check-ins on" : ""}`);
 if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp`);
-console.log(`lobby: ${lobby.fillAfterMs === null ? "agents only" : `house bots fill after ${lobby.fillAfterMs / 1000} s`}; ${lobby.deadlineMs / 1000} s turns; at most ${lobby.maxConcurrent} match(es) at once`);
+console.log(`arena: house bots in every seat no agent holds; ${api.arena.deadlineMs / 1000} s turns; a seat is lost after ${api.arena.missLimit} missed rounds`);
 console.log(`storage: ${dbPath}`);
 const resumed = await api.resume();
-for (const id of resumed.running) console.log(`resumed match: ${id}`);
-for (const id of resumed.open) console.log(`open match (restored): ${id}`);
+if (resumed.round !== null) console.log(`resumed Arena round ${resumed.round}`);
 for (const sig of ["SIGINT", "SIGTERM"] as const)
   process.on(sig, () => {
     console.log(`${sig}: closing the database`);
     void store.close().finally(() => process.exit(0));
   });
-// no automatic match (#22): only when --seats asks for one (it expires if nobody joins before the fill timer)
-if (flags.seats && flags["no-match"] !== "true" && !resumed.open.length && !resumed.running.length) {
-  const m = await api.createMatch({
-    seats: flags.seats.split(",").map((s) => s.trim().toLowerCase()),
-    ...(flags.seed ? { seed: Number(flags.seed) } : {}),
-  });
-  console.log(`open match: ${m.id}  (join: POST /api/matches/${m.id}/join)`);
-}
+// the Arena never stops: house bots fill every seat no agent holds
+void api.arena.start();

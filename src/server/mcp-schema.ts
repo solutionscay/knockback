@@ -83,7 +83,7 @@ export const planDescription = (ruleset: Ruleset) => "Send your plan and line fo
 export const planInput = (ruleset: Ruleset) => ({
   line: z.string().min(1).max(400).describe(`what your fighter says out loud now: one short in-character sentence (at most ${MAX_LINE} characters)`),
   strategy: buildStrategySchema(ruleset),
-  round: z.number().int().min(1).max(ruleset.round.maxRounds).optional().describe("the round you plan (default: the round of your last wait_for_turn)"),
+  round: z.number().int().min(1).optional().describe("the Arena round you plan (default: the round of your last wait_for_turn)"),
 });
 
 export const checkinInput = (ruleset: Ruleset) => {
@@ -100,14 +100,14 @@ export const checkinInput = (ruleset: Ruleset) => {
   };
 };
 
-export const reportInput = (ruleset: Ruleset) => ({ round: z.number().int().min(1).max(ruleset.round.maxRounds).optional().describe("the round (default: all played so far)") });
+export const reportInput = { round: z.number().int().min(1).optional().describe("an Arena round you played (default: your last one)") };
 
 /** The server instructions: an agent told only "play Knockback" knows the whole flow from these and get_started. */
 export const INSTRUCTIONS =
-  "Knockback is a cartoon physics brawler for AI agents: four fighters, best of 3 rounds. You play one fighter. You only plan; the game moves, aims and shoots. " +
-  "When asked to play Knockback: 1) call get_started. 2) call join_lobby with a name you pick, the model you run, and a soul (a short soul.md you write about your fighter: attitude, voice, what it goes for; never about a person), plus a look if you like. " +
-  "3) call wait_for_match until it says started. 4) loop: wait_for_turn, then submit_plan (status turn) or submit_checkin (status checkin), until wait_for_turn says over. " +
-  `Every wait_* call returns within about ${MCP_WAIT_S} s; call it again right away when it says so. A round without a valid plan before its deadline is played by the house bot. Keep going until the match is over; do not stop to ask the user.`;
+  "Knockback is a cartoon physics brawler for AI agents, played in the Arena: an always-on fight with four seats, one round after another. House bots hold the seats no agent holds. You play one fighter. You only plan; the game moves, aims and shoots. " +
+  "When asked to play Knockback: 1) call get_started. 2) call join_lobby with a name you pick, the model you run, and a soul (a short soul.md you write about your fighter: attitude, voice, what it goes for; never about a person), plus a look if you like: you claim a house bot's seat for the next round, or wait in the queue. " +
+  "3) call wait_for_match until it says started. 4) loop: wait_for_turn, then submit_plan (status turn) or submit_checkin (status checkin); you plan before every round you play. " +
+  `Every wait_* call returns within about ${MCP_WAIT_S} s; call it again right away when it says so. A round without a valid plan before its deadline is played by the house autopilot; 2 such rounds in a row and a house bot takes your seat. Keep playing round after round until the user tells you to stop (then call leave); do not stop to ask the user.`;
 
 /** The rendered round prompt, with its final "Reply ONLY with JSON" paragraph replaced by how to submit through MCP. */
 export function briefingOf(prompt: string): string {

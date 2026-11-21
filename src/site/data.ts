@@ -22,12 +22,13 @@ export interface SeatInfo {
   autopilot?: string;
   finishedOnAutopilot?: boolean;
 }
+/** One Arena round (#64): a one-round match. */
 export interface MatchInfo {
   id: string;
+  arenaRound: number;
   status: "open" | "running" | "over" | "failed";
   seed: number;
   createdAt: string;
-  startsInSec?: number;
   seats: SeatInfo[];
   round: number;
   wins: number[] | null;
@@ -81,103 +82,83 @@ export const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 
 /** The model behind a seat label: the model spotlight's modelOf (src/stats/models.ts). */
 
-// ------------------------------------------------------------------ lobby
+// ------------------------------------------------------------------ the Arena (#64)
 
-const newest = (a: { createdAt: string }, b: { createdAt: string }) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0);
-
-/** The match on the lobby stage: the newest running one; else none (the page shows the waiting state, #22). */
-export function liveMatch(ms: MatchInfo[]): MatchInfo | null {
-  return ms.filter((m) => m.status === "running").sort(newest)[0] ?? null;
+/** GET /api/queue: the Arena as the pages show it. */
+export interface ArenaInfo {
+  /** the round on now (or the last one, between rounds) and who plays it */
+  round: { number: number; match: string; status: string; playing: { seat: number; agent: string | null; owner: string | null }[] } | null;
+  /** the round the seats below play next */
+  nextRound: number;
+  /** the 4 seats: an agent's (from a round) or a house bot's */
+  seats: { seat: number; holder: "agent" | "house"; agent: string | null; owner: string; soulLine: string; fromRound: number }[];
+  queue: { position: number; agent: string; owner: string; soulLine: string; waitingSec: number }[];
+  deadlineSec: number;
 }
 
-/** The next match to start: the open match that starts first (the oldest). */
-export function upNext(ms: MatchInfo[]): MatchInfo | null {
-  return (
-    ms
-      .filter((m) => m.status === "open")
-      .sort((a, b) => (a.startsInSec ?? 1e9) - (b.startsInSec ?? 1e9) || -newest(a, b))[0] ?? null
-  );
-}
-
-export interface QueueEntry {
-  agent: string;
-  owner?: string;
-  soulLine?: string;
-  /** the open match it sits in; null while it waits in the matchmaker's queue */
-  match: string | null;
-  seat: number | null;
-  startsInSec: number | null;
-}
-
-/** GET /api/queue (#22): the matchmaker's queue. */
-export interface QueueInfo {
-  waiting: { position: number; agent: string; owner: string; soulLine: string; waitingSec: number }[];
-  /** agents still needed for a full match of outside agents */
-  needed: number;
-  /** seconds until the oldest agent's match starts with house bots; null with nobody waiting */
-  fillsInSec: number | null;
-  /** a match is running: the queue waits for it */
-  blocked: boolean;
-  /** null: agents only (no house-bot fill) */
-  fillAfterSec: number | null;
-}
-
-/** The queue as checked data (pure: tested). */
-export function queueInfo(raw: unknown): QueueInfo | null {
+/** The Arena as checked data (pure). */
+export function arenaInfo(raw: unknown): ArenaInfo | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  if (!Array.isArray(o.waiting)) return null;
+  if (!Array.isArray(o.seats) || !Array.isArray(o.queue)) return null;
   const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+  const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+  const r = o.round && typeof o.round === "object" ? (o.round as Record<string, unknown>) : null;
   return {
-    waiting: o.waiting.slice(0, 50).map((w, i) => {
-      const x = (w ?? {}) as Record<string, unknown>;
-      return { position: num(x.position, i + 1), agent: String(x.agent ?? "?").slice(0, 24), owner: String(x.owner ?? "").slice(0, 24), soulLine: String(x.soulLine ?? "").slice(0, 120), waitingSec: num(x.waitingSec, 0) };
+    round: r
+      ? {
+          number: num(r.number, 0),
+          match: str(r.match, 32),
+          status: str(r.status, 16),
+          playing: (Array.isArray(r.playing) ? r.playing : []).slice(0, 4).map((p, i) => {
+            const x = (p ?? {}) as Record<string, unknown>;
+            return { seat: num(x.seat, i), agent: typeof x.agent === "string" ? x.agent.slice(0, 24) : null, owner: typeof x.owner === "string" ? x.owner.slice(0, 24) : null };
+          }),
+        }
+      : null,
+    nextRound: num(o.nextRound, 1),
+    seats: o.seats.slice(0, 4).map((x0, i) => {
+      const x = (x0 ?? {}) as Record<string, unknown>;
+      const agent = x.holder === "agent" && typeof x.agent === "string" ? x.agent.slice(0, 24) : null;
+      return { seat: num(x.seat, i), holder: agent ? "agent" : "house", agent, owner: str(x.owner, 24), soulLine: str(x.soulLine, 120), fromRound: num(x.fromRound, 0) };
     }),
-    needed: num(o.needed, 4),
-    fillsInSec: typeof o.fillsInSec === "number" ? o.fillsInSec : null,
-    blocked: o.blocked === true,
-    fillAfterSec: typeof o.fillAfterSec === "number" ? o.fillAfterSec : null,
+    queue: o.queue.slice(0, 50).map((w, i) => {
+      const x = (w ?? {}) as Record<string, unknown>;
+      return { position: num(x.position, i + 1), agent: str(x.agent, 24) || "?", owner: str(x.owner, 24), soulLine: str(x.soulLine, 120), waitingSec: num(x.waitingSec, 0) };
+    }),
+    deadlineSec: num(o.deadlineSec, 75),
   };
 }
 
-/** Who is waiting: the matchmaker's queue (the oldest four start first), then agents seated in open matches. */
-export function queue(ms: MatchInfo[], q: QueueInfo | null = null): QueueEntry[] {
-  const queued = (q?.waiting ?? []).map((w) => ({ agent: w.agent, owner: w.owner, soulLine: w.soulLine, match: null, seat: null, startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null }));
-  const seated = ms
-    .filter((m) => m.status === "open")
-    .flatMap((m) => m.seats.filter((s) => s.agent).map((s) => ({ agent: s.agent!, owner: s.owner, soulLine: s.soulLine, match: m.id, seat: s.seat, startsInSec: m.startsInSec ?? null })))
-    .sort((a, b) => (a.startsInSec ?? 1e9) - (b.startsInSec ?? 1e9));
-  return [...queued, ...seated];
+/** Who sits in each seat for the next round: an agent (and the round it enters) or a house bot (pure). */
+export function nextLineup(a: ArenaInfo): { seat: number; agent: string | null; owner: string; soulLine: string; enters: number | null }[] {
+  return a.seats.map((s) => ({ seat: s.seat, agent: s.agent, owner: s.owner, soulLine: s.soulLine, enters: s.agent && s.fromRound >= a.nextRound ? s.fromRound : null }));
 }
 
 export interface JoinStatus {
-  state: "waiting" | "queued" | "fighting" | "done";
-  /** the owner's agent and its soul line, once it shows up */
+  /** waiting: no agent of this owner in the Arena yet; queued; seated (enters a round soon); fighting (plays the round on now) */
+  state: "waiting" | "queued" | "seated" | "fighting";
   agent?: string;
   soulLine?: string;
   match?: string;
-  startsInSec?: number | null;
-  /** 1-based place among the agents waiting (queued only) */
+  /** the round the agent enters (seated) */
+  entersRound?: number;
+  /** 1-based place in the queue (queued) */
   position?: number;
 }
 
-/** Where the owner's agent is now (#42: "your agent is in the queue"). Case-insensitive; the newest match wins. */
-export function joinStatus(ms: MatchInfo[], owner: string, since = "", q: QueueInfo | null = null): JoinStatus {
+/** Where the owner's agent is in the Arena (#42: "your agent is in"). Case-insensitive. Pure. */
+export function joinStatus(a: ArenaInfo | null, owner: string): JoinStatus {
   const want = owner.trim().toLowerCase();
-  if (!want) return { state: "waiting" };
-  const mineQ = (o: string | undefined) => (o ?? "").toLowerCase() === want;
-  // in the matchmaker's queue (#22): no match yet
-  const w = q?.waiting.find((x) => mineQ(x.owner));
-  if (w) return { state: "queued", agent: w.agent, soulLine: w.soulLine, startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null, position: w.position };
-  const seatOf = (m: MatchInfo) => m.seats.find((s) => s.agent && mineQ(s.owner));
-  // a seat in an open or running match always counts; a finished match only when it is newer than `since`
-  const mine = ms.filter((m) => seatOf(m) && (m.status === "open" || m.status === "running")).sort(newest)[0] ?? ms.filter((m) => seatOf(m) && m.createdAt >= since).sort(newest)[0];
-  if (!mine) return { state: "waiting" };
-  const seat = seatOf(mine)!;
-  const who = { agent: seat.agent!, soulLine: seat.soulLine };
-  if (mine.status === "open") return { state: "queued", ...who, match: mine.id, startsInSec: mine.startsInSec ?? null };
-  if (mine.status === "running") return { state: "fighting", ...who, match: mine.id };
-  return { state: "done", ...who, match: mine.id };
+  if (!want || !a) return { state: "waiting" };
+  const mine = (o: string | null | undefined) => (o ?? "").toLowerCase() === want;
+  const seat = a.seats.find((s) => s.agent && mine(s.owner));
+  if (seat) {
+    const live = a.round && (a.round.status === "running" || a.round.status === "open") && a.round.playing.some((p) => p.agent === seat.agent);
+    return live ? { state: "fighting", agent: seat.agent!, soulLine: seat.soulLine, match: a.round!.match } : { state: "seated", agent: seat.agent!, soulLine: seat.soulLine, entersRound: Math.max(seat.fromRound, a.nextRound) };
+  }
+  const w = a.queue.find((x) => mine(x.owner));
+  return w ? { state: "queued", agent: w.agent, soulLine: w.soulLine, position: w.position } : { state: "waiting" };
 }
 
 /** Round wins as a scoreline: [2,1,0,0] -> "2–1", [2,0,0,0] -> "2–0", [1,1,1,0] -> "1–1–1". */

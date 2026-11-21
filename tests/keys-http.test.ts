@@ -1,7 +1,8 @@
 /**
- * Contract 2: owner keys over HTTP. POST /api/keys issues a key; joining needs it in the Authorization header (no
- * key, a key in ?key=, an unknown or revoked key: 401); an agent name stays bound to the owner who used it first
- * (409 for another owner). The server runs in-process (MatchServer.handle): no port, no network.
+ * Contract 2: owner keys over HTTP. POST /api/keys issues a key; joining the Arena (POST /api/queue) needs it in the
+ * Authorization header (no key, a key in ?key=, an unknown or revoked key: 401); an agent name stays bound to the
+ * owner who used it first (409 for another owner). The server runs in-process (MatchServer.handle): no port, no
+ * network, and no round runs (joins only claim seats).
  */
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -27,9 +28,7 @@ const newKey = async (owner: string) => {
   expect(r.status).toBe(201);
   return r.data.key as string;
 };
-/** An open match with 4 agent seats (it never starts during the test). */
-const openMatch = async () => (await api.createMatch({ seats: ["remote", "remote", "remote", "remote"], fillAfterMs: 3_600_000 })).id;
-const joinAs = (match: string, name: string, opts: { key?: string; query?: string } = {}) => call("POST", `/api/matches/${match}/join${opts.query ?? ""}`, { key: opts.key, body: { name, model: "claude-opus-5-5", soul: SOUL } });
+const joinAs = (name: string, opts: { key?: string; query?: string } = {}) => call("POST", `/api/queue${opts.query ?? ""}`, { key: opts.key, body: { name, model: "claude-opus-5-5", soul: SOUL } });
 
 describe("owner keys over HTTP", () => {
   test("POST /api/keys issues a key once per handle", async () => {
@@ -44,11 +43,10 @@ describe("owner keys over HTTP", () => {
 
   test("a join needs the key in the Authorization header", async () => {
     const key = await newKey("Bea");
-    const m = await openMatch();
-    expect((await joinAs(m, "Nokey")).status).toBe(401);
-    expect((await joinAs(m, "Urlkey", { query: `?key=${key}` })).status).toBe(401);
-    expect((await joinAs(m, "Wrongkey", { key: `kbk_${"0".repeat(32)}` })).status).toBe(401);
-    const ok = await joinAs(m, "Withkey", { key });
+    expect((await joinAs("Nokey")).status).toBe(401);
+    expect((await joinAs("Urlkey", { query: `?key=${key}` })).status).toBe(401);
+    expect((await joinAs("Wrongkey", { key: `kbk_${"0".repeat(32)}` })).status).toBe(401);
+    const ok = await joinAs("Withkey", { key });
     expect(ok.status).toBe(201);
     expect(typeof ok.data.token).toBe("string");
     expect((await call("GET", "/api/keys/me", { key })).data.agents).toEqual(["Withkey"]);
@@ -56,18 +54,23 @@ describe("owner keys over HTTP", () => {
 
   test("a revoked key gets 401", async () => {
     const key = await newKey("Cy");
-    const m = await openMatch();
     expect((await call("DELETE", "/api/keys/me", { key })).data).toEqual({ revoked: true, owner: "Cy" });
-    expect((await joinAs(m, "Revoked", { key })).status).toBe(401);
+    expect((await joinAs("Revoked", { key })).status).toBe(401);
     expect((await call("GET", "/api/keys/me", { key })).status).toBe(401);
   });
 
   test("an agent name stays bound to its owner", async () => {
     const [dee, eve] = [await newKey("Dee"), await newKey("Eve")];
-    expect((await joinAs(await openMatch(), "Striker", { key: dee })).status).toBe(201);
-    const taken = await joinAs(await openMatch(), "striker", { key: eve });
+    const first = await joinAs("Striker", { key: dee });
+    expect(first.status).toBe(201);
+    const taken = await joinAs("striker", { key: eve });
     expect(taken.status).toBe(409);
     expect(taken.data.error).toContain("belongs to another owner");
-    expect((await joinAs(await openMatch(), "STRIKER", { key: dee })).status).toBe(201); // the owner keeps it
+    // the owner keeps it: joining again is the same agent with a new seat token; the old token is out
+    const again = await joinAs("STRIKER", { key: dee });
+    expect(again.status).toBe(201);
+    expect(again.data.seat).toBe(first.data.seat);
+    expect(again.data.token).not.toBe(first.data.token);
+    expect((await call("GET", "/api/arena/turn?wait=0", { key: first.data.token })).data.status).toBe("out");
   });
 });

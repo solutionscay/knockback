@@ -1,4 +1,9 @@
-/** Spectator SSE: shared match history, bounded queues for individual viewers. */
+/**
+ * Spectator SSE: shared match history, bounded queues for individual viewers.
+ *
+ * The Arena (#64) has one stream that never ends: each round's match stream mirrors into it, and it restarts its
+ * history at every round (reset), so a viewer that connects late gets the current round from its start.
+ */
 const enc = new TextEncoder();
 const PING = enc.encode(": ping\n\n");
 type Client = { controller: ReadableStreamDefaultController<Uint8Array>; next: number };
@@ -8,6 +13,8 @@ export class LiveStream {
   private clients = new Set<Client>();
   private pinger: ReturnType<typeof setInterval> | undefined;
   private closed = false;
+  /** every message broadcast here also goes to this stream (a round's match stream -> the Arena stream) */
+  mirror: LiveStream | null = null;
 
   constructor(
     readonly maxClients = 64,
@@ -53,12 +60,19 @@ export class LiveStream {
   }
 
   broadcast(msg: unknown) {
+    this.mirror?.broadcast(msg);
     if (this.closed) return;
     this.history.push(enc.encode(`data: ${JSON.stringify(msg)}\n\n`));
     for (const client of this.clients) {
       this.pump(client);
       if (this.clients.has(client) && client.next < this.history.length) this.drop(client);
     }
+  }
+
+  /** Start the history again (a new Arena round): connected viewers stay and get what comes next. */
+  reset() {
+    this.history = [];
+    for (const client of this.clients) client.next = 0;
   }
 
   response(): Response {
