@@ -191,6 +191,9 @@ startup with "reset the database (pre-alpha)". Reset it with `bun run db:reset` 
 `--db <file>` or `KB_DB` for another): the old file moves aside to `<db>.reset-<time>` and a fresh database with
 the current schema (`SCHEMA_VERSION` in `src/server/store.ts`) takes its place. In the container:
 `docker compose run --rm server bun run db:reset`. Bump `SCHEMA_VERSION` with any change to the schema.
+Records of an older engine are not listed or replayed; `bun run records:archive` moves them (with their `.log.txt`,
+`.prompts.json` and `.checkins.json`) out of `<out>` to `<out>/../records-archive/engine-v<N>/`, never deleting
+(`--dry-run` lists them first).
 
 **Container deploy:** `docker compose up -d --build` runs the server behind Caddy (HTTPS) with the database and
 records on a volume; `deploy/deploy.sh` ships it to a VM over SSH, `deploy/backup.sh` / `deploy/restore.sh` handle

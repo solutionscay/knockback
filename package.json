@@ -13,6 +13,7 @@
     "teaser": "bun scripts/teaser.ts",
     "models": "bun scripts/models.ts",
     "db:reset": "bun scripts/db-reset.ts",
+    "records:archive": "bun scripts/records-archive.ts",
     "keys": "bun scripts/keys.ts"
   },
   "dependencies": {
