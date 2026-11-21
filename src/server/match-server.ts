@@ -1091,10 +1091,10 @@ export class MatchServer {
       const key = newKey();
       if (!(await this.store.createOwner(owner, hashKey(key)))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the JOIN panel keeps it in this browser); otherwise pick another handle`);
       this.log(`owner ${owner}: key issued`);
-      return json({ owner, key, use: "send it as Authorization: Bearer <key> (or ?key=<key> on the MCP URL); it is shown once" }, 201);
+      return json({ owner, key, use: "send it as Authorization: Bearer <key>; it is shown once" }, 201);
     }
     if (path === "/api/keys/me") {
-      const key = keyOf(req, url);
+      const key = keyOf(req);
       const owner = await ownerOf(this.store, key);
       if (method === "DELETE") {
         await this.store.revokeKey(hashKey(key!));
@@ -1160,7 +1160,7 @@ export class MatchServer {
       case "join": {
         allow("POST");
         this.joinLimit.take(ip, "joins");
-        const key = keyOf(req, url);
+        const key = keyOf(req);
         const owner = await ownerOf(this.store, key);
         this.keyLimit.take(hashKey(key!), "joins with this key");
         const j = checkJoin(await readJson(req, MAX_BODY));

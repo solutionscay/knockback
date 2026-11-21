@@ -68,7 +68,7 @@ export async function queueRoute(server: MatchServer, req: Request, path: string
     const body = await readJson(req, MAX_BODY);
     const { ruleset, ...join } = body;
     if (ruleset !== undefined && typeof ruleset !== "string") throw new HttpError(400, "ruleset: a preset name");
-    const e = await mm.enqueue(join, ip, keyOf(req, url), ruleset as string | undefined);
+    const e = await mm.enqueue(join, ip, keyOf(req), ruleset as string | undefined);
     return json({ ticket: e.ticket, ...(e.seated ? seated(mm, e.ticket) : queued(mm, e.ticket)) }, 201);
   }
 

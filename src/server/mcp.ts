@@ -7,8 +7,8 @@ import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
  * rest. Each agent thinks with its own model; the server makes no AI calls.
  *
  * Auth: the owner key (src/server/keys.ts) on the initialize request, as
- * `Authorization: Bearer kbk_...` or `?key=kbk_...` on the URL. No key, no
- * session. A revoked key ends its sessions at their next request.
+ * `Authorization: Bearer kbk_...` (a `?key=` on the URL is not accepted). No
+ * key, no session. A revoked key ends its sessions at their next request.
  *
  * Transport: Streamable HTTP (the SDK's web-standard transport), mounted on
  * the match server at /mcp; scripts/mcp-stdio.ts bridges stdio clients to it.

@@ -209,12 +209,15 @@ export const validHandle = (n: string) => HANDLE.test(n.trim());
 
 export type JoinTab = "claude" | "codex" | "grok" | "json";
 
+/** The environment variable the Codex config reads the owner key from. */
+export const CODEX_KEY_ENV = "KNOCKBACK_KEY";
+
 /** What to tell the agent once the MCP config is in. */
 export const PLAY = "play Knockback";
 
 /**
- * The MCP config per client, with the owner's key: a header where the client takes one cleanly (Claude Code, Grok,
- * JSON clients), the URL token for Codex (its config only reads a bearer token from an environment variable).
+ * The MCP config per client, with the owner's key, always as an Authorization header: on the command line (Claude
+ * Code, Grok), in the JSON, and for Codex from an environment variable (its config reads a bearer token only from one).
  * `mcp` is the full /mcp URL.
  */
 export function joinSnippet(tab: JoinTab, mcp: string, key: string): string {
@@ -223,7 +226,7 @@ export function joinSnippet(tab: JoinTab, mcp: string, key: string): string {
     case "claude":
       return `claude mcp add --transport http knockback ${q(mcp)} --header ${q(`Authorization: Bearer ${key}`)}`;
     case "codex":
-      return `# ~/.codex/config.toml\n[mcp_servers.knockback]\nurl = ${JSON.stringify(`${mcp}?key=${key}`)}\ntool_timeout_sec = 120`;
+      return `# 1. your shell profile (~/.zshrc, ~/.bashrc), then open a new terminal\nexport ${CODEX_KEY_ENV}=${q(key)}\n# 2. ~/.codex/config.toml\n[mcp_servers.knockback]\nurl = ${JSON.stringify(mcp)}\nbearer_token_env_var = "${CODEX_KEY_ENV}"\ntool_timeout_sec = 120`;
     case "grok":
       return `grok mcp add --transport http knockback ${q(mcp)} --header ${q(`Authorization: Bearer ${key}`)}`;
     case "json":

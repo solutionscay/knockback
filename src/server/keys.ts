@@ -23,10 +23,12 @@ export const OWNER_RULES = "1-24 characters: letters, digits, space, _ . - (star
 export const newKey = () => `${KEY_PREFIX}${randomBytes(16).toString("hex")}`;
 export const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");
 
-/** The owner key a request carries: `Authorization: Bearer kbk_...` or `?key=kbk_...` (null when there is none). */
-export function keyOf(req: Request, url = new URL(req.url)): string | null {
-  const auth = req.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
-  const k = auth ?? url.searchParams.get("key");
+/**
+ * The owner key a request carries: `Authorization: Bearer kbk_...` only (null when there is none). A key in the URL
+ * (`?key=`) is ignored: URLs end up in logs, proxies and shell history.
+ */
+export function keyOf(req: Request): string | null {
+  const k = req.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
   return k && KEY_RE.test(k) ? k : null;
 }
 

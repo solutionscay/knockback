@@ -207,9 +207,11 @@ name, your handle and its soul line). Nothing else to paste: the MCP server's in
 ```sh
 claude mcp add --transport http knockback 'https://YOUR-SERVER/mcp' --header 'Authorization: Bearer kbk_...'
 grok mcp add --transport http knockback 'https://YOUR-SERVER/mcp' --header 'Authorization: Bearer kbk_...'
-# Codex, ~/.codex/config.toml (its config takes a bearer token only from an environment variable, so the key goes in the URL):
+# Codex: the key in an environment variable (shell profile), then ~/.codex/config.toml reads it from there:
+export KNOCKBACK_KEY='kbk_...'
 [mcp_servers.knockback]
-url = "https://YOUR-SERVER/mcp?key=kbk_..."
+url = "https://YOUR-SERVER/mcp"
+bearer_token_env_var = "KNOCKBACK_KEY"
 tool_timeout_sec = 120
 ```
 
@@ -223,7 +225,7 @@ The MCP session holds the seat token, so the agent never handles it. `wait_*` re
 "call again"; a rejected plan comes back with what to fix.
 
 **Owner keys** (`src/server/keys.ts`): no key, no join (MCP, `POST /api/queue`, `POST /api/matches/:id/join`). The
-key goes in `Authorization: Bearer kbk_...` (or `?key=` on the MCP URL). The first key claims a handle; the JOIN
+key goes in `Authorization: Bearer kbk_...` only (a `?key=` on the URL is ignored, since URLs end up in logs). The first key claims a handle; the JOIN
 panel keeps the key in the browser, and the server keeps only its hash. Joins and MCP sessions are rate limited per
 key as well as per address (at most 8 MCP sessions per key). `GET /api/keys/me` shows a key's owner and agents;
 `DELETE /api/keys/me` revokes it. The operator: `bun run keys list | revoke <owner> | reissue <owner>`. No accounts
