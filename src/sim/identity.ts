@@ -8,10 +8,12 @@
  * reads it, and it is not part of the state hash. Drawing it is the viewer's
  * job (src/viewer/bot.ts).
  *
- * Later (#19) a fighter's AI may choose its own identity: pass its wishes to
- * `assignIdentities`. Valid, unclaimed wishes are kept; the rest is generated.
+ * A fighter's AI may choose its own identity (#19, the "suit up" step in
+ * src/ai/suitup.ts): its wishes go to `assignIdentities`. Valid, unclaimed
+ * wishes are kept (a clashing color is nudged to the nearest free one); the
+ * rest is generated. Without wishes the draws are exactly as before.
  */
-import { luminance, oklabDistance } from "./color";
+import { fromOklch, luminance, oklabDistance, oklch } from "./color";
 import { Rng } from "./rng";
 
 /** Head shapes: Skiff's 8 Skipper bodies, then new ones. The viewer has one drawing per entry. */
@@ -206,6 +208,67 @@ export function identitySeed(seed: number): number {
 /** A wish for an identity (#19): any field may be missing or invalid. */
 export type IdentityWish = Partial<Record<keyof Identity, unknown>>;
 
+/** What happened to one seat's wishes (#19): the fields kept, the ones replaced and why, a nudged color. */
+export interface WishNote {
+  kept: (keyof Identity)[];
+  dropped: { field: keyof Identity; why: "invalid" | "taken" | "near-duplicate" | "unreadable" }[];
+  /** the wished color clashed (or was too dark): the nearest free color was used instead */
+  nudged?: { from: number; to: number };
+}
+
+/** Edit distance (names only: short strings). */
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0]!;
+    d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = d[j]!;
+      d[j] = Math.min(d[j]! + 1, d[j - 1]! + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return d[b.length]!;
+}
+
+/**
+ * Names too alike to share a match: the same first three letters (the callout rule), or a small edit
+ * distance ("Gasket" / "Basket", "Rivet" / "Rivets"), case-insensitive.
+ */
+export function nearDuplicateName(a: string, b: string): boolean {
+  const x = a.trim().toLowerCase(), y = b.trim().toLowerCase();
+  if (x.slice(0, 3) === y.slice(0, 3)) return true;
+  return editDistance(x, y) <= (Math.min(x.length, y.length) >= 6 ? 2 : 1);
+}
+
+/**
+ * The free color nearest to a wished one (#19): readable on the dark arenas and perceptually apart from
+ * `others`, searched around the wish in OKLCH (hue first, then lightness). Deterministic; null if none fits.
+ */
+export function nudgeColor(c: number, others: readonly number[]): number | null {
+  if (colorsApart(c, others)) return c;
+  const p = oklch(c);
+  const C = Math.max(p.C, 0.12); // a grey wish gets some color so it can be told apart
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (let dh = 0; dh <= 180; dh += 6) {
+    for (const sh of dh ? [1, -1] : [1]) {
+      for (let dl = 0; dl <= 0.4; dl += 0.02) {
+        for (const sl of dl ? [1, -1] : [1]) {
+          const L = p.L + sl * dl;
+          if (L <= 0.2 || L >= 0.97) continue;
+          const cand = fromOklch({ L, C, h: p.h + (sh * dh * Math.PI) / 180 });
+          if (!colorsApart(cand, others)) continue;
+          const d = oklabDistance(c, cand);
+          if (d < bestD) (best = cand), (bestD = d);
+        }
+      }
+    }
+    if (best !== null && bestD < (dh * Math.PI) / 180 / 4) break; // nothing nearer is left further round the circle
+  }
+  return best;
+}
+
 /**
  * Four distinct identities for a match. `wishes[i]` (optional) are fields seat
  * i asked for: a valid wish that no earlier seat took is kept; everything else
@@ -214,8 +277,14 @@ export type IdentityWish = Partial<Record<keyof Identity, unknown>>;
  * mark, and their colors are perceptually apart.
  */
 export function assignIdentities(seed: number, wishes: readonly (IdentityWish | undefined)[] = [], n = 4): Identity[] {
+  return assignIdentitiesDetailed(seed, wishes, n).identities;
+}
+
+/** assignIdentities, plus what happened to each seat's wishes (#19: the suit-up report). */
+export function assignIdentitiesDetailed(seed: number, wishes: readonly (IdentityWish | undefined)[] = [], n = 4): { identities: Identity[]; notes: WishNote[] } {
   const rng = new Rng(identitySeed(seed));
   const out: Identity[] = [];
+  const notes: WishNote[] = [];
   // names must not even start alike ("Junko" and "Junwick" are hard to tell apart in a callout)
   const nameTaken = (v: string) => out.some((o) => o.name.slice(0, 3).toLowerCase() === v.slice(0, 3).toLowerCase());
   const shapeTaken = (v: string) => out.some((o) => familyOf(o.shape) === familyOf(v));
@@ -228,6 +297,13 @@ export function assignIdentities(seed: number, wishes: readonly (IdentityWish | 
   const is = <T extends readonly unknown[]>(list: T, v: unknown): v is T[number] => list.includes(v);
   for (let seat = 0; seat < n; seat++) {
     const w = wishes[seat] ?? {};
+    const note: WishNote = { kept: [], dropped: [] };
+    const keep = (field: keyof Identity, ok: boolean, why: WishNote["dropped"][number]["why"]) => {
+      if (w[field] === undefined) return false;
+      if (ok) note.kept.push(field);
+      else note.dropped.push({ field, why });
+      return ok;
+    };
     // draw every field (even wished ones), so one seat's wish never shifts the other seats' draws
     const name = draw(() => generateName(rng), (v) => validName(v) && !nameTaken(v));
     const shape = draw(() => rng.pick(SHAPES), (v) => !shapeTaken(v));
@@ -236,27 +312,34 @@ export function assignIdentities(seed: number, wishes: readonly (IdentityWish | 
     const hasMinor = rng.chance(MINOR_CHANCE);
     const minorPick = rng.pick(MINOR_MARKS);
     const id: Identity = { name, shape, eyes, mark, minor: hasMinor ? minorPick : "none", color: 0 };
-    if (validName(w.name) && !nameTaken(w.name.trim())) id.name = w.name.trim();
-    if (is(SHAPES, w.shape) && !shapeTaken(w.shape)) id.shape = w.shape;
-    if (is(EYES, w.eyes)) id.eyes = w.eyes;
-    if (is(MAJOR_MARKS, w.mark) && !markTaken(w.mark)) id.mark = w.mark;
-    if (is(MINOR_MARKS, w.minor) || w.minor === "none") id.minor = w.minor as Mark;
+    const wn = typeof w.name === "string" ? w.name.trim() : w.name;
+    if (keep("name", validName(wn) && !out.some((o) => nearDuplicateName(o.name, wn as string)), !validName(wn) ? "invalid" : nameTaken(wn as string) ? "taken" : "near-duplicate")) id.name = wn as string;
+    if (keep("shape", is(SHAPES, w.shape) && !shapeTaken(w.shape as string), is(SHAPES, w.shape) ? "taken" : "invalid")) id.shape = w.shape as Shape;
+    if (keep("eyes", is(EYES, w.eyes), "invalid")) id.eyes = w.eyes as Eyes;
+    if (keep("mark", is(MAJOR_MARKS, w.mark) && !markTaken(w.mark as string), is(MAJOR_MARKS, w.mark) ? "taken" : "invalid")) id.mark = w.mark as Mark;
+    if (keep("minor", is(MINOR_MARKS, w.minor) || w.minor === "none", "invalid")) id.minor = w.minor as Mark;
     out.push(id);
+    notes.push(note);
   }
-  // colors last, for the whole match at once: kept wishes first (in seat order), then the rest together
+  // colors last, for the whole match at once: kept wishes first (in seat order, a clash nudged to the
+  // nearest free color), then the rest together
   const kept: number[] = [];
-  const keep = out.map((_, seat) => {
+  const keepColor = out.map((_, seat) => {
     const c = wishes[seat]?.color;
-    if (validColor(c) && colorsApart(c, kept)) {
-      kept.push(c);
-      return true;
-    }
-    return false;
+    if (c === undefined) return false;
+    const note = notes[seat]!;
+    if (!validColor(c)) return void note.dropped.push({ field: "color", why: "invalid" }), false;
+    const to = nudgeColor(c, kept);
+    if (to === null) return void note.dropped.push({ field: "color", why: luminance(c) < MIN_LUMINANCE ? "unreadable" : "taken" }), false;
+    if (to !== c) note.nudged = { from: c, to };
+    note.kept.push("color");
+    kept.push(to);
+    return true;
   });
-  const drawn = drawMatchColors(rng, keep.filter((k) => !k).length, kept, n);
+  const drawn = drawMatchColors(rng, keepColor.filter((k) => !k).length, kept, n);
   let ki = 0, di = 0;
-  out.forEach((id, seat) => (id.color = keep[seat] ? kept[ki++]! : drawn[di++]!));
-  return out;
+  out.forEach((id, seat) => (id.color = keepColor[seat] ? kept[ki++]! : drawn[di++]!));
+  return { identities: out, notes };
 }
 
 /** The generated identities for a match seed (no wishes). */

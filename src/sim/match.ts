@@ -88,6 +88,27 @@ export interface RoundRecord {
   winner: number;
 }
 
+/**
+ * One seat's "suit up" (#19): the fighter's AI (or the remote agent) chose its name and look before the
+ * match. The chosen identity itself is in `identities`; this says how it came about (log and the viewer's
+ * boot-up), so a replay needs no AI.
+ */
+export interface SuitUpEntry {
+  seat: number;
+  /** "ai": a built-in provider answered the suit-up prompt; "agent": a remote agent's look at join */
+  by: "ai" | "agent";
+  /** ok: every asked field kept; partial: some replaced; fallback-*: nothing usable, the seeded identity */
+  outcome: "ok" | "partial" | "fallback-timeout" | "fallback-error" | "fallback-invalid";
+  ms?: number;
+  kept: string[];
+  dropped: { field: string; why: string }[];
+  nudged?: { from: number; to: number };
+  /** the opening line it gave with its look */
+  line?: string;
+  /** why it chose so (the AI's own words, short) */
+  why?: string;
+}
+
 export interface MatchRecord {
   /** Absent on legacy engine-v4 records, which play with Classic. */
   ruleset?: Ruleset;
@@ -105,6 +126,8 @@ export interface MatchRecord {
   souls: Soul[];
   /** each seat's generated name and look (version 4) */
   identities?: Identity[];
+  /** seats that chose their own look before the match (#19); absent: every look came from the seed */
+  suitUp?: SuitUpEntry[];
   /** match seed: makes the level; round physics seeds derive from it */
   seed: number;
   rounds: RoundRecord[];
@@ -120,6 +143,10 @@ export interface MatchOptions {
   souls?: Soul[];
   /** identity wishes per seat (#19: an AI picks its own name or look); the rest comes from the seed */
   identityWishes?: (IdentityWish | undefined)[];
+  /** exact identities (the live viewer: the server already settled them); wins over identityWishes */
+  identities?: Identity[];
+  /** how the seats suited up (#19), kept in the record */
+  suitUp?: SuitUpEntry[];
   /** one decision function per fighter (default: houseBrain for all) */
   brains?: Brain[];
   session?: VoiceSession;
@@ -188,7 +215,7 @@ export class Match {
     this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]), this.ruleset.morale);
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { version: 4, engine: ENGINE_VERSION, ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), rounds: [], winner: -1, wins: this.wins };
+    this.record = { version: 4, engine: ENGINE_VERSION, ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), ...((opts.recorded?.suitUp ?? opts.suitUp)?.length ? { suitUp: (opts.recorded?.suitUp ?? opts.suitUp)!.map((e) => ({ ...e })) } : {}), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
@@ -348,8 +375,12 @@ export class Match {
  * The identities of a match: a record's own (version 4), an old record's
  * souls (versions 2 and 3), or generated from the seed and any wishes.
  */
-export function matchIdentities(seed: number, opts: Pick<MatchOptions, "recorded" | "identityWishes">): Identity[] {
+export function matchIdentities(seed: number, opts: Pick<MatchOptions, "recorded" | "identityWishes" | "identities">): Identity[] {
   const rec = opts.recorded;
+  if (!rec && opts.identities?.length === 4) {
+    const gen = assignIdentities(seed);
+    return opts.identities.map((v, i) => sanitizeIdentity(v, i, gen[i]!));
+  }
   if (rec && Array.isArray(rec.identities) && rec.identities.length === 4) {
     const gen = assignIdentities(seed);
     return rec.identities.map((v, i) => sanitizeIdentity(v, i, gen[i]!));
