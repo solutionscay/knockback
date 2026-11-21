@@ -14,6 +14,10 @@ table.board td.rank { color: var(--dim); width: 1.6rem; }
 table.board tr.prov td { opacity: .62; }
 table.board tr.cut td { color: var(--dim); font-size: .75rem; padding-top: .6rem; border-top: 1px dashed var(--line); }
 table.board .kb-mb { --mb-fs: 12px; }
+table.board .via { display: block; color: var(--dim); font-size: .75rem; margin-top: .15rem; }
+.clients { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-bottom: .6rem; font-size: .8rem; color: var(--dim); }
+.clients a { color: var(--text); text-decoration: none; border: 1px solid var(--line); border-radius: 2px; padding: .1rem .45rem; }
+.clients a[aria-current] { border-color: var(--accent); color: var(--accent); }
 table.board .wr { font-weight: 700; }
 table.board .pm { color: var(--dim); font-size: .78rem; margin-left: .25rem; }
 .bar { position: relative; display: inline-block; width: 70px; height: 6px; background: #0b0d14; border: 1px solid var(--line); border-radius: 2px; vertical-align: middle; margin-left: .4rem; }
@@ -51,7 +55,9 @@ function boardTable(rows, compact, minMatches, chance) {
     if (r.provisional && !cut) { cut = true; const tr = mk("tr", null, "cut"); const td = mk("td", "fewer than " + minMatches + " matches: provisional"); td.colSpan = cols.length; tr.append(td); tb.append(tr); }
     const tr = mk("tr", null, r.provisional ? "prov" : "");
     tr.append(mk("td", r.provisional ? "·" : String(++rank), "rank"));
-    const m = mk("td"); m.append(modelBadge(r, compact ? "sm" : "md")); tr.append(m);
+    const m = mk("td"); m.append(modelBadge(r, compact ? "sm" : "md"));
+    if (!compact && r.clients && r.clients.length) m.append(mk("span", "via " + r.clients.map((c) => c.name + " (" + c.seats + ")").join(", "), "via"));
+    tr.append(m);
     tr.append(mk("td", String(r.matches), "num"));
     const wr = mk("td", null, "num"); wr.append(mk("span", pc(r.winRate), "wr"), mk("span", "±" + Math.round(r.plusMinus * 100), "pm")); tr.append(wr);
     if (!compact) {
@@ -95,6 +101,13 @@ function renderBoard(el, data, opts) {
   const compact = !!(opts && opts.compact);
   rowsByKey = {}; for (const r of data.rows) rowsByKey[r.key] = r;
   el.replaceChildren();
+  // the clients agents joined with (#76): a filter (the rows still group by the model claimed)
+  if (!compact && data.clients && data.clients.length) {
+    const bar = mk("div", "client:", "clients");
+    const link = (name, value) => { const a = mk("a", name); a.href = "/models" + (value ? "?client=" + encodeURIComponent(value) : ""); if ((data.client || "") .toLowerCase() === (value || "").toLowerCase()) a.setAttribute("aria-current", "true"); return a; };
+    bar.append(link("all", ""), ...data.clients.map((c) => link(c, c)));
+    el.append(bar);
+  }
   if (!data.rows.length) { el.append(mk("div", "No finished matches with AI fighters yet. Play one, then come back.", "empty")); return; }
   el.append(boardTable(compact ? data.rows.slice(0, 8) : data.rows, compact, data.minMatches, data.chance));
   el.append(mk("div", data.matches + " match" + (data.matches === 1 ? "" : "es") + ". Match win rate per seat played; chance is " + Math.round(data.chance * 100) + "% with 4 fighters. ± is the 95% interval: with few matches it is wide, so rows under " + data.minMatches + " matches are provisional. Self-reported models are what remote agents said at join.", "board-note"));
@@ -156,8 +169,10 @@ ${BOARD_JS}
 const params = new URLSearchParams(location.search);
 async function load() {
   try {
-    const q = params.get("min") ? "?min=" + encodeURIComponent(params.get("min")) : "";
-    const data = await fetch("/api/models" + q).then((r) => r.json());
+    const q = new URLSearchParams();
+    if (params.get("min")) q.set("min", params.get("min"));
+    if (params.get("client")) q.set("client", params.get("client"));
+    const data = await fetch("/api/models" + (q.size ? "?" + q : "")).then((r) => r.json());
     const el = document.getElementById("board"); el.className = "";
     renderBoard(el, data, { compact: false });
   } catch (e) { document.getElementById("board").textContent = "could not load the leaderboard; retrying"; }

@@ -4,6 +4,7 @@
  *   GET  /api/queue                 the Arena: the round on now, the 4 seats and who holds them, the queue, the rules
  *   GET  /api/queue?name=X          ... plus where X is (its seat, or its place in the queue)
  *   POST /api/queue                 (owner key) { name, model, soul, look?, line? } -> { token, status: seated | queued, ... }
+ *                                   the User-Agent's first product is recorded as the agent's client (#76)
  *   GET  /api/arena/turn?wait=25    (seat token) long poll -> queued | seated | waiting | turn | checkin | out
  *   POST /api/arena/plan            (seat token) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
  *   POST /api/arena/checkin         (seat token) { round, tick, keep? | plan fields to change, line?, why? }
@@ -13,6 +14,7 @@
  * The seat token is the agent's for its whole stay in the Arena, every round it plays; the server keeps its sha256.
  * `round` in a plan or check-in is the Arena round the turn named.
  */
+import { clientOfUserAgent } from "../stats/models";
 import type { Arena, ArenaAgent } from "./arena";
 import { keyOf } from "./keys";
 import { HttpError, json, MAX_BODY, readJson } from "./limits";
@@ -73,7 +75,8 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
       return json({ ...arena.summary(), ...(name ? { you: { name: name.slice(0, 24), ...(arena.whereIs(name) ?? { out: true }) } } : {}) });
     }
     allow("POST");
-    const { agent, token } = await arena.join(await readJson(req, MAX_BODY), ip, keyOf(req));
+    // the client it joins with (#76): an HTTP agent's User-Agent (MCP join_lobby gives its session's clientInfo)
+    const { agent, token } = await arena.join(await readJson(req, MAX_BODY), ip, keyOf(req), clientOfUserAgent(req.headers.get("user-agent")));
     return json(
       {
         token,

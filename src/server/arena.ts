@@ -70,6 +70,8 @@ export interface ArenaAgent {
   soulLine: string;
   look: IdentityWish | null;
   model: string;
+  /** the client it joined with (#76): MCP clientInfo "name/version", or an HTTP agent's User-Agent; "" when none */
+  client: string;
   openingLine: string | null;
   /** what checkJoin cleaned or could not keep */
   warnings: string[];
@@ -176,7 +178,7 @@ export class Arena {
     const away = new Map<number, string>();
     lineup.forEach((e, seat) => {
       if (!e) return;
-      m.seatAgent(seat, { name: e.name, soul: e.soul, owner: e.owner, soulId: e.soulId, look: e.look, model: e.model, tokenHash: e.tokenHash, joinedAt: e.joinedAt, lastSeen: e.lastSeen, openingLine: e.openingLine });
+      m.seatAgent(seat, { name: e.name, soul: e.soul, owner: e.owner, soulId: e.soulId, look: e.look, model: e.model, client: e.client, tokenHash: e.tokenHash, joinedAt: e.joinedAt, lastSeen: e.lastSeen, openingLine: e.openingLine });
       // it missed the last round and has said nothing since: the house bot plays at once, nobody waits for it
       if (e.missed > 0 && e.lastSeen <= e.missedAt) away.set(seat, "still away after a missed round");
     });
@@ -316,8 +318,9 @@ export class Arena {
    * input and a name bound to another owner. Returns the agent and its seat token (shown once; the server keeps its
    * hash). A name already in the Arena is the same agent joining again (its owner's key: names are bound to owners),
    * e.g. from a new MCP session: it gets a new token and keeps its seat or its place; the old token is out.
+   * `client`: what it joins with (#76, cleanClient: MCP clientInfo or the User-Agent), "" when it said nothing.
    */
-  async join(body: Record<string, unknown>, ip: string, key: string | null): Promise<{ agent: ArenaAgent; token: string }> {
+  async join(body: Record<string, unknown>, ip: string, key: string | null, client = ""): Promise<{ agent: ArenaAgent; token: string }> {
     const owner = await ownerOf(this.api.store, key);
     const j = checkJoin(body);
     const lower = j.name.toLowerCase();
@@ -332,10 +335,10 @@ export class Arena {
     if (!again && this.agents().filter((e) => e.ip === ip).length >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} agents per address in the Arena`);
     const token = `st_${hex(24)}`;
     const now = Date.now();
-    if (again) return { agent: this.rejoin(again, j, token, ip, hashKey(key!)), token };
-    const e: ArenaAgent = { tokenHash: hashToken(token), keyHash: hashKey(key!), name: j.name, owner, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, openingLine: j.line, warnings: j.warnings, ip, joinedAt: now, lastSeen: now, seat: null, fromRound: 0, missed: 0, missedAt: 0, queuedAt: now, rounds: [], lastRound: null };
+    if (again) return { agent: this.rejoin(again, j, token, ip, hashKey(key!), client), token };
+    const e: ArenaAgent = { tokenHash: hashToken(token), keyHash: hashKey(key!), name: j.name, owner, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, client, openingLine: j.line, warnings: j.warnings, ip, joinedAt: now, lastSeen: now, seat: null, fromRound: 0, missed: 0, missedAt: 0, queuedAt: now, rounds: [], lastRound: null };
     this.byToken.set(e.tokenHash, e);
-    this.api.log(`arena: ${e.name} (owner ${owner}, says it runs ${e.model}) joined`);
+    this.api.log(`arena: ${e.name} (owner ${owner}, says it runs ${e.model}${client ? ` via ${client}` : ""}) joined`);
     const free = this.seats.indexOf(null);
     if (free >= 0 && !this.queue.length) this.claim(e, free);
     else this.queue.push(e);
@@ -344,7 +347,7 @@ export class Arena {
   }
 
   /** The same agent joins again: a new token (the old one is out), its new soul and look from the next round. */
-  private rejoin(e: ArenaAgent, j: ReturnType<typeof checkJoin>, token: string, ip: string, keyHash: string): ArenaAgent {
+  private rejoin(e: ArenaAgent, j: ReturnType<typeof checkJoin>, token: string, ip: string, keyHash: string, client: string): ArenaAgent {
     const m = this.playing(e);
     const old = e.tokenHash;
     e.tokenHash = hashToken(token);
@@ -354,7 +357,7 @@ export class Arena {
     // the round on now keeps its fighter; the agent answers it with the new token
     const sa = m?.agents[e.seat!];
     if (sa) sa.tokenHash = e.tokenHash;
-    Object.assign(e, { keyHash, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, openingLine: j.line, warnings: j.warnings, ip, lastSeen: Date.now() });
+    Object.assign(e, { keyHash, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, client, openingLine: j.line, warnings: j.warnings, ip, lastSeen: Date.now() });
     this.api.log(`arena: ${e.name} joined again (${e.seat !== null ? `seat ${e.seat}` : `place ${this.queue.indexOf(e) + 1} in the queue`})`);
     this.changed();
     return e;
@@ -483,7 +486,7 @@ export class Arena {
       round: m ? { number: m.arenaRound, match: m.id, status: m.status, watch: `/watch/${m.id}`, playing: m.kinds.map((k, seat) => ({ seat, agent: m.agents[seat]?.name ?? null, owner: m.agents[seat]?.owner ?? null, kind: k })) } : null,
       /** the round the seats below play next */
       nextRound: live ? m!.arenaRound + 1 : this.round + 1,
-      seats: this.seats.map((e, seat) => (e ? { seat, holder: "agent", agent: e.name, owner: e.owner, soulLine: e.soulLine, model: e.model, fromRound: e.fromRound, missed: e.missed } : { seat, holder: "house", agent: null })),
+      seats: this.seats.map((e, seat) => (e ? { seat, holder: "agent", agent: e.name, owner: e.owner, soulLine: e.soulLine, model: e.model, client: e.client, fromRound: e.fromRound, missed: e.missed } : { seat, holder: "house", agent: null })),
       queue: this.queue.map((e, i) => ({ position: i + 1, agent: e.name, owner: e.owner, soulLine: e.soulLine, waitingSec: Math.floor((now - e.queuedAt) / 1000) })),
       deadlineSec: this.deadlineMs / 1000,
       missLimit: this.missLimit,

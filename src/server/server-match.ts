@@ -35,6 +35,8 @@ export interface SeatAgent {
   look: IdentityWish | null;
   /** the model the agent says it runs (reported at join, shown as reported) */
   model: string;
+  /** the client it joined with (#76): MCP clientInfo "name/version", or an HTTP agent's User-Agent; "" when none */
+  client: string;
   /** sha256 (hex) of the agent's Arena seat token */
   tokenHash: string;
   joinedAt: number;
@@ -133,7 +135,7 @@ export class ServerMatch {
   }
 
   remoteSeat(seat: number, agent: SeatAgent): RemoteSeat {
-    const rs = new RemoteSeat(agent.name, this.deadlineMs, agent.model);
+    const rs = new RemoteSeat(agent.name, this.deadlineMs, agent.model, agent.client);
     rs.onChange = () => this.changed();
     // accepted plans are stored before the turn ends, so a restart in mid-ask keeps them
     rs.onAccept = (round, raw) => this.store.insertPlan({ matchId: this.id, round, seat, raw, at: Date.now() });
@@ -145,7 +147,7 @@ export class ServerMatch {
 
   seatRow(seat: number): SeatRow {
     const a = this.agents[seat]!;
-    return { matchId: this.id, seat, name: a.name, soul: a.soul, owner: a.owner, look: a.look, model: a.model, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound, openingLine: a.openingLine };
+    return { matchId: this.id, seat, name: a.name, soul: a.soul, owner: a.owner, look: a.look, model: a.model, client: a.client, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound, openingLine: a.openingLine };
   }
 
   row(): MatchRow {
@@ -164,7 +166,7 @@ export class ServerMatch {
 
   /** Put a stored agent back in its seat (resume). */
   restoreSeat(r: SeatRow) {
-    this.seatAgent(r.seat, { name: r.name, soul: r.soul, owner: r.owner, soulId: soulIdOf(r.name), look: r.look, model: r.model, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, lastSeen: 0, openingLine: r.openingLine ?? null });
+    this.seatAgent(r.seat, { name: r.name, soul: r.soul, owner: r.owner, soulId: soulIdOf(r.name), look: r.look, model: r.model, client: r.client, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, lastSeen: 0, openingLine: r.openingLine ?? null });
   }
 
   /** The agent in `seat` leaves: the house bot plays the rest of this round (the Arena gives the seat away for the next). */
@@ -253,7 +255,7 @@ export class ServerMatch {
   /** Who plays a seat, as a model label (for the model badge): from the runner's label once running, from the seat before. */
   modelLabel(i: number): string {
     const a = this.agents[i];
-    return this.runner?.labels[i] ?? (a ? remoteLabel(a.name, a.model) : "house");
+    return this.runner?.labels[i] ?? (a ? remoteLabel(a.name, a.model, a.client) : "house");
   }
 
   /** The identities as they stand: the agents' join looks, settled in seat order (#19). */

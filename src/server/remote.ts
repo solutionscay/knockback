@@ -219,9 +219,11 @@ export class RemoteSeat {
     readonly agentName: string,
     deadlineMs: number,
     /** the model the agent reported at join (shown as reported, marked self-reported) */
-    model: string | null = null,
+    model: string,
+    /** the client it joined with (#76: MCP clientInfo or User-Agent, "name/version"; "" when it sent none) */
+    client: string,
   ) {
-    this.provider = { label: remoteLabel(agentName, model), deadlineMs, ask: (prompt, signal) => this.ask(prompt, signal) };
+    this.provider = { label: remoteLabel(agentName, model, client), deadlineMs, ask: (prompt, signal) => this.ask(prompt, signal) };
   }
 
   bind(match: Match, seat: number) {

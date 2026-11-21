@@ -27,6 +27,8 @@ export interface Session {
   createdAt: number;
   lastSeen: number;
   name?: string;
+  /** the MCP client from initialize (#76): clientInfo as "name/version" (cleanClient); "" until initialized or if none */
+  client?: string;
   /** the agent's Arena seat token: kept here, never shown to the agent */
   token?: string;
   /** the Arena round of the last turn handed out (submit_plan's default) */
@@ -165,7 +167,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
           forget();
         }
       }
-      const { agent, token } = await arena.join({ name: a.name, model: a.model, soul: a.soul, ...(a.look ? { look: a.look } : {}), ...(a.line ? { line: a.line } : {}) }, state.ip, state.key);
+      const { agent, token } = await arena.join({ name: a.name, model: a.model, soul: a.soul, ...(a.look ? { look: a.look } : {}), ...(a.line ? { line: a.line } : {}) }, state.ip, state.key, state.client ?? "");
       Object.assign(state, { name: agent.name, token, round: undefined, checkin: undefined });
       activateRuleset(arenaSelection(await selectRuleset(api.store)).ruleset);
       const st = arena.statusFor(agent);

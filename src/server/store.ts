@@ -68,6 +68,8 @@ export interface SeatRow {
   leftRound: number | null;
   /** the model the agent reported at join (shown as reported) */
   model: string;
+  /** the client it joined with (#76): MCP clientInfo "name/version" or its User-Agent's first product; "" when none */
+  client: string;
   /** the agent's opening line, shown on spectators' pick cards (#35) */
   openingLine?: string | null;
 }
@@ -192,7 +194,7 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
@@ -242,6 +244,7 @@ export const SCHEMA = `
     left_at INTEGER,
     left_round INTEGER,
     model TEXT NOT NULL,              -- the model the agent reported at join (shown as reported)
+    client TEXT NOT NULL,             -- the client it joined with (#76): MCP clientInfo name/version or User-Agent; '' if none
     opening_line TEXT,
     PRIMARY KEY (match_id, seat)
   );
@@ -353,6 +356,7 @@ const seatOf = (r: Row): SeatRow => ({
   leftAt: (r.left_at as number | null) ?? null,
   leftRound: (r.left_round as number | null) ?? null,
   model: r.model as string,
+  client: r.client as string,
   openingLine: (r.opening_line as string | null) ?? null,
 });
 
@@ -487,8 +491,8 @@ export class SqliteStore implements MatchStore {
   }
   async insertSeat(s: SeatRow) {
     this.db
-      .query("INSERT INTO seats (match_id, seat, name, soul, owner, look, token_hash, joined_at, left_at, left_round, model, opening_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(s.matchId, s.seat, s.name, s.soul, s.owner, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound, s.model, s.openingLine ?? null);
+      .query("INSERT INTO seats (match_id, seat, name, soul, owner, look, token_hash, joined_at, left_at, left_round, model, client, opening_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(s.matchId, s.seat, s.name, s.soul, s.owner, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound, s.model, s.client, s.openingLine ?? null);
   }
   async updateSeat(matchId: string, seat: number, patch: SeatPatch) {
     this.patch("seats", "match_id = ? AND seat = ?", [matchId, seat], patch);

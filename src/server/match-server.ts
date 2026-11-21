@@ -167,7 +167,7 @@ export class MatchServer {
    * The model leaderboard from the SQLite record index: each row's per-seat stats, saved
    * with the record. Records with test providers are left out; copies of one match count once.
    */
-  async models(min?: number) {
+  async models(min?: number, client?: string) {
     if (!this.modelsCache || Date.now() - this.modelsCache.at >= 60_000) {
       const rows = await this.store.listRecords(MODELS_MAX_RECORDS);
       const sets: SeatEntry[][] = [];
@@ -184,8 +184,10 @@ export class MatchServer {
       this.modelsCache = { at: Date.now(), ...dedupe(sets) };
     }
     const { kept, dropped } = this.modelsCache;
-    const lb = leaderboard(kept, min !== undefined ? { minMatches: min } : {});
+    const lb = leaderboard(kept, { ...(min !== undefined ? { minMatches: min } : {}), ...(client ? { client } : {}) });
+    // every client seen (#76), for the board's filter
+    const clients = [...new Set(kept.flat().flatMap((e) => (e.model.client ? [e.model.client] : [])))].sort();
     const h2h = headToHead(kept, lb.rows.map((r) => r.key));
-    return { ...lb, headToHead: h2h, duplicates: dropped, note: "win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter round; models below the minimum are provisional; self-reported models are what remote agents said at join" };
+    return { ...lb, clients, ...(client ? { client } : {}), headToHead: h2h, duplicates: dropped, note: "win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter round; models below the minimum are provisional; self-reported models are what remote agents said at join, grouped by that claim; clients are what they joined with (MCP clientInfo or User-Agent)" };
   }
 }

@@ -17,7 +17,7 @@ import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
 import type { Weapon } from "../sim/sim-types";
 import { hex, portraitSvg, type Mood } from "../viewer/portrait";
-import { modelOf } from "../stats/models";
+import { badgeText, modelOf } from "../stats/models";
 import { HttpError } from "./limits";
 import type { MatchServer } from "./match-server";
 import type { RecordRow, RoundTier } from "./store";
@@ -102,7 +102,7 @@ export function summarizeReplay(raw: unknown, match: string, record: string, cre
     seed,
     theme,
     names: identities.map((id) => id.name),
-    labels: SEATS.map((i) => str(labels[i], 60) || str(firstMeta[i]?.provider, 60) || "house"),
+    labels: SEATS.map((i) => str(labels[i], 160) || str(firstMeta[i]?.provider, 160) || "house"),
     identities,
     weapons: SEATS.map((i) => {
       for (const rd of [...rounds].reverse()) if (rd.plans[i]?.weapons[0]) return rd.plans[i]!.weapons[0] as Weapon;
@@ -364,10 +364,10 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 /** place a portrait SVG at x,y with size w,h inside another SVG */
 const placeSvg = (svg: string, x: number, y: number, w: number, h: number) => svg.replace("<svg ", `<svg x="${x}" y="${y}" width="${w}" height="${h}" `);
 
-/** Model name of a seat label for the card: the model spotlight's name, "AGENT" when a remote agent did not say (pure). */
+/** Model of a seat label for the card: the badge's text ("GPT-6 · via Codex"), "AGENT" when a remote agent did not say (pure). */
 export function labelText(label: string): string {
   const m = modelOf(label);
-  return m.key === "remote:unreported" ? "AGENT" : m.name;
+  return m.key === "remote:unreported" ? "AGENT" : badgeText(m);
 }
 
 /** The 1200x630 share card of a finished match, as SVG (pure: tested). */

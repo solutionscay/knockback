@@ -88,7 +88,8 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
   if (path === "/api/models") {
     allow("GET");
     const min = Number(url.searchParams.get("min"));
-    return json(await server.models(Number.isInteger(min) && min >= 1 && min <= 1000 ? min : undefined));
+    const client = url.searchParams.get("client")?.slice(0, 40) || undefined;
+    return json(await server.models(Number.isInteger(min) && min >= 1 && min <= 1000 ? min : undefined, client));
   }
   if (path === "/api/records") {
     allow("GET");

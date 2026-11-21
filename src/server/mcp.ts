@@ -35,6 +35,7 @@ import { registerTools, type Session } from "./mcp-tools";
 import type { MatchServer } from "./match-server";
 import { hashToken } from "./seat-tokens";
 import { hashKey, keyOf } from "./keys";
+import { cleanClient } from "../stats/models";
 
 interface Live {
   state: Session;
@@ -215,6 +216,11 @@ export class McpGateway {
       },
     );
     registerTools(server, { state, api: this.api, base, call: (method, path, body, signal) => this.call(state, method, path, body, signal) });
+    // the client the agent runs in (#76): clientInfo from its initialize request ("codex-mcp-client" 0.98.0 -> Codex)
+    server.server.oninitialized = () => {
+      const c = server.server.getClientVersion();
+      state.client = cleanClient(c?.name, c?.version);
+    };
     return server;
   }
 }

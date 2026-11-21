@@ -2,7 +2,10 @@
  * Which model is best (model spotlight): who played each seat, and pure stats over match records.
  *
  * - modelOf(label): the model behind a seat label ("claude/haiku", "codex/gpt-6-luna", "house",
- *   "remote/Zapbit@claude-opus-5-5" for a remote agent that reported its model at join).
+ *   "remote/Zapbit@claude-opus-5-5|claude-code/2.1.0" for a remote agent: the model it reported at join and the client
+ *   it joined with, #76).
+ * - badgeText(model): what a badge says: "GPT-6 · via Codex", or the client alone ("Copilot CLI") when the agent named
+ *   no model.
  * - fightStatsOf(facts): per round and seat, what the fight did (knockouts, ring-outs, damage, survival).
  *   Every record carries it as `fightStats`.
  * - seatEntries(record): one entry per seat of a match record, with its model and stats.
@@ -27,6 +30,9 @@ export interface ModelInfo {
   test: boolean;
   /** remote agent name, when the seat is a remote agent */
   agent?: string;
+  /** the client a remote agent joined with (#76): its display name ("Codex") and as it said ("codex-mcp-client/0.98.0") */
+  client?: string;
+  clientId?: string;
 }
 
 /** Badge colour of the provider mark (only the mark: the bot keeps its own identity colour). */
@@ -87,6 +93,54 @@ export function prettyModel(m: string): string {
 
 const keyOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
+// ------------------------------------------------------------------ the agent's client (#76)
+
+/**
+ * A client as it says it is ("name/version"): from MCP `initialize` (clientInfo.name, clientInfo.version) or an HTTP
+ * agent's User-Agent (its first product). Kept to safe characters: name up to 40 (letters, digits, space . _ : + ( ) -),
+ * version up to 24 (letters, digits . _ + -). "" when there is no name.
+ */
+export function cleanClient(name: unknown, version?: unknown): string {
+  const n = (typeof name === "string" ? name : "").replace(/[^A-Za-z0-9 ._:+()-]/g, "").replace(/\s+/g, " ").trim().slice(0, 40).trim();
+  if (!n) return "";
+  const v = (typeof version === "string" ? version : "").replace(/[^A-Za-z0-9._+-]/g, "").slice(0, 24);
+  return v ? `${n}/${v}` : n;
+}
+
+/** An HTTP agent's client from its User-Agent: the first product, "name/version" (#76). */
+export function clientOfUserAgent(ua: string | null | undefined): string {
+  const m = /^\s*([^/]+?)(?:\/(\S+))?(?:\s|$)/.exec(ua ?? "");
+  return m ? cleanClient(m[1], m[2]) : "";
+}
+
+const CLIENT_NAMES: [RegExp, string][] = [
+  [/claude[ ._-]?code/i, "Claude Code"],
+  [/codex/i, "Codex"],
+  [/copilot/i, "Copilot CLI"],
+  [/open[ ._-]?code/i, "OpenCode"],
+  [/gemini/i, "Gemini CLI"],
+  [/grok/i, "Grok CLI"],
+  [/cursor/i, "Cursor"],
+];
+
+/** The client's display name: the known MCP clients by name ("codex-mcp-client" -> "Codex"), any other as it said. */
+export function clientName(client: string): string {
+  const name = client.split("/")[0]!.trim();
+  return CLIENT_NAMES.find(([re]) => re.test(name))?.[1] ?? name;
+}
+
+const NOT_A_MODEL = new Set(["auto", "default", "unknown", "none", "model", "agent"]);
+
+/**
+ * Did the agent name a model? Not when every word of what it said is the client's own name or a placeholder:
+ * "Copilot CLI (Auto)" from Copilot CLI names no model, "GPT-6" from Codex does (#76).
+ */
+export function namesModel(model: string, client: string): boolean {
+  const words = (s: string) => s.toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean);
+  const own = new Set([...words(client.split("/")[0] ?? ""), ...words(client ? clientName(client) : "")]);
+  return words(model).some((w) => !NOT_A_MODEL.has(w) && !own.has(w));
+}
+
 /** The model behind a seat label (as stored in records, the live stream and decision meta). */
 export function modelOf(label: string | null | undefined): ModelInfo {
   const raw = (label ?? "").trim();
@@ -96,12 +150,17 @@ export function modelOf(label: string | null | undefined): ModelInfo {
   const head = (slash < 0 ? full : full.slice(0, slash)).toLowerCase();
   const rest = slash < 0 ? "" : full.slice(slash + 1);
   if (head === "remote") {
-    const at = rest.indexOf("@");
-    const agent = (at < 0 ? rest : rest.slice(0, at)).trim() || "agent";
-    const model = at < 0 ? "" : rest.slice(at + 1).trim();
-    if (!model) return { key: "remote:unreported", name: "MODEL NOT REPORTED", provider: "other", selfReported: false, test: false, agent };
-    const k = keyOf(model);
-    return { key: `self:${k}`, name: prettyModel(model), provider: providerOf(model), selfReported: true, test: false, agent };
+    const bar = rest.indexOf("|");
+    const clientId = bar < 0 ? "" : rest.slice(bar + 1).trim();
+    const who = bar < 0 ? rest : rest.slice(0, bar);
+    const at = who.indexOf("@");
+    const agent = (at < 0 ? who : who.slice(0, at)).trim() || "agent";
+    const model = at < 0 ? "" : who.slice(at + 1).trim();
+    const client = clientId ? { client: clientName(clientId), clientId } : {};
+    // the model the agent claimed groups the board; an agent that named only its client is shown (and grouped) by it
+    if (namesModel(model, clientId)) return { key: `self:${keyOf(model)}`, name: prettyModel(model), provider: providerOf(model), selfReported: true, test: false, agent, ...client };
+    if (clientId) return { key: `client:${keyOf(clientName(clientId))}`, name: clientName(clientId).toUpperCase(), provider: providerOf(clientId), selfReported: true, test: false, agent, ...client };
+    return { key: "remote:unreported", name: "MODEL NOT REPORTED", provider: "other", selfReported: false, test: false, agent };
   }
   if (TEST_PROVIDERS.has(head)) return { key: `test:${head}`, name: `${head.toUpperCase()} (TEST)`, provider: "test", selfReported: false, test: true };
   if (head === "claude") {
@@ -122,9 +181,17 @@ export function modelOf(label: string | null | undefined): ModelInfo {
   return { key: keyOf(m), name: prettyModel(m), provider: providerOf(full), selfReported: false, test: false };
 }
 
-/** The label a remote seat carries: "remote/<agent>" or "remote/<agent>@<model>" (model as the agent reported it). */
-export function remoteLabel(agent: string, model?: string | null): string {
-  return `remote/${agent}${model ? `@${model}` : ""}`;
+/**
+ * The label a remote seat carries: "remote/<agent>@<model>|<client>" (#76): the model as the agent reported it and the
+ * client it joined with (cleanClient); either may be empty. Neither an agent name nor a model can hold "@" or "|".
+ */
+export function remoteLabel(agent: string, model: string, client: string): string {
+  return `remote/${agent}${model ? `@${model}` : ""}${client ? `|${client}` : ""}`;
+}
+
+/** What a model badge says (#76): "GPT-6 · via Codex"; the client alone when the agent named no model; else the name. */
+export function badgeText(m: ModelInfo): string {
+  return m.client && m.key.startsWith("self:") ? `${m.name} · via ${m.client}` : m.name;
 }
 
 // ------------------------------------------------------------------ fight stats
@@ -308,6 +375,8 @@ export interface ModelRow {
   fallbacks: number;
   fallbackRate: number | null;
   autopilotRate: number;
+  /** the clients the agents of this model joined with (#76), most seats first */
+  clients: { name: string; seats: number }[];
   /** fewer matches than the minimum: shown, ranked after the rest */
   provisional: boolean;
 }
@@ -339,6 +408,8 @@ function rowOf(group: SeatEntry[], minMatches: number): ModelRow {
   const plans = group.reduce((a, e) => a + e.plans, 0);
   const fallbacks = group.reduce((a, e) => a + e.fallbacks, 0);
   const secs = sum((e) => e.fight.roundSeconds);
+  const clients = new Map<string, number>();
+  for (const e of group) if (e.model.client) clients.set(e.model.client, (clients.get(e.model.client) ?? 0) + 1);
   return {
     key: m.key,
     name: m.name,
@@ -362,6 +433,7 @@ function rowOf(group: SeatEntry[], minMatches: number): ModelRow {
     fallbacks,
     fallbackRate: plans ? fallbacks / plans : null,
     autopilotRate: group.filter((e) => e.autopilot).length / n,
+    clients: [...clients].map(([name, seats]) => ({ name, seats })).sort((a, b) => b.seats - a.seats || a.name.localeCompare(b.name)),
     provisional: n < minMatches,
   };
 }
@@ -382,11 +454,15 @@ export interface Leaderboard {
 /** House-bot seats are not ranked: the leaderboard and head-to-head are about models. */
 const ranked = (e: SeatEntry) => e.model.key !== "house";
 
-/** Group seat entries by model and rank them (house bots left out). */
-export function leaderboard(sets: readonly SeatEntry[][], opts: { minMatches?: number } = {}): Leaderboard {
+/**
+ * Group seat entries by the model claimed and rank them (house bots left out). `client` (#76) keeps only the seats of
+ * agents that joined with that client (its display name, any case).
+ */
+export function leaderboard(sets: readonly SeatEntry[][], opts: { minMatches?: number; client?: string } = {}): Leaderboard {
   const min = opts.minMatches ?? MIN_MATCHES;
+  const want = opts.client?.trim().toLowerCase();
   const by = new Map<string, SeatEntry[]>();
-  for (const e of sets.flat().filter(ranked)) by.set(e.model.key, [...(by.get(e.model.key) ?? []), e]);
+  for (const e of sets.flat().filter(ranked)) if (!want || e.model.client?.toLowerCase() === want) by.set(e.model.key, [...(by.get(e.model.key) ?? []), e]);
   return {
     matches: sets.length,
     rows: rankRows([...by.values()].map((g) => rowOf(g, min))),

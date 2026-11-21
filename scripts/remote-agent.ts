@@ -12,6 +12,8 @@
  *        (pipes the turn's prompt to the command on stdin and sends its reply as {"answer": ...})
  *
  * --model <name> reports the model behind the agent (shown as reported; default "scripted" for the built-in modes).
+ * --user-agent "<name>/<version>" is the client the server records next to the model (#76: badges read
+ *   "GPT-6 · via Codex"; default "knockback-remote-agent/1").
  * --soul <file> is the fighter's soul.md (default souls/brawler.md).
  * --rounds <n> leaves the Arena after playing n rounds (default: plays until stopped).
  * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).
@@ -58,7 +60,7 @@ async function request(method: string, path: string, body?: unknown, key?: strin
   const res = await fetch(server + path, {
     ...(flags.insecure === "true" ? { tls: { rejectUnauthorized: false } } : {}),
     method,
-    headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(key ? { authorization: `Bearer ${key}` } : {}) },
+    headers: { "user-agent": flags["user-agent"] ?? "knockback-remote-agent/1", ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(key ? { authorization: `Bearer ${key}` } : {}) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   return { status: res.status, data: await res.json().catch(() => null) };

@@ -4,7 +4,8 @@
  * scoreboard, the lobby and the /models page (and spectator pick cards, when they adopt it).
  *
  * The badge is neutral (dark, white text) so it never fights the bot's identity colour; only the small provider
- * mark on its left is tinted. A remote agent's model is what the agent said at join.
+ * mark on its left is tinted. A remote agent's model is what the agent said at join, with the client it joined with
+ * ("GPT-6 · via Codex", #76).
  *
  *   modelBadgeHtml(label | ModelInfo, "lg")      -> HTML string (values escaped)
  *   modelBadgeEl(label | ModelInfo, "sm")        -> an element built with textContent (for untrusted pages)
@@ -12,7 +13,7 @@
  *
  * Sizes follow the viewer's HUD unit (--u, else vh; with a px floor, readable at 720p); a page can set --mb-fs on the badge instead.
  */
-import { modelOf, PROVIDER_COLOR, PROVIDER_MARK, type ModelInfo } from "../stats/models";
+import { badgeText, modelOf, PROVIDER_COLOR, PROVIDER_MARK, type ModelInfo } from "../stats/models";
 
 export type ModelBadgeSize = "xs" | "sm" | "md" | "lg" | "xl";
 
@@ -35,17 +36,17 @@ export const MODEL_BADGE_CSS = `
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const info = (m: ModelInfo | string | null | undefined): ModelInfo => (m && typeof m === "object" ? m : modelOf(m ?? null));
 
-/** The badge's text for screen readers and titles: "CLAUDE HAIKU (self-reported)". */
+/** The badge's text for screen readers and titles: "GPT-6 (self-reported by the agent) · via codex-mcp-client/0.98.0 · agent Zap". */
 export function modelBadgeTitle(m: ModelInfo | string | null | undefined): string {
   const x = info(m);
-  return `${x.name}${x.selfReported ? " (self-reported by the agent)" : ""}${x.agent ? ` · agent ${x.agent}` : ""}`;
+  return `${x.name}${x.selfReported ? " (self-reported by the agent)" : ""}${x.clientId ? ` · via ${x.clientId}` : ""}${x.agent ? ` · agent ${x.agent}` : ""}`;
 }
 
 /** The badge as HTML (every value escaped). A house bot gets one too (HOUSE BOT): an empty card looks broken. */
 export function modelBadgeHtml(m: ModelInfo | string | null | undefined, size: ModelBadgeSize = "sm"): string {
   const x = info(m);
   const cls = `kb-mb ${size}${x.test ? " test" : ""}`;
-  return `<span class="${cls}" data-provider="${esc(x.provider)}" title="${esc(modelBadgeTitle(x))}" style="--mp:${PROVIDER_COLOR[x.provider]}"><i class="mk" aria-hidden="true">${PROVIDER_MARK[x.provider]}</i><b class="mn">${esc(x.name)}</b></span>`;
+  return `<span class="${cls}" data-provider="${esc(x.provider)}" title="${esc(modelBadgeTitle(x))}" style="--mp:${PROVIDER_COLOR[x.provider]}"><i class="mk" aria-hidden="true">${PROVIDER_MARK[x.provider]}</i><b class="mn">${esc(badgeText(x))}</b></span>`;
 }
 
 /** The badge as an element built with textContent (for pages that never use innerHTML on data). */
@@ -62,7 +63,7 @@ export function modelBadgeEl(m: ModelInfo | string | null | undefined, size: Mod
   mk.textContent = PROVIDER_MARK[x.provider];
   const mn = doc.createElement("b");
   mn.className = "mn";
-  mn.textContent = x.name;
+  mn.textContent = badgeText(x);
   root.append(mk, mn);
   return root;
 }
