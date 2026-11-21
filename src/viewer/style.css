@@ -1482,3 +1482,75 @@ body.embed #new {
 #celebrate .crowd .you span {
   font-size: 1.6vh;
 }
+
+/* ---------------------------------------------------------- suit up: the boot-up on the intro card (#19) */
+#dialogue .portrait.boot {
+  position: relative;
+}
+#dialogue .portrait.boot svg {
+  animation: bootup 1.15s linear both;
+}
+@keyframes bootup {
+  0% { filter: brightness(0) saturate(0) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 0.35; }
+  30% { filter: brightness(0.35) saturate(0.2) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 0.8; }
+  42% { filter: brightness(1.7) saturate(1.4) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 1; }
+  50% { filter: brightness(0.45) saturate(0.6) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); }
+  62% { filter: brightness(1.35) saturate(1.2) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); }
+  100% { filter: none drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 1; }
+}
+#dialogue .bootscan {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0;
+  height: 0.5vh;
+  background: var(--c);
+  box-shadow: 0 0 2vh var(--c);
+  border-radius: 2px;
+  opacity: 0;
+  animation: bootscan 0.9s ease-out 0.05s both;
+  pointer-events: none;
+}
+@keyframes bootscan {
+  0% { bottom: 0; opacity: 0.95; }
+  85% { bottom: 88%; opacity: 0.8; }
+  100% { bottom: 92%; opacity: 0; }
+}
+#dialogue .bootlabel {
+  position: absolute;
+  left: 50%;
+  bottom: -1.2vh;
+  transform: translateX(-50%);
+  padding: 0.2vh 0.8vh;
+  border-radius: 2px;
+  background: var(--c);
+  color: #0b0d14;
+  font: 900 1.3vh/1.2 system-ui, sans-serif;
+  font-style: normal;
+  letter-spacing: 0.2em;
+  opacity: 0;
+  animation: bootlabel 1.6s ease-out 0.9s both;
+  pointer-events: none;
+}
+@keyframes bootlabel {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+#dialogue .who .suit {
+  align-self: center;
+  padding: 0.3vh 0.8vh;
+  border: 1px solid var(--c);
+  border-radius: 2px;
+  color: var(--c);
+  font: 800 1.35vh/1.2 system-ui, sans-serif;
+  letter-spacing: 0.12em;
+}
+#dialogue .who .suit.random {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.6);
+}
+@media (prefers-reduced-motion: reduce) {
+  #dialogue .portrait.boot svg, #dialogue .bootscan, #dialogue .bootlabel { animation: none; }
+}

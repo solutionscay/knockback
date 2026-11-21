@@ -13,7 +13,7 @@ import type { Identity } from "../sim/identity";
 import type { Soul } from "../sim/soul";
 import { DT } from "../sim/constants";
 import type { Fight } from "../sim/fight";
-import { Match, type DecisionMeta, type MatchRecord } from "../sim/match";
+import { Match, type DecisionMeta, type MatchRecord, type SuitUpEntry } from "../sim/match";
 import type { SimEvent } from "../sim/sim";
 import { VoiceSession, type Decision } from "../sim/voice";
 import { hex } from "./portrait";
@@ -158,11 +158,11 @@ export class Game {
    * exactly (all decisions from the record). `live`: decisions arrive later via
    * pushDecisions() (AI fighters thinking on the server).
    */
-  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; control?: unknown; ruleset?: Ruleset } = {}) {
+  newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; suitUp?: SuitUpEntry[]; control?: unknown; ruleset?: Ruleset } = {}) {
     this.apUntil = 0;
     document.getElementById("autopilot-callout")?.classList.remove("show");
-    // live: the server's identities come as wishes; they are valid and distinct, so they are kept as they are
-    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, identityWishes: opts.identities });
+    // live: the server settled the identities (and how the seats suited up, #19): taken exactly as they are
+    this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, ...(opts.identities ? { identities: opts.identities } : {}), ...(opts.suitUp ? { suitUp: opts.suitUp } : {}) });
     this.ap.reset(sanitizeControl(opts.control, this.match.ruleset.round.maxRounds));
     this.match.onEvent = (e) => this.onEvent(e);
     this.labels = opts.labels ?? null;
@@ -176,7 +176,7 @@ export class Game {
       // show the arena while the fighters think about round 1
       this.waitingRound = 1;
       this.shown = null as unknown as Fight;
-      const preview = new Match(seed, { ruleset: this.match.ruleset, souls: this.match.souls, identityWishes: this.match.identities });
+      const preview = new Match(seed, { ruleset: this.match.ruleset, souls: this.match.souls, identities: this.match.identities });
       preview.prepareRound();
       this.shown = preview.fight!;
       this.scene.load(this.shown.sim);

@@ -129,3 +129,25 @@ describe("suit up", () => {
     expect(suitUpPrompt(coward)).not.toBe(suitUpPrompt(bruiser));
   });
 });
+
+describe("the viewer reads the suit-up safely", () => {
+  test("sanitizeSuitUp keeps known values only; a record keeps its entries; the intro card boots up and says who chose", async () => {
+    const { sanitizeSuitUp, sanitizeRecord } = await import("../src/viewer/sanitize");
+    const { dialogueHtml } = await import("../src/viewer/game-hud");
+    expect(sanitizeSuitUp([{ seat: 1, by: "ai", outcome: "partial", kept: ["name", "evil"], dropped: [{ field: "shape", why: "taken" }, { field: "<b>", why: "x" }], nudged: { from: 1, to: "x" }, line: "Hi".repeat(100), why: "w" }, { seat: 1, by: "ai", outcome: "ok" }, { seat: 9, by: "ai", outcome: "ok" }, { seat: 2, by: "hacker", outcome: "ok" }])).toEqual([
+      { seat: 1, by: "ai", outcome: "partial", kept: ["name"], dropped: [{ field: "shape", why: "taken" }], line: "Hi".repeat(70), why: "w" },
+    ]);
+    expect(sanitizeSuitUp("no")).toBeUndefined();
+    const r = await suitUp(42, [0, 1, 2, 3].map((i) => ({ provider: i === 1 ? answer({ name: "Mopsy", shape: "cloud", color: "#88ddff", mark: "halo", line: "Please don't." }) : i === 2 ? junk : null, soul: souls[i]! })));
+    const runner = new MatchRunner({ seed: 42, seats: souls.map((soul) => ({ providerName: "house", provider: null, soul })), suitUp: r });
+    const rec = sanitizeRecord(JSON.parse(JSON.stringify(runner.match.record)))!;
+    expect(rec.suitUp).toEqual(r.entries);
+    const m = new Match(42, { recorded: rec });
+    const decisions = m.prepareRound();
+    const card = (f: number) => dialogueHtml(m, decisions[f]!, "house", { kind: "dialogue", fighter: f, phase: "intro", round: 1, duration: 1 });
+    expect(card(1)).toContain('class="portrait boot"');
+    expect(card(1)).toContain("PICKED ITS OWN LOOK");
+    expect(card(2)).toContain("RANDOM LOOK · BAD ANSWER");
+    expect(card(0)).not.toContain('class="suit');
+  });
+});

@@ -135,11 +135,19 @@ export function dialogueHtml(match: Match, decision: Decision, label: string | n
   const nextRules = s.rules?.length ? `<div class="rules next"><span class="k">RULES</span>${s.rules.map((r) => `<span>${esc(r.label)}</span>`).join("")}</div>` : "";
   const why = meta?.why ? `<div class="why">${esc(meta.why)}</div>` : "";
   const rt = s.retaliate === "attacker" ? "TURN ON ATTACKERS" : s.retaliate === "ignore" ? "IGNORE BACKSTABS" : "FIGHT BACK";
+  // the intro card boots the fighter up (#19), and says when it chose its own look
+  const intro = b.phase === "intro";
+  const suit = intro ? match.record.suitUp?.find((e) => e.seat === b.fighter) : undefined;
+  const suitTag = !suit
+    ? ""
+    : suit.outcome === "ok" || suit.outcome === "partial"
+      ? `<span class="suit" title="${esc(suit.why ?? "")}">${suit.by === "ai" ? "PICKED ITS OWN LOOK" : "ITS AGENT PICKED THE LOOK"}${suit.outcome === "partial" ? " · PARTLY TAKEN" : ""}</span>`
+      : `<span class="suit random">RANDOM LOOK · ${suit.outcome === "fallback-timeout" ? "TIMED OUT" : suit.outcome === "fallback-error" ? "ERROR" : "BAD ANSWER"}</span>`;
   return `
       <div class="panel" style="--c:${hex(c.color)}">
-        <div class="portrait">${portraitSvg(c, s.weapons[0] ?? "fist", m.state)}</div>
+        <div class="portrait${intro ? " boot" : ""}">${portraitSvg(c, s.weapons[0] ?? "fist", m.state)}${intro ? `<i class="bootscan"></i><em class="bootlabel">ONLINE</em>` : ""}</div>
         <div class="body">
-          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${badge}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}</div>
+          <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${badge}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}${suitTag}</div>
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
           <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>

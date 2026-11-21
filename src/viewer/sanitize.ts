@@ -1,6 +1,6 @@
 import { resolveRuleset, type Ruleset } from "../sim/ruleset";
 /** Untrusted input (record files, the live stream) -> safe decisions and souls. Pure: no DOM, no Pixi. */
-import type { MatchRecord, PlanUpdate } from "../sim/match";
+import type { MatchRecord, PlanUpdate, SuitUpEntry } from "../sim/match";
 import { MORALE_STATES } from "../sim/morale";
 import { checkRule, MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES } from "../sim/rules";
 import { isPickupWeapon, MAX_RULES, TARGET_PREFERENCES, type Rule, type Strategy } from "../sim/sim-types";
@@ -101,6 +101,36 @@ export function sanitizeIdentities(v: unknown, seed = 0): Identity[] | undefined
   return v.map((x, i) => sanitizeIdentity(x, i, gen[i]!));
 }
 
+const SUIT_OUTCOMES = ["ok", "partial", "fallback-timeout", "fallback-error", "fallback-invalid"];
+const LOOK_FIELDS = ["name", "shape", "eyes", "color", "mark", "minor"];
+
+/** The suit-up entries (#19) from a record or the live stream: known values, short strings. */
+export function sanitizeSuitUp(v: unknown): SuitUpEntry[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: SuitUpEntry[] = [];
+  for (const x of v.slice(0, 4)) {
+    const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    const seat = Number.isInteger(o.seat) && (o.seat as number) >= 0 && (o.seat as number) <= 3 ? (o.seat as number) : -1;
+    if (seat < 0 || out.some((e) => e.seat === seat) || (o.by !== "ai" && o.by !== "agent") || !SUIT_OUTCOMES.includes(o.outcome as string)) continue;
+    const fields = (a: unknown) => (Array.isArray(a) ? a.filter((f): f is string => LOOK_FIELDS.includes(f as string)) : []);
+    const dropped = Array.isArray(o.dropped) ? o.dropped.slice(0, 6).map((d) => ({ field: String((d as { field?: unknown })?.field ?? "").slice(0, 8), why: String((d as { why?: unknown })?.why ?? "").slice(0, 20) })).filter((d) => LOOK_FIELDS.includes(d.field)) : [];
+    const nudged = o.nudged && typeof o.nudged === "object" ? (o.nudged as Record<string, unknown>) : null;
+    const color = (c: unknown) => (Number.isInteger(c) && (c as number) >= 0 && (c as number) <= 0xffffff ? (c as number) : null);
+    out.push({
+      seat,
+      by: o.by,
+      outcome: o.outcome as SuitUpEntry["outcome"],
+      ...(Number.isFinite(o.ms) ? { ms: Math.max(0, Number(o.ms)) } : {}),
+      kept: fields(o.kept),
+      dropped,
+      ...(nudged && color(nudged.from) !== null && color(nudged.to) !== null ? { nudged: { from: color(nudged.from)!, to: color(nudged.to)! } } : {}),
+      ...(typeof o.line === "string" ? { line: o.line.slice(0, 140) } : {}),
+      ...(typeof o.why === "string" ? { why: o.why.slice(0, 100) } : {}),
+    });
+  }
+  return out.length ? out : undefined;
+}
+
 export function sanitizeSouls(v: unknown): Soul[] | undefined {
   return Array.isArray(v) && v.length === 4 ? v.map((s, i) => sanitizeSoul(s, i)) : undefined;
 }
@@ -166,6 +196,7 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
     seed: Number(r.seed) >>> 0,
     souls,
     identities,
+    suitUp: sanitizeSuitUp(r.suitUp),
     rounds: r.rounds.map((rd) => {
       const ds = [0, 1, 2, 3].map((i) => sanitizeDecision({ line: rd.lines?.[i], strategy: rd.strategies?.[i] }, i));
       const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(m?.hedged === true ? { hedged: true } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
