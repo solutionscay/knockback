@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { formatSeconds } from "../format";
 import type { IdentityWish } from "../sim/identity";
-import { Match, type CheckinMeta, type DecisionMeta, type MatchRecord, type PlanUpdate } from "../sim/match";
+import { Match, type CheckinMeta, type DecisionMeta, type MatchRecord, type PlanUpdate, type SuitUpEntry } from "../sim/match";
 import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
 import { houseBrain, type Decision } from "../sim/voice";
@@ -27,7 +27,7 @@ import { checkinSummaryLines, planChangeSummary } from "./checkin-log";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
-  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string; ruleset?: Ruleset }
+  | { type: "match"; seed: number; labels: string[]; names: string[]; souls: Match["souls"]; identities: Match["identities"]; theme: string; ruleset?: Ruleset; suitUp?: SuitUpEntry[] }
   | { type: "decisions"; round: number; decisions: Decision[]; meta: DecisionMeta[]; checkinTicks?: number[] }
   | { type: "round"; round: number; winner: number; seconds: number; reason: string; wins: number[]; kos: RoundFacts["stats"]["kos"]; summary: string[] }
   | { type: "done"; record: string | null; winner: number; wins: number[] }
@@ -83,6 +83,8 @@ export interface RunnerOptions {
   /** provider name per seat, saved in the record (default: seat.providerName) */
   lineup?: string[];
   identityWishes?: (IdentityWish | undefined)[];
+  /** the suit-up step's result (#19, src/ai/suitup.ts): its wishes win over identityWishes; its entries go into the record */
+  suitUp?: { wishes: (IdentityWish | undefined)[]; entries: SuitUpEntry[] };
   /** called for every live event, in order */
   onEvent?: (e: RunnerEvent) => void;
   /** called for every log line (default: nothing) */
@@ -158,7 +160,8 @@ export class MatchRunner {
 
   constructor(readonly opts: RunnerOptions) {
     const souls: Soul[] = opts.seats.map((s) => s.soul);
-    this.match = new Match(opts.seed, { souls, ruleset: opts.ruleset, preset: opts.preset, presetVersion: opts.presetVersion, ...(opts.identityWishes ? { identityWishes: opts.identityWishes } : {}) });
+    const wishes = opts.suitUp?.wishes ?? opts.identityWishes;
+    this.match = new Match(opts.seed, { souls, ruleset: opts.ruleset, preset: opts.preset, presetVersion: opts.presetVersion, ...(wishes ? { identityWishes: wishes } : {}), ...(opts.suitUp?.entries.length ? { suitUp: opts.suitUp.entries } : {}) });
     this.labels = opts.labels ?? opts.seats.map((s) => s.provider?.label ?? "house");
     this.lineup = opts.lineup ?? opts.seats.map((s) => s.providerName);
     this.checkin = opts.checkins ? { ...CHECKIN, ...(typeof opts.checkins === "object" ? opts.checkins : {}) } : null;
@@ -185,7 +188,7 @@ export class MatchRunner {
     this.t0 = performance.now();
     this.startedAtMs = Date.now();
     const m = this.match;
-    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme, ruleset: m.ruleset });
+    this.emit({ type: "match", seed: m.seed, labels: this.labels, names: m.names, souls: m.souls, identities: m.identities, theme: m.level.theme, ruleset: m.ruleset, ...(m.record.suitUp ? { suitUp: m.record.suitUp } : {}) });
   }
 
   private stratText(s: { stance: string; weapons: string[]; target: string; grudge?: number; retaliate?: string }) {
