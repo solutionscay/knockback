@@ -54,8 +54,13 @@ describe("owner keys over HTTP", () => {
 
   test("a revoked key gets 401", async () => {
     const key = await newKey("Cy");
+    const seated = await joinAs("Cyborg", { key });
+    expect(seated.status).toBe(201);
     expect((await call("DELETE", "/api/keys/me", { key })).data).toEqual({ revoked: true, owner: "Cy" });
     expect((await joinAs("Revoked", { key })).status).toBe(401);
+    // the agent it joined leaves the Arena with it
+    expect((await call("GET", "/api/arena/turn?wait=0", { key: seated.data.token })).data).toMatchObject({ status: "out" });
+    expect((await call("GET", "/api/queue")).data.seats.map((x: { agent: string | null }) => x.agent)).not.toContain("Cyborg");
     expect((await call("GET", "/api/keys/me", { key })).status).toBe(401);
   });
 

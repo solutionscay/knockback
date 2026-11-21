@@ -31,10 +31,11 @@ const bearer = (req: Request) => /^Bearer\s+(\S+)$/i.exec(req.headers.get("autho
 /** long polls in flight per agent */
 const polls = new WeakMap<ArenaAgent, number>();
 
-/** The agent of this request's seat token, rate limited per agent. */
-function agentFor(server: MatchServer, req: Request): ArenaAgent {
+/** The agent of this request's seat token, rate limited per agent; its owner key must still be live. */
+async function agentFor(server: MatchServer, req: Request): Promise<ArenaAgent> {
   const e = server.arena.agentOf(bearer(req));
   server.seatLimit.take(e.tokenHash);
+  if (!(await server.arena.keyLive(e))) throw new HttpError(410, `${e.name} is out of the Arena: its owner key was revoked`);
   return e;
 }
 
@@ -97,7 +98,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
     allow("GET");
     let e: ArenaAgent;
     try {
-      e = agentFor(server, req);
+      e = await agentFor(server, req);
     } catch (x) {
       // a token that is out (left, silent too long, joined again elsewhere): the poll says so and why
       if (x instanceof HttpError && x.status === 410) return json({ status: "out", message: x.message, next: "join again (POST /api/queue) to play" });
@@ -130,7 +131,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
 
   if (op === "plan" || op === "checkin") {
     allow("POST");
-    const e = agentFor(server, req);
+    const e = await agentFor(server, req);
     const body = await readJson(req, MAX_BODY);
     arena.seen(e);
     const m = arena.playing(e);
@@ -162,7 +163,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
 
   if (op === "leave") {
     allow("POST");
-    const e = agentFor(server, req);
+    const e = await agentFor(server, req);
     const seat = e.seat;
     const m = arena.playing(e);
     await arena.leave(e);

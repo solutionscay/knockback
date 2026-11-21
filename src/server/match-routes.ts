@@ -73,6 +73,7 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
     const owner = await ownerOf(server.store, key);
     if (method === "DELETE") {
       await server.store.revokeKey(hashKey(key!));
+      await server.arena.revokeKey(hashKey(key!)); // its agents leave the Arena
       server.log(`owner ${owner}: a key was revoked`);
       return json({ revoked: true, owner });
     }

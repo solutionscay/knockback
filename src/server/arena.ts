@@ -60,6 +60,8 @@ export interface ArenaOptions {
 /** An agent in the Arena: seated (a seat, from a round) or queued. */
 export interface ArenaAgent {
   tokenHash: string;
+  /** sha256 of the owner key it joined with: a revoked key takes it out */
+  keyHash: string;
   name: string;
   owner: string;
   soul: string;
@@ -160,6 +162,7 @@ export class Arena {
   /** Play one round to its end: the line-up as the seats stand now, then misses, rotation and claims. */
   async playRound(): Promise<ServerMatch> {
     const selection = arenaSelection(await selectRuleset(this.api.store));
+    for (const e of this.agents()) await this.keyLive(e); // revoked keys play no more rounds
     this.dropIdle();
     // from here to the start nothing awaits: the line-up is the seats as they are now
     const round = ++this.round;
@@ -312,17 +315,19 @@ export class Arena {
   async join(body: Record<string, unknown>, ip: string, key: string | null): Promise<{ agent: ArenaAgent; token: string }> {
     const owner = await ownerOf(this.api.store, key);
     const j = checkJoin(body);
-    await claimName(this.api.store, j.name, owner);
-    // from here on nothing awaits: the checks and the claim see the same seats
     const lower = j.name.toLowerCase();
-    const again = this.agents().find((e) => e.name.toLowerCase() === lower);
-    if (!again && this.agents().filter((e) => e.ip === ip).length >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} agents per address in the Arena`);
+    const known = () => this.agents().find((e) => e.name.toLowerCase() === lower);
+    // limits first: a refused join binds no name
+    if (!known() && this.agents().filter((e) => e.ip === ip).length >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} agents per address in the Arena`);
     this.api.joinLimit.take(ip, "Arena joins");
     this.api.keyLimit.take(hashKey(key!), "Arena joins with this key");
+    await claimName(this.api.store, j.name, owner);
+    // from here on nothing awaits: the checks and the claim see the same seats
+    const again = known();
     const token = `st_${hex(24)}`;
     const now = Date.now();
-    if (again) return { agent: this.rejoin(again, j, token, ip), token };
-    const e: ArenaAgent = { tokenHash: hashToken(token), name: j.name, owner, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, openingLine: j.line, warnings: j.warnings, ip, joinedAt: now, lastSeen: now, seat: null, fromRound: 0, missed: 0, missedAt: 0, queuedAt: now, rounds: [], lastRound: null };
+    if (again) return { agent: this.rejoin(again, j, token, ip, hashKey(key!)), token };
+    const e: ArenaAgent = { tokenHash: hashToken(token), keyHash: hashKey(key!), name: j.name, owner, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, openingLine: j.line, warnings: j.warnings, ip, joinedAt: now, lastSeen: now, seat: null, fromRound: 0, missed: 0, missedAt: 0, queuedAt: now, rounds: [], lastRound: null };
     this.byToken.set(e.tokenHash, e);
     this.api.log(`arena: ${e.name} (owner ${owner}, says it runs ${e.model}) joined`);
     const free = this.seats.indexOf(null);
@@ -333,7 +338,7 @@ export class Arena {
   }
 
   /** The same agent joins again: a new token (the old one is out), its new soul and look from the next round. */
-  private rejoin(e: ArenaAgent, j: ReturnType<typeof checkJoin>, token: string, ip: string): ArenaAgent {
+  private rejoin(e: ArenaAgent, j: ReturnType<typeof checkJoin>, token: string, ip: string, keyHash: string): ArenaAgent {
     const m = this.playing(e);
     const old = e.tokenHash;
     e.tokenHash = hashToken(token);
@@ -343,10 +348,22 @@ export class Arena {
     // the round on now keeps its fighter; the agent answers it with the new token
     const sa = m?.agents[e.seat!];
     if (sa) sa.tokenHash = e.tokenHash;
-    Object.assign(e, { soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, openingLine: j.line, warnings: j.warnings, ip, lastSeen: Date.now() });
+    Object.assign(e, { keyHash, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, openingLine: j.line, warnings: j.warnings, ip, lastSeen: Date.now() });
     this.api.log(`arena: ${e.name} joined again (${e.seat !== null ? `seat ${e.seat}` : `place ${this.queue.indexOf(e) + 1} in the queue`})`);
     this.changed();
     return e;
+  }
+
+  /** An owner key was revoked: every agent joined with it leaves the Arena. */
+  async revokeKey(keyHash: string) {
+    for (const e of this.agents().filter((x) => x.keyHash === keyHash)) await this.leave(e, "its owner key was revoked");
+  }
+
+  /** The agent's owner key is still live (a revoke from the operator's CLI reaches the server only through the store). */
+  async keyLive(e: ArenaAgent): Promise<boolean> {
+    if (await this.api.store.ownerOfKey(e.keyHash)) return true;
+    await this.revokeKey(e.keyHash);
+    return false;
   }
 
   /** Every agent in the Arena (seated, then queued). */
