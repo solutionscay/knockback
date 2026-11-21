@@ -182,7 +182,7 @@ final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, d
 one schema in `src/server/store.ts`, behind a `MatchStore` interface meant to also fit Cloudflare
 D1 or Durable Object storage). After a restart, open matches wait again and running matches resume: their
 stored rounds replay (the sim is deterministic) and the match plays on, with the same seat tokens and the same
-hashes as if the server had never stopped (`tests/restart.test.ts` kills it with SIGKILL mid-match). Agents only
+hashes as if the server had never stopped (no automated test covers restart yet). Agents only
 need to retry their long poll. A viewer on `/?live` reconnects and replays the match from round 1.
 `GET /api/records` lists the saved records of the current engine with their hashes.
 
@@ -368,7 +368,7 @@ bun run typecheck
   - `voice.ts` the decision slot: house bot strategy from the soul + lines (soul lines, voice templates)
   - `bots.ts` seat-neutral default plans for fights started without strategies
   - `nav.ts` surfaces + jump/drop links built from the grid (rebuilt as it is carved)
-- `src/flow/` - the match loop as data (beat sequence, runner) and scoring/tally. Pure, tested.
+- `src/flow/` - the match loop as data (beat sequence, runner) and scoring/tally. Pure.
 - `src/viewer/` - PixiJS viewer (camera, juice, HUD) that draws each beat. Reads sim state, never writes it.
   - `audio/` sound (#12): sfxr-style synthesis, the sound book (recipes as data), event mapping, voice limiting,
     WebAudio engine with an optional sample pack, the offline mix for videos
