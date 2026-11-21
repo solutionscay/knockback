@@ -109,7 +109,8 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .joinp .err { min-height: 1em; font-size: 13px; color: var(--red); }
 .joinp .who { font-size: 14px; color: var(--dim); }
 .joinp .who b { color: var(--ink); }
-.joinp .link { border: 0; background: none; padding: 0 0 0 8px; color: var(--dim); text-decoration: underline; font: inherit; cursor: pointer; }
+/* a text link that is a button ("Use another owner" in JOIN, "take this seat" in the lobby's next round) */
+.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--dim); text-decoration: underline; font: inherit; cursor: pointer; }
 .joinp .tell { margin: 0; font-size: 15px; }
 .joinp .tell b { color: var(--yellow); }
 .status .sl, .q .sl { font-size: 12px; color: var(--dim); font-weight: 600; margin-top: 3px; }
@@ -232,19 +233,20 @@ dialog.joinp::backdrop { background: #07080dcc; }
   .logo, .onair { display: inline-flex; align-items: center; min-height: 44px; }
   .onair { min-width: 44px; padding-left: 6px; }
   .rrow { min-height: 44px; }
+  .tag { font-size: 11px; }
   .nav a { display: inline-flex; align-items: center; min-height: 44px; }
   .btn.small, a.rp { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
   .card h2 a { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; justify-content: flex-end; margin: -14px 0; }
   .results li { align-items: center; }
   .results a { padding: 13px 0; }
-  .q .n { display: inline-block; padding: 13px 0; margin: -13px 0; }
+  .q .n { display: inline-block; padding: 15px 0; margin: -15px 0; }
   .seat .sn { padding: 14px 0; margin: -14px 0; min-width: 44px; }
   .seat .pick { min-height: 44px; min-width: 64px; font-size: 13px; }
   .tabbar a { display: flex; flex-direction: column; justify-content: center; min-height: 48px; }
   /* JOIN panel */
   .joinp .x { min-width: 44px; min-height: 44px; font-size: 16px; }
   .joinp input { min-height: 44px; font-size: 16px; } /* 16 px: iOS does not zoom into the field */
-  .joinp .link { min-height: 44px; padding: 0 8px; }
+  .link { min-height: 44px; padding: 0 8px; }
   .tabs button { min-height: 44px; padding: 8px 14px; font-size: 14px; }
   .copy { min-height: 44px; min-width: 64px; font-size: 13px; }
   /* replay scrubber: the whole track is the slider; pins are 4 px marks, the track takes the tap */
@@ -259,6 +261,8 @@ dialog.joinp::backdrop { background: #07080dcc; }
 /* the JOIN snippet on a narrow screen: one command per line, scrolled sideways inside its box; Copy above the text */
 @media (max-width: 760px) {
   pre.snip { white-space: pre; word-break: normal; overflow-x: auto; min-height: 64px; padding: 20px 84px 20px 14px; font-size: 13px; }
+  /* the text scrolls under Copy: the button is solid with a short fade on its left */
+  .snipwrap .copy:not(.ok) { background: #1c1c1c; box-shadow: -14px 0 12px #000; }
   .meta { font-size: 12px; }
   .tabbar a { font-size: 12px; }
   .q li, .results li { font-size: 14px; }
@@ -270,6 +274,17 @@ dialog.joinp::backdrop { background: #07080dcc; }
   /* replays: a long model name wraps inside its line-up entry instead of widening the page */
   .rrow .rl > span { white-space: normal; flex-wrap: wrap; max-width: 100%; }
   .rrow .kb-mb { min-width: 0; flex-wrap: wrap; white-space: normal; row-gap: 0.25em; }
+  /* agent page: each match on two lines (place | level, when | replay; then rounds), so the table fits 360 px */
+  .hist, .hist tbody { display: block; }
+  .hist tr { display: grid; grid-template-columns: 44px auto minmax(0, 1fr) auto; grid-template-areas: "p t a r" "p w w r"; align-items: center; column-gap: 10px; row-gap: 2px; padding: 8px 10px; border-top: 1px solid #ffffff10; }
+  .hist tr:first-child { border-top: 0; }
+  .hist td { padding: 0; border: 0; }
+  .hist td:nth-child(1) { grid-area: p; }
+  .hist td:nth-child(2) { grid-area: t; }
+  .hist td:nth-child(3) { grid-area: a; white-space: nowrap; }
+  .hist td:nth-child(4) { grid-area: w; }
+  .hist td:nth-child(4):empty { display: none; }
+  .hist td:nth-child(5) { grid-area: r; }
 }
 
 /* a phone turned sideways: a slimmer header, and the stage fits the screen under it */
