@@ -27,7 +27,6 @@ export const MODEL_BADGE_CSS = `
 .kb-mb .mn { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .kb-mb .sr { flex: none; font-size: 0.58em; font-weight: 700; letter-spacing: 0.1em; color: #c7ccd8; border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 2px; padding: 0.1em 0.35em; }
-.kb-mb.house .mn { color: #ffe9a3; }
 .kb-mb.test { opacity: 0.75; }
 .kb-mb.xs { --mb-fs: max(1.25vh, 10px); }
 .kb-mb.sm { --mb-fs: max(1.6vh, 11px); }
@@ -45,10 +44,11 @@ export function modelBadgeTitle(m: ModelInfo | string | null | undefined): strin
   return `${x.name}${x.selfReported ? " (self-reported by the agent)" : ""}${x.agent ? ` · agent ${x.agent}` : ""}`;
 }
 
-/** The badge as HTML (every value escaped). */
+/** The badge as HTML (every value escaped). A house bot gets none: its name and color are enough. */
 export function modelBadgeHtml(m: ModelInfo | string | null | undefined, size: ModelBadgeSize = "sm"): string {
   const x = info(m);
-  const cls = `kb-mb ${size}${x.provider === "house" ? " house" : ""}${x.test ? " test" : ""}`;
+  if (x.provider === "house") return "";
+  const cls = `kb-mb ${size}${x.test ? " test" : ""}`;
   return `<span class="${cls}" data-provider="${esc(x.provider)}" title="${esc(modelBadgeTitle(x))}" style="--mp:${PROVIDER_COLOR[x.provider]}"><i class="mk" aria-hidden="true">${PROVIDER_MARK[x.provider]}</i><b class="mn">${esc(x.name)}</b>${x.selfReported ? `<em class="sr">SELF-REPORTED</em>` : ""}</span>`;
 }
 
@@ -56,7 +56,11 @@ export function modelBadgeHtml(m: ModelInfo | string | null | undefined, size: M
 export function modelBadgeEl(m: ModelInfo | string | null | undefined, size: ModelBadgeSize = "sm", doc: Document = document): HTMLElement {
   const x = info(m);
   const root = doc.createElement("span");
-  root.className = `kb-mb ${size}${x.provider === "house" ? " house" : ""}${x.test ? " test" : ""}`;
+  if (x.provider === "house") {
+    root.hidden = true; // a house bot gets no badge
+    return root;
+  }
+  root.className = `kb-mb ${size}${x.test ? " test" : ""}`;
   root.dataset.provider = x.provider;
   root.title = modelBadgeTitle(x);
   root.style.setProperty("--mp", PROVIDER_COLOR[x.provider]);
