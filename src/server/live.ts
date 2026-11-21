@@ -35,8 +35,9 @@ export class LiveStream {
       const chunk = this.history[client.next]!;
       if (chunk.byteLength > this.maxQueuedBytes) return this.drop(client);
       if ((client.controller.desiredSize ?? 0) < chunk.byteLength) return;
-      client.controller.enqueue(chunk);
+      // advance first: with a read waiting, enqueue() can call pull() (this pump) again before it returns
       client.next++;
+      client.controller.enqueue(chunk);
     }
   }
 

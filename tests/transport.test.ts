@@ -30,6 +30,27 @@ describe("spectator resource bounds", () => {
     }
   });
 
+  test("a reader already waiting gets every event once, in order (enqueue may re-enter pull)", async () => {
+    const live = new LiveStream(1, 0);
+    const reader = live.response().body!.getReader();
+    let text = "";
+    const reading = (async () => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        text += decode(value);
+      }
+    })();
+    for (let i = 0; i < 12; i++) {
+      await Bun.sleep(2); // the reader is waiting when the event comes
+      live.broadcast({ i });
+    }
+    await Bun.sleep(10);
+    live.close();
+    await reading;
+    expect([...(text.match(/"i":\d+/g) ?? [])]).toEqual(Array.from({ length: 12 }, (_, i) => `"i":${i}`));
+  });
+
   test("late join replays history larger than the queue in order", async () => {
     const live = new LiveStream(1, 0, 32);
     for (let i = 0; i < 20; i++) live.broadcast({ i });
