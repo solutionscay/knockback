@@ -1,4 +1,7 @@
 :root {
+  /* the HUD unit (#60): 1vh on landscape screens, as designed; on narrow (portrait) screens the width limits it,
+     so cards and rows fit the screen. Small text has a px floor (max(..., 11px)) so it stays readable on phones. */
+  --u: min(1vh, 0.9vw);
   --ink: #f4f1ea;
   --shadow: #07080d;
   --font: "Arial Black", "Helvetica Neue", system-ui, sans-serif;
@@ -27,22 +30,22 @@ body {
   opacity: 1;
 }
 .outline {
-  -webkit-text-stroke: 0.25vh var(--shadow);
+  -webkit-text-stroke: calc(0.25 * var(--u)) var(--shadow);
   paint-order: stroke fill;
 }
 
 /* ---------------------------------------------------------- fight clock */
 #clock {
   position: absolute;
-  top: 2.2vh;
+  top: calc(2.2 * var(--u));
   left: 50%;
   transform: translateX(-50%);
-  font-size: 3.4vh;
+  font-size: max(calc(3.4 * var(--u)), 11px);
   letter-spacing: 0.06em;
-  padding: 0.4vh 2vh;
+  padding: calc(0.4 * var(--u)) calc(2 * var(--u));
   border-radius: 99px;
   background: rgba(7, 8, 13, 0.55);
-  text-shadow: 0 0.3vh 0 var(--shadow);
+  text-shadow: 0 calc(0.3 * var(--u)) 0 var(--shadow);
   font-variant-numeric: tabular-nums;
 }
 #clock.low {
@@ -52,26 +55,26 @@ body {
 /* ---------------------------------------------------------- lineup chips */
 #lineup {
   position: absolute;
-  top: 2vh;
+  top: calc(2 * var(--u));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 1.4vh;
+  gap: calc(1.4 * var(--u));
   transition: opacity 0.4s, transform 0.5s;
 }
 #lineup.out {
   opacity: 0 !important;
-  transform: translate(-50%, -6vh);
+  transform: translate(-50%, -calc(6 * var(--u)));
 }
 #lineup .chip {
   display: flex;
   align-items: center;
-  gap: 0.8vh;
-  padding: 0.5vh 1.4vh 0.5vh 0.6vh;
+  gap: calc(0.8 * var(--u));
+  padding: calc(0.5 * var(--u)) calc(1.4 * var(--u)) calc(0.5 * var(--u)) calc(0.6 * var(--u));
   border-radius: 99px;
   background: rgba(7, 8, 13, 0.6);
-  border: 0.3vh solid var(--c);
-  font-size: 1.9vh;
+  border: calc(0.3 * var(--u)) solid var(--c);
+  font-size: max(calc(1.9 * var(--u)), 11px);
   opacity: 0;
   transform: scale(0.4);
 }
@@ -81,8 +84,8 @@ body {
   transition: transform 0.35s cubic-bezier(0.2, 1.8, 0.4, 1), opacity 0.2s;
 }
 #lineup .chip svg {
-  width: 3.4vh;
-  height: 4vh;
+  width: calc(3.4 * var(--u));
+  height: calc(4 * var(--u));
 }
 #lineup .chip > span {
   color: var(--c);
@@ -101,37 +104,37 @@ body {
 #intro .card {
   display: flex;
   align-items: center;
-  gap: 3vh;
+  gap: calc(3 * var(--u));
   width: 48vw;
-  padding: 3vh 4vh 3vh 2vh;
-  border-radius: 3vh;
+  padding: calc(3 * var(--u)) calc(4 * var(--u)) calc(3 * var(--u)) calc(2 * var(--u));
+  border-radius: calc(3 * var(--u));
   background: linear-gradient(100deg, rgba(7, 8, 13, 0.92) 55%, rgba(7, 8, 13, 0.6));
-  border-left: 1.4vh solid var(--c);
-  box-shadow: 0 2vh 6vh rgba(0, 0, 0, 0.5);
+  border-left: calc(1.4 * var(--u)) solid var(--c);
+  box-shadow: 0 calc(2 * var(--u)) calc(6 * var(--u)) rgba(0, 0, 0, 0.5);
 }
 #intro .portrait svg {
-  width: 24vh;
-  height: 28vh;
-  filter: drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.35));
+  width: calc(24 * var(--u));
+  height: calc(28 * var(--u));
+  filter: drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.35));
 }
 #intro .title {
-  font-size: 2.2vh;
+  font-size: max(calc(2.2 * var(--u)), 11px);
   letter-spacing: 0.3em;
   opacity: 0.7;
 }
 #intro .name {
-  font-size: 12vh;
+  font-size: calc(12 * var(--u));
   line-height: 0.95;
   color: var(--c);
-  text-shadow: 0 0.6vh 0 var(--shadow);
+  text-shadow: 0 calc(0.6 * var(--u)) 0 var(--shadow);
 }
 #intro .line {
-  margin-top: 1.6vh;
+  margin-top: calc(1.6 * var(--u));
   font-family: "Helvetica Neue", system-ui, sans-serif;
   font-weight: 800;
-  font-size: 3.4vh;
+  font-size: max(calc(3.4 * var(--u)), 11px);
   line-height: 1.25;
-  min-height: 8.6vh;
+  min-height: calc(8.6 * var(--u));
 }
 #intro .line::before {
   content: "“";
@@ -147,18 +150,18 @@ body {
   animation: blink 0.5s steps(1) infinite;
 }
 #intro .tags {
-  margin-top: 1.6vh;
+  margin-top: calc(1.6 * var(--u));
   display: flex;
   flex-wrap: wrap;
-  gap: 1vh;
+  gap: var(--u);
 }
 #intro .tags b {
-  font-size: 1.6vh;
+  font-size: max(calc(1.6 * var(--u)), 11px);
   letter-spacing: 0.12em;
-  padding: 0.5vh 1.2vh;
-  border-radius: 0.8vh;
+  padding: calc(0.5 * var(--u)) calc(1.2 * var(--u));
+  border-radius: calc(0.8 * var(--u));
   background: rgba(255, 255, 255, 0.1);
-  border: 0.2vh solid var(--c);
+  border: calc(0.2 * var(--u)) solid var(--c);
 }
 @keyframes slam {
   0% {
@@ -183,33 +186,33 @@ body {
 #intro.level {
   left: 0;
   right: 0;
-  top: 8vh;
+  top: calc(8 * var(--u));
   transform: none;
   text-align: center;
 }
 #intro .levelcard {
   display: inline-block;
-  padding: 2vh 5vh 2.4vh;
-  border-radius: 2.4vh;
+  padding: calc(2 * var(--u)) calc(5 * var(--u)) calc(2.4 * var(--u));
+  border-radius: calc(2.4 * var(--u));
   background: rgba(7, 8, 13, 0.72);
   animation: slam 0.45s cubic-bezier(0.15, 1.6, 0.35, 1) both;
 }
 #intro .kicker {
-  font-size: 2vh;
+  font-size: max(calc(2 * var(--u)), 11px);
   letter-spacing: 0.4em;
   opacity: 0.7;
 }
 #intro .lvname {
-  font-size: 11vh;
+  font-size: calc(11 * var(--u));
   line-height: 1;
   color: #ffde4a;
-  text-shadow: 0 0.7vh 0 var(--shadow);
+  text-shadow: 0 calc(0.7 * var(--u)) 0 var(--shadow);
 }
 #intro .lvmeta {
-  margin-top: 1vh;
+  margin-top: var(--u);
   font-family: "Helvetica Neue", system-ui, sans-serif;
   font-weight: 800;
-  font-size: 2.2vh;
+  font-size: max(calc(2.2 * var(--u)), 11px);
   letter-spacing: 0.06em;
   opacity: 0.85;
 }
@@ -222,20 +225,20 @@ body {
   place-items: center;
 }
 #count span {
-  font-size: 34vh;
+  font-size: calc(34 * var(--u));
   line-height: 1;
   color: #fff3c4;
   text-shadow:
-    0 1.2vh 0 var(--shadow),
-    0 0 6vh rgba(255, 180, 60, 0.45);
-  -webkit-text-stroke: 0.6vh var(--shadow);
+    0 calc(1.2 * var(--u)) 0 var(--shadow),
+    0 0 calc(6 * var(--u)) rgba(255, 180, 60, 0.45);
+  -webkit-text-stroke: calc(0.6 * var(--u)) var(--shadow);
   paint-order: stroke fill;
 }
 #count.show span {
   animation: countpop 0.75s cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
 #count span.go {
-  font-size: 22vh;
+  font-size: calc(22 * var(--u));
   color: #ffde4a;
 }
 #count.go span {
@@ -281,14 +284,14 @@ body {
 /* ---------------------------------------------------------- end callout */
 #callout {
   position: absolute;
-  top: 14vh;
+  top: calc(14 * var(--u));
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 13vh;
+  font-size: calc(13 * var(--u));
   line-height: 1;
-  text-shadow: 0 0.8vh 0 var(--shadow);
-  -webkit-text-stroke: 0.35vh var(--shadow);
+  text-shadow: 0 calc(0.8 * var(--u)) 0 var(--shadow);
+  -webkit-text-stroke: calc(0.35 * var(--u)) var(--shadow);
   paint-order: stroke fill;
 }
 #callout .small {
@@ -303,11 +306,11 @@ body {
 }
 #callout .diverged {
   color: #ffb347;
-  margin-top: 1vh;
+  margin-top: var(--u);
 }
 #callout.sd {
   color: #ff2a4a;
-  font-size: 9vh;
+  font-size: calc(9 * var(--u));
 }
 
 /* ---------------------------------------------------------- celebrate */
@@ -322,27 +325,27 @@ body {
 #celebrate .winner {
   position: absolute;
   left: 4vw;
-  top: 9vh;
+  top: calc(9 * var(--u));
   text-align: left;
 }
 #celebrate .winner .portrait {
   display: none;
 }
 #celebrate .winner .big {
-  font-size: 13vh;
+  font-size: calc(13 * var(--u));
   line-height: 0.95;
   color: var(--c);
-  text-shadow: 0 0.8vh 0 var(--shadow);
-  -webkit-text-stroke: 0.35vh var(--shadow);
+  text-shadow: 0 calc(0.8 * var(--u)) 0 var(--shadow);
+  -webkit-text-stroke: calc(0.35 * var(--u)) var(--shadow);
   paint-order: stroke fill;
 }
 #celebrate .winner .why {
-  margin-top: 1vh;
-  font-size: 2.4vh;
+  margin-top: var(--u);
+  font-size: max(calc(2.4 * var(--u)), 11px);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   opacity: 0.85;
-  text-shadow: 0 0.3vh 0 var(--shadow);
+  text-shadow: 0 calc(0.3 * var(--u)) 0 var(--shadow);
 }
 #celebrate.show .winner {
   animation: slam 0.5s cubic-bezier(0.15, 1.6, 0.35, 1) both;
@@ -353,10 +356,10 @@ body {
   top: 50%;
   transform: translateY(-50%);
   width: 44vw;
-  padding: 3vh 3.4vh;
-  border-radius: 2.4vh;
+  padding: calc(3 * var(--u)) calc(3.4 * var(--u));
+  border-radius: calc(2.4 * var(--u));
   background: rgba(7, 8, 13, 0.86);
-  box-shadow: 0 2vh 6vh rgba(0, 0, 0, 0.5);
+  box-shadow: 0 calc(2 * var(--u)) calc(6 * var(--u)) rgba(0, 0, 0, 0.5);
 }
 #celebrate.show .board {
   animation: boardin 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) 0.35s both;
@@ -372,38 +375,38 @@ body {
   }
 }
 #celebrate .head {
-  font-size: 2.6vh;
+  font-size: max(calc(2.6 * var(--u)), 11px);
   letter-spacing: 0.25em;
-  margin-bottom: 2vh;
+  margin-bottom: calc(2 * var(--u));
 }
 #celebrate .head span {
   display: block;
-  margin-top: 0.6vh;
-  font-size: 1.5vh;
+  margin-top: calc(0.6 * var(--u));
+  font-size: max(calc(1.5 * var(--u)), 11px);
   letter-spacing: 0.15em;
   opacity: 0.55;
 }
 #celebrate .row {
   display: grid;
-  grid-template-columns: 3vh 2.6vh 10vh 1fr 6vh 6vh;
+  grid-template-columns: calc(3 * var(--u)) calc(2.6 * var(--u)) calc(10 * var(--u)) 1fr calc(6 * var(--u)) calc(6 * var(--u));
   grid-template-rows: auto auto;
   align-items: center;
-  column-gap: 1.4vh;
-  padding: 1.1vh 1.2vh;
-  border-radius: 1.2vh;
-  font-size: 3vh;
+  column-gap: calc(1.4 * var(--u));
+  padding: calc(1.1 * var(--u)) calc(1.2 * var(--u));
+  border-radius: calc(1.2 * var(--u));
+  font-size: max(calc(3 * var(--u)), 11px);
 }
 #celebrate .row.champ {
   background: rgba(255, 255, 255, 0.07);
-  outline: 0.25vh solid var(--c);
+  outline: calc(0.25 * var(--u)) solid var(--c);
 }
 #celebrate .row .rank {
   opacity: 0.5;
-  font-size: 2.2vh;
+  font-size: max(calc(2.2 * var(--u)), 11px);
 }
 #celebrate .row > i {
-  width: 2.4vh;
-  height: 2.4vh;
+  width: calc(2.4 * var(--u));
+  height: calc(2.4 * var(--u));
   border-radius: 50%;
   background: var(--c);
 }
@@ -411,7 +414,7 @@ body {
   color: var(--c);
 }
 #celebrate .row .bar {
-  height: 1.6vh;
+  height: calc(1.6 * var(--u));
   border-radius: 99px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
@@ -438,7 +441,7 @@ body {
 #celebrate .row > em {
   font-style: normal;
   color: #ffde4a;
-  font-size: 2.4vh;
+  font-size: max(calc(2.4 * var(--u)), 11px);
 }
 #celebrate .row > em.zero {
   color: rgba(255, 255, 255, 0.3);
@@ -450,7 +453,7 @@ body {
 @keyframes plus {
   0% {
     opacity: 0;
-    transform: translateY(1vh) scale(0.5);
+    transform: translateY(var(--u)) scale(0.5);
   }
   30% {
     opacity: 1;
@@ -463,7 +466,7 @@ body {
 }
 #celebrate .row .why {
   grid-column: 3 / 7;
-  font-size: 1.4vh;
+  font-size: max(calc(1.4 * var(--u)), 11px);
   letter-spacing: 0.12em;
   opacity: 0.6;
 }
@@ -471,24 +474,24 @@ body {
   display: none;
 }
 #celebrate .next {
-  margin-top: 2.4vh;
+  margin-top: calc(2.4 * var(--u));
   width: 100%;
-  font: 900 2.6vh var(--font);
+  font: 900 max(calc(2.6 * var(--u)), 11px) var(--font);
   letter-spacing: 0.15em;
   color: #15100a;
   background: #ffde4a;
   border: 0;
-  border-radius: 1.4vh;
-  padding: 1.6vh;
+  border-radius: calc(1.4 * var(--u));
+  padding: calc(1.6 * var(--u));
   cursor: pointer;
-  box-shadow: 0 0.6vh 0 #b58f12;
+  box-shadow: 0 calc(0.6 * var(--u)) 0 #b58f12;
 }
 #celebrate .next:hover {
   filter: brightness(1.08);
 }
 #celebrate .next:active {
-  transform: translateY(0.4vh);
-  box-shadow: 0 0.2vh 0 #b58f12;
+  transform: translateY(calc(0.4 * var(--u)));
+  box-shadow: 0 calc(0.2 * var(--u)) 0 #b58f12;
 }
 #celebrate .next .auto {
   opacity: 0.55;
@@ -498,45 +501,45 @@ body {
 /* ---------------------------------------------------------- camera bar */
 #cam {
   position: absolute;
-  left: 1.6vh;
-  bottom: 1.6vh;
+  left: calc(1.6 * var(--u));
+  bottom: calc(1.6 * var(--u));
   display: flex;
   align-items: center;
-  gap: 0.6vh;
-  padding: 0.6vh 0.8vh;
-  border-radius: 1.2vh;
+  gap: calc(0.6 * var(--u));
+  padding: calc(0.6 * var(--u)) calc(0.8 * var(--u));
+  border-radius: calc(1.2 * var(--u));
   background: rgba(7, 8, 13, 0.55);
   pointer-events: auto;
   opacity: 0.55;
   transition: opacity 0.2s;
-  font: 700 1.35vh system-ui, sans-serif;
+  font: 700 max(calc(1.35 * var(--u)), 11px) system-ui, sans-serif;
 }
 #cam:hover {
   opacity: 1;
 }
 #cam .lbl {
-  font-size: 1.1vh;
+  font-size: max(calc(1.1 * var(--u)), 11px);
   letter-spacing: 0.2em;
   opacity: 0.6;
-  margin: 0 0.4vh;
+  margin: 0 calc(0.4 * var(--u));
 }
 #cam .sep {
   width: 1px;
-  height: 2.2vh;
+  height: calc(2.2 * var(--u));
   background: rgba(255, 255, 255, 0.2);
-  margin: 0 0.3vh;
+  margin: 0 calc(0.3 * var(--u));
 }
 #cam button {
   font: inherit;
   color: var(--ink);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 0.8vh;
-  padding: 0.45vh 0.9vh;
+  border-radius: calc(0.8 * var(--u));
+  padding: calc(0.45 * var(--u)) calc(0.9 * var(--u));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 0.5vh;
+  gap: calc(0.5 * var(--u));
 }
 #cam button:hover {
   background: rgba(255, 255, 255, 0.18);
@@ -547,8 +550,8 @@ body {
   border-color: #f4f1ea;
 }
 #cam button.f i {
-  width: 1.2vh;
-  height: 1.2vh;
+  width: calc(1.2 * var(--u));
+  height: calc(1.2 * var(--u));
   border-radius: 50%;
   background: var(--c);
 }
@@ -571,10 +574,10 @@ body {
 /* ---------------------------------------------------------- corner controls */
 #controls {
   position: fixed;
-  right: 1.6vh;
-  bottom: 1.6vh;
+  right: calc(1.6 * var(--u));
+  bottom: calc(1.6 * var(--u));
   display: flex;
-  gap: 1vh;
+  gap: var(--u);
   align-items: center;
   opacity: 0.35;
   transition: opacity 0.2s;
@@ -604,9 +607,9 @@ body.capture #controls {
 #dialogue {
   position: absolute;
   left: 50%;
-  bottom: 7vh;
+  bottom: calc(7 * var(--u));
   transform: translateX(-50%);
-  width: min(78vw, 150vh);
+  width: min(78vw, calc(150 * var(--u)));
   pointer-events: auto;
 }
 #dialogue.show .panel {
@@ -614,7 +617,7 @@ body.capture #controls {
 }
 @keyframes dlgin {
   from {
-    transform: translateY(6vh) scale(0.96);
+    transform: translateY(calc(6 * var(--u))) scale(0.96);
     opacity: 0;
   }
   to {
@@ -625,62 +628,62 @@ body.capture #controls {
 #dialogue .panel {
   position: relative;
   display: grid;
-  grid-template-columns: 26vh 1fr;
-  gap: 3vh;
+  grid-template-columns: calc(26 * var(--u)) 1fr;
+  gap: calc(3 * var(--u));
   align-items: end;
-  min-height: 19vh;
-  padding: 2.6vh 4vh 2.6vh 2.4vh;
-  border-radius: 2vh;
+  min-height: calc(19 * var(--u));
+  padding: calc(2.6 * var(--u)) calc(4 * var(--u)) calc(2.6 * var(--u)) calc(2.4 * var(--u));
+  border-radius: calc(2 * var(--u));
   background: rgba(10, 11, 18, 0.96);
-  border: 0.35vh solid rgba(255, 255, 255, 0.12);
-  border-left: 1.2vh solid var(--c);
+  border: calc(0.35 * var(--u)) solid rgba(255, 255, 255, 0.12);
+  border-left: calc(1.2 * var(--u)) solid var(--c);
   box-shadow:
-    0 2.4vh 6vh rgba(0, 0, 0, 0.6),
-    inset 0 0 0 0.2vh rgba(0, 0, 0, 0.6);
+    0 calc(2.4 * var(--u)) calc(6 * var(--u)) rgba(0, 0, 0, 0.6),
+    inset 0 0 0 calc(0.2 * var(--u)) rgba(0, 0, 0, 0.6);
   cursor: pointer;
 }
 #dialogue .portrait {
   align-self: end;
-  margin-top: -14vh;
+  margin-top: -calc(14 * var(--u));
 }
 #dialogue .portrait svg {
-  width: 26vh;
-  height: 30vh;
-  filter: drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45));
+  width: calc(26 * var(--u));
+  height: calc(30 * var(--u));
+  filter: drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.45));
 }
 #dialogue .who {
   display: flex;
   align-items: baseline;
-  gap: 1.6vh;
+  gap: calc(1.6 * var(--u));
   flex-wrap: wrap;
 }
 #dialogue .name {
-  font-size: 6vh;
+  font-size: calc(6 * var(--u));
   line-height: 1;
   color: var(--c);
-  text-shadow: 0 0.4vh 0 #000;
+  text-shadow: 0 calc(0.4 * var(--u)) 0 #000;
 }
 #dialogue .title {
-  font-size: 1.9vh;
+  font-size: max(calc(1.9 * var(--u)), 11px);
   letter-spacing: 0.3em;
   color: #c9c6be;
 }
 #dialogue .mood {
-  font-size: 1.6vh;
+  font-size: max(calc(1.6 * var(--u)), 11px);
   letter-spacing: 0.18em;
-  padding: 0.4vh 1.1vh;
+  padding: calc(0.4 * var(--u)) calc(1.1 * var(--u));
   border-radius: 99px;
   color: #0b0d14;
   background: var(--m);
 }
 #dialogue .line {
-  margin-top: 1.4vh;
+  margin-top: calc(1.4 * var(--u));
   font-family: "Helvetica Neue", system-ui, sans-serif;
   font-weight: 800;
-  font-size: 3.6vh;
+  font-size: max(calc(3.6 * var(--u)), 11px);
   line-height: 1.3;
   color: #fbf8f0;
-  min-height: 9.4vh;
+  min-height: calc(9.4 * var(--u));
 }
 #dialogue .line::before {
   content: "“";
@@ -696,36 +699,36 @@ body.capture #controls {
   animation: blink 0.5s steps(1) infinite;
 }
 #dialogue .plan {
-  margin-top: 1.4vh;
+  margin-top: calc(1.4 * var(--u));
   display: flex;
   flex-wrap: wrap;
-  gap: 0.9vh;
+  gap: calc(0.9 * var(--u));
   align-items: center;
-  font-size: 1.5vh;
+  font-size: max(calc(1.5 * var(--u)), 11px);
   letter-spacing: 0.12em;
 }
 #dialogue .plan .k {
   color: #9a978f;
-  margin-right: 0.6vh;
+  margin-right: calc(0.6 * var(--u));
 }
 #dialogue .plan b {
-  padding: 0.45vh 1.1vh;
-  border-radius: 0.8vh;
+  padding: calc(0.45 * var(--u)) calc(1.1 * var(--u));
+  border-radius: calc(0.8 * var(--u));
   background: rgba(255, 255, 255, 0.08);
-  border: 0.2vh solid var(--c);
+  border: calc(0.2 * var(--u)) solid var(--c);
   color: #f4f1ea;
 }
 #dialogue .skip {
   position: absolute;
-  top: 1.6vh;
-  right: 1.8vh;
-  font: 800 1.5vh system-ui, sans-serif;
+  top: calc(1.6 * var(--u));
+  right: calc(1.8 * var(--u));
+  font: 800 max(calc(1.5 * var(--u)), 11px) system-ui, sans-serif;
   letter-spacing: 0.12em;
   color: #f4f1ea;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 0.8vh;
-  padding: 0.6vh 1.2vh;
+  border-radius: calc(0.8 * var(--u));
+  padding: calc(0.6 * var(--u)) calc(1.2 * var(--u));
   cursor: pointer;
 }
 #dialogue .skip:hover {
@@ -733,9 +736,9 @@ body.capture #controls {
 }
 #dialogue .hint {
   position: absolute;
-  right: 2vh;
-  bottom: 1.4vh;
-  font: 800 1.4vh system-ui, sans-serif;
+  right: calc(2 * var(--u));
+  bottom: calc(1.4 * var(--u));
+  font: 800 max(calc(1.4 * var(--u)), 11px) system-ui, sans-serif;
   letter-spacing: 0.2em;
   color: #9a978f;
   animation: blink 1s steps(1) infinite;
@@ -744,28 +747,28 @@ body.capture #controls {
 /* ---------------------------------------------------------- round pips */
 .pips {
   display: inline-flex;
-  gap: 1vh;
+  gap: var(--u);
   align-items: center;
 }
 .pips.pips-small {
   display: flex;
   justify-content: center;
-  margin-top: 0.5vh;
-  font-size: 1.2vh;
+  margin-top: calc(0.5 * var(--u));
+  font-size: max(calc(1.2 * var(--u)), 11px);
 }
 .pips.pips-big {
   display: flex;
   justify-content: center;
-  gap: 2.4vh;
-  margin: 1.6vh 0 0.6vh;
-  font-size: 2.4vh;
+  gap: calc(2.4 * var(--u));
+  margin: calc(1.6 * var(--u)) 0 calc(0.6 * var(--u));
+  font-size: max(calc(2.4 * var(--u)), 11px);
   -webkit-text-stroke: 0;
   letter-spacing: 0.04em;
 }
 .pip {
   display: inline-flex;
   align-items: center;
-  gap: 0.5vh;
+  gap: calc(0.5 * var(--u));
   color: var(--c);
 }
 .pip i {
@@ -786,23 +789,23 @@ body.capture #controls {
   background: var(--c);
 }
 #clock .r {
-  font-size: 0.55em;
+  font-size: max(0.55em, 11px);
   letter-spacing: 0.2em;
   opacity: 0.75;
-  margin-right: 1vh;
+  margin-right: var(--u);
   vertical-align: 0.25em;
 }
 #count em {
   position: absolute;
-  top: 18vh;
+  top: calc(18 * var(--u));
   left: 0;
   right: 0;
   text-align: center;
   font-style: normal;
-  font-size: 5vh;
+  font-size: calc(5 * var(--u));
   letter-spacing: 0.3em;
   color: #fff3c4;
-  text-shadow: 0 0.5vh 0 #000;
+  text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
 }
 #celebrate .winner .pips.pips-big {
   justify-content: flex-start;
@@ -813,10 +816,10 @@ body.capture #controls {
 
 /* ---------------------------------------------------------- AI tags, round recap */
 #dialogue .ai {
-  font: 800 1.5vh system-ui, sans-serif;
+  font: 800 max(calc(1.5 * var(--u)), 11px) system-ui, sans-serif;
   letter-spacing: 0.08em;
-  padding: 0.35vh 1vh;
-  border-radius: 0.7vh;
+  padding: calc(0.35 * var(--u)) var(--u);
+  border-radius: calc(0.7 * var(--u));
   background: rgba(255, 255, 255, 0.1);
   color: #d8d4ca;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -826,34 +829,34 @@ body.capture #controls {
   border-color: #ff5a6a;
 }
 #dialogue .stat {
-  margin-top: 0.9vh;
-  font: 700 1.8vh "Helvetica Neue", system-ui, sans-serif;
+  margin-top: calc(0.9 * var(--u));
+  font: 700 max(calc(1.8 * var(--u)), 11px) "Helvetica Neue", system-ui, sans-serif;
   color: #b9b5ab;
   line-height: 1.3;
 }
 #callout .recap {
   display: inline-grid;
-  margin-top: 1.4vh;
-  padding: 1.2vh 2vh;
-  border-radius: 1.4vh;
+  margin-top: calc(1.4 * var(--u));
+  padding: calc(1.2 * var(--u)) calc(2 * var(--u));
+  border-radius: calc(1.4 * var(--u));
   background: rgba(10, 11, 18, 0.9);
-  font: 700 2vh "Helvetica Neue", system-ui, sans-serif;
+  font: 700 max(calc(2 * var(--u)), 11px) "Helvetica Neue", system-ui, sans-serif;
   letter-spacing: 0;
   -webkit-text-stroke: 0;
   text-shadow: none;
   text-align: left;
-  gap: 0.5vh;
+  gap: calc(0.5 * var(--u));
 }
 #callout .rr {
   display: grid;
-  grid-template-columns: 1.6vh 9vh 9vh 9vh 26vh;
-  gap: 1vh;
+  grid-template-columns: calc(1.6 * var(--u)) calc(9 * var(--u)) calc(9 * var(--u)) calc(9 * var(--u)) calc(26 * var(--u));
+  gap: var(--u);
   align-items: center;
   color: #e8e4da;
 }
 #callout .rr > i {
-  width: 1.4vh;
-  height: 1.4vh;
+  width: calc(1.4 * var(--u));
+  height: calc(1.4 * var(--u));
   border-radius: 50%;
   background: var(--c);
 }
@@ -866,16 +869,16 @@ body.capture #controls {
 }
 #callout .thinking,
 #intro .thinking {
-  margin-top: 1vh;
+  margin-top: var(--u);
   color: #ffde4a;
   animation: blink 1.2s steps(1) infinite;
 }
 
 /* ---------------------------------------------------------- plan chips in the fight (#10, #11) */
 #lineup.fight {
-  left: 1.6vh;
-  right: 1.6vh;
-  top: 1.4vh;
+  left: calc(1.6 * var(--u));
+  right: calc(1.6 * var(--u));
+  top: calc(1.4 * var(--u));
   transform: none;
   justify-content: space-between;
   pointer-events: none;
@@ -883,8 +886,8 @@ body.capture #controls {
 #lineup.fight .chip {
   opacity: 1;
   transform: none;
-  padding: 0.35vh 1.2vh 0.35vh 0.5vh;
-  font-size: 1.7vh;
+  padding: calc(0.35 * var(--u)) calc(1.2 * var(--u)) calc(0.35 * var(--u)) calc(0.5 * var(--u));
+  font-size: max(calc(1.7 * var(--u)), 11px);
   background: rgba(7, 8, 13, 0.72);
   pointer-events: auto;
 }
@@ -895,8 +898,8 @@ body.capture #controls {
   margin-left: auto;
 }
 #lineup.fight .chip svg {
-  width: 2.8vh;
-  height: 3.3vh;
+  width: calc(2.8 * var(--u));
+  height: calc(3.3 * var(--u));
 }
 #lineup .chip .nm {
   display: flex;
@@ -906,7 +909,7 @@ body.capture #controls {
 #lineup .chip .plan {
   display: none;
   font-style: normal;
-  font-size: 1.45vh;
+  font-size: max(calc(1.45 * var(--u)), 11px);
   color: #e6e9f2;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -921,7 +924,7 @@ body.capture #controls {
 #lineup .chip .plan i {
   font-style: normal;
   opacity: 0.5;
-  margin: 0 0.5vh;
+  margin: 0 calc(0.5 * var(--u));
 }
 #lineup .chip .plan .rule {
   color: #ffd27a;
@@ -939,15 +942,15 @@ body.capture #controls {
 #autopilot-callout {
   position: absolute;
   left: 50%;
-  top: 16vh; /* under the clock and the crowd tally (#35) */
-  transform: translate(-50%, -1vh);
+  top: calc(16 * var(--u)); /* under the clock and the crowd tally (#35) */
+  transform: translate(-50%, -var(--u));
   max-width: 70vw;
-  padding: 1vh 2.4vh;
-  border-radius: 1.2vh;
+  padding: var(--u) calc(2.4 * var(--u));
+  border-radius: calc(1.2 * var(--u));
   background: #0b0d14d9;
-  border: 0.25vh solid var(--c, #9aa4bd);
+  border: calc(0.25 * var(--u)) solid var(--c, #9aa4bd);
   color: #e6e9f2;
-  font: 700 2.4vh/1.25 system-ui, sans-serif;
+  font: 700 max(calc(2.4 * var(--u)), 11px)/1.25 system-ui, sans-serif;
   text-align: center;
   opacity: 0;
   transition: opacity 0.25s, transform 0.25s;
@@ -970,9 +973,9 @@ body.capture #controls {
 #dialogue .rules {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6vh 1.4vh;
-  margin-top: 0.8vh;
-  font-size: 1.5vh;
+  gap: calc(0.6 * var(--u)) calc(1.4 * var(--u));
+  margin-top: calc(0.8 * var(--u));
+  font-size: max(calc(1.5 * var(--u)), 11px);
   color: #cfd3df;
 }
 #dialogue .rules .k {
@@ -983,15 +986,15 @@ body.capture #controls {
   color: var(--c);
 }
 #dialogue .why {
-  margin-top: 0.7vh;
-  font-size: 1.45vh;
+  margin-top: calc(0.7 * var(--u));
+  font-size: max(calc(1.45 * var(--u)), 11px);
   font-style: italic;
   color: #9aa0b2;
 }
 #callout .recap .best {
   grid-column: 1 / -1;
-  margin-top: 0.6vh;
-  font-size: 1.6vh;
+  margin-top: calc(0.6 * var(--u));
+  font-size: max(calc(1.6 * var(--u)), 11px);
   color: #e6e9f2;
 }
 #callout .recap .best b {
@@ -1006,19 +1009,19 @@ body.capture #controls {
  * pushing the chips into the clock. On a portrait screen the chips go in a 2 x 2 grid under the clock.
  */
 :root {
-  --clock-lane: 30vh;
+  --clock-lane: calc(30 * var(--u));
 }
 #lineup:not(.fight) {
   flex-wrap: wrap;
   justify-content: center;
   /* absolutely placed at left: 50%: without this it shrinks to half the screen and wraps early (model badges) */
   width: max-content;
-  max-width: calc(100vw - 3.2vh);
+  max-width: calc(100vw - calc(3.2 * var(--u)));
 }
 #lineup.fight {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, max-content)) minmax(var(--clock-lane), 1fr) repeat(2, minmax(0, max-content));
-  gap: 1vh;
+  gap: var(--u);
   transition: opacity 0.4s;
   animation: chips-in 0.3s ease-out;
 }
@@ -1036,7 +1039,7 @@ body.capture #controls {
 }
 #lineup.fight .chip {
   min-width: 0;
-  font-size: max(1.7vh, 11px);
+  font-size: max(calc(1.7 * var(--u)), 11px);
 }
 #lineup.fight .chip svg {
   flex: none;
@@ -1050,14 +1053,14 @@ body.capture #controls {
 #lineup.fight .chip .plan {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: max(1.45vh, 10px);
+  font-size: max(calc(1.45 * var(--u)), 11px);
 }
 #lineup.fight.out {
-  transform: translateY(-6vh);
+  transform: translateY(-calc(6 * var(--u)));
 }
 @media (max-aspect-ratio: 1/1) {
   #lineup.fight {
-    top: 11vh; /* the clock box ends at about 9.5vh */
+    top: calc(11 * var(--u)); /* the clock box ends at about calc(9.5 * var(--u)) */
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   #lineup.fight .chip:nth-child(3) {
@@ -1076,22 +1079,22 @@ body.capture #controls {
 #lineup:not(.fight) .chip .nm {
   flex-direction: row;
   align-items: center;
-  gap: 0.8vh;
+  gap: calc(0.8 * var(--u));
 }
 #lineup:not(.fight) .chip .kb-mb {
-  --mb-fs: max(1.8vh, 12px);
+  --mb-fs: max(calc(1.8 * var(--u)), 12px);
 }
 #lineup.fight .chip {
   /* two chips per side must stay clear of the round clock in the middle */
-  max-width: calc(50vw - 17vh);
+  max-width: calc(50vw - calc(17 * var(--u)));
   min-width: 0;
 }
 #lineup.fight .chip .nm {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas: "b b" "f p";
-  column-gap: 0.7vh;
-  row-gap: 0.3vh;
+  column-gap: calc(0.7 * var(--u));
+  row-gap: calc(0.3 * var(--u));
   min-width: 0;
 }
 #lineup.fight .chip .kb-mb {
@@ -1101,7 +1104,7 @@ body.capture #controls {
 #lineup.fight .chip .fn {
   grid-area: f;
   font-weight: 800;
-  font-size: 1.45vh;
+  font-size: max(calc(1.45 * var(--u)), 11px);
   align-self: center;
 }
 #lineup.fight .chip .plan {
@@ -1111,19 +1114,19 @@ body.capture #controls {
 }
 #callout .rmodel {
   display: block;
-  margin: 0.4vh 0 0.8vh;
+  margin: calc(0.4 * var(--u)) 0 calc(0.8 * var(--u));
   font-size: 0;
   text-shadow: none;
   -webkit-text-stroke: 0;
 }
 #callout .rr {
-  grid-template-columns: 1.6vh 9vh minmax(14vh, 24vh) 9vh 9vh 26vh;
+  grid-template-columns: calc(1.6 * var(--u)) calc(9 * var(--u)) minmax(calc(14 * var(--u)), calc(24 * var(--u))) calc(9 * var(--u)) calc(9 * var(--u)) calc(26 * var(--u));
 }
 #callout .rr .kb-mb {
   justify-self: start;
 }
 #celebrate .winner .model {
-  margin: 1.2vh 0 0.4vh 0.4vw;
+  margin: calc(1.2 * var(--u)) 0 calc(0.4 * var(--u)) 0.4vw;
 }
 #celebrate .row {
   grid-template-rows: auto auto auto;
@@ -1131,7 +1134,7 @@ body.capture #controls {
 #celebrate .row .mdl {
   grid-column: 3 / 7;
   line-height: 1;
-  margin-top: 0.4vh;
+  margin-top: calc(0.4 * var(--u));
 }
 /* site pages (#22): the viewer in an iframe (?embed) keeps the fight HUD, without the seed line and match buttons */
 body.embed #seed,
@@ -1170,13 +1173,13 @@ body.embed:has(#celebrate.show) #lineup {
 #picks-panel {
   position: absolute;
   left: 50%;
-  bottom: 3vh;
+  bottom: calc(3 * var(--u));
   transform: translateX(-50%);
-  width: min(96vw, 150vh);
-  padding: 1.6vh 1.8vh 1.2vh;
+  width: min(96vw, calc(150 * var(--u)));
+  padding: calc(1.6 * var(--u)) calc(1.8 * var(--u)) calc(1.2 * var(--u));
   border-radius: 3px;
   background: #0b0d14e6;
-  box-shadow: 0 1vh 4vh #0008;
+  box-shadow: 0 var(--u) calc(4 * var(--u)) #0008;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   transition: opacity 0.3s;
 }
@@ -1186,41 +1189,41 @@ body.embed:has(#celebrate.show) #lineup {
 #picks-panel .ptitle {
   text-align: center;
   color: #aab2c8;
-  font-size: 2vh;
-  margin-bottom: 1.2vh;
+  font-size: max(calc(2 * var(--u)), 11px);
+  margin-bottom: calc(1.2 * var(--u));
 }
 #picks-panel .pcards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1.2vh;
+  gap: calc(1.2 * var(--u));
 }
 #picks-panel .pcard {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.6vh;
-  padding: 1.2vh;
+  gap: calc(0.6 * var(--u));
+  padding: calc(1.2 * var(--u));
   border-radius: 3px;
   background: radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--c) 28%, transparent), #10131c 62%);
-  border: 0.3vh solid transparent;
+  border: calc(0.3 * var(--u)) solid transparent;
 }
 #picks-panel .pcard.mine {
   border-color: var(--c);
 }
 #picks-panel .badge {
   position: absolute;
-  top: 1vh;
-  left: 1vh;
-  padding: 0.3vh 0.8vh;
+  top: var(--u);
+  left: var(--u);
+  padding: calc(0.3 * var(--u)) calc(0.8 * var(--u));
   border-radius: 3px;
   background: var(--c);
   color: #0b0d14;
-  font-size: 1.3vh;
+  font-size: max(calc(1.3 * var(--u)), 11px);
   font-weight: 800;
   letter-spacing: 0.12em;
 }
 #picks-panel .pp {
-  height: 13vh;
+  height: calc(13 * var(--u));
   display: flex;
   justify-content: center;
 }
@@ -1230,7 +1233,7 @@ body.embed:has(#celebrate.show) #lineup {
 }
 #picks-panel .pn {
   color: var(--c);
-  font-size: 3vh;
+  font-size: max(calc(3 * var(--u)), 11px);
   font-weight: 900;
   line-height: 1;
 }
@@ -1238,31 +1241,31 @@ body.embed:has(#celebrate.show) #lineup {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6vh;
-  min-height: 2.6vh;
+  gap: calc(0.6 * var(--u));
+  min-height: calc(2.6 * var(--u));
 }
 #picks-panel .pl {
-  padding: 0.2vh 0.8vh;
+  padding: calc(0.2 * var(--u)) calc(0.8 * var(--u));
   border-radius: 3px;
   background: #1c2130;
   color: #d5daea;
-  font-size: 1.4vh;
+  font-size: max(calc(1.4 * var(--u)), 11px);
   font-weight: 600;
 }
 #picks-panel .pq {
-  min-height: 4.4vh;
+  min-height: calc(4.4 * var(--u));
   color: #e6e9f2;
-  font-size: 1.6vh;
+  font-size: max(calc(1.6 * var(--u)), 11px);
   line-height: 1.35;
 }
 #picks-panel button {
   margin-top: auto; /* the buttons line up whatever the card holds */
-  min-height: 5vh;
+  min-height: calc(5 * var(--u));
   border: 0;
   border-radius: 3px;
   background: #1c2130;
   color: #e6e9f2;
-  font: 800 1.8vh system-ui, sans-serif;
+  font: 800 max(calc(1.8 * var(--u)), 11px) system-ui, sans-serif;
   letter-spacing: 0.12em;
   cursor: pointer;
 }
@@ -1275,24 +1278,24 @@ body.embed:has(#celebrate.show) #lineup {
 }
 #picks-panel .ppct {
   position: absolute;
-  top: 1vh;
-  right: 1.2vh;
+  top: var(--u);
+  right: calc(1.2 * var(--u));
   color: #aab2c8;
-  font-size: 1.6vh;
+  font-size: max(calc(1.6 * var(--u)), 11px);
   font-weight: 700;
 }
 #picks-panel .pbar {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 0 2vh;
+  gap: 0 calc(2 * var(--u));
   align-items: center;
-  margin-top: 1.4vh;
+  margin-top: calc(1.4 * var(--u));
 }
 #picks-panel .pseg,
 #crowd-tally .seg {
   display: flex;
-  gap: 0.25vh;
-  height: 1.6vh;
+  gap: calc(0.25 * var(--u));
+  height: calc(1.6 * var(--u));
   border-radius: 3px;
   overflow: hidden;
 }
@@ -1308,23 +1311,23 @@ body.embed:has(#celebrate.show) #lineup {
 #picks-panel .plegend {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4vh 1.6vh;
-  margin-top: 0.7vh;
+  gap: calc(0.4 * var(--u)) calc(1.6 * var(--u));
+  margin-top: calc(0.7 * var(--u));
   color: #e6e9f2;
-  font-size: 1.6vh;
+  font-size: max(calc(1.6 * var(--u)), 11px);
   font-weight: 600;
 }
 #picks-panel .plegend span i {
   display: inline-block;
-  width: 1.1vh;
-  height: 1.1vh;
-  margin-right: 0.5vh;
+  width: calc(1.1 * var(--u));
+  height: calc(1.1 * var(--u));
+  margin-right: calc(0.5 * var(--u));
   border-radius: 2px;
   background: var(--c);
 }
 #picks-panel .plegend span.me {
   text-decoration: underline;
-  text-underline-offset: 0.4vh;
+  text-underline-offset: calc(0.4 * var(--u));
 }
 #picks-panel .plegend em {
   color: #8d95ab;
@@ -1336,79 +1339,79 @@ body.embed:has(#celebrate.show) #lineup {
 #picks-panel .pcount b {
   display: block;
   color: #ffd23f;
-  font-size: 5vh;
+  font-size: calc(5 * var(--u));
   font-weight: 900;
   line-height: 1;
 }
 #picks-panel .pcount span {
   color: #aab2c8;
-  font-size: 1.3vh;
+  font-size: max(calc(1.3 * var(--u)), 11px);
   font-weight: 700;
   letter-spacing: 0.2em;
 }
 #picks-panel .pnote {
-  margin-top: 0.8vh;
+  margin-top: calc(0.8 * var(--u));
   color: #8d95ab;
-  font-size: 1.4vh;
+  font-size: max(calc(1.4 * var(--u)), 11px);
 }
 @media (max-aspect-ratio: 1/1) {
   #picks-panel .pcards {
     grid-template-columns: repeat(2, 1fr);
   }
   #picks-panel .pp {
-    height: 9vh;
+    height: calc(9 * var(--u));
   }
 }
 /* the crowd's tally, thin, under the clock during the fight */
 #crowd-tally {
   position: absolute;
-  top: 10.2vh;
+  top: calc(10.2 * var(--u));
   left: 50%;
   transform: translateX(-50%);
-  width: min(38vw, 52vh);
-  padding: 0.6vh 1vh 0.8vh;
+  width: min(38vw, calc(52 * var(--u)));
+  padding: calc(0.6 * var(--u)) var(--u) calc(0.8 * var(--u));
   border-radius: 3px;
   background: #0b0d14c0;
-  font: 600 1.4vh system-ui, sans-serif;
+  font: 600 max(calc(1.4 * var(--u)), 11px) system-ui, sans-serif;
   color: #c9cfdf;
   transition: opacity 0.4s;
 }
 #crowd-tally .tl {
   display: flex;
-  gap: 0.6vh;
-  margin-bottom: 0.5vh;
+  gap: calc(0.6 * var(--u));
+  margin-bottom: calc(0.5 * var(--u));
   white-space: nowrap;
 }
 #crowd-tally .tl span {
   margin-left: auto;
 }
 #crowd-tally .seg {
-  height: 0.9vh;
+  height: calc(0.9 * var(--u));
 }
 #picks-flash {
   position: absolute;
-  top: 40vh;
+  top: calc(40 * var(--u));
   left: 50%;
   transform: translateX(-50%);
-  padding: 1vh 2.4vh;
+  padding: var(--u) calc(2.4 * var(--u));
   border-radius: 3px;
   background: #0b0d14e0;
   color: #e6e9f2;
-  font: 700 2.4vh system-ui, sans-serif;
+  font: 700 max(calc(2.4 * var(--u)), 11px) system-ui, sans-serif;
   transition: opacity 0.3s;
 }
 #picks-flash b {
   color: #ffd23f;
   letter-spacing: 0.12em;
-  margin-right: 1vh;
+  margin-right: var(--u);
 }
 /* the win screen: how the crowd split */
 #celebrate .crowd {
   position: absolute;
   left: 4vw;
-  bottom: 6vh;
+  bottom: calc(6 * var(--u));
   width: 40vw;
-  padding: 1.6vh 2vh;
+  padding: calc(1.6 * var(--u)) calc(2 * var(--u));
   border-radius: 3px;
   background: #0b0d14e0;
   font-family: system-ui, sans-serif;
@@ -1418,30 +1421,30 @@ body.embed:has(#celebrate.show) #lineup {
   display: flex;
   justify-content: space-between;
   font-weight: 800;
-  font-size: 2vh;
+  font-size: max(calc(2 * var(--u)), 11px);
 }
 #celebrate .crowd .ch span {
   color: #8d95ab;
   font-weight: 600;
-  font-size: 1.5vh;
+  font-size: max(calc(1.5 * var(--u)), 11px);
 }
 #celebrate .crowd .called {
-  margin: 0.6vh 0 1vh;
-  font-size: 1.9vh;
+  margin: calc(0.6 * var(--u)) 0 var(--u);
+  font-size: max(calc(1.9 * var(--u)), 11px);
 }
 #celebrate .crowd .called b {
-  font-size: 5vh;
+  font-size: calc(5 * var(--u));
   font-weight: 900;
-  margin-right: 0.8vh;
+  margin-right: calc(0.8 * var(--u));
   color: #53f0a0;
 }
 #celebrate .crowd .crow {
   display: grid;
-  grid-template-columns: 9vh 1fr 5vh;
-  gap: 1vh;
+  grid-template-columns: calc(9 * var(--u)) 1fr calc(5 * var(--u));
+  gap: var(--u);
   align-items: center;
-  margin: 0.5vh 0;
-  font-size: 1.7vh;
+  margin: calc(0.5 * var(--u)) 0;
+  font-size: max(calc(1.7 * var(--u)), 11px);
   font-weight: 700;
 }
 #celebrate .crowd .cn {
@@ -1449,7 +1452,7 @@ body.embed:has(#celebrate.show) #lineup {
 }
 #celebrate .crowd .cb {
   position: relative;
-  height: 2.2vh;
+  height: calc(2.2 * var(--u));
   border-radius: 3px;
   background: #1c2130;
 }
@@ -1461,23 +1464,23 @@ body.embed:has(#celebrate.show) #lineup {
   background: var(--c);
 }
 #celebrate .crowd .crow.won .cb {
-  outline: 0.25vh solid #fff;
+  outline: calc(0.25 * var(--u)) solid #fff;
 }
 #celebrate .crowd .cb em {
   position: absolute;
-  right: 0.8vh;
+  right: calc(0.8 * var(--u));
   top: 50%;
   transform: translateY(-50%);
   font-style: normal;
-  font-size: 1.2vh;
+  font-size: max(calc(1.2 * var(--u)), 11px);
   letter-spacing: 0.15em;
 }
 #celebrate .crowd .cp {
   text-align: right;
 }
 #celebrate .crowd .you {
-  margin-top: 1.2vh;
-  padding: 1.2vh 1.6vh;
+  margin-top: calc(1.2 * var(--u));
+  padding: calc(1.2 * var(--u)) calc(1.6 * var(--u));
   border-radius: 3px;
   background: #1c2130;
 }
@@ -1487,10 +1490,10 @@ body.embed:has(#celebrate.show) #lineup {
 }
 #celebrate .crowd .you b {
   display: block;
-  font-size: 2.6vh;
+  font-size: max(calc(2.6 * var(--u)), 11px);
 }
 #celebrate .crowd .you span {
-  font-size: 1.6vh;
+  font-size: max(calc(1.6 * var(--u)), 11px);
 }
 
 /* ---------------------------------------------------------- suit up: the boot-up on the intro card (#19) */
@@ -1501,21 +1504,21 @@ body.embed:has(#celebrate.show) #lineup {
   animation: bootup 1.15s linear both;
 }
 @keyframes bootup {
-  0% { filter: brightness(0) saturate(0) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 0.35; }
-  30% { filter: brightness(0.35) saturate(0.2) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 0.8; }
-  42% { filter: brightness(1.7) saturate(1.4) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 1; }
-  50% { filter: brightness(0.45) saturate(0.6) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); }
-  62% { filter: brightness(1.35) saturate(1.2) drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); }
-  100% { filter: none drop-shadow(0 1vh 0 rgba(0, 0, 0, 0.45)); opacity: 1; }
+  0% { filter: brightness(0) saturate(0) drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.45)); opacity: 0.35; }
+  30% { filter: brightness(0.35) saturate(0.2) drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.45)); opacity: 0.8; }
+  42% { filter: brightness(1.7) saturate(1.4) drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.45)); opacity: 1; }
+  50% { filter: brightness(0.45) saturate(0.6) drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.45)); }
+  62% { filter: brightness(1.35) saturate(1.2) drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.45)); }
+  100% { filter: none drop-shadow(0 var(--u) 0 rgba(0, 0, 0, 0.45)); opacity: 1; }
 }
 #dialogue .bootscan {
   position: absolute;
   left: 8%;
   right: 8%;
   bottom: 0;
-  height: 0.5vh;
+  height: calc(0.5 * var(--u));
   background: var(--c);
-  box-shadow: 0 0 2vh var(--c);
+  box-shadow: 0 0 calc(2 * var(--u)) var(--c);
   border-radius: 2px;
   opacity: 0;
   animation: bootscan 0.9s ease-out 0.05s both;
@@ -1529,13 +1532,13 @@ body.embed:has(#celebrate.show) #lineup {
 #dialogue .bootlabel {
   position: absolute;
   left: 50%;
-  bottom: -1.2vh;
+  bottom: -calc(1.2 * var(--u));
   transform: translateX(-50%);
-  padding: 0.2vh 0.8vh;
+  padding: calc(0.2 * var(--u)) calc(0.8 * var(--u));
   border-radius: 2px;
   background: var(--c);
   color: #0b0d14;
-  font: 900 1.3vh/1.2 system-ui, sans-serif;
+  font: 900 max(calc(1.3 * var(--u)), 11px)/1.2 system-ui, sans-serif;
   font-style: normal;
   letter-spacing: 0.2em;
   opacity: 0;
@@ -1550,11 +1553,11 @@ body.embed:has(#celebrate.show) #lineup {
 }
 #dialogue .who .suit {
   align-self: center;
-  padding: 0.3vh 0.8vh;
+  padding: calc(0.3 * var(--u)) calc(0.8 * var(--u));
   border: 1px solid var(--c);
   border-radius: 2px;
   color: var(--c);
-  font: 800 1.35vh/1.2 system-ui, sans-serif;
+  font: 800 max(calc(1.35 * var(--u)), 11px)/1.2 system-ui, sans-serif;
   letter-spacing: 0.12em;
 }
 #dialogue .who .suit.random {
@@ -1563,4 +1566,167 @@ body.embed:has(#celebrate.show) #lineup {
 }
 @media (prefers-reduced-motion: reduce) {
   #dialogue .portrait.boot svg, #dialogue .bootscan, #dialogue .bootlabel { animation: none; }
+}
+
+/* ---------------------------------------------------------- phones (#60) */
+/* touch: every control is at least 44 px to tap; the seed line and the volume slider (phones have volume keys) go */
+@media (pointer: coarse) {
+  #cam button,
+  #controls button,
+  #dialogue .skip,
+  #celebrate .next,
+  #picks-panel button {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+  }
+  #seed,
+  #sound input[type="range"],
+  #dialogue .hint {
+    display: none;
+  }
+}
+/* small screens (a phone either way up, or the site's stage on a phone): the camera bar and the corner controls
+   share the bottom edge, the dialogue sits above them */
+@media (max-width: 760px), (max-height: 500px) {
+  #cam {
+    left: calc(1.2 * var(--u));
+    bottom: calc(1.2 * var(--u));
+    flex-wrap: wrap;
+    opacity: 0.8;
+  }
+  #cam .lbl,
+  #cam .sep {
+    display: none;
+  }
+  #controls {
+    right: calc(1.2 * var(--u));
+    bottom: calc(1.2 * var(--u));
+    opacity: 0.8;
+  }
+  #sound {
+    margin-right: 0;
+  }
+  #dialogue {
+    bottom: calc(2 * var(--u) + 48px);
+  }
+  /* the clock's text has a px floor: keep its lane at least that wide so the plan chips stay clear of it */
+  :root {
+    --clock-lane: max(calc(30 * var(--u)), 76px);
+  }
+  #lineup.fight .chip {
+    max-width: calc(50vw - max(calc(17 * var(--u)), 40px));
+  }
+  /* on the site's stage the page shows the round above the stage */
+  body.embed #clock .r {
+    display: none;
+  }
+  /* the pick cards stay clear of the bottom bars: sideways the bars step aside while the cards show */
+  body:has(#picks-panel.show) #cam,
+  body:has(#picks-panel.show) #controls {
+    display: none;
+  }
+  #picks-panel {
+    bottom: calc(1.2 * var(--u));
+  }
+  /* the name column grows with its px floor instead of running under the bar */
+  #celebrate .row {
+    grid-template-columns: calc(3 * var(--u)) calc(2.6 * var(--u)) max-content 1fr calc(6 * var(--u)) calc(6 * var(--u));
+  }
+}
+/* portrait: one column; the corner controls go above the camera bar, the dialogue and the boards span the width */
+@media (max-aspect-ratio: 1/1) {
+  #controls {
+    bottom: calc(2 * var(--u) + 48px);
+  }
+  #dialogue {
+    bottom: calc(3 * var(--u) + 96px);
+    width: 94vw;
+  }
+  #dialogue .panel {
+    grid-template-columns: calc(18 * var(--u)) 1fr;
+    padding-right: calc(2.4 * var(--u));
+  }
+  #dialogue .portrait svg {
+    width: calc(18 * var(--u));
+    height: calc(21 * var(--u));
+  }
+  #celebrate .winner {
+    left: 4vw;
+    right: 4vw;
+  }
+  #celebrate .board {
+    left: 4vw;
+    right: 4vw;
+    width: auto;
+    top: auto;
+    bottom: calc(3 * var(--u) + 96px);
+    transform: none;
+  }
+  @keyframes boardin {
+    from {
+      transform: translateY(10vw);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  #celebrate .crowd {
+    left: 4vw;
+    right: 4vw;
+    width: auto;
+  }
+  /* upright there is room: the bars stay and the pick cards sit above them */
+  body:has(#picks-panel.show) #cam,
+  body:has(#picks-panel.show) #controls {
+    display: flex;
+  }
+  #picks-panel {
+    bottom: calc(3 * var(--u) + 96px);
+  }
+}
+/* a phone sideways: the pick cards drop the bot pictures so they fit under the level card */
+@media (max-height: 500px) {
+  #picks-panel .pp,
+  #picks-panel .pnote {
+    display: none;
+  }
+}
+/* a short stage (the site's stage on a phone): the dialogue drops the portrait and takes the stage's bottom; the
+   camera bar and the sound button come back when it closes */
+@media (max-height: 320px) {
+  #dialogue {
+    bottom: calc(1.2 * var(--u));
+    width: 96vw;
+  }
+  body:has(#dialogue.show) #cam,
+  body:has(#dialogue.show) #controls {
+    display: none;
+  }
+  #dialogue .panel {
+    grid-template-columns: 1fr;
+    gap: 0;
+    min-height: 0;
+    padding: 8px 10px 10px;
+  }
+  #dialogue .portrait {
+    display: none;
+  }
+  #dialogue .who {
+    padding-right: 64px;
+  }
+  #dialogue .skip {
+    top: 4px;
+    right: 4px;
+  }
+  #dialogue .line {
+    margin-top: 4px;
+    min-height: 0;
+  }
+  #dialogue .plan {
+    margin-top: 6px;
+    gap: 4px;
+  }
 }

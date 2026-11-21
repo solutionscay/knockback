@@ -5,9 +5,9 @@
 import type { AudioEngine } from "./engine";
 
 const CSS = `
-#sound { display: inline-flex; align-items: center; gap: 0.6vh; margin-right: 0.8vh; }
+#sound { display: inline-flex; align-items: center; gap: calc(0.6 * var(--u, 1vh)); margin-right: calc(0.8 * var(--u, 1vh)); }
 #sound button { min-width: 7.5em; }
-#sound input[type=range] { width: 9vh; min-width: 70px; accent-color: #ffd27a; }
+#sound input[type=range] { width: calc(9 * var(--u, 1vh)); min-width: 70px; accent-color: #ffd27a; }
 #sound.locked button { color: #ffd27a; }
 `;
 
