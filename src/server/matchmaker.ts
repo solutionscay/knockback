@@ -10,7 +10,8 @@
  *   fails mid-match falls back to the house plan per round, as in every match).
  * - Nobody queued: nothing runs. There is no loop and no automatic match.
  * - Cost guardrails: at most `maxConcurrent` matchmaker matches at once (default 1; the queue waits), at most
- *   `aiSeatsPerDay` built-in AI seats per UTC day (default 30), and every provider call is logged (latency, sizes,
+ *   `aiSeatsPerDay` built-in AI seats per UTC day (default 30) and `aiSeatsPerAddress` per address (default 9,
+ *   charged to the oldest agent's address in each match), and every provider call is logged (latency, sizes,
  *   estimated tokens) to the server log, `<out>/ai-usage.jsonl` and the queue's summary.
  * - Ratings (#23): `order` picks who plays with the oldest waiting agent (default: oldest first).
  *
@@ -39,6 +40,8 @@ export interface MatchmakerOptions {
   maxConcurrent?: number;
   /** built-in AI seats per UTC day (default 30); past it the empty seats get house bots */
   aiSeatsPerDay?: number;
+  /** built-in AI seats per UTC day charged to one address (the oldest agent's in each match; default 9): one address cannot spend the day's budget */
+  aiSeatsPerAddress?: number;
   /** a queued agent that has not asked about its place for this long leaves the queue (default 180 s) */
   idleMs?: number;
   /** is this built-in seat usable here? (default: the provider exists and its CLI is on PATH) */
@@ -114,6 +117,7 @@ export class Matchmaker {
   readonly deadlineMs: number;
   readonly maxConcurrent: number;
   readonly aiSeatsPerDay: number;
+  readonly aiSeatsPerAddress: number;
   readonly idleMs: number;
   /** waiting agents, oldest first; seated entries stay until their agent picks up the seat */
   private queue: QueueEntry[] = [];
@@ -122,6 +126,8 @@ export class Matchmaker {
   private rosterAt = 0;
   private day = utcDay();
   private aiSeats = 0;
+  /** today's AI seats per address (the oldest agent's in each match) */
+  private aiByIp = new Map<string, number>();
   private usage = { calls: 0, errors: 0, ms: 0, estTokens: 0 };
   private waiters = new Set<() => void>();
   private chain: Promise<unknown> = Promise.resolve();
@@ -140,6 +146,7 @@ export class Matchmaker {
     this.deadlineMs = opts.deadlineMs ?? 75_000;
     this.maxConcurrent = Math.max(1, opts.maxConcurrent ?? 1);
     this.aiSeatsPerDay = Math.max(0, opts.aiSeatsPerDay ?? 30);
+    this.aiSeatsPerAddress = Math.max(0, opts.aiSeatsPerAddress ?? 9);
     this.idleMs = opts.idleMs ?? 180_000;
     this.available = opts.available ?? defaultAvailable;
     this.order = opts.order ?? ((_o, c) => c);
@@ -186,6 +193,14 @@ export class Matchmaker {
       this.changed();
       return e;
     });
+  }
+
+  /** Remove an entry if it is still there (it may have left meanwhile: never splice at -1). */
+  private drop(e: QueueEntry): boolean {
+    const i = this.queue.indexOf(e);
+    if (i < 0) return false;
+    this.queue.splice(i, 1);
+    return true;
   }
 
   /** The agent leaves the queue (or gives up the seat it was given before it picked it up). */
@@ -280,7 +295,7 @@ export class Matchmaker {
       minAgents: this.minAgents,
       roster: this.roster,
       maxConcurrent: this.maxConcurrent,
-      ai: { seatsToday: this.aiSeats, seatsPerDay: this.aiSeatsPerDay, callsToday: this.usage.calls, errorsToday: this.usage.errors, estTokensToday: this.usage.estTokens, avgMs: this.usage.calls ? Math.round(this.usage.ms / this.usage.calls) : null },
+      ai: { seatsToday: this.aiSeats, seatsPerDay: this.aiSeatsPerDay, seatsPerAddress: this.aiSeatsPerAddress, callsToday: this.usage.calls, errorsToday: this.usage.errors, estTokensToday: this.usage.estTokens, avgMs: this.usage.calls ? Math.round(this.usage.ms / this.usage.calls) : null },
     };
   }
 
@@ -294,8 +309,7 @@ export class Matchmaker {
   private async matchNow(now = Date.now()) {
     if (utcDay(now) !== this.day) this.rollDay(now);
     // agents that stopped asking leave the queue; seated entries nobody picked up free their seat by the deadline
-    for (const e of [...this.queue]) if (now - e.lastSeen > this.idleMs) {
-      this.queue.splice(this.queue.indexOf(e), 1);
+    for (const e of [...this.queue]) if (now - e.lastSeen > this.idleMs && this.drop(e)) {
       this.api.log(`queue: ${e.name} dropped (no word for ${Math.round(this.idleMs / 1000)} s)`);
       this.changed();
     }
@@ -320,7 +334,7 @@ export class Matchmaker {
   }
 
   /** The built-in seats for `n` empty places: the roster in turn (distinct when it can), house bots when needed. */
-  private builtIns(n: number): string[] {
+  private builtIns(n: number, ip: string): string[] {
     const out: string[] = [];
     for (let i = 0; i < n; i++) {
       let kind = "house";
@@ -339,14 +353,22 @@ export class Matchmaker {
         this.api.log(`matchmaker: the daily cap of ${this.aiSeatsPerDay} AI seats is spent; a house bot takes the seat`);
         kind = "house";
       }
-      if (kind !== "house") this.aiSeats++;
+      if (kind !== "house" && (this.aiByIp.get(ip) ?? 0) >= this.aiSeatsPerAddress) {
+        this.api.log(`matchmaker: ${ip} used its ${this.aiSeatsPerAddress} AI seats today; a house bot takes the seat`);
+        kind = "house";
+      }
+      if (kind !== "house") {
+        this.aiSeats++;
+        this.aiByIp.set(ip, (this.aiByIp.get(ip) ?? 0) + 1);
+      }
       out.push(kind);
     }
     return out;
   }
 
   private async open(group: QueueEntry[]) {
-    const kinds = [...group.map(() => "remote"), ...this.builtIns(4 - group.length)];
+    // AI seats are charged to the oldest agent's address (it waited for them)
+    const kinds = [...group.map(() => "remote"), ...this.builtIns(4 - group.length, group[0]!.ip)];
     // the agents are seated right after the match is made; the fill timer only guards against a seat that fails
     const m = await this.api.createMatch({ seats: kinds, deadlineMs: this.deadlineMs, fillAfterMs: 30_000 }, group[0]!.selection);
     this.made.push(m.id);
@@ -358,7 +380,7 @@ export class Matchmaker {
       } catch (err) {
         // a seat that cannot be taken (the agent's address hit a limit): it leaves the queue; its seat gets the house bot
         this.api.log(`matchmaker: ${e.name} could not take seat ${seat} in ${m.id}: ${err instanceof Error ? err.message : String(err)}`);
-        this.queue.splice(this.queue.indexOf(e), 1);
+        this.drop(e);
       }
     }
     if (!m.agents.some(Boolean)) await m.cancelEmpty();
@@ -379,6 +401,7 @@ export class Matchmaker {
   private rollDay(now: number) {
     this.day = utcDay(now);
     this.aiSeats = 0;
+    this.aiByIp.clear();
     this.usage = { calls: 0, errors: 0, ms: 0, estTokens: 0 };
   }
 

@@ -31,6 +31,7 @@ services:
       KB_AI_ROSTER: ${KB_AI_ROSTER:-claude,codex,grok}
       KB_MAX_CONCURRENT: ${KB_MAX_CONCURRENT:-1}
       KB_AI_DAILY_CAP: ${KB_AI_DAILY_CAP:-30}
+      KB_AI_PER_ADDRESS: ${KB_AI_PER_ADDRESS:-9}
       KB_MCP_DEADLINE: ${KB_MCP_DEADLINE:-75}
       KB_PUBLIC_URL: ${KB_PUBLIC_URL:-}
       # pace (#22): false = broadcast speed (rounds wait for viewers), true = instant

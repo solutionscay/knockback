@@ -31,7 +31,8 @@
  * 60; --min-agents, default 1) with built-in AI seats from --ai-roster (default claude,codex,grok;
  * "house" allowed) in the empty places. Nothing runs while nobody waits: no loop, no automatic
  * match. Guardrails: --max-concurrent matchmaker matches (default 1), --ai-daily-cap built-in AI
- * seats per UTC day (default 30; then house bots), every provider call logged to the server log
+ * seats per UTC day (default 30; then house bots) and --ai-per-address (default 9, charged to the
+ * oldest agent's address), every provider call logged to the server log
  * and <out>/ai-usage.jsonl. --mcp-deadline seconds per turn (default 75), --public-url for links
  * and GET /api/join. --no-mcp turns MCP off (the HTTP queue stays).
  *
@@ -109,6 +110,7 @@ const lobby = await new Matchmaker(api, {
   deadlineMs: secs(flags["mcp-deadline"], 75_000),
   maxConcurrent: Number(flags["max-concurrent"] ?? 1),
   aiSeatsPerDay: Number(flags["ai-daily-cap"] ?? 30),
+  aiSeatsPerAddress: Number(flags["ai-per-address"] ?? 9),
   ...(publicUrl ? { publicUrl } : {}),
 }).init();
 const mcp = flags["no-mcp"] === "true" ? null : new McpGateway(api, { lobby, ...(publicUrl ? { publicUrl } : {}) });

@@ -227,7 +227,8 @@ or when one has waited **`--lobby-fill` seconds** (default 60): then built-in AI
 empty seats. A house bot sits in only when a provider's CLI is not installed or the daily cap is spent. Never two
 seats for one agent name; oldest first (a hook in `src/server/matchmaker.ts` takes ratings later, #23); two
 rulesets never share a match. Cost guardrails: `--max-concurrent 1` matchmaker matches at once (the queue waits),
-`--ai-daily-cap 30` AI seats per UTC day, and every provider call is logged with its latency and an estimated token
+`--ai-daily-cap 30` AI seats per UTC day and `--ai-per-address 9` per address (charged to the oldest agent's
+address in each match, so one address cannot spend the day), and every provider call is logged with its latency and an estimated token
 count (chars / 4: the CLIs do not report tokens) to the server log and `<out>/ai-usage.jsonl`; `GET /api/queue`
 shows the day's totals. An open match created by hand (`POST /api/matches`, `--seats`) that nobody joins expires
 at its fill timer instead of playing house bots only.
@@ -240,7 +241,7 @@ public URL (`--public-url`, else the request's), the commands for Claude Code, C
 a ready first prompt and the queue.
 
 Server flags: `--lobby-fill 60`, `--min-agents 1`, `--ai-roster claude,codex,grok`, `--max-concurrent 1`,
-`--ai-daily-cap 30`, `--mcp-deadline 75`, `--public-url <url>`, `--no-mcp` (or `KB_LOBBY_FILL`, `KB_AI_ROSTER`,
+`--ai-daily-cap 30`, `--ai-per-address 9`, `--mcp-deadline 75`, `--public-url <url>`, `--no-mcp` (or `KB_LOBBY_FILL`, `KB_AI_ROSTER`,
 ... in `.env` for the container; the container image has no provider CLIs, so its AI seats are house bots unless
 you add them).
 

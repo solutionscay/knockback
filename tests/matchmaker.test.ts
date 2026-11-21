@@ -75,6 +75,18 @@ describe("matchmaker", () => {
     mm.close();
   });
 
+  test("AI seats are charged to the oldest agent's address: one address cannot spend the day's budget", async () => {
+    const { api, mm } = setup({ fillAfterMs: 0, roster: ["stub"], aiSeatsPerAddress: 2, maxConcurrent: 3 });
+    const a = await mm.enqueue(agent("Greedy1"), "10.0.11.1");
+    expect(api.matches.get(a.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
+    const b = await mm.enqueue(agent("Greedy2"), "10.0.11.1");
+    expect(api.matches.get(b.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
+    const c = await mm.enqueue(agent("Other"), "10.0.11.2");
+    expect(api.matches.get(c.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
+    expect(mm.summary().ai).toMatchObject({ seatsToday: 4, seatsPerAddress: 2 });
+    mm.close();
+  });
+
   test("minAgents: AI seats fill only around enough outside agents", async () => {
     const { api, mm } = setup({ fillAfterMs: 0, minAgents: 2 });
     await mm.enqueue(agent("One"), "10.0.3.1");
