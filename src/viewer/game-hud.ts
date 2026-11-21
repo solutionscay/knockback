@@ -162,7 +162,9 @@ export function dialogueHtml(match: Match, decision: Decision, label: string | n
 export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[], matchesPlayed: number, autopilot: boolean[] = [], labels: (string | null)[] = []): string {
   const m = match;
   const w = match.identities[m.winner]!;
-  const why = m.decidedBy() === "two-wins" ? `${m.wins[m.winner]} rounds to ${Math.max(...m.wins.filter((_, i) => i !== m.winner))}` : "won the deciding round";
+  // an Arena round is a whole fight on its own (one round): no "rounds to" score
+  const single = m.ruleset.round.maxRounds === 1;
+  const why = single ? "last one standing" : m.decidedBy() === "two-wins" ? `${m.wins[m.winner]} rounds to ${Math.max(...m.wins.filter((_, i) => i !== m.winner))}` : "won the deciding round";
   const best = Math.max(1, ...tally.points);
   const rows = tally
     .ranking()
@@ -181,7 +183,7 @@ export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[],
       <div class="winner" style="--c:${hex(w.color)}">
         <div class="big">${esc(w.name.toUpperCase())} WINS</div>
         <div class="model">${modelBadgeHtml(labels[m.winner] ?? null, "xl")}</div>
-        <div class="why">${why} · ${m.round} rounds</div>
+        <div class="why">${single ? why : `${why} · ${m.round} rounds`}</div>
         ${pipsHtml(match, "big")}
       </div>
       <div class="board">

@@ -590,6 +590,7 @@ export class ServerMatch {
         context: t.context,
         prompt: t.prompt,
         ...this.entranceFor(seat),
+        ...this.newcomersFor(seat),
         schema: planSchema(this.selection.ruleset),
         submit: `POST /api/arena/plan with {"round":${this.arenaRound}, ...plan} or {"round":${this.arenaRound},"answer":"<model reply with the JSON>"}`,
       };
@@ -601,6 +602,19 @@ export class ServerMatch {
     const e = this.runner?.match.record.entrances?.find((x) => x.seat === seat);
     if (!e) return {};
     return { entrance: { line: e.line, ...(e.evicted ? { kicksOut: e.evicted.name } : {}), message: `you enter the Arena this round${e.evicted ? ` and kick out the house bot ${e.evicted.name}` : ""}` } };
+  }
+
+  /**
+   * The other seats' entrances in this round (#77), for a seat's turn: who just took a seat and which house bot it
+   * kicked out, so the agent can plan around the newcomer. `newcomerNote` is one sentence for the briefing.
+   */
+  private newcomersFor(seat: number) {
+    const es = (this.runner?.match.record.entrances ?? []).filter((x) => x.seat !== seat);
+    if (!es.length) return {};
+    const names = this.runner!.names;
+    const newcomers = es.map((e) => ({ seat: e.seat, fighter: names[e.seat]!, agent: this.agents[e.seat]?.name ?? null, ...(e.evicted ? { kickedOut: e.evicted.name } : {}), line: e.line }));
+    const said = newcomers.map((n) => `${n.fighter}${n.agent ? ` (agent ${n.agent})` : ""} just took seat ${n.seat}${n.kickedOut ? ` and kicked out the house bot ${n.kickedOut}` : ""}`);
+    return { newcomers, newcomerNote: `New in the Arena this round: ${said.join("; ")}.` };
   }
 
   /** The round's result for one seat: winner, the seat's place (1-4), links. */

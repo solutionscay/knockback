@@ -240,7 +240,8 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
           targets: data.context.targets,
           context: data.context,
           arena: ARENA_RULES,
-          briefing: briefingOf(data.prompt),
+          ...(data.newcomers ? { newcomers: data.newcomers } : {}),
+          briefing: data.newcomerNote ? `${data.newcomerNote}\n\n${briefingOf(data.prompt)}` : briefingOf(data.prompt),
           ...(data.lastRound ? { lastRound: lastRoundOf(data.lastRound) } : {}),
           next: "call submit_plan with line and strategy before the deadline. The Arena never ends: a won or lost round is not the end; keep playing until your user tells you to stop",
         });

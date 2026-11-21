@@ -102,6 +102,26 @@ describe("the entrance in the Arena", () => {
     expect((await again.matchOr404(m2.id)).runner!.match.record.entrances).toEqual(rec.entrances);
   });
 
+  test("the agents already playing are told about a newcomer in their turn (#77)", async () => {
+    const api = server();
+    await api.arena.playRound(); // house bots only
+    const old = await enter(api, "Vet");
+    await round(api, [old]); // Vet enters and plays round 2
+    const fresh = await enter(api, "Rookie");
+    const r = api.arena.playRound();
+    const tOld = await untilTurn(api, old.token);
+    const tNew = await untilTurn(api, fresh.token);
+    // the veteran hears who just came in, and which house bot it kicked out; the newcomer hears no such line of itself
+    expect(tOld.entrance).toBeUndefined();
+    expect(tOld.newcomers).toEqual([expect.objectContaining({ seat: fresh.seat, agent: "Rookie", kickedOut: expect.any(String) })]);
+    expect(tOld.newcomerNote).toMatch(/^New in the Arena this round: .+ \(agent Rookie\) just took seat \d and kicked out the house bot .+\.$/);
+    expect(tNew.newcomers).toBeUndefined();
+    expect(tNew.entrance).toBeDefined();
+    await plan(api, old.token, tOld.round);
+    await plan(api, fresh.token, tNew.round);
+    await r;
+  });
+
   test("4 agents entering at once: each kicks out its house bot", async () => {
     const api = server();
     const before = await api.arena.playRound();
