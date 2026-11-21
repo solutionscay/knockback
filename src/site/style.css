@@ -65,10 +65,6 @@ a { color: inherit; }
 .card h2 small, .card h2 a { font: 700 12px/1 var(--text); color: var(--dim); }
 
 /* ---------------------------------------------------------------- stage (the viewer) */
-.stagehead { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.stagehead h1 { margin: 0; font: 900 34px/1 var(--display); text-shadow: 0 3px 0 var(--shadow); }
-.stagehead h1 .arena { color: var(--yellow); }
-.stagehead .meta { margin-bottom: 6px; }
 .stage { position: relative; aspect-ratio: 16 / 8.6; border-radius: 3px; overflow: hidden; background: #0f1424; border: 3px solid var(--shadow); }
 .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
 .stage .seeking { position: absolute; inset: 0; display: grid; place-items: center; background: #0e101799; font: 900 22px/1 var(--display); letter-spacing: 0.08em; pointer-events: none; }
@@ -78,14 +74,6 @@ a { color: inherit; }
 .stage.idle iframe { display: none; }
 .stage.idle { aspect-ratio: auto; min-height: 320px; display: grid; }
 .stage.idle .none { position: relative; inset: auto; padding: 28px 20px; }
-.lineup { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
-.lu { display: flex; gap: 8px; align-items: center; background: var(--slab); border-radius: 3px; padding: 6px 10px 6px 4px; border-bottom: 4px solid var(--c); min-width: 0; text-decoration: none; }
-.lu svg { width: 46px; height: 46px; flex: none; }
-.lu .n { font: 900 16px/1 var(--display); color: var(--ci, var(--c)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lu .s { margin-top: 5px; }
-.lu > div { min-width: 0; }
-.lu .w { margin-left: auto; font: 900 20px/1 var(--display); padding-left: 6px; }
-.lu.auto { border-bottom-style: dashed; }
 .tag { display: inline-block; font: 900 9px/1 var(--text); letter-spacing: 0.12em; background: var(--ink); color: #111; padding: 3px 5px; border-radius: 2px; vertical-align: middle; }
 
 /* ---------------------------------------------------------------- lobby */
@@ -167,10 +155,8 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .feed p.sys { border-left: 0; padding: 4px 0 0; color: var(--dim); font-weight: 700; font-size: 12px; }
 
 /* ---------------------------------------------------------------- replay */
-.replay { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 22px; }
-.scrub { margin-top: 12px; background: var(--slab); border-radius: 3px; padding: 22px 14px 12px; }
-.scrub .ctl { display: flex; align-items: center; gap: 12px; }
-.play { width: 42px; height: 42px; border-radius: 3px; border: 0; background: var(--yellow); color: #111; font: 900 16px/1 var(--display); flex: none; }
+.scrub { display: flex; align-items: center; gap: 12px; margin-top: 8px; background: var(--slab); border-radius: 2px; padding: 16px 10px 6px; }
+.play { width: 36px; height: 36px; border-radius: 2px; border: 0; background: var(--yellow); color: #111; font: 900 16px/1 var(--display); flex: none; }
 .track { position: relative; flex: 1; height: 34px; cursor: pointer; touch-action: none; }
 .track .seg { position: absolute; top: 13px; height: 8px; background: #ffffff18; }
 .track .seg i { position: absolute; inset: 0 auto 0 0; background: var(--yellow); }
@@ -181,19 +167,6 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .speed { display: flex; gap: 4px; }
 .speed button { border: 0; background: #ffffff10; border-radius: 3px; padding: 6px 8px; font: 800 12px/1 var(--text); }
 .speed button[aria-pressed="true"] { background: var(--ink); color: #111; }
-.chapters { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
-.chapters button { border: 0; background: #ffffff0a; border-radius: 3px; padding: 7px 10px; font: 800 12px/1 var(--text); color: var(--dim); }
-.chapters button b { color: var(--ci, var(--ink)); }
-.chapters button.on { background: #ffffff1c; color: var(--ink); }
-.sharecard { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 630; border-radius: 3px; box-shadow: 0 0 0 3px var(--shadow), 0 16px 40px #000a; background: #1a1d29; }
-.linkrow { display: flex; gap: 8px; margin-top: 12px; }
-.linkrow input { flex: 1; min-width: 0; background: #000; color: var(--ink); border: 2px solid var(--rim); border-radius: 3px; padding: 0 12px; font: 13px ui-monospace, Menlo, monospace; }
-.oldcard { border-left: 6px solid #ffb347; }
-.oldcard h2 { color: #ffb347; }
-.oldcard .lines { display: grid; gap: 8px; margin-top: 10px; }
-.oldcard .lines div { display: grid; grid-template-columns: 34px 1fr; gap: 8px; align-items: center; font-size: 13px; }
-.oldcard svg { width: 34px; height: 32px; }
-
 /* ---------------------------------------------------------------- replays list */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .rcard { display: grid; grid-template-columns: 84px 1fr; gap: 10px; background: var(--slab); border-radius: 3px; padding: 12px; border-bottom: 4px solid var(--c); text-decoration: none; }
@@ -249,12 +222,10 @@ dialog.joinp::backdrop { background: #07080dcc; }
   .logo { font-size: 20px; }
   .wrap { padding: 14px 12px 96px; }
   .tabbar { display: flex; }
-  .home, .live, .replay, .agent { grid-template-columns: 1fr; }
-  .stagehead h1 { font-size: 22px; }
+  .home, .live, .agent { grid-template-columns: 1fr; }
   /* the camera stays View all on phones: a taller stage so the bots are not tiny */
   .stage { aspect-ratio: 16 / 11; }
-  .lu .kb-mb { --mb-fs: 9.5px; letter-spacing: 0.02em; }
-  .lineup, .seatrow { grid-template-columns: repeat(2, 1fr); }
+  .seatrow { grid-template-columns: repeat(2, 1fr); }
   .feed { width: auto; }
   .btn.join { font-size: 24px; width: 100%; }
   .joinp .fields { grid-template-columns: 1fr; }
