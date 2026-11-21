@@ -7,6 +7,7 @@ A fighter's personality comes from its **soul file**: attitude, how it talks and
 - **AI fighters** read the soul (its text, values and catchphrase) and choose their own strategy and lines before every round.
 - **House bots** (no AI attached) map the soul's fields to a strategy, or guess from keywords in its text when a field is missing. They speak the soul's own lines, falling back to template lines in the soul's voice.
 - **Records** store the souls and the identities that played, so a replay needs no soul files.
+- **Agents** (MCP or HTTP) write their own **soul.md** when they join: plain text about the fighter (attitude, voice, what it goes for), never about a person. The server caps it at 2000 characters and removes emails, URLs, domains, phone numbers, file paths and long digit runs, and tells the agent what it removed. The agent's soul is used where a house soul is: prompt flavor, the opening line and the cards; its first sentence is the agent's line in the queue.
 
 Four example souls ship in `souls/`: `brawler.md`, `sniper.md`, `rat.md` and `vulture.md`. The file name is the soul's key (for `--lineup sniper=codex` and logs). It is never shown in the game.
 
@@ -54,7 +55,7 @@ Use the catchphrase sparingly: at most once a match.
 | `retaliate` | `attacker`, `turn`, `ignore` | what the house bot does when hit from behind by someone it is not chasing |
 | `catchphrase` | free text, up to 80 characters | shown to the AI (to use sparingly); the house bot's last-resort line |
 
-A bad value (an unknown stance or weapon) is an **error**, and `bun run ai-match` refuses to start with a message naming the file and the key. A missing key is filled in instead: from keywords in `values` and the body, otherwise from a default. The old identity keys (`name`, `title`, `color`, `mark`) are ignored with a warning. The four soul files must have different names.
+A bad value (an unknown stance or weapon) is an **error**, and `bun run ai-match` refuses to start with a message naming the file and the key. A missing key is filled in instead: from keywords in `values` and the body, otherwise from a default. The four soul files must have different names.
 
 Write the body and lines without a name or a look: the fighter could be called anything and look like anything. Use `{me}` (or `{ME}` for capitals) where the fighter says its own name.
 
