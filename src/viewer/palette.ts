@@ -63,6 +63,8 @@ export const WEAPON_ACCENT = {
   rifle: 0xffe28a,
   sniper: 0xff3b4e,
   crossbow: 0x9cff6b,
+  /** the lightning sword (#72): the blade's glow, the bolt and the live ground */
+  lightning: 0xb08cff,
 } as const;
 
 export const POWER_COLOR: Record<string, number> = {

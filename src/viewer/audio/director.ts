@@ -86,8 +86,14 @@ export class SoundDirector {
     this.play(cueForMood(mood, x, y, voiceHz(identity), tick + id), clock);
   }
 
-  /** After each sim tick: grenade bounces and platform crashes, from velocity changes; jetpack hiss while jetting. */
+  /** After each sim tick: grenade bounces and platform crashes, from velocity changes; jetpack hiss while jetting; live ground's buzz. */
   tick(sim: Sim, clock: number) {
+    // live ground (#72): a buzz from each strip every 18 ticks while it is live
+    for (const strip of sim.liveGround) {
+      if ((sim.tick - strip.born) % 18 !== 0 || !strip.points.length) continue;
+      const mid = strip.points[Math.floor(strip.points.length / 2)]!;
+      this.play({ sound: "lightning.ground", x: mid.x, y: mid.y, gain: Math.min(1, strip.ticks / 40), pitch: 1, seed: sim.tick + strip.id }, clock);
+    }
     for (const [id, next] of this.jets) {
       const f = sim.fighters[id];
       if (!f || f.removed || !f.alive || !f.jetting) {

@@ -75,7 +75,8 @@ export class SceneEffects {
       case "swing": {
         const v = fighters.get(e.fighter);
         v.swingT = 0.2;
-        projectiles.swings.push({ x: e.x, y: e.y, dx: e.dx, dy: e.dy, life: e.weapon === "fist" ? 0.08 : 0.14, color: e.hit ? 0xffffff : 0xd8d8d8 });
+        projectiles.swings.push({ x: e.x, y: e.y, dx: e.dx, dy: e.dy, life: e.weapon === "fist" ? 0.08 : 0.14, color: e.weapon === "lightning" ? WEAPON_ACCENT.lightning : e.hit ? 0xffffff : 0xd8d8d8 });
+        if (e.weapon === "lightning") this.fx.sparks(e.x, e.y, e.dx, e.dy, WEAPON_ACCENT.lightning, e.hit ? 8 : 3);
         if (e.hit) camera.addShake(e.weapon === "fist" ? 0.06 : 0.15);
         break;
       }
@@ -149,7 +150,7 @@ export class SceneEffects {
         if (e.weapon === "flamethrower") {
           v.recoil = 0.06;
           this.fx.flameJet(e.x + e.dx * 0.9, e.y + e.dy * 0.9, e.dx, e.dy, 7);
-        } else if (e.weapon !== "grenade" && e.weapon !== "mine" && e.weapon !== "railgun" && e.weapon !== "hammer") {
+        } else if (e.weapon !== "grenade" && e.weapon !== "mine" && e.weapon !== "railgun" && e.weapon !== "hammer" && e.weapon !== "lightning") {
           this.fx.add({ x: mx, y: my, kind: "flash", life: 0.07, size: 0.35, size1: 0.55, color: 0xffe9a0 });
           this.fx.sparks(mx, my, e.dx, e.dy, 0xffd27a, e.weapon === "shotgun" ? 8 : 4);
           this.fx.add({ x: mx, y: my, vx: e.dx * 2, vy: e.dy * 2 + 0.5, kind: "smoke", life: 0.6, size: 0.2, size1: 0.6, color: 0x8a8790, alpha: 0.5, drag: 3, back: true });
@@ -187,6 +188,20 @@ export class SceneEffects {
         }
         break;
       }
+      case "bolt":
+        // a lightning bolt (#72)
+        fighters.get(e.fighter).recoil = 0.2;
+        projectiles.lightning.push({ x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, life: 0.22 });
+        this.fx.add({ x: e.x1, y: e.y1, kind: "flash", life: 0.1, size: 0.5, size1: 1.1, color: 0xe9e2ff });
+        if (e.hit !== "none") this.fx.sparks(e.x1, e.y1, 0, 1, WEAPON_ACCENT.lightning, 14);
+        if (e.hit === "fighter") this.float("ZAP!", e.x1, e.y1 + 1.2, WEAPON_ACCENT.lightning, 0.7);
+        camera.addShake(0.2);
+        break;
+      case "shock":
+        // live ground shocks a fighter (#72)
+        this.fx.sparks(e.x, e.y - 0.6, 0, 1, WEAPON_ACCENT.lightning, e.stun ? 10 : 4);
+        if (e.stun) this.float("SHOCKED!", e.x, e.y + 1.3, WEAPON_ACCENT.lightning, 0.6);
+        break;
       case "pin":
         this.float("PINNED!", e.x, e.y + 1.4, WEAPON_ACCENT.crossbow, 0.75);
         this.fx.add({ x: e.x, y: e.y, kind: "ring", life: 0.3, size: 0.3, size1: 1.1, color: WEAPON_ACCENT.crossbow, alpha: 0.9, aux: 0.1 });
@@ -263,7 +278,7 @@ export class SceneEffects {
       case "pickup": {
         const col = POWER_COLOR[e.item] ?? 0xffb347;
         this.fx.burst(e.x, e.y, col);
-        const label: Record<string, string> = { health: "+HP", shield: "SHIELD!", speed: "SPEED!", heavy: "HEAVY!", damage: "2x DAMAGE!", jump: "DOUBLE JUMP!", mine: "STICKY MINE!", hammer: "SHOCKWAVE HAMMER!", sniper: "SNIPER!", rifle: "RIFLE!", crossbow: "CROSSBOW!" };
+        const label: Record<string, string> = { health: "+HP", shield: "SHIELD!", speed: "SPEED!", heavy: "HEAVY!", damage: "2x DAMAGE!", jump: "DOUBLE JUMP!", mine: "STICKY MINE!", hammer: "SHOCKWAVE HAMMER!", lightning: "LIGHTNING SWORD!", sniper: "SNIPER!", rifle: "RIFLE!", crossbow: "CROSSBOW!" };
         this.float(label[e.item] ?? e.item.toUpperCase() + "!", e.x, e.y + 1.4, col, 1.0);
         break;
       }

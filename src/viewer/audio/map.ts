@@ -76,10 +76,13 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       return [cue("hit.heavy", e.x, e.y, 0.8, 1.3, e.tick + e.fighter)];
     case "shockwave":
       return [cue("hammer.slam", e.x, e.y, 1, 1, e.tick + e.fighter)];
-    case "swing": {
-      const w = e.weapon === "bat" ? "bat" : "fist";
-      return [cue(`${w}.${e.hit ? "hit" : "swing"}`, e.x, e.y, 1, 1, e.tick + e.fighter)];
-    }
+    case "swing":
+      return [cue(`${e.weapon}.${e.weapon === "lightning" ? (e.hit ? "hit" : "slash") : e.hit ? "hit" : "swing"}`, e.x, e.y, 1, 1, e.tick + e.fighter)];
+    // the lightning sword (#72); the live ground's buzz repeats while it is live (SoundDirector)
+    case "bolt":
+      return [cue("lightning.bolt", e.x1, e.y1, 1, 1, e.tick + e.fighter)];
+    case "shock":
+      return [cue("lightning.shock", e.x, e.y, e.stun ? 1 : 0.6, 1, e.tick + e.fighter)];
     case "grapple":
       return e.hit === "none" ? [] : [cue("grapple.latch", e.x1, e.y1, 1, 1, e.tick), cue("grapple.reel", e.x0, e.y0, 0.9, 1, e.tick + 1)];
     case "hit": {

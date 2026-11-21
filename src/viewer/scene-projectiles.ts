@@ -17,6 +17,8 @@ export class ProjectileViews {
   /** precision shots (#38): rifle tracer, sniper round, crossbow bolt (and bolts left stuck in walls) */
   shots: { x0: number; y0: number; x1: number; y1: number; life: number; weapon: "rifle" | "sniper" | "crossbow" }[] = [];
   bolts: { x: number; y: number; dx: number; dy: number; life: number }[] = [];
+  /** lightning bolts (#72): a jagged line, redrawn every frame so it crackles */
+  lightning: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
   tracer(x0: number, y0: number, x1: number, y1: number) {
     this.tracers.push({ x0, y0, x1, y1, life: 0.1 });
   }
@@ -30,6 +32,7 @@ export class ProjectileViews {
     this.waves = [];
     this.shots = [];
     this.bolts = [];
+    this.lightning = [];
     this.minePrev.clear();
   }
 
@@ -132,6 +135,53 @@ export class ProjectileViews {
       pg.moveTo(b.x - b.dx * 0.55, -(b.y - b.dy * 0.55)).lineTo(b.x - b.dx * 0.4, -(b.y - b.dy * 0.4)).stroke({ width: 0.12, color: WEAPON_ACCENT.crossbow, alpha: a });
     }
     this.bolts = this.bolts.filter((b) => b.life > 0);
+    for (const b of this.lightning) {
+      b.life -= fxDt;
+      if (b.life <= 0) continue;
+      const a = Math.min(1, b.life * 6);
+      const len = Math.hypot(b.x1 - b.x0, b.y1 - b.y0) || 1;
+      const nx = -(b.y1 - b.y0) / len, ny = (b.x1 - b.x0) / len;
+      const n = Math.max(4, Math.round(len / 0.7));
+      const pts: number[] = [b.x0, -b.y0];
+      for (let i = 1; i < n; i++) {
+        const t = i / n, j = (Math.random() - 0.5) * 0.7;
+        pts.push(b.x0 + (b.x1 - b.x0) * t + nx * j, -(b.y0 + (b.y1 - b.y0) * t + ny * j));
+      }
+      pts.push(b.x1, -b.y1);
+      for (const [w, c, k] of [[0.42, WEAPON_ACCENT.lightning, 0.35], [0.16, WEAPON_ACCENT.lightning, 0.9], [0.06, 0xffffff, 1]] as const) {
+        pg.moveTo(pts[0]!, pts[1]!);
+        for (let i = 2; i < pts.length; i += 2) pg.lineTo(pts[i]!, pts[i + 1]!);
+        pg.stroke({ width: w, color: c, alpha: a * k, join: "round", cap: "round" });
+      }
+      pg.circle(b.x1, -b.y1, 0.35 + Math.random() * 0.15).fill({ color: WEAPON_ACCENT.lightning, alpha: 0.45 * a });
+    }
+    this.lightning = this.lightning.filter((b) => b.life > 0);
+    // live ground (#72): a glowing band along the floor with arcs crackling over it; it flickers out at the end
+    const ticks = sim.ruleset.weapons.table.lightning.groundTicks;
+    for (const strip of sim.liveGround) {
+      const pts = strip.points;
+      if (!pts.length) continue;
+      const fade = Math.min(1, strip.ticks / 30) * (strip.ticks < 30 && Math.random() < 0.3 ? 0.3 : 1);
+      const fresh = Math.max(0, 1 - (ticks - strip.ticks) / 12);
+      const x0 = pts[0]!.x - 0.25, x1 = pts[pts.length - 1]!.x + 0.25;
+      pg.moveTo(x0, -pts[0]!.y - 0.05);
+      for (const p of pts) pg.lineTo(p.x, -p.y - 0.05);
+      pg.lineTo(x1, -pts[pts.length - 1]!.y - 0.05);
+      pg.stroke({ width: 0.34 + fresh * 0.3, color: WEAPON_ACCENT.lightning, alpha: (0.3 + fresh * 0.4) * fade, cap: "round", join: "round" });
+      for (let arc = 0; arc < 2; arc++) {
+        pg.moveTo(x0, -pts[0]!.y - 0.1);
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i]!;
+          pg.lineTo(p.x + (Math.random() - 0.5) * 0.2, -(p.y + 0.08 + Math.random() * 0.32));
+        }
+        pg.lineTo(x1, -pts[pts.length - 1]!.y - 0.1);
+        pg.stroke({ width: arc ? 0.035 : 0.07, color: arc ? 0xffffff : 0xd9ccff, alpha: 0.85 * fade, join: "round" });
+      }
+      if (Math.random() < 0.35) {
+        const p = pts[Math.floor(Math.random() * pts.length)]!;
+        fx.sparks(p.x, p.y + 0.1, 0, 1, WEAPON_ACCENT.lightning, 2);
+      }
+    }
     for (const t of this.tracers) {
       t.life -= fxDt;
       if (t.life <= 0) continue;
