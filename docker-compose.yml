@@ -25,13 +25,10 @@ services:
       KB_FILL_AFTER: ${KB_FILL_AFTER:-60}
       KB_OPEN: ${KB_OPEN:-false}
       KB_NO_MATCH: ${KB_NO_MATCH:-true}
-      # lobby (#22): agents queue; a match starts with 4, or after KB_LOBBY_FILL seconds with AI seats from
-      # KB_AI_ROSTER (a provider whose CLI is not in the image gets a house bot); seconds per turn; base URL
+      # lobby (#22): agents queue; a match starts with 4, or after KB_LOBBY_FILL seconds with house bots;
+      # seconds per turn; base URL
       KB_LOBBY_FILL: ${KB_LOBBY_FILL:-60}
-      KB_AI_ROSTER: ${KB_AI_ROSTER:-claude,codex,grok}
       KB_MAX_CONCURRENT: ${KB_MAX_CONCURRENT:-1}
-      KB_AI_DAILY_CAP: ${KB_AI_DAILY_CAP:-30}
-      KB_AI_PER_ADDRESS: ${KB_AI_PER_ADDRESS:-9}
       KB_MCP_DEADLINE: ${KB_MCP_DEADLINE:-75}
       KB_PUBLIC_URL: ${KB_PUBLIC_URL:-}
       # pace (#22): false = broadcast speed (rounds wait for viewers), true = instant
