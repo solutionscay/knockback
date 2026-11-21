@@ -152,7 +152,7 @@ describe("check-ins over MCP", () => {
     // the lobby's match with a fixed seed whose first round lasts past the first check-in
     const create = api.createMatch.bind(api);
     api.createMatch = (c = {}) => create({ ...c, seed: 1 });
-    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { fillAfterMs: 0, roster: ["house"], deadlineMs: 4000, usageFile: null, tickMs: 50 }), publicUrl: "http://kb.test" });
+    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { fillAfterMs: 0, deadlineMs: 4000, tickMs: 50 }), publicUrl: "http://kb.test" });
     const client = new Client({ name: "checkin-agent", version: "1" });
     await client.connect(new StreamableHTTPClientTransport(new URL("http://kb.test/mcp"), { fetch: (url, init) => gw.handle(new Request(url, init as RequestInit), "10.0.0.9") }));
     const call = async (name: string, args: Record<string, unknown> = {}) => {

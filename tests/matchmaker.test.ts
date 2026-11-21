@@ -2,7 +2,6 @@ import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerStubs } from "../src/ai/providers";
 import { MatchServer } from "../src/server/match-server";
 import { Matchmaker, type MatchmakerOptions } from "../src/server/matchmaker";
 import { initPhysics } from "../src/sim";
@@ -10,7 +9,6 @@ import { initPhysics } from "../src/sim";
 setDefaultTimeout(120_000);
 beforeAll(async () => {
   await initPhysics();
-  registerStubs(5);
 });
 
 const SOUL = readFileSync("souls/rat.md", "utf8");
@@ -19,7 +17,7 @@ const agent = (name: string, extra: Record<string, unknown> = {}) => ({ name, pe
 
 function setup(opts: MatchmakerOptions = {}, server: ConstructorParameters<typeof MatchServer>[0] = { outDir: tmp() }) {
   const api = new MatchServer(server);
-  const mm = new Matchmaker(api, { roster: ["house"], usageFile: null, tickMs: 20, deadlineMs: 4000, ...opts });
+  const mm = new Matchmaker(api, { tickMs: 20, deadlineMs: 4000, ...opts });
   const call = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}, ip = "10.0.0.1") => {
     const res = (await api.handle(new Request(`http://kb.test${path}`, { method, headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }), ip))!;
     return { status: res.status, data: (await res.json()) as any };
@@ -62,39 +60,19 @@ describe("matchmaker", () => {
     mm.close();
   });
 
-  test("one agent waits the fill time: built-in AI seats from the roster take the rest; house bots only when a provider is missing or the daily cap is spent", async () => {
-    const { api, mm } = setup({ fillAfterMs: 120, roster: ["stub", "junk", "tail"], available: (k) => k !== "junk", aiSeatsPerDay: 1 });
+  test("one agent waits the fill time: house bots take the empty seats", async () => {
+    const { api, mm } = setup({ fillAfterMs: 120 });
     const e = await mm.enqueue(agent("Solo"), "10.0.2.1");
     expect(e.seated).toBeNull(); // not yet: the fill wait runs
     expect(mm.summary().fillsInSec).toBe(1);
     await until(() => !!e.seated);
-    const m = api.matches.get(e.seated!.match)!;
-    // stub: an AI seat; junk: its CLI is "missing" here -> house; tail: past the daily cap of 1 -> house
-    expect(m.kinds).toEqual(["remote", "stub", "house", "house"]);
-    expect(mm.summary().ai).toMatchObject({ seatsToday: 1, seatsPerDay: 1 });
+    expect(api.matches.get(e.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
+    expect(mm.summary()).not.toHaveProperty("roster");
+    expect(mm.summary()).not.toHaveProperty("ai");
     mm.close();
   });
 
-  test("AI seats are charged to the oldest agent's address: one address cannot spend the day's budget", async () => {
-    const { api, mm } = setup({ fillAfterMs: 0, roster: ["stub"], aiSeatsPerAddress: 2, maxConcurrent: 6 });
-    const a = await mm.enqueue(agent("Greedy1"), "10.0.11.1");
-    expect(api.matches.get(a.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
-    const b = await mm.enqueue(agent("Greedy2"), "10.0.11.1");
-    expect(api.matches.get(b.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
-    // the same IPv6 /64 is one address; IPv4-mapped IPv6 is the IPv4 address
-    const v6 = await mm.enqueue(agent("Six1"), "2001:db8:1:2::a");
-    expect(api.matches.get(v6.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
-    const v6b = await mm.enqueue(agent("Six2"), "2001:db8:1:2:ffff::b");
-    expect(api.matches.get(v6b.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
-    const mapped = await mm.enqueue(agent("Mapped"), "::ffff:10.0.11.1");
-    expect(api.matches.get(mapped.seated!.match)!.kinds).toEqual(["remote", "house", "house", "house"]);
-    const c = await mm.enqueue(agent("Other"), "10.0.11.2");
-    expect(api.matches.get(c.seated!.match)!.kinds).toEqual(["remote", "stub", "stub", "house"]);
-    expect(mm.summary().ai).toMatchObject({ seatsToday: 6, seatsPerAddress: 2 });
-    mm.close();
-  });
-
-  test("minAgents: AI seats fill only around enough outside agents", async () => {
+  test("minAgents: house bots fill only around enough outside agents", async () => {
     const { api, mm } = setup({ fillAfterMs: 0, minAgents: 2 });
     await mm.enqueue(agent("One"), "10.0.3.1");
     await Bun.sleep(80);
@@ -137,33 +115,6 @@ describe("matchmaker", () => {
     await mm.enqueue(agent("Ghost"), "10.0.6.1");
     await until(() => mm.waiting().length === 0);
     mm.close();
-  });
-
-  test("provider calls of built-in seats are logged: latency, sizes, estimated tokens (log, file, summary)", async () => {
-    const dir = tmp();
-    const lines: string[] = [];
-    const { api, mm } = setup({ fillAfterMs: 0, roster: ["stub"], usageFile: join(dir, "ai-usage.jsonl") }, { outDir: dir, log: (s) => lines.push(s) });
-    const e = await mm.enqueue(agent("Meter"), "10.0.7.1");
-    const m = api.matches.get(e.seated!.match)!;
-    await until(() => m.status === "over", 60_000);
-    const usage = readFileSync(join(dir, "ai-usage.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(usage.length).toBeGreaterThanOrEqual(9); // 3 stub seats x at least 3 rounds
-    expect(usage[0]).toMatchObject({ kind: "stub", label: "stub/test", ok: true });
-    expect(usage[0].ms).toBeGreaterThanOrEqual(0);
-    expect(usage[0].estTokens).toBe(Math.ceil((usage[0].promptChars + usage[0].answerChars) / 4));
-    expect(lines.some((l) => /^ai usage: stub\/test ok \d+ ms, ~\d+ tokens/.test(l))).toBe(true);
-    expect(mm.summary().ai.callsToday).toBe(usage.length);
-    mm.close();
-  });
-
-  test("the daily AI-seat count survives a restart (counted from storage)", async () => {
-    const dir = tmp();
-    const { api, mm } = setup({ fillAfterMs: 0, roster: ["stub"] }, { outDir: dir });
-    await mm.enqueue(agent("Day"), "10.0.8.1");
-    mm.close();
-    const again = await new Matchmaker(api, { roster: ["stub"], usageFile: null }).init();
-    expect(again.summary().ai.seatsToday).toBe(3);
-    again.close();
   });
 });
 

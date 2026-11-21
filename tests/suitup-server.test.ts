@@ -114,7 +114,7 @@ describe("suit up on the match server (#19)", () => {
 
   test("MCP: join_lobby's look lists the options; wait_for_match says which wishes were kept", async () => {
     const api = new MatchServer({ outDir: tmp() });
-    const mm = new Matchmaker(api, { fillAfterMs: 0, roster: ["tailor"], usageFile: null, tickMs: 50, deadlineMs: 4000 });
+    const mm = new Matchmaker(api, { fillAfterMs: 0, tickMs: 50, deadlineMs: 4000 });
     const gw = new McpGateway(api, { lobby: mm, publicUrl: "http://kb.test" });
     const client = new Client({ name: "t", version: "1" });
     await client.connect(new StreamableHTTPClientTransport(new URL("http://kb.test/mcp"), { fetch: (u, init) => gw.handle(new Request(u, init as RequestInit), "10.0.0.5") }));
@@ -127,13 +127,9 @@ describe("suit up on the match server (#19)", () => {
     let w: any;
     do w = await call("wait_for_match");
     while (w.status !== "started");
-    // the agent is seat 0: its wishes come first; the AI seats asked for "Bramblor" (near), a cloud (taken), the same green (nudged)
+    // the agent's wishes are kept (house bots fill the other seats: AI-seat conflicts are covered over HTTP above)
     expect(w.you.look).toMatchObject({ name: "Bramblo", shape: "cloud", mark: "horns", color: "#9bf06a" });
     expect(w.you.lookChoice).toEqual({ kept: ["name", "shape", "mark", "color"], replaced: [] });
-    const rec = api.matches.get(w.match)!.runner!.match.record;
-    expect(rec.suitUp!.find((e) => e.seat === 1)).toMatchObject({ by: "ai", outcome: "partial" });
-    expect(rec.suitUp!.find((e) => e.seat === 1)!.dropped.map((d) => d.field)).toEqual(["name", "shape"]);
-    expect(rec.suitUp!.find((e) => e.seat === 1)!.nudged?.from).toBe(0x9bf06a);
     mm.close();
     gw.close();
   });

@@ -5,7 +5,7 @@ import { HttpError, RateLimiter } from "../src/server/limits";
 import { MatchServer, ServerMatch } from "../src/server/match-server";
 import { Matchmaker } from "../src/server/matchmaker";
 
-const lobbyOf = (api: MatchServer) => new Matchmaker(api, { usageFile: null, roster: ["house"], tickMs: 60_000 });
+const lobbyOf = (api: MatchServer) => new Matchmaker(api, { tickMs: 60_000 });
 import { McpGateway } from "../src/server/mcp";
 
 const decode = (v: Uint8Array | undefined) => new TextDecoder().decode(v);
@@ -234,7 +234,7 @@ describe("lobby admission", () => {
 
   test.each(["rate limit", "storage failure"] as const)("a %s retires a newly created empty match", async (mode) => {
     const api = new MatchServer({ outDir: "." });
-    const lobby = new Matchmaker(api, { usageFile: null, roster: ["house"], tickMs: 60_000, fillAfterMs: 0 });
+    const lobby = new Matchmaker(api, { tickMs: 60_000, fillAfterMs: 0 });
     const create = api.createMatch.bind(api);
     let created!: ServerMatch;
     api.createMatch = async (options, sel) => (created = await create(options, sel));

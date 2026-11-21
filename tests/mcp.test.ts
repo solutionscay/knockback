@@ -8,7 +8,6 @@ import { PICKUPS, RULE_RETALIATE, RULE_STANCES } from "../src/sim/rules";
 import { RULE_DO, RULE_WHEN, WEAPON_LIST } from "../src/sim/sim-types";
 import { Matchmaker, type MatchmakerOptions } from "../src/server/matchmaker";
 import { MatchServer } from "../src/server/match-server";
-import { registerStubs } from "../src/ai/providers";
 import { briefingOf, fixHints, McpGateway } from "../src/server/mcp";
 import { initPhysics, replayMatch } from "../src/sim";
 
@@ -23,7 +22,7 @@ const PLAN = { weapons: ["rocket", "bat"], target: "weakest", stance: "rush", re
 
 function setup(lobby: MatchmakerOptions = {}) {
   const api = new MatchServer({ outDir: tmp() });
-  const mm = new Matchmaker(api, { deadlineMs: 3000, fillAfterMs: 30_000, roster: ["house"], usageFile: null, tickMs: 50, ...lobby });
+  const mm = new Matchmaker(api, { deadlineMs: 3000, fillAfterMs: 30_000, tickMs: 50, ...lobby });
   const gw = new McpGateway(api, { lobby: mm, publicUrl: "http://kb.test" });
   const close = gw.close.bind(gw);
   gw.close = () => (mm.close(), close());
@@ -184,13 +183,12 @@ describe("MCP tools", () => {
     gw.close();
   });
 
-  test("after the fill wait the line-up names the built-in AI seats", async () => {
-    registerStubs(5);
-    const { gw } = setup({ fillAfterMs: 0, roster: ["stub"] });
+  test("after the fill wait the line-up names the house bots", async () => {
+    const { gw } = setup({ fillAfterMs: 0 });
     const a = await connect(gw, "10.4.0.1");
     expect((await a.call("join_lobby", { name: "Solo", persona: SOUL })).data.joined).toBe(true);
     const w = await a.call("wait_for_match");
-    expect(w.data.lineUp.map((x: { player: string }) => x.player)).toEqual(["agent Solo", "AI stub/test", "AI stub/test", "AI stub/test"]);
+    expect(w.data.lineUp.map((x: { player: string }) => x.player)).toEqual(["agent Solo", "house bot", "house bot", "house bot"]);
     gw.close();
   });
 
