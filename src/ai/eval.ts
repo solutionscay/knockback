@@ -13,12 +13,12 @@
 import type { Match } from "../sim/match";
 import type { Strategy } from "../sim/sim";
 import { checkFactsFromStats } from "./factcheck";
-import { changeOf, factsOf, followsOf, hasHouseSeats, reliabilityOf, resultsOf, rulesOf, varietyOf, whyOf } from "./eval-metrics";
+import { changeOf, factsOf, followsOf, hasHouseSeats, looksOf, reliabilityOf, resultsOf, rulesOf, varietyOf, whyOf } from "./eval-metrics";
 import { NA, type EvalMatch, type EvalReport } from "./eval-types";
 import { checkinStats } from "./checkin-log";
 
 export * from "./eval-types";
-export { changeOf, factsOf, followsOf, hasHouseSeats, quantile, reliabilityOf, resultsOf, rulesOf, targetLabel, variety, varietyOf, whyOf } from "./eval-metrics";
+export { changeOf, factsOf, followsOf, hasHouseSeats, looksOf, quantile, reliabilityOf, resultsOf, rulesOf, targetLabel, variety, varietyOf, whyOf } from "./eval-metrics";
 export * from "./eval-report";
 
 /** The whole report. Pure. */
@@ -45,6 +45,7 @@ export function computeReport(matches: EvalMatch[]): EvalReport {
     follows: { ai: followsOf(matches, "ai"), house: followsOf(matches, "house") },
     facts: factsOf(matches),
     why: whyOf(matches),
+    looks: looksOf(matches),
     reliability: reliabilityOf(matches),
     results: resultsOf(matches),
   };
@@ -57,8 +58,17 @@ export function computeReport(matches: EvalMatch[]): EvalReport {
  * facts). `housePlans[round][seat]`: what the house bot would have planned.
  */
 export function evalMatchFrom(match: Match, seats: string[], housePlans?: (Strategy | undefined)[][]): EvalMatch {
+  const ai = match.record.suitUp?.filter((e) => e.by === "ai") ?? [];
   return {
     seed: match.seed,
+    ...(ai.length
+      ? {
+          looks: ai.map((e) => {
+            const id = match.identities[e.seat]!;
+            return { seat: e.seat, soul: match.souls[e.seat]!.id, provider: seats[e.seat]!, outcome: e.outcome, ...(e.ms !== undefined ? { ms: e.ms } : {}), kept: e.kept.slice(), name: id.name, shape: id.shape, eyes: id.eyes, mark: id.mark, minor: id.minor ?? "none", color: id.color };
+          }),
+        }
+      : {}),
     names: match.names,
     seats: seats.slice(),
     winner: match.winner,

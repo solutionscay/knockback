@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { loadSouls, seatsFor } from "../src/ai/decide";
 import { compareReports, computeReport, factsOf, NA, quantile, reportMarkdown, variety, type EvalDecision, type EvalMatch, type EvalRoundFacts } from "../src/ai/eval";
-import { registerStubs } from "../src/ai/providers";
+import { registerProvider, registerStubs } from "../src/ai/providers";
 import { playAiMatch, rescoreRecord } from "../src/ai/run";
 import { initPhysics, type Strategy } from "../src/sim";
 
@@ -222,8 +222,38 @@ describe("a real stub match feeds the report", () => {
     const houseWins = p.match.record.rounds.filter((r) => r.winner >= 2).length;
     expect((rep.results.house as { roundWins: number }).roundWins).toBe(houseWins);
     expect(p.log.length).toBeGreaterThan(rounds * 5);
+    // the suit-up (#19): stub answers a plan, junk nonsense: both fall back to the seeded look, counted
+    expect(rep.looks).toMatchObject({ asked: 2, ok: 0, fallbacks: { invalid: 2 }, fallbackRate: 1 });
+    expect(reportMarkdown(rep)).toContain("## Looks (suit up)");
     // rescoring the saved record (exact replay, no AI calls) gives the same report
     const again = rescoreRecord(JSON.parse(JSON.stringify(p.match.record)), ["stub", "junk", "house", "house"]);
     expect(computeReport([again])).toEqual(rep);
+  });
+});
+
+describe("look choice in the eval (#19)", () => {
+  test("variety, fallbacks and the choices per soul", async () => {
+    const souls = loadSouls("souls").map((l) => l.soul);
+    const looks: Record<string, string> = { brawler: '{"name":"Krak","shape":"barrel","eyes":"set","color":"#ff6a3d","mark":"horns","minor":"scratch","line":"Move."}', sniper: '{"name":"Scope","shape":"gem","eyes":"slit","color":"#7ad7ff","mark":"antenna","minor":"none","line":"Already aimed."}' };
+    registerProvider("dresser", {
+      label: "dresser/test",
+      ask: async (prompt) => {
+        if (prompt.startsWith("Knockback suit-up")) return looks[souls.find((s) => prompt.includes(s.body.slice(0, 60)))!.id] ?? "no idea";
+        return '{"weapons":["bat"],"target":"nearest","stance":"rush","line":"Go."}';
+      },
+    });
+    const p = await playAiMatch(7, seatsFor(["dresser", "dresser", "dresser", "house"], souls), souls, 400);
+    expect(p.match.identities[0]).toMatchObject({ name: "Krak", shape: "barrel", mark: "horns" });
+    expect(p.match.identities[1]).toMatchObject({ name: "Scope", shape: "gem" });
+    expect(p.log.some((l) => l.includes("suit up: seat 2") && l.includes("fallback-invalid"))).toBe(true);
+    const rep = computeReport([p.eval]);
+    const lk = rep.looks as Exclude<typeof rep.looks, "n/a" | undefined>;
+    expect(lk).toMatchObject({ asked: 3, ok: 2, fallbacks: { invalid: 1 }, variety: { choices: 2, names: 2, shapes: 2, marks: 2 } });
+    expect(lk.bySoul.brawler).toEqual({ choices: 1, shapes: { barrel: 1 }, marks: { horns: 1 } });
+    expect(lk.samples[0]).toContain("brawler (dresser) -> Krak: barrel");
+    expect(computeReport([{ ...p.eval, looks: undefined }]).looks).toBe(NA);
+    // --suit-up off: the seeded identities, no looks in the report
+    const off = await playAiMatch(7, seatsFor(["dresser", "dresser", "dresser", "house"], souls), souls, 400, undefined, { suitUp: false });
+    expect(off.match.record.suitUp).toBeUndefined();
   });
 });

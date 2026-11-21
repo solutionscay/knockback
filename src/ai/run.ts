@@ -15,6 +15,7 @@ import { decideRound, type Seat } from "./decide";
 import { evalMatchFrom, targetLabel, type EvalMatch } from "./eval";
 import type { CheckinConfig } from "./checkin";
 import { MatchRunner } from "./runner";
+import { suitUp, type SuitUpResult } from "./suitup";
 
 /** For comparison, use an independent strategy RNG for the house plan in an AI seat. */
 function shadowPlan(match: Match, round: number, seat: number): Strategy {
@@ -57,12 +58,15 @@ export function rescoreRecord(rec: MatchRecord, lineup: string[]): EvalMatch {
  * check-in latency becomes fight time, as in ai-match); the log is the
  * runner's. Off: the plain loop below, unchanged.
  */
-export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], deadlineMs?: number, checkins?: false | Partial<CheckinConfig>): Promise<PlayedMatch> {
-  if (checkins) return playWithCheckins(seed, seats, deadlineMs, checkins);
+export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], deadlineMs?: number, checkins?: false | Partial<CheckinConfig>, opts: { suitUp?: boolean } = {}): Promise<PlayedMatch> {
+  // the suit-up (#19): each AI seat chooses its name and look first (off: the seeded identities)
+  const suitLog: string[] = [];
+  const su = opts.suitUp === false || !seats.some((s) => s.provider) ? null : await suitUp(seed, seats.map((s, i) => ({ provider: s.provider, soul: souls[i] ?? s.soul })), { log: (l) => suitLog.push(`  ${l}`) });
+  if (checkins) return playWithCheckins(seed, seats, deadlineMs, checkins, su, suitLog);
   const t0 = performance.now();
-  const match = new Match(seed, { souls });
+  const match = new Match(seed, { souls, ...(su ? { identityWishes: su.wishes, suitUp: su.entries } : {}) });
   const names = match.names;
-  const log: string[] = [`seed ${seed}: ${names.map((n, i) => `${n}=${seats[i]!.provider?.label ?? "house"}`).join(", ")}; level ${match.level.theme}`];
+  const log: string[] = [`seed ${seed}: ${names.map((n, i) => `${n}=${seats[i]!.provider?.label ?? "house"}`).join(", ")}; level ${match.level.theme}`, ...suitLog];
   const prompts: PlayedMatch["prompts"] = [];
   const housePlans: (Strategy | undefined)[][] = [];
   while (!match.over) {
@@ -87,14 +91,14 @@ export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], de
   return { match, eval: evalMatchFrom(match, seats.map((s) => (s.provider ? s.providerName : "house")), housePlans), prompts, log, ms: performance.now() - t0 };
 }
 
-async function playWithCheckins(seed: number, seats: Seat[], deadlineMs: number | undefined, checkins: Partial<CheckinConfig>): Promise<PlayedMatch> {
+async function playWithCheckins(seed: number, seats: Seat[], deadlineMs: number | undefined, checkins: Partial<CheckinConfig>, su: SuitUpResult | null = null, suitLog: string[] = []): Promise<PlayedMatch> {
   const t0 = performance.now();
   const housePlans: (Strategy | undefined)[][] = [];
   // the house bot's plan in each AI seat's place, from the same state as the AI's ask (own rng: the match is unchanged)
-  const runner: MatchRunner = new MatchRunner({ seed, seats, deadlineMs, checkins, onDecided: (round) => void housePlans.push(seats.map((s, i) => (s.provider ? shadowPlan(runner.match, round, i) : undefined))) });
+  const runner: MatchRunner = new MatchRunner({ seed, seats, deadlineMs, checkins, ...(su ? { suitUp: su } : {}), onDecided: (round) => void housePlans.push(seats.map((s, i) => (s.provider ? shadowPlan(runner.match, round, i) : undefined))) });
   const names = runner.names;
   await runner.run();
   const match = runner.match;
-  const log = [`seed ${seed}: ${names.map((n, i) => `${n}=${seats[i]!.provider?.label ?? "house"}`).join(", ")}; level ${match.level.theme}; check-ins on`, ...runner.log.map((l) => `  ${l}`)];
+  const log = [`seed ${seed}: ${names.map((n, i) => `${n}=${seats[i]!.provider?.label ?? "house"}`).join(", ")}; level ${match.level.theme}; check-ins on`, ...suitLog, ...runner.log.map((l) => `  ${l}`)];
   return { match, eval: evalMatchFrom(match, seats.map((s) => (s.provider ? s.providerName : "house")), housePlans), prompts: runner.prompts, log, ms: performance.now() - t0, checkinPrompts: runner.checkinPrompts };
 }

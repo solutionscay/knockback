@@ -7,6 +7,7 @@
  *   bun run ai-match --lineup sniper=house --souls ./souls --seed 42 --deadline 20
  *   bun run ai-match --headless            # no server: just play and print the log
  *   bun run ai-match --checkins off        # no mid-round check-ins (on by default, #9: each AI may change its plan every ~10 s of fight)
+ *   bun run ai-match --suit-up off         # seeded looks (on by default, #19: each AI chooses its name and look first)
  *        --checkin-cap 60 --checkin-every 10 --checkin-max 8   (seconds; cap = hung-call limit; max = check-ins per seat per round)
  *
  * Before each round all four fighters are asked in parallel; the engine plays
@@ -32,6 +33,7 @@ import { LiveStream } from "../src/server/live";
 import { PROVIDERS, registerStubs } from "../src/ai/providers";
 import { initPhysics, resolveRuleset } from "../src/sim";
 import { checkinFlags } from "../src/ai/checkin";
+import { suitUp } from "../src/ai/suitup";
 import index from "../index.html";
 import { logLanUrls, serveRecord } from "./viewer-server";
 
@@ -105,7 +107,9 @@ if (!headless) {
 
 // ------------------------------------------------------------ the match
 await initPhysics();
-const runner = new MatchRunner({ seed, seats, ...selection, deadlineMs: deadline, lineup, checkins, onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
+// the suit-up (#19): each AI seat chooses its name, look and opening line before the match
+const su = flags["suit-up"] === "off" || !seats.some((s) => s.provider) ? null : await suitUp(seed, seats.map((s) => ({ provider: s.provider, soul: s.soul })), { ...(selection ? { ruleset: selection.ruleset } : {}), log: (s) => console.log(s) });
+const runner = new MatchRunner({ seed, seats, ...selection, deadlineMs: deadline, lineup, checkins, ...(su ? { suitUp: su } : {}), onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
 const { labels, match } = runner;
 console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}${runner.checkin ? `  check-ins every ${runner.checkin.everyS} s (each waits for its answer; hung calls stop at ${runner.checkin.capMs / 1000} s)` : ""}`);
 match.identities.forEach((id, i) => console.log(`  ${id.name.padEnd(12)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}  (${id.shape} head, ${id.eyes} eyes, ${id.mark}, #${id.color.toString(16).padStart(6, "0")})`));

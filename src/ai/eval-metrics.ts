@@ -1,7 +1,7 @@
 import { ruleKey } from "../sim/rules";
 import { isPickupWeapon, type Strategy } from "../sim/sim-types";
 import { checkLine } from "./factcheck";
-import { NA, type ChangeStats, type EvalDecision, type EvalMatch, type EvalReport, type FactCheck, type FieldVariety, type FollowStats, type ProviderReliability, type RulesStats, type VarietyGroup } from "./eval-types";
+import { NA, type ChangeStats, type EvalDecision, type EvalMatch, type EvalReport, type FactCheck, type FieldVariety, type FollowStats, type LookStats, type ProviderReliability, type RulesStats, type VarietyGroup } from "./eval-types";
 
 export const r3 = (x: number) => Math.round(x * 1000) / 1000;
 const rate = (hits: number, chances: number) => ({ chances, hits, rate: chances ? r3(hits / chances) : 0 });
@@ -280,4 +280,50 @@ export function resultsOf(matches: EvalMatch[]): EvalReport["results"] {
     return { seats, roundWins, roundWinRate: r3(roundWins / seatRounds), matchWins, matchWinRate: r3(matchWins / seats) };
   };
   return { ai: side("ai"), house: side("house"), fairShare: 0.25 };
+}
+
+/** Look-choice variety and fallbacks of the suit-up (#19), over the AI seats. Pure. */
+export function looksOf(matches: EvalMatch[]): LookStats | NA {
+  const all = matches.flatMap((m) => m.looks ?? []);
+  if (!all.length) return NA;
+  const chosen = all.filter((l) => l.outcome === "ok" || l.outcome === "partial");
+  const count = (o: Record<string, number>, k: string) => ((o[k] = (o[k] ?? 0) + 1), o);
+  const shapes = chosen.reduce((o, l) => count(o, l.shape), {} as Record<string, number>);
+  const top = Object.entries(shapes).sort((a, b) => b[1] - a[1])[0];
+  const hue = (c: number) => {
+    const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
+    const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+    if (!d) return -1;
+    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return Math.floor(((h * 60 + 360) % 360) / 30);
+  };
+  const bySoul: LookStats["bySoul"] = {};
+  for (const l of chosen) {
+    const s = (bySoul[l.soul] ??= { choices: 0, shapes: {}, marks: {} });
+    s.choices++;
+    count(s.shapes, l.shape);
+    count(s.marks, l.mark);
+  }
+  const fb = (o: string) => all.filter((l) => l.outcome === o).length;
+  const r2 = (x: number) => Math.round(x * 1000) / 1000;
+  return {
+    asked: all.length,
+    ok: fb("ok"),
+    partial: fb("partial"),
+    fallbacks: { timeout: fb("fallback-timeout"), error: fb("fallback-error"), invalid: fb("fallback-invalid") },
+    fallbackRate: r2((all.length - chosen.length) / all.length),
+    keptRate: r2(all.reduce((a, l) => a + l.kept.length, 0) / (all.length * 6)),
+    variety: {
+      choices: chosen.length,
+      names: new Set(chosen.map((l) => l.name.toLowerCase())).size,
+      shapes: new Set(chosen.map((l) => l.shape)).size,
+      eyes: new Set(chosen.map((l) => l.eyes)).size,
+      marks: new Set(chosen.map((l) => l.mark)).size,
+      hues: new Set(chosen.map((l) => hue(l.color))).size,
+      topShape: top?.[0] ?? null,
+      topShapeShare: top ? r2(top[1] / chosen.length) : 0,
+    },
+    bySoul,
+    samples: chosen.slice(0, 8).map((l) => `${l.soul} (${l.provider}) -> ${l.name}: ${l.shape}, ${l.eyes} eyes, ${l.mark}${l.minor !== "none" ? ` + ${l.minor}` : ""}, #${l.color.toString(16).padStart(6, "0")}${l.outcome === "partial" ? " (partly replaced)" : ""}`),
+  };
 }

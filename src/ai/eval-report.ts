@@ -113,6 +113,22 @@ export function reportMarkdown(rep: EvalReport, opts: { title?: string; compare?
     L.push("");
   }
 
+  L.push("## Looks (suit up)", "");
+  const lk = rep.looks;
+  if (!lk || lk === NA) L.push(`${NA}: no AI seat suited up.`, "");
+  else {
+    L.push(
+      `${lk.asked} AI seats asked to choose their look (#19): ${lk.ok} kept every field, ${lk.partial} partly replaced (taken, near-duplicate, invalid), fallbacks ${lk.fallbacks.timeout} timeout, ${lk.fallbacks.error} error, ${lk.fallbacks.invalid} invalid (${pct(lk.fallbackRate)}); ${pct(lk.keptRate)} of the asked fields kept.`,
+      `Variety over ${lk.variety.choices} choices: ${lk.variety.names} names, ${lk.variety.shapes} shapes (top: ${lk.variety.topShape ?? "-"} ${pct(lk.variety.topShapeShare)}), ${lk.variety.eyes} eye styles, ${lk.variety.marks} marks, ${lk.variety.hues} of 12 hue bands.`,
+      "",
+      "| Soul | Choices | Shapes | Marks |",
+      "|---|---|---|---|",
+      ...Object.entries(lk.bySoul).map(([s, v]) => `| ${s} | ${v.choices} | ${Object.entries(v.shapes).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(", ")} | ${Object.entries(v.marks).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(", ")} |`),
+      "",
+      ...lk.samples.map((x) => `- ${x}`),
+      "",
+    );
+  }
   L.push("## Reliability", "");
   const rel = Object.entries(rep.reliability);
   if (!rel.length) L.push(`${NA}: no AI seats.`, "");

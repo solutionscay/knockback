@@ -9,7 +9,8 @@
  *
  * Flags: --matches N, --seeds a-b (or a,b,c), --lineup, --souls, --deadline s,
  * --checkins on (mid-round check-ins, #9; --checkin-deadline/-every/-max),
- * --concurrency 1..4, --out <dir>, --tag <name>, --compare <report.json>, --yes.
+ * --concurrency 1..4, --out <dir>, --tag <name>, --compare <report.json>, --yes,
+ * --suit-up off (no look choice, #19: by default each AI seat chooses its name and look first: one more call a seat).
  * --rescore <run dir>: recompute the report from a run's saved records (exact replay, no AI calls).
  * Souls rotate across seats every match (match k: seat i plays soul (i+k) % 4),
  * so every provider plays every soul and seat.
@@ -131,7 +132,7 @@ const worker = async () => {
     const k = next++;
     const seed = seeds[k]!;
     const rotated = [0, 1, 2, 3].map((i) => souls[(i + k) % 4]!);
-    const played = await playAiMatch(seed, seatsFor(lineup, rotated), rotated, deadline, checkins);
+    const played = await playAiMatch(seed, seatsFor(lineup, rotated), rotated, deadline, checkins, { suitUp: flags["suit-up"] !== "off" });
     results[k] = played;
     const base = join(outDir, `match-${seed}`);
     writeFileSync(`${base}.json`, JSON.stringify({ ...played.match.record, labels: lineup.map((p) => PROVIDERS[p]?.label ?? "house"), lineup, totalMs: Math.round(played.ms), fightStats: fightStatsOf(played.match.facts) }, null, 2));

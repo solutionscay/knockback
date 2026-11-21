@@ -34,8 +34,44 @@ export interface EvalRound {
   planUpdates?: number;
 }
 
+/** One seat's suit-up (#19) as the eval sees it: who chose, how it went, the identity it ended with. */
+export interface EvalLook {
+  seat: number;
+  /** the soul's id ("brawler"): does the look fit the soul? */
+  soul: string;
+  /** provider name ("claude") */
+  provider: string;
+  outcome: "ok" | "partial" | "fallback-timeout" | "fallback-error" | "fallback-invalid";
+  ms?: number;
+  kept: string[];
+  name: string;
+  shape: string;
+  eyes: string;
+  mark: string;
+  minor: string;
+  color: number;
+}
+
+export interface LookStats {
+  /** AI seats asked to suit up */
+  asked: number;
+  ok: number;
+  partial: number;
+  fallbacks: { timeout: number; error: number; invalid: number };
+  fallbackRate: number;
+  /** of the fields asked for (6 a seat), the share kept */
+  keptRate: number;
+  /** distinct values over the AI's own choices (ok or partial), and how many choices */
+  variety: { choices: number; names: number; shapes: number; eyes: number; marks: number; hues: number; topShape: string | null; topShapeShare: number };
+  /** per soul: its most common shape and mark across matches */
+  bySoul: Record<string, { choices: number; shapes: Record<string, number>; marks: Record<string, number> }>;
+  samples: string[];
+}
+
 export interface EvalMatch {
   seed: number;
+  /** suit-up of the AI seats (#19); absent when the match had no suit-up */
+  looks?: EvalLook[];
   /** fighter names per seat (from the souls) */
   names: string[];
   /** provider name per seat ("house" = house bot) */
@@ -149,6 +185,8 @@ export interface EvalReport {
   facts: FactCheck;
   /** the optional "why" (#3): how many of the AI's own plans gave one, and a few of them */
   why: { answers: number; withWhy: number; rate: number; samples: string[] } | NA;
+  /** the suit-up (#19): look-choice variety and fallbacks over the AI seats; n/a without one */
+  looks?: LookStats | NA;
   reliability: Record<string, ProviderReliability>;
   results: {
     ai: { seats: number; roundWins: number; roundWinRate: number; matchWins: number; matchWinRate: number } | NA;
