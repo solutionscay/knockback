@@ -10,6 +10,7 @@ import { shootChains, swingChains } from "./sim-chains";
 import { fireFlamethrower } from "./sim-fire";
 import { throwMine } from "./sim-mines";
 import { fireRailgun, slamHammer } from "./sim-impact-weapons";
+import { firePrecision } from "./sim-precision";
 
 export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
   if (f.cooldown[weapon] > 0 || (weapon !== "fist" && !sim.ruleset.weapons.enabled.includes(weapon))) return;
@@ -70,6 +71,12 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
     case "flamethrower":
       f.cooldown.flamethrower = sim.ruleset.weapons.table.flamethrower.cooldown;
       fireFlamethrower(sim, f, ox, oy, dx, dy);
+      break;
+    case "rifle":
+    case "sniper":
+    case "crossbow":
+      f.cooldown[weapon] = sim.ruleset.weapons.table[weapon].cooldown;
+      firePrecision(sim, f, weapon, ox, oy, dx, dy);
       break;
   }
   if (usesAmmo(weapon) && --f.ammo[weapon] === 0 && f.weapons[f.slot] === weapon) {

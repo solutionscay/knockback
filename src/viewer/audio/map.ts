@@ -65,6 +65,15 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       return [cue("rail.charge", at(e.fighter).x, at(e.fighter).y, 1, 1, e.tick + e.fighter)];
     case "rail":
       return [cue("rail.fire", e.x0, e.y0, 1, 1, e.tick + e.fighter)];
+    // precision weapons (#38) borrow existing recipes, pitched to tell them apart
+    case "shot":
+      return e.weapon === "sniper" ? [cue("rail.fire", e.x0, e.y0, 1, 0.75, e.tick + e.fighter)]
+        : e.weapon === "rifle" ? [cue("shotgun.fire", e.x0, e.y0, 0.6, 1.5, e.tick + e.fighter)]
+        : [cue("grapple.shoot", e.x0, e.y0, 0.9, 1.25, e.tick + e.fighter)];
+    case "scope":
+      return [cue("rail.charge", at(e.fighter).x, at(e.fighter).y, 0.5, 1.5, e.tick + e.fighter)];
+    case "pin":
+      return [cue("hit.heavy", e.x, e.y, 0.8, 1.3, e.tick + e.fighter)];
     case "shockwave":
       return [cue("hammer.slam", e.x, e.y, 1, 1, e.tick + e.fighter)];
     case "swing": {

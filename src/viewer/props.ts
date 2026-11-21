@@ -28,6 +28,31 @@ export function drawWeapon(g: ShapePen, kind: string, color: number, scale = 1) 
       for (const y of [-0.16, 0.1]) g.rect(0.33 * s, y * s, 0.83 * s, 0.06 * s).fill(WEAPON_ACCENT.railgun);
       g.rect(0.07 * s, 0.065 * s, 0.14 * s, 0.24 * s).fill(color);
       break;
+    case "rifle":
+      // a stocky body, a straight barrel, a magazine underneath
+      g.roundRect(-0.2 * s, -0.08 * s, 0.75 * s, 0.17 * s, 0.03 * s).fill(0x3a3f2e).stroke({ width: 0.04 * s, color: INK });
+      g.rect(0.5 * s, -0.045 * s, 0.5 * s, 0.07 * s).fill(0x23262c).stroke({ width: 0.03 * s, color: INK });
+      g.rect(0.18 * s, 0.08 * s, 0.11 * s, 0.2 * s).fill(0x23262c).stroke({ width: 0.03 * s, color: INK });
+      g.rect(0.92 * s, -0.07 * s, 0.06 * s, 0.05 * s).fill(WEAPON_ACCENT.rifle);
+      g.rect(-0.05 * s, 0.06 * s, 0.1 * s, 0.16 * s).fill(color);
+      break;
+    case "sniper":
+      // a long thin barrel, a scope on top with a red lens, a skeleton stock
+      g.roundRect(-0.25 * s, -0.06 * s, 0.7 * s, 0.13 * s, 0.03 * s).fill(0x2c3138).stroke({ width: 0.04 * s, color: INK });
+      g.rect(0.42 * s, -0.035 * s, 0.85 * s, 0.055 * s).fill(0x1d2026).stroke({ width: 0.025 * s, color: INK });
+      g.roundRect(0.02 * s, -0.2 * s, 0.38 * s, 0.1 * s, 0.04 * s).fill(0x1d2026).stroke({ width: 0.03 * s, color: INK });
+      g.circle(0.4 * s, -0.15 * s, 0.035 * s).fill(WEAPON_ACCENT.sniper);
+      g.rect(-0.08 * s, 0.06 * s, 0.1 * s, 0.16 * s).fill(color);
+      break;
+    case "crossbow":
+      // a wooden stock, a bow across the front, a green-fletched bolt
+      g.roundRect(-0.15 * s, -0.06 * s, 0.85 * s, 0.12 * s, 0.03 * s).fill(0x7a5634).stroke({ width: 0.035 * s, color: INK });
+      g.moveTo(0.6 * s, -0.34 * s).quadraticCurveTo(0.82 * s, 0, 0.6 * s, 0.34 * s).stroke({ width: 0.07 * s, color: 0x3a3f4a, cap: "round" });
+      g.moveTo(0.6 * s, -0.34 * s).lineTo(0.32 * s, 0).lineTo(0.6 * s, 0.34 * s).stroke({ width: 0.02 * s, color: 0xd8d8d8 });
+      g.rect(0.3 * s, -0.025 * s, 0.62 * s, 0.05 * s).fill(0xc8ccd6);
+      g.rect(0.3 * s, -0.05 * s, 0.1 * s, 0.1 * s).fill(WEAPON_ACCENT.crossbow);
+      g.rect(0.0 * s, 0.05 * s, 0.1 * s, 0.16 * s).fill(color);
+      break;
     case "hammer":
       g.roundRect(-0.08 * s, -0.055 * s, 0.99 * s, 0.11 * s, 0.04 * s).fill(0x665040).stroke({ width: 0.045 * s, color: INK });
       g.roundRect(0.67 * s, -0.33 * s, 0.52 * s, 0.66 * s, 0.08 * s).fill(0x586375).stroke({ width: 0.055 * s, color: INK });
@@ -134,6 +159,32 @@ export function drawPickupWeapon(g: Graphics, kind: string) {
       g.poly(bar(-0.44, 0.38, 0.10, a)).fill(0x252e43).stroke(OUT);
       g.poly(turn([-0.17, 0.10, -0.02, 0.10, -0.02, 0.23, -0.17, 0.23], a)).fill(0x4f5970).stroke(OUT);
       for (const y of [-0.12, 0.12]) g.poly(turn([0.01, y - 0.045, 0.44, y - 0.045, 0.44, y + 0.045, 0.01, y + 0.045], a)).fill(WEAPON_ACCENT.railgun).stroke({ width: 0.03, color: INK });
+      break;
+    }
+    case "rifle": {
+      const a = -0.5;
+      g.poly(bar(-0.45, 0.12, 0.1, a)).fill(0x3a3f2e).stroke(OUT);
+      g.poly(bar(0.12, 0.46, 0.045, a)).fill(0x23262c).stroke(OUT);
+      g.poly(turn([-0.1, 0.1, 0.04, 0.1, 0.04, 0.3, -0.1, 0.3], a)).fill(0x23262c).stroke(OUT);
+      g.poly(bar(0.38, 0.46, 0.06, a)).fill(WEAPON_ACCENT.rifle);
+      break;
+    }
+    case "sniper": {
+      const a = -0.5;
+      g.poly(bar(-0.47, 0.0, 0.08, a)).fill(0x2c3138).stroke(OUT);
+      g.poly(bar(0.0, 0.48, 0.035, a)).fill(0x1d2026).stroke(OUT);
+      g.poly(turn([-0.25, -0.22, 0.05, -0.22, 0.05, -0.1, -0.25, -0.1], a)).fill(0x1d2026).stroke(OUT);
+      g.poly(turn([0.02, -0.21, 0.07, -0.21, 0.07, -0.11, 0.02, -0.11], a)).fill(WEAPON_ACCENT.sniper);
+      break;
+    }
+    case "crossbow": {
+      const a = -0.5;
+      g.poly(bar(-0.45, 0.25, 0.07, a)).fill(0x7a5634).stroke(OUT);
+      const bow = turn([0.18, -0.36, 0.34, 0, 0.18, 0.36], a);
+      g.moveTo(bow[0]!, bow[1]!).quadraticCurveTo(bow[2]!, bow[3]!, bow[4]!, bow[5]!).stroke({ width: 0.11, color: INK, cap: "round" });
+      g.moveTo(bow[0]!, bow[1]!).quadraticCurveTo(bow[2]!, bow[3]!, bow[4]!, bow[5]!).stroke({ width: 0.06, color: 0x6a7282, cap: "round" });
+      g.poly(bar(-0.1, 0.46, 0.025, a)).fill(0xc8ccd6).stroke({ width: 0.02, color: INK });
+      g.poly(bar(-0.12, -0.02, 0.06, a)).fill(WEAPON_ACCENT.crossbow);
       break;
     }
     case "hammer": {

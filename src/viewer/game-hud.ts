@@ -28,7 +28,7 @@ export interface Hud {
 
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const STANCE: Record<Strategy["stance"], string> = { rush: "RUSH", distance: "KEEP DISTANCE", cover: "TAKE COVER", item: "GRAB ITEMS" };
+const STANCE: Record<Strategy["stance"], string> = { rush: "RUSH", distance: "KEEP DISTANCE", cover: "TAKE COVER", item: "GRAB ITEMS", overwatch: "OVERWATCH", flank: "FLANK", hold: "HOLD THE SPOT" };
 const MOOD_LABEL: Record<MoraleState, string> = { cocky: "COCKY", confident: "CONFIDENT", rattled: "RATTLED", furious: "FURIOUS", desperate: "DESPERATE" };
 const MOOD_COLOR: Record<MoraleState, string> = { cocky: "#ffd84a", confident: "#7dffa0", rattled: "#9fe0ff", furious: "#ff5a6a", desperate: "#d59bff" };
 

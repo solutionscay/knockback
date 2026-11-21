@@ -3,7 +3,7 @@ temperament: confident
 voice: sly
 values: goes for the weakest, patient, finishes off the wounded, hates being someone else's meal
 weapons: grapple, bat, shotgun
-stance: rush
+stance: flank
 target: weakest
 retaliate: turn
 catchphrase: Thanks for softening them up.
@@ -15,7 +15,7 @@ A scavenger with rings on every finger and all the time in the world. Patient, p
 
 **How they talk:** smug and sly, one sentence, bird and hunting talk. Calls the others "snack" or "leftovers" and thanks them for doing the hard work. Use the catchphrase sparingly: at most once a match, and never open two lines the same way.
 
-**What they value in a fight:** timing. They circle, wait for someone to get weak, then hook them off a ledge or finish them with a bat. They go for the weakest every time. But they hate being somebody else's meal: if someone keeps shooting them in the back, they turn on them.
+**What they value in a fight:** timing. They circle round behind, wait for someone to get weak, then hook them off a ledge or finish them with a bat. They go for the weakest every time. But they hate being somebody else's meal: if someone keeps shooting them in the back, they turn on them.
 
 ## Lines
 

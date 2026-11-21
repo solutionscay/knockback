@@ -8,7 +8,7 @@ import { allowedWeapon, CLASSIC, type Ruleset } from "../sim/ruleset";
 import { autoLabel, checkRule, MAX_RULE_LABEL, PICKUPS, ruleKey, RULE_RETALIATE, RULE_STANCES, WHO_TRIGGERS } from "../sim/rules";
 import { isPickupWeapon, MAX_RULES, RULE_DO, RULE_WHEN, TARGET_PREFERENCES, type ItemType, type Retaliate, type Rule, type RuleWho, type Stance, type Strategy, type TargetPref, type Weapon } from "../sim/sim-types";
 
-const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", grappling: "grapple", "grappling hook": "grapple", "baseball bat": "bat", rockets: "rocket", grenades: "grenade", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower", flames: "flamethrower", "sticky mine": "mine", "rail gun": "railgun", "shockwave hammer": "hammer" };
+const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", grappling: "grapple", "grappling hook": "grapple", "baseball bat": "bat", rockets: "rocket", grenades: "grenade", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower", flames: "flamethrower", "sticky mine": "mine", "rail gun": "railgun", "shockwave hammer": "hammer", marksman: "crossbow", bow: "crossbow", "sniper rifle": "sniper", "assault rifle": "rifle" };
 
 export const MAX_LINE = 120;
 /** the optional "why" (#3): one sentence in game terms */
@@ -115,7 +115,7 @@ export function parseRules(raw: unknown, me: number, names: string[], ruleset: R
     // lenient: a stance or retaliate value given under another key ("do":"retaliate","item":"attacker")
     const valueOf = (key: unknown, allowed: readonly string[]) => [key, x.item, x.value, x.do_item].map((v) => (typeof v === "string" ? v.toLowerCase().trim() : "")).find((v) => allowed.includes(v));
     if (r.do === "stance") {
-      const v = typeof x.stance === "string" ? x.stance.toLowerCase().trim() : valueOf(undefined, ["rush", "distance", "cover", "item"]);
+      const v = typeof x.stance === "string" ? x.stance.toLowerCase().trim() : valueOf(undefined, RULE_STANCES);
       if (v) r.stance = v as Stance;
     }
     if (r.do === "retaliate") {
@@ -163,7 +163,7 @@ export function validatePlan(o: Record<string, unknown>, me: number, names: stri
   const weapons = ws.filter((w, i): w is Weapon => !!w && ws.indexOf(w) === i);
   if (!weapons.length || weapons.length !== ws.length || weapons.length > 3) problems.push(`weapons ${JSON.stringify(rawW)}`);
   const stance = typeof o.stance === "string" ? (o.stance.toLowerCase().trim() as Stance) : null;
-  if (!stance || !RULE_STANCES.includes(stance)) problems.push(`stance ${JSON.stringify(o.stance)}`);
+  if (!stance || !(RULE_STANCES as readonly string[]).includes(stance)) problems.push(`stance ${JSON.stringify(o.stance)}`);
   let target: TargetPref | null = null;
   let grudge: number | undefined;
   if (typeof o.target === "string") {

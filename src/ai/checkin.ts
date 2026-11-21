@@ -16,6 +16,8 @@ import { planKey, type Fight } from "../sim/fight";
 import type { Strategy } from "../sim/sim";
 import type { Soul } from "../sim/soul";
 import { cleanLine, cleanWhy, jsonObjects, parseRules, validatePlan } from "./parse";
+import { RULE_STANCES } from "../sim/rules";
+import { fightTactics, fightTacticsLine, type FightTactics } from "./tactics";
 
 /** The check-in schedule, limits and latency rules (all times in fight seconds unless noted). */
 export interface CheckinConfig {
@@ -144,6 +146,8 @@ export interface CheckinStatus {
   last10s: { took: { from: string; damage: number; hits: number; weapon: string }[]; dealt: { to: string; damage: number; hits: number }[] };
   nearest: { item: string; distance: number; direction: string }[];
   fire: string;
+  /** cover, high ground, long guns and sightlines right now (#38) */
+  tactics: FightTactics;
 }
 
 function dir(dx: number, dy: number): string {
@@ -253,6 +257,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
     },
     nearest: items,
     fire,
+    tactics: fightTactics(fight, me, names),
   };
 }
 
@@ -278,8 +283,9 @@ export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinC
     `PLAN: ${plan}.`,
     `RIVALS: ${rivals}.`,
     `LAST 10s: took ${took}; dealt ${dealt}.`,
+    fightTacticsLine(st.tactics),
     `NEAREST PICKUPS: ${near}. FIRE: ${st.fire}.${ruleset.weapons.enabled.length !== CLASSIC.weapons.enabled.length || ruleset.pickups.enabled.length !== CLASSIC.pickups.enabled.length ? ` Enabled items: ${enabledItems(ruleset).join(", ")}.` : ""}`,
-    `The fight keeps going while you think. Keep the plan, or change only what matters. Fields: target (a name or nearest|weakest|strongest|leader), stance (rush|distance|cover|item), weapons (1-3 weapons to go for: ${ruleset.weapons.enabled.join("|")}; power-ups like shield or jetpack are not weapons), retaliate (attacker|turn|ignore), rules (replaces yours, e.g. [{"when":"my_health_below","value":30,"do":"stance","stance":"cover"}]). line = what you shout (under ${cfg.maxLine} chars), why = reason.`,
+    `The fight keeps going while you think. Keep the plan, or change only what matters. Fields: target (a name or nearest|weakest|strongest|leader), stance (${RULE_STANCES.join("|")}), weapons (1-3 weapons to go for: ${ruleset.weapons.enabled.join("|")}; power-ups like shield or jetpack are not weapons), retaliate (attacker|turn|ignore), rules (replaces yours, e.g. [{"when":"my_health_below","value":30,"do":"stance","stance":"cover"}]). line = what you shout (under ${cfg.maxLine} chars), why = reason.`,
     `Reply ONLY with JSON: {"keep":true} or e.g. {"target":"weakest","stance":"cover","line":"...","why":"..."}`,
   ].join("\n");
 }

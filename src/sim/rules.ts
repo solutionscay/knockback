@@ -6,13 +6,13 @@ import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
  */
 import { isPickupWeapon, POWER_LIST, RULE_DO, RULE_WHEN, WEAPON_LIST, type ItemType, type Rule, type RuleWhen, type RuleWho } from "./sim-types";
 
-export const RULE_STANCES = ["rush", "distance", "cover", "item"] as const;
+export const RULE_STANCES = ["rush", "distance", "cover", "item", "overwatch", "flank", "hold"] as const;
 export const RULE_RETALIATE = ["attacker", "turn", "ignore"] as const;
 export const PICKUPS: readonly ItemType[] = [...WEAPON_LIST, ...POWER_LIST];
 export const MAX_RULE_LABEL = 40;
 
 /** Triggers about fighters (they have a subject: the fighter that makes them true). */
-export const WHO_TRIGGERS: readonly RuleWhen[] = ["holds", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me"];
+export const WHO_TRIGGERS: readonly RuleWhen[] = ["holds", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "in_open", "has_long_gun"];
 /** Triggers that have a fighter subject for target/avoid (alone_with: the last rival). */
 export const SUBJECT_TRIGGERS: readonly RuleWhen[] = [...WHO_TRIGGERS, "alone_with"];
 
@@ -70,6 +70,9 @@ export function autoLabel(r: Omit<Rule, "label">, names: string[]): string {
     hit_me: `${who} hit me`,
     item_near: `${it(r.item)} nearby`,
     alone_with: "last two",
+    in_open: `${who} in the open`,
+    has_long_gun: `${who} has a long gun`,
+    in_cover: "I'm in cover",
   };
   const act: Record<Rule["do"], string> = { target: "go for them", avoid: "keep away", seek: `get ${it(r.doItem)}`, use: `use ${it(r.doItem)}`, stance: r.stance ?? "stance", retaliate: `retaliate ${r.retaliate ?? ""}`.trim() };
   return `${cond[r.when]}: ${act[r.do]}`.slice(0, MAX_RULE_LABEL);

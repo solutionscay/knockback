@@ -8,6 +8,7 @@
  */
 import type { Controller } from "./controller";
 import { isPickupWeapon } from "./sim-types";
+import { hasLongGun, inCover, inOpen } from "./tactical";
 import type { Fighter, ItemType, Retaliate, Rule, Sim, Stance, Weapon } from "./sim";
 
 /**
@@ -93,6 +94,12 @@ export class RuleEngine {
         const others = sim.fighters.filter((f) => f.alive && !f.removed && f.id !== me.id);
         return { on: others.length === 1, who: others };
       }
+      case "in_open":
+        return this.some(cand().filter((f) => inOpen(sim, me, f)));
+      case "has_long_gun":
+        return this.some(cand().filter((f) => hasLongGun(sim, f)));
+      case "in_cover":
+        return { on: inCover(sim, me), who: [] };
     }
   }
 

@@ -13,6 +13,20 @@ import type { HitStat, RoundStats } from "../sim/roundstats";
 import type { Strategy, Weapon } from "../sim/sim";
 import type { Soul } from "../sim/soul";
 import type { DecideContext } from "../sim/voice";
+import { RULE_STANCES } from "../sim/rules";
+import { levelTactics, longGunsLastRound, tacticsLines } from "./tactics";
+
+/** What each stance does, in a few words (#38 adds overwatch, flank and hold). */
+export const STANCE_HELP: Record<(typeof RULE_STANCES)[number], string> = {
+  rush: "close in",
+  distance: "keep range",
+  cover: "behind walls and crates, peek",
+  item: "detour for pickups",
+  overwatch: "high ground, long gun, shoot the open",
+  flank: "go round, hit from behind",
+  hold: "defend a perch or weapon cache",
+};
+export const stanceChoices = () => RULE_STANCES.map((s) => `${s} (${STANCE_HELP[s]})`).join(" | ");
 
 export interface PromptExtras {
   level: LevelDef;
@@ -40,13 +54,16 @@ export const WEAPON_HELP: Record<string, string> = {
   mine: "sticky throw, proximity or timed blast (3 throws)",
   railgun: "charged piercing beam, heavy shove (3 shots)",
   hammer: "ground shockwave, breaks walls (6 slams)",
+  rifle: "long gun, steady semi-auto (16 rounds)",
+  sniper: "long gun, slow laser aim, big hit (4 rounds)",
+  crossbow: "long gun, bolt shoves or pins to walls (6 bolts)",
 } satisfies Record<Exclude<Weapon, "fist">, string>;
 
 export function weaponHelp(ruleset: Ruleset = CLASSIC): Record<string, string> {
   const out = Object.fromEntries(Object.entries(WEAPON_HELP).filter(([w]) => ruleset.weapons.enabled.includes(w as Weapon)));
   const table = ruleset.weapons.table;
-  for (const [w, ammo, label] of [["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"]] as const) {
-    if (out[w]) out[w] = out[w].replace(/\d+ (throws|shots|slams)/, `${ammo} ${label}`);
+  for (const [w, ammo, label] of [["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"], ["rifle", table.rifle.ammo, "rounds"], ["sniper", table.sniper.ammo, "rounds"], ["crossbow", table.crossbow.ammo, "bolts"]] as const) {
+    if (out[w]) out[w] = out[w].replace(/\d+ (throws|shots|slams|rounds|bolts)/, `${ammo} ${label}`);
   }
   return out;
 }
@@ -186,6 +203,9 @@ export const RULE_EXAMPLES = [
   '{"when":"hit_me","who":"enemy","do":"retaliate","retaliate":"attacker","label":"bite back"}',
   '{"when":"health_below","who":"enemy","value":30,"do":"target","label":"finish the wounded"}',
   '{"when":"near_barrel","who":"target","do":"use","item":"rocket","label":"light the barrel"}',
+  '{"when":"has_long_gun","who":"enemy","do":"stance","stance":"cover","label":"duck the long gun"}',
+  '{"when":"in_open","who":"target","do":"use","item":"sniper","label":"take the shot"}',
+  '{"when":"in_cover","do":"stance","stance":"overwatch","label":"settle in and scan"}',
 ];
 
 export function ruleExamplesFor(seed: number, round: number, me: number, ruleset: Ruleset = CLASSIC): string[] {
@@ -201,8 +221,8 @@ export function rulesSection(examples: string[], ruleset: Ruleset = CLASSIC): st
   const holds = ruleset.pickups.enabled.includes("jetpack") ? "weapon or jetpack" : "weapon";
   return [
     `RULES (optional, max 4, first wins): active while triggered, for at least ${tuning.minOnTicks / TICK_RATE} s. A rule that never fires does nothing.`,
-    'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two)',
-    `who: anyone | enemy | target | name. do: target | avoid | seek item | use item (${holds}) | stance "stance": rush/distance/cover/item | retaliate "retaliate": attacker/turn/ignore. target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.`,
+    'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two) | in_open who (I have a clear shot) | has_long_gun who | in_cover (me)',
+    `who: anyone | enemy | target | name. do: target | avoid | seek item | use item (${holds}) | stance "stance": ${RULE_STANCES.join("/")} | retaliate "retaliate": attacker/turn/ignore. target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.`,
     `Examples: ${examples.join(" ")}`,
   ].join("\n");
 }
@@ -249,6 +269,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       `All four fighters are physically identical and start every round with only their fists (weak). Weapons are pickups (arena, crates, supply drops); you carry 2, a new pickup replaces the one not in your hand, and knocked-out fighters drop theirs. You only choose a plan; the engine moves, picks up, aims and shoots for you.`,
   );
   out.push(`LEVEL: ${levelLine(x.level)}`);
+  out.push(tacticsLines(levelTactics(x.level, ruleset), last ? longGunsLastRound(last.stats, names, ruleset) : null));
   out.push(
     `STANDINGS before round ${ctx.round}: ` +
       names
@@ -293,7 +314,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       `target = a fighter's name, or nearest | weakest | strongest | leader. ` +
       (ruleset.pickups.enabled.includes("jetpack") ? `jetpack has limited fuel for climbing, escape and pursuit. Rules can seek, use or check for it with holds. ` : "") +
       (ruleset.pickups.enabled.length !== CLASSIC.pickups.enabled.length ? `Power-ups in this match: ${ruleset.pickups.enabled.join(", ") || "none"}. ` : "") +
-      `stance = rush | distance | cover | item (detour for pickups). ` +
+      `stance = ${stanceChoices()}. ` +
       `retaliate = after 3 hits from behind by a non-target (default turn): attacker = chase that fighter for 10 s, turn = fight back for 3 s then resume, ignore = glance back and stay on target. ` +
       `why = explain your plan in game terms (under 100 characters). ` +
       `line = one in-character reaction (under 90 characters).`,

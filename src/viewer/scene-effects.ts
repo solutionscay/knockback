@@ -172,6 +172,23 @@ export class SceneEffects {
         this.float("SHOCKWAVE!", e.x, e.y + 1.9, WEAPON_ACCENT.hammer, 0.72);
         camera.addShake(0.32);
         break;
+      case "shot": {
+        // precision shots (#38)
+        projectiles.shots.push({ x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, weapon: e.weapon, life: e.weapon === "sniper" ? 0.3 : 0.12 });
+        const len = Math.hypot(e.x1 - e.x0, e.y1 - e.y0) || 1;
+        const dx = (e.x1 - e.x0) / len, dy = (e.y1 - e.y0) / len;
+        if (e.hit !== "none") this.fx.sparks(e.x1, e.y1, -dx, -dy, WEAPON_ACCENT[e.weapon], e.weapon === "sniper" ? 12 : 4);
+        if (e.weapon === "crossbow" && e.hit !== "none" && e.hit !== "fighter") projectiles.bolts.push({ x: e.x1, y: e.y1, dx, dy, life: 2.5 });
+        if (e.weapon === "sniper") {
+          if (e.hit === "fighter") this.float("SNIPED!", e.x1, e.y1 + 1.2, WEAPON_ACCENT.sniper, 0.8);
+          camera.addShake(0.18);
+        }
+        break;
+      }
+      case "pin":
+        this.float("PINNED!", e.x, e.y + 1.4, WEAPON_ACCENT.crossbow, 0.75);
+        this.fx.add({ x: e.x, y: e.y, kind: "ring", life: 0.3, size: 0.3, size1: 1.1, color: WEAPON_ACCENT.crossbow, alpha: 0.9, aux: 0.1 });
+        break;
       case "pellet": {
         projectiles.tracer(e.x0, e.y0, e.x1, e.y1);
         if (e.hit) this.fx.sparks(e.x1, e.y1, -(e.x1 - e.x0) * 0.1, -(e.y1 - e.y0) * 0.1, 0xffe0a0, 3);
@@ -244,7 +261,7 @@ export class SceneEffects {
       case "pickup": {
         const col = POWER_COLOR[e.item] ?? 0xffb347;
         this.fx.burst(e.x, e.y, col);
-        const label: Record<string, string> = { health: "+HP", shield: "SHIELD!", speed: "SPEED!", heavy: "HEAVY!", damage: "2x DAMAGE!", jump: "DOUBLE JUMP!", mine: "STICKY MINE!", hammer: "SHOCKWAVE HAMMER!" };
+        const label: Record<string, string> = { health: "+HP", shield: "SHIELD!", speed: "SPEED!", heavy: "HEAVY!", damage: "2x DAMAGE!", jump: "DOUBLE JUMP!", mine: "STICKY MINE!", hammer: "SHOCKWAVE HAMMER!", sniper: "SNIPER!", rifle: "RIFLE!", crossbow: "CROSSBOW!" };
         this.float(label[e.item] ?? e.item.toUpperCase() + "!", e.x, e.y + 1.4, col, 1.0);
         break;
       }

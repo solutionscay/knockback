@@ -53,9 +53,11 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     slot: 0,
     swap: 0,
     // nobody fires on the first frame
-    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20, mine: 0, railgun: 0, hammer: 0 },
-    ammo: { mine: 0, railgun: 0, hammer: 0 },
+    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0 },
+    ammo: { mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0 },
     railCharge: 0,
+    scope: 0,
+    pinned: 0,
     stun: 0,
     jumpCd: 0,
     airJumped: false,
@@ -107,8 +109,17 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   if (f.swap > 0) f.swap--;
   const wasJetting = f.jetting;
   f.jetting = false;
+  if (f.pinned > 0) {
+    // pinned to a wall by a crossbow bolt (#38): held in place, no aiming, no firing
+    f.railCharge = 0;
+    f.scope = 0;
+    f.pinned--;
+    body.setLinvel({ x: 0, y: 0 }, true);
+    return;
+  }
   if (f.stun > 0) {
     f.railCharge = 0;
+    f.scope = 0;
     f.stun--;
     if (f.grounded) vx *= 0.9;
     body.setLinvel({ x: vx, y: vy }, true);
@@ -173,5 +184,11 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     if (++f.railCharge < sim.ruleset.weapons.table.railgun.chargeTicks) return;
   }
   f.railCharge = 0;
+  // sniper (#38): hold the trigger aimTicks to aim (the laser sight is on), then it fires; letting go cancels
+  if (weapon === "sniper" && firing && f.cooldown.sniper === 0 && f.ammo.sniper > 0) {
+    if (f.scope === 0) sim.events.push({ type: "scope", tick: sim.tick, fighter: f.id });
+    if (++f.scope < sim.ruleset.weapons.table.sniper.aimTicks) return;
+  }
+  f.scope = 0;
   if (firing) fire(sim, f, weapon);
 }

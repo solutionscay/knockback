@@ -26,7 +26,7 @@ export const CLOSE_ARMORY = {
   ...C.ARMORY,
   spread: {
     enabled: false, zoneCaches: 1, minSpawnDistance: 9, starterRise: 2.5, preferLocalTicks: 7 * C.TICK_RATE, otherQuarterCost: 26,
-    powerWeapons: ["railgun"] as readonly Exclude<Weapon, "fist">[], powerMinDistance: 10, powerMinHeight: 4,
+    powerWeapons: ["railgun", "sniper"] as readonly Exclude<Weapon, "fist">[], powerMinDistance: 10, powerMinHeight: 4,
   },
 };
 
@@ -51,7 +51,41 @@ const TACTICAL_WEAPONS = {
     mine: { min: 2.8, max: 9, maxDy: 0, standOff: 5 },
     railgun: { min: C.WEAPONS.railgun.minRange, max: C.WEAPONS.railgun.range, maxDy: 0, standOff: 12 },
     flamethrower: { min: 0, max: 3.5, maxDy: 0, standOff: 2.6 },
+    rifle: { min: 0, max: C.WEAPONS.rifle.range, maxDy: 0, standOff: 12 },
+    sniper: { min: C.WEAPONS.sniper.minRange, max: C.WEAPONS.sniper.range, maxDy: 0, standOff: 20 },
+    crossbow: { min: 1.5, max: C.WEAPONS.crossbow.range, maxDy: 0, standOff: 11 },
   },
+};
+
+/**
+ * Stances (#38), all distances in meters.
+ *   longGuns      what `has_long_gun` rules, overwatch and the round context count as a long gun
+ *   openRange     `in_open`: a clear line to the fighter within this distance
+ *   map           the tactical map: coverReach / coverMinHeight (a wall this close and this tall beside a nav
+ *                 point makes it a cover spot), highRise (meters above the median floor within localSpan that
+ *                 count as high ground), viewRange / viewStep (sightline sampling)
+ *   cover         reach: something this close to me blocking my nearest rival's line = I am in cover;
+ *                 peekEvery / peekFor: of every peekEvery ticks spend peekFor at a spot with a clear shot;
+ *                 coverBonus / spotRange / rangeWeight: score for a computed cover spot (a wall or crate beside it), how
+ *                 far (path cost) to go for shelter, how much the weapon's ideal range counts against travel
+ *   overwatch     riseWeight / maxRise / viewWeight / reachWeight: how a perch is scored (height, sightlines, the
+ *                 long gun's stand-off); longGunLimit: how far (path cost) to go for a long gun first;
+ *                 holdTicks: stay on a chosen perch at least this long; calmTicks: quiet this long before closing in
+ *   flank         gap: where to arrive beside the target (far side); corridorPenalty: the straight line between us,
+ *                 avoided while going around; behindBonus: score for being on the side the target faces away from;
+ *                 giveUpTicks: not round after this long = attack from where I am, then try again
+ *   hold          radius: stay within this of the held spot; leash: chase a target only this far past it;
+ *                 riseWeight / coverBonus / itemBonus / homeWeight: how the spot is chosen (high ground, cover,
+ *                 a weapon cache, close to the start); calmTicks: quiet this long before closing in
+ */
+const STANCES = {
+  longGuns: ["rifle", "sniper", "crossbow", "railgun"] as readonly Exclude<Weapon, "fist">[],
+  openRange: 42,
+  map: { coverReach: 1.5, coverMinHeight: 1, highRise: 2.5, localSpan: 10, viewRange: 34, viewStep: 2 },
+  cover: { reach: 2.5, peekEvery: 240, peekFor: 60, coverBonus: 3, spotRange: 24, rangeWeight: 0.15 },
+  overwatch: { riseWeight: 1.2, maxRise: 8, viewWeight: 9, reachWeight: 0.35, longGunLimit: 40, holdTicks: 240, calmTicks: 660 },
+  flank: { gap: 3.5, corridorPenalty: 7, behindBonus: 4, giveUpTicks: 420 },
+  hold: { radius: 3.5, leash: 9, riseWeight: 0.8, coverBonus: 3, itemBonus: 5, homeWeight: 0.25, calmTicks: 600 },
 };
 
 export const RULESET_DEFAULTS = {
@@ -60,6 +94,7 @@ export const RULESET_DEFAULTS = {
   weapons: {
     enabled: WEAPON_LIST,
     table: { ...C.WEAPONS, shotgun: { ...C.WEAPONS.shotgun, spread: 0.16, jitter: 0.03 }, flamethrower: { ...C.WEAPONS.flamethrower, spreadScale: 1 } },
+    accuracy: C.ACCURACY,
     melee: { bat: { propDamage: 15, propMassCap: 4, terrainOffset: 0.3 }, fist: { propDamage: 4, propMassCap: 3, terrainOffset: 0.2 } },
   },
   pickups: {
@@ -79,5 +114,5 @@ export const RULESET_DEFAULTS = {
   fire: { ...C.FIRE, materials: [Mat.Wood, Mat.Crumble] as readonly Mat[], props: ["crate", "barrel", "tnt", "gas"] as readonly string[] },
   morale: MORALE,
   round: { maxRounds: 3, winsToTake: 2, fightTicks: C.FIGHT_TICKS, finishTicks: C.FINISH_TICKS },
-  tactics: { weapons: TACTICAL_WEAPONS, aimNoise: AIM_NOISE, patience: PATIENCE, pickup: PICKUP, wall: WALL_PURSUIT, ruleEval: RULE_EVAL, reflex: C.REFLEX },
+  tactics: { weapons: TACTICAL_WEAPONS, stances: STANCES, aimNoise: AIM_NOISE, patience: PATIENCE, pickup: PICKUP, wall: WALL_PURSUIT, ruleEval: RULE_EVAL, reflex: C.REFLEX },
 };

@@ -21,6 +21,7 @@ export class RulesetError extends Error {
 const lists: Readonly<Record<string, readonly (string | number)[]>> = {
   "weapons.enabled": RULESET_DEFAULTS.weapons.enabled,
   "pickups.armory.spread.powerWeapons": WEAPON_LIST,
+  "tactics.stances.longGuns": WEAPON_LIST,
   "pickups.enabled": RULESET_DEFAULTS.pickups.enabled,
   "arena.enabledThemes": RULESET_DEFAULTS.arena.enabledThemes,
   "fire.materials": [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Brick],
@@ -30,7 +31,7 @@ const signed = new Set(["ringOutY", "bottom", "minHeight", "groundMin", "despera
 const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density"]);
 const ranges = new Set(["halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
 const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "zoneCaches", "holdTicks", "firstTick"]);
-const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "interval", "chargeTicks", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
+const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "interval", "chargeTicks", "aimTicks", "viewStep", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
 const integral = /(?:ticks|cells|attempts|^hits$|^minOnTicks$|^minOffTicks$|^fuse(?:Min|Max)?$|^chainFuse$|^burnMin$|^burnMax$|^rows$|^maxLife$)/i;
 
@@ -99,6 +100,11 @@ export function validateRuleset(input: unknown): Ruleset {
   require(r.fire.burnMin <= r.fire.burnMax, "fire.burnMin", "must be at most burnMax");
   require(r.weapons.table.mine.armTicks < r.weapons.table.mine.fuse, "weapons.table.mine.armTicks", "must be shorter than the fuse");
   require(r.weapons.table.railgun.minRange < r.weapons.table.railgun.range, "weapons.table.railgun.minRange", "must be below range");
+  require(r.weapons.table.sniper.minRange < r.weapons.table.sniper.range, "weapons.table.sniper.minRange", "must be below range");
+  require(r.weapons.table.crossbow.pinReach <= 4, "weapons.table.crossbow.pinReach", "expected 0 to 4 meters");
+  require(r.weapons.accuracy.coverMul <= 1, "weapons.accuracy.coverMul", "expected 0 to 1");
+  require(r.tactics.stances.map.viewStep >= 1 && Number.isInteger(r.tactics.stances.map.viewStep), "tactics.stances.map.viewStep", "expected a whole number of at least 1");
+  require(r.tactics.stances.cover.peekFor < r.tactics.stances.cover.peekEvery, "tactics.stances.cover.peekFor", "must be shorter than peekEvery");
   require(r.weapons.table.rocket.minRange > 0 && r.weapons.table.rocket.speed > 0, "weapons.table.rocket", "speed and minimum range must be positive");
   require(r.weapons.table.flamethrower.spreadScale <= 3, "weapons.table.flamethrower.spreadScale", "expected 0 to 3");
   require(r.weapons.table.shotgun.pellets >= 2 && r.weapons.table.shotgun.pellets <= 64, "weapons.table.shotgun.pellets", "expected 2 to 64 pellets");

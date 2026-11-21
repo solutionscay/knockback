@@ -252,6 +252,7 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
       f.weapons[other] = it;
       if (usesAmmo(it)) f.ammo[it] = ammo ?? sim.ruleset.weapons.table[it].ammo;
       f.railCharge = 0;
+      f.scope = 0;
       if (it === "flamethrower") f.fuel = sim.ruleset.weapons.table.flamethrower.fuel; // a full tank
       f.slot = other;
       f.swap = sim.ruleset.combat.swapTicks;

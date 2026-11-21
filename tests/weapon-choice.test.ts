@@ -24,7 +24,7 @@ function setup(weapons: [Weapon, Weapon], distance: number, opts: { wall?: Mat; 
   const me = sim.fighters[0]!;
   me.weapons = [...weapons];
   me.slot = 0;
-  me.ammo = { hammer: 1, mine: 1, railgun: 1 };
+  me.ammo = { hammer: 1, mine: 1, railgun: 1, rifle: 1, sniper: 1, crossbow: 1 };
   me.fuel = 60;
   for (const w of Object.keys(me.cooldown) as Weapon[]) me.cooldown[w] = 0;
   if (opts.duel) for (const f of sim.fighters.slice(2)) sim.damageFighter(f, 10_000, -1, 0, 0, "test", 0, 0);

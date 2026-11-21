@@ -14,6 +14,9 @@ export class ProjectileViews {
   zaps: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
   swings: { x: number; y: number; dx: number; dy: number; life: number; color: number }[] = [];
   private tracers: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
+  /** precision shots (#38): rifle tracer, sniper round, crossbow bolt (and bolts left stuck in walls) */
+  shots: { x0: number; y0: number; x1: number; y1: number; life: number; weapon: "rifle" | "sniper" | "crossbow" }[] = [];
+  bolts: { x: number; y: number; dx: number; dy: number; life: number }[] = [];
   tracer(x0: number, y0: number, x1: number, y1: number) {
     this.tracers.push({ x0, y0, x1, y1, life: 0.1 });
   }
@@ -25,6 +28,8 @@ export class ProjectileViews {
     this.swings = [];
     this.rails = [];
     this.waves = [];
+    this.shots = [];
+    this.bolts = [];
     this.minePrev.clear();
   }
 
@@ -87,6 +92,46 @@ export class ProjectileViews {
         fx.add({ x: x - ux * L, y: y - uy * L, vx: -ux * 5, vy: -uy * 5, life: 0.12, size: 0.16, size1: 0.02, color: 0xffd36a });
       }
     }
+    // the sniper's laser sight (#38): on while it aims, brighter as the shot gets close; it ends where the round would
+    const aimH = sim.ruleset.tactics.weapons.enabled ? sim.ruleset.tactics.weapons.aimHeight : 0.25;
+    for (const f of sim.fighters) {
+      if (!f.alive || f.removed || f.scope <= 0) continue;
+      const p = xform(f.entity, alpha);
+      const ox = p.x, oy = p.y + aimH;
+      const range = sim.ruleset.weapons.table.sniper.range;
+      const hit = sim.raycast(ox, oy, f.aimX, f.aimY, range, f.entity.collider);
+      const d = hit ? hit.dist : range;
+      const k = Math.min(1, f.scope / sim.ruleset.weapons.table.sniper.aimTicks);
+      const ex = ox + f.aimX * d, ey = oy + f.aimY * d;
+      pg.moveTo(ox + f.aimX * 0.9, -(oy + f.aimY * 0.9)).lineTo(ex, -ey).stroke({ width: 0.16, color: WEAPON_ACCENT.sniper, alpha: 0.12 + 0.18 * k });
+      pg.moveTo(ox + f.aimX * 0.9, -(oy + f.aimY * 0.9)).lineTo(ex, -ey).stroke({ width: 0.045, color: WEAPON_ACCENT.sniper, alpha: 0.55 + 0.45 * k });
+      pg.circle(ex, -ey, 0.13 + 0.06 * k).fill({ color: WEAPON_ACCENT.sniper, alpha: 0.9 });
+      pg.circle(ex, -ey, 0.05).fill({ color: 0xffffff, alpha: 0.9 });
+    }
+    for (const sh of this.shots) {
+      sh.life -= fxDt;
+      if (sh.life <= 0) continue;
+      const a = Math.min(1, sh.life * (sh.weapon === "sniper" ? 5 : 12));
+      if (sh.weapon === "sniper") {
+        pg.moveTo(sh.x0, -sh.y0).lineTo(sh.x1, -sh.y1).stroke({ width: 0.24, color: WEAPON_ACCENT.sniper, alpha: 0.45 * a });
+        pg.moveTo(sh.x0, -sh.y0).lineTo(sh.x1, -sh.y1).stroke({ width: 0.07, color: 0xfff4f4, alpha: a });
+      } else if (sh.weapon === "rifle") {
+        // a short tracer streak toward the end of the shot
+        const tx = sh.x1 - (sh.x1 - sh.x0) * 0.35, ty = sh.y1 - (sh.y1 - sh.y0) * 0.35;
+        pg.moveTo(tx, -ty).lineTo(sh.x1, -sh.y1).stroke({ width: 0.08, color: WEAPON_ACCENT.rifle, alpha: a });
+      } else {
+        pg.moveTo(sh.x0, -sh.y0).lineTo(sh.x1, -sh.y1).stroke({ width: 0.05, color: 0xdfe6d8, alpha: 0.5 * a });
+      }
+    }
+    this.shots = this.shots.filter((sh) => sh.life > 0);
+    for (const b of this.bolts) {
+      b.life -= fxDt;
+      if (b.life <= 0) continue;
+      const a = Math.min(1, b.life * 2);
+      pg.moveTo(b.x - b.dx * 0.55, -(b.y - b.dy * 0.55)).lineTo(b.x, -b.y).stroke({ width: 0.06, color: 0xc8ccd6, alpha: a });
+      pg.moveTo(b.x - b.dx * 0.55, -(b.y - b.dy * 0.55)).lineTo(b.x - b.dx * 0.4, -(b.y - b.dy * 0.4)).stroke({ width: 0.12, color: WEAPON_ACCENT.crossbow, alpha: a });
+    }
+    this.bolts = this.bolts.filter((b) => b.life > 0);
     for (const t of this.tracers) {
       t.life -= fxDt;
       if (t.life <= 0) continue;

@@ -54,6 +54,7 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
   }
   let kb = 0;
   if (kbx !== 0 || kby !== 0) {
+    f.pinned = 0; // a knock frees a fighter pinned by a bolt (#38)
     const m = sim.kbMult(Math.max(0, f.hp));
     const body = f.entity.body;
     const v = body.linvel();

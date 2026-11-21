@@ -968,13 +968,14 @@
           }
         ],
         "checkpoints": [
-          "39cde66b",
-          "40c28829"
+          "aae9168f",
+          "42fc34b0",
+          "881ebcaf"
         ],
-        "finalHash": "beca62a8",
-        "ticks": 1313
+        "finalHash": "470b1f61",
+        "ticks": 1994
       },
-      "winner": 2,
+      "winner": 0,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1116,14 +1117,15 @@
           }
         ],
         "checkpoints": [
-          "f4f96c24",
-          "31339c8c",
-          "4ab5af65"
+          "80928ba4",
+          "19d4287c",
+          "93a348e7",
+          "4ba512d9"
         ],
-        "finalHash": "6100d62c",
-        "ticks": 2292
+        "finalHash": "c644b96c",
+        "ticks": 2441
       },
-      "winner": 2,
+      "winner": 3,
       "meta": [
         {
           "provider": "claude/haiku",
@@ -1150,14 +1152,269 @@
           "why": "Weakest fighter is closest to a ring-out; bat finishes, grapple sets it up."
         }
       ]
+    },
+    {
+      "physicsSeed": 2241672303,
+      "phase": "between",
+      "strategies": [
+        {
+          "target": "strongest",
+          "stance": "rush",
+          "weapons": [
+            "bat",
+            "mine",
+            "grapple"
+          ],
+          "retaliate": "attacker",
+          "rules": [
+            {
+              "when": "chasing_me",
+              "who": "enemy",
+              "do": "target",
+              "label": "turn on the chaser"
+            },
+            {
+              "when": "near_ledge",
+              "who": "enemy",
+              "do": "use",
+              "doItem": "bat",
+              "label": "bat them off"
+            }
+          ],
+          "line": "I slipped. Everybody saw me slip. That doesn't count."
+        },
+        {
+          "target": "strongest",
+          "stance": "cover",
+          "weapons": [
+            "rocket",
+            "grenade",
+            "shotgun"
+          ],
+          "retaliate": "turn",
+          "rules": [
+            {
+              "when": "near_barrel",
+              "who": "enemy",
+              "do": "use",
+              "doItem": "rocket",
+              "label": "light the barrel"
+            }
+          ],
+          "line": "Brick never saw it coming. They rarely do."
+        },
+        {
+          "target": "grudge",
+          "grudge": 0,
+          "stance": "item",
+          "weapons": [
+            "grenade",
+            "rocket",
+            "shotgun"
+          ],
+          "retaliate": "turn",
+          "rules": [
+            {
+              "when": "my_health_below",
+              "value": 40,
+              "do": "seek",
+              "doItem": "health",
+              "label": "patch up"
+            },
+            {
+              "when": "near_barrel",
+              "who": "enemy",
+              "do": "use",
+              "doItem": "grenade",
+              "label": "light the barrel"
+            }
+          ],
+          "line": "Goldie got me with a shotgun blast. I knew this would happen. I said so."
+        },
+        {
+          "target": "weakest",
+          "stance": "rush",
+          "weapons": [
+            "grapple",
+            "bat",
+            "shotgun"
+          ],
+          "retaliate": "turn",
+          "rules": [
+            {
+              "when": "health_below",
+              "who": "enemy",
+              "value": 30,
+              "do": "target",
+              "label": "finish the wounded"
+            },
+            {
+              "when": "near_ledge",
+              "who": "enemy",
+              "do": "use",
+              "doItem": "grapple",
+              "label": "hook them off"
+            }
+          ],
+          "line": "Vultures don't mind waiting. Patience, darlings, patience."
+        }
+      ],
+      "lines": [
+        "I slipped. Everybody saw me slip. That doesn't count.",
+        "Brick never saw it coming. They rarely do.",
+        "Goldie got me with a shotgun blast. I knew this would happen. I said so.",
+        "Vultures don't mind waiting. Patience, darlings, patience."
+      ],
+      "fight": {
+        "version": 4,
+        "seed": 2241672303,
+        "level": {
+          "theme": "rooftop",
+          "attempt": 0,
+          "width": 62
+        },
+        "strategies": [
+          {
+            "target": "strongest",
+            "stance": "rush",
+            "weapons": [
+              "bat",
+              "mine",
+              "grapple"
+            ],
+            "retaliate": "attacker",
+            "rules": [
+              {
+                "when": "chasing_me",
+                "who": "enemy",
+                "do": "target",
+                "label": "turn on the chaser"
+              },
+              {
+                "when": "near_ledge",
+                "who": "enemy",
+                "do": "use",
+                "doItem": "bat",
+                "label": "bat them off"
+              }
+            ],
+            "line": "I slipped. Everybody saw me slip. That doesn't count."
+          },
+          {
+            "target": "strongest",
+            "stance": "cover",
+            "weapons": [
+              "rocket",
+              "grenade",
+              "shotgun"
+            ],
+            "retaliate": "turn",
+            "rules": [
+              {
+                "when": "near_barrel",
+                "who": "enemy",
+                "do": "use",
+                "doItem": "rocket",
+                "label": "light the barrel"
+              }
+            ],
+            "line": "Brick never saw it coming. They rarely do."
+          },
+          {
+            "target": "grudge",
+            "grudge": 0,
+            "stance": "item",
+            "weapons": [
+              "grenade",
+              "rocket",
+              "shotgun"
+            ],
+            "retaliate": "turn",
+            "rules": [
+              {
+                "when": "my_health_below",
+                "value": 40,
+                "do": "seek",
+                "doItem": "health",
+                "label": "patch up"
+              },
+              {
+                "when": "near_barrel",
+                "who": "enemy",
+                "do": "use",
+                "doItem": "grenade",
+                "label": "light the barrel"
+              }
+            ],
+            "line": "Goldie got me with a shotgun blast. I knew this would happen. I said so."
+          },
+          {
+            "target": "weakest",
+            "stance": "rush",
+            "weapons": [
+              "grapple",
+              "bat",
+              "shotgun"
+            ],
+            "retaliate": "turn",
+            "rules": [
+              {
+                "when": "health_below",
+                "who": "enemy",
+                "value": 30,
+                "do": "target",
+                "label": "finish the wounded"
+              },
+              {
+                "when": "near_ledge",
+                "who": "enemy",
+                "do": "use",
+                "doItem": "grapple",
+                "label": "hook them off"
+              }
+            ],
+            "line": "Vultures don't mind waiting. Patience, darlings, patience."
+          }
+        ],
+        "checkpoints": [
+          "6b39f837",
+          "ef37200a",
+          "bb9d70df"
+        ],
+        "finalHash": "a54c0cef",
+        "ticks": 2198
+      },
+      "winner": 1,
+      "meta": [
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        },
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        },
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        },
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        }
+      ]
     }
   ],
-  "winner": 2,
+  "winner": 1,
   "wins": [
+    1,
+    1,
     0,
-    0,
-    2,
-    0
+    1
   ],
   "labels": [
     "claude",
@@ -1172,7 +1429,7 @@
     "claude"
   ],
   "totalMs": 56697,
-  "engine": 6,
+  "engine": 7,
   "ruleset": {
     "schemaVersion": 1,
     "combat": {
@@ -1212,7 +1469,10 @@
         "flamethrower",
         "mine",
         "railgun",
-        "hammer"
+        "hammer",
+        "rifle",
+        "sniper",
+        "crossbow"
       ],
       "table": {
         "mine": {
@@ -1323,6 +1583,40 @@
           "chainDamage": 1.2,
           "spreadScale": 1
         },
+        "rifle": {
+          "ammo": 16,
+          "cooldown": 22,
+          "range": 24,
+          "damage": 3.4,
+          "knockback": 3,
+          "lift": 0.18,
+          "propDamage": 6,
+          "terrainDamage": 9
+        },
+        "sniper": {
+          "ammo": 4,
+          "aimTicks": 36,
+          "cooldown": 100,
+          "range": 42,
+          "minRange": 4,
+          "damage": 15,
+          "knockback": 13,
+          "lift": 0.3,
+          "propDamage": 24,
+          "terrainDamage": 30
+        },
+        "crossbow": {
+          "ammo": 6,
+          "cooldown": 72,
+          "range": 28,
+          "damage": 6,
+          "knockback": 10,
+          "lift": 0.32,
+          "pinReach": 1.1,
+          "pinTicks": 40,
+          "propDamage": 14,
+          "terrainDamage": 16
+        },
         "grapple": {
           "cooldown": 110,
           "range": 15,
@@ -1330,6 +1624,28 @@
           "lift": 5,
           "damage": 2,
           "stun": 26
+        }
+      },
+      "accuracy": {
+        "stillSpeed": 0.6,
+        "coverMul": 0.5,
+        "rifle": {
+          "still": 0.012,
+          "move": 0.07,
+          "air": 0.12,
+          "jet": 0.16
+        },
+        "sniper": {
+          "still": 0.003,
+          "move": 0.11,
+          "air": 0.2,
+          "jet": 0.25
+        },
+        "crossbow": {
+          "still": 0.008,
+          "move": 0.08,
+          "air": 0.14,
+          "jet": 0.18
         }
       },
       "melee": {
@@ -1412,7 +1728,8 @@
           "preferLocalTicks": 420,
           "otherQuarterCost": 26,
           "powerWeapons": [
-            "railgun"
+            "railgun",
+            "sniper"
           ],
           "powerMinDistance": 10,
           "powerMinHeight": 4
@@ -2173,14 +2490,79 @@
             "max": 3.5,
             "maxDy": 0,
             "standOff": 2.6
+          },
+          "rifle": {
+            "min": 0,
+            "max": 24,
+            "maxDy": 0,
+            "standOff": 12
+          },
+          "sniper": {
+            "min": 4,
+            "max": 42,
+            "maxDy": 0,
+            "standOff": 20
+          },
+          "crossbow": {
+            "min": 1.5,
+            "max": 28,
+            "maxDy": 0,
+            "standOff": 11
           }
+        }
+      },
+      "stances": {
+        "longGuns": [
+          "railgun",
+          "rifle",
+          "sniper",
+          "crossbow"
+        ],
+        "openRange": 42,
+        "map": {
+          "coverReach": 1.5,
+          "coverMinHeight": 1,
+          "highRise": 2.5,
+          "localSpan": 10,
+          "viewRange": 34,
+          "viewStep": 2
+        },
+        "cover": {
+          "reach": 2.5,
+          "peekEvery": 240,
+          "peekFor": 60,
+          "coverBonus": 3,
+          "spotRange": 24,
+          "rangeWeight": 0.15
+        },
+        "overwatch": {
+          "riseWeight": 1.2,
+          "maxRise": 8,
+          "viewWeight": 9,
+          "reachWeight": 0.35,
+          "longGunLimit": 40,
+          "holdTicks": 240,
+          "calmTicks": 660
+        },
+        "flank": {
+          "gap": 3.5,
+          "corridorPenalty": 7,
+          "behindBonus": 4,
+          "giveUpTicks": 420
+        },
+        "hold": {
+          "radius": 3.5,
+          "leash": 9,
+          "riseWeight": 0.8,
+          "coverBonus": 3,
+          "itemBonus": 5,
+          "homeWeight": 0.25,
+          "calmTicks": 600
         }
       },
       "aimNoise": 0.07,
       "patience": {
         "calmTicks": 330,
-        "peekEvery": 240,
-        "peekFor": 90,
         "stuckTicks": 110,
         "avoidTicks": 300,
         "digTicks": 90,

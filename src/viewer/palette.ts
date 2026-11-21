@@ -59,6 +59,10 @@ export const WEAPON_ACCENT = {
   mine: 0xf763aa,
   railgun: 0x68dcff,
   hammer: 0xffb34d,
+  /** precision weapons (#38): rifle tracer, sniper laser and round, crossbow fletching */
+  rifle: 0xffe28a,
+  sniper: 0xff3b4e,
+  crossbow: 0x9cff6b,
 } as const;
 
 export const POWER_COLOR: Record<string, number> = {
