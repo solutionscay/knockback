@@ -46,6 +46,8 @@ export interface MatchRow {
   winner: number | null;
   /** when spectator picks locked (#35): right before round 1's decisions were broadcast */
   picksLockedAt?: number | null;
+  /** the built-in AI seats' suit-up answers (#19, JSON SuitUpAnswer[]): a resumed match keeps their looks */
+  suitUp?: string | null;
 }
 
 export interface SeatRow {
@@ -115,7 +117,7 @@ export interface RecordRow {
   stats?: string | null;
 }
 
-export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt">>;
+export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt" | "suitUp">>;
 export type SeatPatch = Partial<Pick<SeatRow, "leftAt" | "leftRound">>;
 
 export interface MatchStore {
@@ -267,6 +269,8 @@ export const MIGRATIONS: string[] = [
    );
    ALTER TABLE matches ADD COLUMN picks_locked_at INTEGER;
    ALTER TABLE seats ADD COLUMN opening_line TEXT;`,
+  // 9 (#19): the built-in AI seats' suit-up answers (their chosen looks and opening lines)
+  `ALTER TABLE matches ADD COLUMN suit_up TEXT;`,
 ];
 
 type Row = Record<string, unknown>;
@@ -289,6 +293,7 @@ const matchOf = (r: Row): MatchRow => ({
   error: (r.error as string | null) ?? null,
   winner: (r.winner as number | null) ?? null,
   picksLockedAt: (r.picks_locked_at as number | null) ?? null,
+  suitUp: (r.suit_up as string | null) ?? null,
 });
 
 const presetOf = (r: Row): RulesetPreset => ({
@@ -312,7 +317,7 @@ const seatOf = (r: Row): SeatRow => ({
   openingLine: (r.opening_line as string | null) ?? null,
 });
 
-const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round", picksLockedAt: "picks_locked_at" };
+const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round", picksLockedAt: "picks_locked_at", suitUp: "suit_up" };
 
 export class SqliteStore implements MatchStore {
   readonly db: Database;

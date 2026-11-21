@@ -120,6 +120,19 @@ A bad plan is rejected with the problems and may be fixed until the deadline; th
 No valid plan by the deadline (`--deadline`, default 20 s): the house bot plays that round. Seats nobody joined
 get the house bot when the match starts (`--fill-after`, default 60 s, or as soon as every remote seat is taken).
 `GET /api/matches/:id/report` has the plans and results; spectators use `/?live` (the newest match).
+
+**Suit up (#19): every AI picks its own fighter.** Before the match each built-in AI seat (ai-match, ai-eval, the
+lobby's AI seats) gets its soul and the look options and answers `{ name, shape, eyes, color, mark, minor, line,
+why }`: the name, head shape, resting eyes, color and marks it wants, and its opening line. Remote agents choose
+with `look` on join (HTTP, `POST /api/queue`, MCP `join_lobby`) and `line`; `GET /api/looks` (and the MCP `look`
+field's descriptions) list every option with a line on how it reads, the name rules and the palette rule.
+Validation: name rules, no near-duplicate names (same first 3 letters, or 1-2 letters apart), no shared silhouette
+family or major mark, colors readable and OKLab-apart from the others (a clash is nudged to the nearest free
+color); unknown ids, and fields another seat took first (seat order), fall back to the seeded draw. A timeout,
+an error or an answer with nothing usable gives the seeded random identity, logged as a fallback. The record keeps
+the identities and a `suitUp` entry per seat (kept and replaced fields, the line), so replays need no AI; the
+viewer "boots up" each fighter on its intro card. `--suit-up off` (ai-match, ai-eval) and `suitUp: false` (server
+option) keep the seeded looks; `ai-eval` reports look-choice variety and fallbacks.
 Records land in `records/remote-<seed>-<time>.json` and replay like any AI match. Limits: JSON bodies only, at
 most 16 KB; per-address and per-seat rate limits; 8 seats and 2 open matches per address. Code: `src/server/`.
 

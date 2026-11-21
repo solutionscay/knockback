@@ -39,6 +39,7 @@ describe("SqliteStore", () => {
       UPDATE ruleset_presets SET version = 1 WHERE name = 'Classic';
       UPDATE ruleset_presets SET body = NULL WHERE name = 'Close Quarters';
       DROP TABLE picks; ALTER TABLE matches DROP COLUMN picks_locked_at; ALTER TABLE seats DROP COLUMN opening_line; -- undo 8 (#35) too
+      ALTER TABLE matches DROP COLUMN suit_up; -- and 9 (#19)
       DELETE FROM schema_migrations WHERE version >= 7;`);
     await old.close();
 

@@ -30,6 +30,7 @@ import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 import { HttpError, RateLimiter } from "./limits";
 import { McpAdmission } from "./mcp-admission";
 import type { Matchmaker } from "./matchmaker";
+import { EYES_INFO, MAJOR_MARK_INFO, MINOR_MARK_INFO, NAME_RULES, PALETTE_RULES, SHAPE_INFO } from "../ai/looks";
 import type { MatchServer } from "./match-server";
 import { hashToken, MAX_PERSONA, MIN_PERSONA } from "./match-server";
 import { TARGET_CHOICES } from "./remote";
@@ -147,6 +148,19 @@ const FLOW =
   "If the server runs mid-round check-ins, wait_for_turn also returns status \"checkin\" during a round (about every 10 s of fight): the fight status at that moment; answer with submit_checkin (keep, or change only some plan fields). The fight does not pause: the check-in waits for your answer and your change applies when it arrives, so a slow answer applies late; while it is open you get no new check-in.";
 
 // ------------------------------------------------------------------ helpers
+/** The look this agent's fighter got (#19): the identity, and which of its wishes were kept or replaced. */
+function yourLook(m: { runner: { match: { identities: { name: string; shape: string; eyes: string; mark: string; minor?: string; color: number }[]; record: { suitUp?: { seat: number; kept: string[]; dropped: { field: string; why: string }[]; nudged?: { from: number; to: number } }[] } } } | null }, seat: number) {
+  const r = m.runner;
+  if (!r) return {};
+  const id = r.match.identities[seat]!;
+  const e = r.match.record.suitUp?.find((x) => x.seat === seat);
+  const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
+  return {
+    look: { name: id.name, shape: id.shape, eyes: id.eyes, mark: id.mark, minor: id.minor ?? "none", color: hex(id.color) },
+    ...(e ? { lookChoice: { kept: e.kept, replaced: e.dropped.map((d) => `${d.field} (${d.why})`), ...(e.nudged ? { colorNudged: `${hex(e.nudged.from)} -> ${hex(e.nudged.to)}` } : {}) } } : {}),
+  };
+}
+
 const text = (o: unknown, isError = false): CallToolResult => ({ content: [{ type: "text", text: typeof o === "string" ? o : JSON.stringify(o, null, 2) }], ...(isError ? { isError: true } : {}) });
 
 /** The rendered round prompt, with its final "Reply ONLY with JSON" paragraph replaced by how to submit through MCP. */
@@ -373,9 +387,16 @@ export class McpGateway {
           persona: z.string().min(MIN_PERSONA).max(MAX_PERSONA).describe("your fighter's soul, e.g. 'A smug sniper who keeps its distance, loves the rocket and taunts in short dry quips.'"),
           ruleset: z.string().min(1).max(64).optional().describe("named ruleset preset (default: the lobby preset)"),
           look: z
-            .object({ name: z.string().max(24).optional(), color: z.string().max(7).optional(), shape: z.string().max(24).optional(), eyes: z.string().max(24).optional(), mark: z.string().max(24).optional() })
+            .object({
+              name: z.string().max(24).optional().describe(`your fighter's name: ${NAME_RULES}`),
+              shape: z.string().max(24).optional().describe(`your head: ${Object.entries(SHAPE_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
+              eyes: z.string().max(24).optional().describe(`your resting face: ${Object.entries(EYES_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
+              color: z.string().max(7).optional().describe(`#rrggbb: ${PALETTE_RULES}`),
+              mark: z.string().max(24).optional().describe(`a big silhouette on top: ${Object.entries(MAJOR_MARK_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
+              minor: z.string().max(24).optional().describe(`a small detail: ${Object.entries(MINOR_MARK_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
+            })
             .optional()
-            .describe("optional wishes for your fighter's look, e.g. {\"color\":\"#ff8800\"}; kept when valid and not taken"),
+            .describe("suit up (#19): choose your fighter's name and look to fit your persona; every field is optional; an unknown id, or one another fighter took first, falls back to a random one (a clashing color is nudged)"),
           model: z.string().max(40).optional().describe("the model you run, as you would name it (e.g. claude-opus-5-5, gpt-6-luna, grok-4.6): spectators see it on your fighter's card, marked self-reported"),
           line: z.string().min(1).max(400).optional().describe("optional opening line: one in-character sentence spectators see before the match starts (at most 120 characters)"),
         },
@@ -447,7 +468,7 @@ export class McpGateway {
             return text({
               status: "started",
               match: m.id,
-              you: { seat: state.seat, fighter: info.seats[state.seat!]!.fighter },
+              you: { seat: state.seat, fighter: info.seats[state.seat!]!.fighter, ...yourLook(m, state.seat!) },
               lineUp: info.seats.map((s) => ({ fighter: s.fighter, player: s.agent ? `agent ${s.agent}` : s.label && s.label !== "house" ? `AI ${s.label}` : "house bot" })),
               turnDeadlineSec: m.deadlineMs / 1000,
               watch: `${base}/watch/${m.id}`,

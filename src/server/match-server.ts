@@ -51,11 +51,13 @@ import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
 import type { ControlEvent } from "../ai/runner";
 import { PICK_MIN_WINDOW_MS, PICK_THROTTLE_MS, PICKS_PER_ADDRESS, PickBook, soulOpeningLine, spectatorOf } from "./picks";
 import { cleanLine } from "../ai/parse";
-import { assignIdentities } from "../sim/identity";
+import { assignIdentities, EYES, luminance, MAJOR_MARKS, MIN_LUMINANCE, MINOR_MARKS, SHAPES, validName } from "../sim/identity";
 import { portraitSvg } from "../viewer/portrait";
 import { SqliteStore, type MatchRow, type MatchStore, type SeatRow } from "./store";
 import { dedupe, headToHead, leaderboard, MODEL_RE, modelOf, remoteLabel, seatEntries, type SeatEntry } from "../stats/models";
 import { modelsPage } from "./models-page";
+import { lookOptions } from "../ai/looks";
+import { settleSuitUp, suitUp, type SuitUpAnswer, type SuitUpResult } from "../ai/suitup";
 
 /** GET /api/models reads at most this many of the newest records */
 const MODELS_MAX_RECORDS = 5000;
@@ -140,6 +142,8 @@ export interface ServerOptions {
    * a status every ~10 s of fight and may change their plan. Default off.
    */
   checkins?: boolean | Partial<CheckinConfig>;
+  /** the suit-up (#19): built-in AI seats choose their own name, look and opening line before the match (default on) */
+  suitUp?: boolean;
   /** spectator picks (#35): different spectators one address may add to one match's tally (default 8) */
   picksPerAddress?: number;
   /** at broadcast pace, picks stay open at least this long after the match starts (default 30 s) */
@@ -171,7 +175,22 @@ export function checkJoin(body: Record<string, unknown>): { name: string; person
   const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
   const parsed = parseSoul(persona as string, 0, soulId);
   if (parsed.errors.length) throw new HttpError(422, "invalid persona", parsed.errors);
-  return { name, persona: persona as string, look, model: typeof model === "string" && model ? model : null, soulId, warnings: parsed.warnings, line, ...(seat !== undefined ? { seat: seat as number } : {}) };
+  return { name, persona: persona as string, look, model: typeof model === "string" && model ? model : null, soulId, warnings: [...parsed.warnings, ...lookWarnings(look)], line, ...(seat !== undefined ? { seat: seat as number } : {}) };
+}
+
+/** Look wishes that cannot be kept as given (#19): they fall back to the seeded draw. Not errors: a warning each. */
+export function lookWarnings(look: IdentityWish | null): string[] {
+  if (!look) return [];
+  const out: string[] = [];
+  const known: Record<string, readonly string[]> = { shape: SHAPES, eyes: EYES, mark: MAJOR_MARKS, minor: [...MINOR_MARKS, "none"] };
+  for (const [k, list] of Object.entries(known)) {
+    const v = look[k as keyof IdentityWish];
+    if (v !== undefined && !list.includes(String(v).toLowerCase())) out.push(`look.${k}: unknown "${String(v)}": a random one is used (GET /api/looks lists the options)`);
+    else if (v !== undefined) (look as Record<string, unknown>)[k] = String(v).toLowerCase();
+  }
+  if (look.name !== undefined && !validName(typeof look.name === "string" ? look.name.trim() : look.name)) out.push(`look.name: "${String(look.name)}" breaks the name rules (2-12 letters, digits, space or dash, starting with a letter; not a plan, shape or mark word): a random name is used`);
+  if (typeof look.color === "number" && luminance(look.color) < MIN_LUMINANCE) out.push("look.color: too dark for the arenas: the nearest readable color is used, or a random one");
+  return out;
 }
 
 export class ServerMatch {
@@ -185,6 +204,11 @@ export class ServerMatch {
   error: string | null = null;
   /** engine version of this match's saved record (0 until it is saved, and for rows saved before the column existed) */
   recordEngine = 0;
+  /** the built-in AI seats' suit-up answers (#19); null until they are in (or with no AI seat) */
+  suitAnswers: SuitUpAnswer[] | null = null;
+  /** the AI seats' suit-up, running from the match's creation; the start waits for it */
+  private suitPromise: Promise<void> | null = null;
+  private starting = false;
   private waiters = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -416,13 +440,43 @@ export class ServerMatch {
     return this.runner?.labels[i] ?? (a ? remoteLabel(a.name, a.model) : k === "remote" ? null : k === "house" ? "house" : (PROVIDERS[k]?.label ?? k));
   }
 
+  /**
+   * The suit-up (#19) of the built-in AI seats: started when the match is made (it has its seats), so the
+   * pick cards show the chosen looks and lines before the start. Answers are stored: a restart keeps them.
+   */
+  beginSuitUp(): Promise<void> {
+    if (this.suitPromise) return this.suitPromise;
+    const ai = this.kinds.map((k) => (k !== "remote" && k !== "house" ? (PROVIDERS[k] ?? null) : null));
+    if (this.suitAnswers || !this.server.opts.suitUp || !ai.some(Boolean)) return (this.suitPromise = Promise.resolve());
+    const souls = this.souls();
+    this.suitPromise = suitUp(this.seed, ai.map((provider, i) => ({ provider, soul: souls[i]! })), { ruleset: this.selection.ruleset, log: (l) => this.server.log(`match ${this.id}: ${l}`) })
+      .then(async (r) => {
+        this.suitAnswers = r.answers.map(({ raw: _raw, ...a }) => a);
+        await this.store.updateMatch(this.id, { suitUp: JSON.stringify(this.suitAnswers) });
+        this.lineup(); // spectators reload the pick cards with the chosen looks
+      })
+      .catch((e) => this.server.log(`match ${this.id}: suit up failed: ${e instanceof Error ? e.message : String(e)}`));
+    return this.suitPromise;
+  }
+
+  /** The identities as they stand: the AI seats' suit-up answers plus the agents' join looks, settled in seat order. */
+  settledLooks(): SuitUpResult {
+    const answers: SuitUpAnswer[] = [...(this.suitAnswers ?? [])];
+    this.agents.forEach((a, seat) => {
+      if (a?.look && Object.keys(a.look).length) answers.push({ seat, by: "agent", outcome: "answered", wish: { ...a.look }, ...(a.openingLine ? { line: a.openingLine } : {}) });
+    });
+    return settleSuitUp(this.seed, answers);
+  }
+
   pickFighters() {
     const souls = this.souls();
-    const ids = this.runner?.match.identities ?? assignIdentities(this.seed, this.agents.map((a) => a?.look ?? undefined));
+    const su = this.runner ? null : this.settledLooks();
+    const ids = this.runner?.match.identities ?? su!.identities;
+    const aiLines = (this.runner?.match.record.suitUp ?? su?.entries ?? []).filter((e) => e.by === "ai");
     return this.kinds.map((k, i) => {
       const a = this.agents[i];
       const id = ids[i]!;
-      const line = a?.openingLine ?? soulOpeningLine(souls[i]!.lines, souls[i]!.catchphrase || undefined, id.name, this.seed + i);
+      const line = a?.openingLine ?? aiLines.find((e) => e.seat === i)?.line ?? soulOpeningLine(souls[i]!.lines, souls[i]!.catchphrase || undefined, id.name, this.seed + i);
       const label = a ? `agent · ${a.name}` : k === "remote" && this.status === "open" ? "open seat" : k === "remote" || k === "house" ? "house bot" : k;
       // model: the label the model badge reads (modelOf), null for an open seat
       return { seat: i, name: id.name, color: id.color, look: id, label, model: this.modelLabel(i), line, svg: portraitSvg(id, "fist", "fight", "full") };
@@ -491,12 +545,13 @@ export class ServerMatch {
       if (k === "remote" || k === "house") return { providerName: "house", provider: null, soul: souls[i]! };
       return { providerName: k, provider: PROVIDERS[k]!, soul: souls[i]! };
     });
-    const wishes = this.agents.map((a) => a?.look ?? undefined);
+    // the settled suit-up (#19): the AI seats' answers and the agents' join looks; the entries go into the record
+    const su = this.settledLooks();
     const runner = new MatchRunner({
       seed: this.seed,
       ...this.selection,
       seats,
-      ...(wishes.some(Boolean) ? { identityWishes: wishes } : {}),
+      ...(su.wishes.some(Boolean) ? { suitUp: su } : {}),
       onEvent: (e) => this.onEvent(e),
       onDecided: async (round, ask) => {
         await this.store.insertRound({ matchId: this.id, round, decisions: ask.decisions, meta: ask.meta, prompts: ask.prompts, raw: ask.raw, finalHash: null });
@@ -529,8 +584,15 @@ export class ServerMatch {
 
   /** Play the match in the background. */
   async start() {
-    if (this.status !== "open") return;
+    if (this.status !== "open" || this.starting) return;
+    this.starting = true;
     clearTimeout(this.timer);
+    try {
+      await this.beginSuitUp(); // the AI seats choose their looks first (#19; bounded by the providers' deadlines)
+    } finally {
+      this.starting = false;
+    }
+    if (this.status !== "open") return;
     this.status = "running";
     this.startedAtMs = Date.now();
     try {
@@ -779,7 +841,7 @@ export class MatchServer {
 
   constructor(opts: ServerOptions) {
     const { store, log, ...rest } = opts;
-    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", pace: "fast", dropGraceMs: 5000, checkins: false, picksPerAddress: PICKS_PER_ADDRESS, pickWindowMs: PICK_MIN_WINDOW_MS, ...rest };
+    this.opts = { open: false, maxMatches: 16, defaultDeadlineMs: DEFAULT_DEADLINE_MS, defaultFillAfterMs: 60_000, version: "dev", pace: "fast", dropGraceMs: 5000, checkins: false, picksPerAddress: PICKS_PER_ADDRESS, pickWindowMs: PICK_MIN_WINDOW_MS, suitUp: true, ...rest };
     this.store = store ?? new SqliteStore(":memory:");
     this.log = log ?? (() => {});
   }
@@ -811,6 +873,7 @@ export class MatchServer {
     const m = new ServerMatch(row.id, row.seed, row.kinds, row.deadlineMs, row.fillAfterMs, this, row.creator, row.createdAt, storedRuleset(row));
     for (const s of await this.store.listSeats(row.id)) m.restoreSeat(s);
     await this.restorePicks(m, row);
+    if (row.suitUp) m.suitAnswers = JSON.parse(row.suitUp) as SuitUpAnswer[];
     this.add(m);
     return m;
   }
@@ -859,6 +922,7 @@ export class MatchServer {
     this.add(m);
     m.lineup();
     this.log(`match ${m.id} created: seed ${seed}, seats ${kinds.join(",")}, deadline ${m.deadlineMs / 1000} s, starts in ${(m.startsAt - m.createdAt) / 1000} s at the latest`);
+    void m.beginSuitUp();
     m.armFillTimer();
     return m;
   }
@@ -1034,6 +1098,11 @@ export class MatchServer {
       this.createLimit.take(ip, "new matches");
       const b = await readJson(req);
       return json((await this.createMatch({ ...checkCreate(b), ip })).info(), 201);
+    }
+    if (path === "/api/looks") {
+      // the suit-up options (#19): shapes, eyes, marks with a line each, the name and palette rules
+      allow("GET");
+      return json(lookOptions());
     }
     if (path === "/api/models") {
       allow("GET");
@@ -1252,6 +1321,7 @@ function apiIndex(open: boolean) {
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
       "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
       "GET /lobby": "the site (#22): lobby, /watch/:id, /replay/:id, /agent/:name, /replays (served by bun run match-server)",
+      "GET /api/looks": "the look options (#19): shapes, eyes, major and minor marks with a line each, the name and palette rules; send your choice as look on join (unknown ids fall back to random)",
       "POST /api/queue": "the lobby queue (#22): { name, persona, look?, model?, line?, ruleset? } -> { ticket, position }; a match starts with 4 agents, or after the fill wait with built-in AI seats",
       "GET /api/queue/:ticket?wait=25": "long poll -> { status: queued, position } | { status: seated, match, seat, token }; DELETE leaves the queue",
       "GET /api/queue?name=": "who is waiting (names), seats needed, when AI seats fill, the AI guardrails; ?name gives that agent's place",
