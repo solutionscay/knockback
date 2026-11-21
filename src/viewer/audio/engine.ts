@@ -26,7 +26,8 @@ export const DEFAULT_SETTINGS: SoundSettings = { muted: false, volume: 0.7 };
 export function loadSettings(storage: Pick<Storage, "getItem"> | null = typeof localStorage !== "undefined" ? localStorage : null): SoundSettings {
   try {
     const raw = JSON.parse(storage?.getItem(KEY) ?? "null");
-    if (raw && typeof raw === "object") return { muted: raw.muted === true, volume: typeof raw.volume === "number" && raw.volume >= 0 && raw.volume <= 1 ? raw.volume : DEFAULT_SETTINGS.volume };
+    // sound is on by default on every page: only the volume is remembered, a mute lasts for the page
+    if (raw && typeof raw === "object") return { muted: false, volume: typeof raw.volume === "number" && raw.volume >= 0 && raw.volume <= 1 ? raw.volume : DEFAULT_SETTINGS.volume };
   } catch {
     /* bad JSON: defaults */
   }
@@ -35,7 +36,7 @@ export function loadSettings(storage: Pick<Storage, "getItem"> | null = typeof l
 
 export function saveSettings(s: SoundSettings, storage: Pick<Storage, "setItem"> | null = typeof localStorage !== "undefined" ? localStorage : null) {
   try {
-    storage?.setItem(KEY, JSON.stringify(s));
+    storage?.setItem(KEY, JSON.stringify({ volume: s.volume }));
   } catch {
     /* private mode: not remembered */
   }
@@ -104,8 +105,9 @@ export class AudioEngine {
 
   private manifestUrl: string | null;
 
+  /** audio is playing: the browser let the context run (a gesture on this site, or the site already allowed) */
   get unlocked() {
-    return !!this.ctx;
+    return !!this.ctx && this.ctx.state === "running";
   }
   /** when audio was unlocked (ms, Date.now); the click that unlocked it is not also a mute click */
   unlockedAt = 0;
@@ -113,19 +115,31 @@ export class AudioEngine {
     return this.pack.size;
   }
 
-  /** Start audio on the first user gesture (and only then: browsers block audio before it). */
+  /**
+   * Start audio at once (browsers allow it once the person has used the site) and again on each gesture until it
+   * runs: sound is on by default.
+   */
   unlockOn(target: Pick<Window, "addEventListener" | "removeEventListener">) {
     if (this.log) return;
     const go = () => {
-      for (const ev of ["pointerdown", "keydown", "touchstart"]) target.removeEventListener(ev, go, true);
       this.unlock();
+      if (this.unlocked) for (const ev of ["pointerdown", "keydown", "touchstart"]) target.removeEventListener(ev, go, true);
     };
     for (const ev of ["pointerdown", "keydown", "touchstart"]) target.addEventListener(ev, go, true);
+    this.unlock();
   }
 
   unlock() {
-    if (this.ctx || this.log || typeof AudioContext === "undefined") return;
+    if (this.log || typeof AudioContext === "undefined") return;
+    if (this.ctx) {
+      if (this.ctx.state !== "running") void this.ctx.resume();
+      return;
+    }
     const ctx = new AudioContext({ latencyHint: "interactive" });
+    ctx.onstatechange = () => {
+      if (ctx.state === "running") this.unlockedAt = Date.now();
+      this.onChange?.();
+    };
     const master = ctx.createGain();
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16;
@@ -141,7 +155,7 @@ export class AudioEngine {
     limit.release.value = 0.1;
     comp.connect(limit).connect(master).connect(ctx.destination);
     this.ctx = ctx;
-    this.unlockedAt = Date.now();
+    if (ctx.state === "running") this.unlockedAt = Date.now();
     this.master = master;
     this.bus = comp;
     this.applyVolume();

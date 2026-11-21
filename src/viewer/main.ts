@@ -79,13 +79,18 @@ document.getElementById("hud")!.addEventListener("click", (e) => {
   if (t.dataset.cam) game.setCamera({ kind: t.dataset.cam === "all" ? "all" : "auto" });
   else if (t.dataset.follow) game.toggleFollow(Number(t.dataset.follow));
 });
-// Sound (#12): generated sounds, silent until the first click or key press. A private sample pack may replace
+// Sound (#12): generated sounds, on by default (they start as soon as the browser allows: at once on a site the
+// person has used, else at the first click or key press, here or on the site page around the embedded viewer). A private sample pack may replace
 // them: ?sounds=<manifest url> (default /sounds/manifest.json; ?sounds=off to never look for one).
 const soundParam = params.get("sounds");
 const manifestUrl = soundParam === "off" ? null : soundParam && (/^\/[\w./-]+\.json$/.test(soundParam) || /^https:\/\/[\w.-]+(:\d+)?\/[\w./-]+\.json$/.test(soundParam)) ? soundParam : "/sounds/manifest.json";
 const audio = new AudioEngine({ capture, manifestUrl });
 game.sound = new SoundDirector(audio);
 audio.unlockOn(window);
+// the site page forwards its gestures (a click on the lobby is a click for the viewer's sound too)
+addEventListener("message", (e) => {
+  if (e.origin === location.origin && e.data && typeof e.data === "object" && (e.data as { kb?: string }).kb === "unlock") audio.unlock();
+});
 mountSoundControls(audio, document.getElementById("controls"));
 // After the celebrate beat the next match starts by itself; ?hold waits for the button.
 game.autoNext = params.has("hold") || capture ? null : 6;

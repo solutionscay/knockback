@@ -23,6 +23,10 @@ export class Stage {
     this.frame.title = "Knockback fight";
     this.frame.allow = "autoplay; fullscreen";
     box.prepend(this.frame);
+    // sound is on by default: any gesture on the page starts the viewer's audio (browsers need one per page)
+    const unlock = () => this.frame.contentWindow?.postMessage({ kb: "unlock" }, location.origin);
+    for (const ev of ["pointerdown", "keydown", "touchstart"]) addEventListener(ev, unlock, { capture: true, passive: true });
+    this.frame.addEventListener("load", unlock);
     addEventListener("message", (e) => {
       if (e.origin !== location.origin || e.source !== this.frame.contentWindow || !e.data || typeof e.data !== "object") return;
       const d = e.data as { kb?: string; pos?: PlaybackPos | null; msg?: unknown; on?: boolean };
