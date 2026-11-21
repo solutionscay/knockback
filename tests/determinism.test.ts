@@ -7,7 +7,7 @@
  * a version bump, old records would replay differently: bump ENGINE_VERSION and update the goldens in the same commit.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { CLOSE_QUARTERS, ENGINE_VERSION, Fight, initPhysics, Match, OtherEngineError, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
+import { CLOSE_QUARTERS, ENGINE_VERSION, Fight, FightDivergedError, initPhysics, Match, OtherEngineError, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
 
 beforeAll(async () => {
   await initPhysics();
@@ -83,8 +83,14 @@ describe("determinism", () => {
     expect(() => replayMatch(noEngine as MatchRecord)).toThrow(OtherEngineError);
   });
 
-  // replayFight must refuse an old engine's record instead of replaying it into another hash
   test("a fight record from another engine is refused", () => {
-    expect(() => replayFight({ ...fightRecord(), engine: ENGINE_VERSION - 1 } as FightRecord)).toThrow(/engine/);
+    expect(() => replayFight({ ...fightRecord(), engine: ENGINE_VERSION - 1 })).toThrow(OtherEngineError);
+  });
+
+  test("a fight record that does not reach its recorded hash throws instead of returning another hash", () => {
+    // an unstamped record (made before records carried the engine) whose plans no longer give its hash
+    const { engine: _drop, ...old } = fightRecord();
+    old.strategies = old.strategies.map((s) => ({ ...s, stance: s.stance === "rush" ? "hold" : "rush" }));
+    expect(() => replayFight(old)).toThrow(FightDivergedError);
   });
 });
