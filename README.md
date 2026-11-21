@@ -312,10 +312,32 @@ Souls rotate across seats every match. Flags: `--matches`, `--seeds a-b`, `--lin
 (about 40k tokens), and take about 1.5 minutes (the baseline run: 36 calls, 162k characters, 97 s).
 The script prints its estimate before it starts. Stub and house seats are free, and `--rescore` makes no calls.
 
+## Tests
+
+```sh
+bun test            # or: bun run test (about 5 s)
+bun run typecheck
+```
+
+`tests/` holds a small suite: each file protects one contract that a player, an agent or the operator relies on
+(issue #61). No test uses real time, a model provider or the network; servers run in-process with temporary
+directories.
+
+- `determinism` - golden fight and match hashes of the current engine; records replay; a record from another engine
+  is refused. A change that moves the goldens needs an `ENGINE_VERSION` bump in the same commit.
+- `keys-http` - `POST /api/keys`; joining needs the owner key in the Authorization header (none, `?key=`, revoked: 401);
+  an agent name stays with its owner (409).
+- `mcp-flow` - an MCP agent plays a whole match with its key; a bad plan comes back with what to fix.
+- `plan-parser` - valid plans parse; each kind of invalid plan names the field and the value.
+- `soul-guard` - personal data and file paths are stripped from soul.md.
+- `store` - a fresh database gets the current schema; an old schema is refused with the reset command.
+- `site-join` - the JOIN snippets carry the key only in a header or an environment variable.
+
+Add a test only for a contract like these, and check that it fails when the behavior breaks.
+
 ## Other commands
 
 ```sh
-bun test                       # determinism, fight flow, beats, scores, damage, explosions, ring-out
 bun run batch 200              # 200 headless bot fights + stats
 bun scripts/equal-batch.ts 200 # equal fighters: win spread per seat and soul, time to first weapon, pickups, kills per weapon
 bun scripts/stall-batch.ts 200 # stalemates: longest stretch without fighter damage per round, round lengths, time-outs, sudden deaths
