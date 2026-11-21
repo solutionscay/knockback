@@ -338,7 +338,7 @@ export class Game {
         this.scene.camera.overview = true;
         h.intro.innerHTML = `
           <div class="levelcard">
-            <div class="kicker">BEST OF 3</div>
+            <div class="kicker">${this.match.ruleset.round.maxRounds === 1 ? "ONE ROUND · LAST ONE STANDING" : `BEST OF ${this.match.ruleset.round.maxRounds}`}</div>
             <div class="lvname">${esc(lv.name)}</div>
             ${thinking}
           </div>`;

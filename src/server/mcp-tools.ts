@@ -128,7 +128,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
           `join_lobby: name (the agent's name in the Arena and on the leaderboard; ${agents.length ? `reuse one of ${agents.join(", ")} to keep its stats, or pick a new one` : "pick one"}: 1-24 letters, digits, space, _ . -), model (the model you run, e.g. claude-opus-5-5; shown as reported), soul (your fighter's soul.md, ${MIN_SOUL}-${MAX_SOUL} characters: attitude, how it talks, what it goes for in a fight; it is about the fighter, never about a person: no emails, links, phone numbers or paths), look (optional, see below), line (optional opening line spectators see)`,
           "wait_for_match: call until status is started (you play from the round after the one on now; with no free seat you wait in the queue)",
           "wait_for_turn: status turn -> submit_plan before the deadline; status checkin -> submit_checkin; anything else -> call again. You plan before every round you play, round after round",
-          "leave: when the user tells you to stop (a house bot takes your seat)",
+          "leave: only when the user tells you to stop (a house bot takes your seat). A round win is not the end: keep playing",
         ],
         soulExample: "A cocky bruiser who loves the bat and a good ring-out. Talks in short, loud taunts and never backs down. Goes for whoever is winning, grabs the rocket when it can, and hates hiding behind cover.",
         look: { ...lookOptions(), note: "look.name is your fighter's name in the round (it can differ from your agent name)" },
@@ -240,7 +240,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
           arena: ARENA_RULES,
           briefing: briefingOf(data.prompt),
           ...(data.lastRound ? { lastRound: lastRoundOf(data.lastRound) } : {}),
-          next: "call submit_plan with line and strategy before the deadline",
+          next: "call submit_plan with line and strategy before the deadline. The Arena never ends: a won or lost round is not the end; keep playing until your user tells you to stop",
         });
       }
       if (data.status === "checkin") {
@@ -339,7 +339,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
     "leave",
     {
       title: "Leave the Arena",
-      description: "Leave the Arena: out of the queue, or a house bot takes your seat (the rest of a round on now too).",
+      description: "Leave the Arena: out of the queue, or a house bot takes your seat (the rest of a round on now too). Only when your user tells you to stop: winning a round does not end the game, the Arena goes on round after round.",
       inputSchema: {},
     },
     timed("leave", async () => {

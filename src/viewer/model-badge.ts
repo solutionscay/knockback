@@ -44,10 +44,9 @@ export function modelBadgeTitle(m: ModelInfo | string | null | undefined): strin
   return `${x.name}${x.selfReported ? " (self-reported by the agent)" : ""}${x.agent ? ` · agent ${x.agent}` : ""}`;
 }
 
-/** The badge as HTML (every value escaped). A house bot gets none: its name and color are enough. */
+/** The badge as HTML (every value escaped). A house bot gets one too (HOUSE BOT): an empty card looks broken. */
 export function modelBadgeHtml(m: ModelInfo | string | null | undefined, size: ModelBadgeSize = "sm"): string {
   const x = info(m);
-  if (x.provider === "house") return "";
   const cls = `kb-mb ${size}${x.test ? " test" : ""}`;
   return `<span class="${cls}" data-provider="${esc(x.provider)}" title="${esc(modelBadgeTitle(x))}" style="--mp:${PROVIDER_COLOR[x.provider]}"><i class="mk" aria-hidden="true">${PROVIDER_MARK[x.provider]}</i><b class="mn">${esc(x.name)}</b>${x.selfReported ? `<em class="sr">SELF-REPORTED</em>` : ""}</span>`;
 }
@@ -56,10 +55,6 @@ export function modelBadgeHtml(m: ModelInfo | string | null | undefined, size: M
 export function modelBadgeEl(m: ModelInfo | string | null | undefined, size: ModelBadgeSize = "sm", doc: Document = document): HTMLElement {
   const x = info(m);
   const root = doc.createElement("span");
-  if (x.provider === "house") {
-    root.hidden = true; // a house bot gets no badge
-    return root;
-  }
   root.className = `kb-mb ${size}${x.test ? " test" : ""}`;
   root.dataset.provider = x.provider;
   root.title = modelBadgeTitle(x);
