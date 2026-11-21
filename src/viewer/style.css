@@ -296,7 +296,7 @@ body {
 }
 #callout .small {
   display: block;
-  font-size: 0.3em;
+  font-size: max(0.3em, 11px);
   letter-spacing: 0.3em;
   opacity: 0.85;
   -webkit-text-stroke: 0;
@@ -1612,9 +1612,16 @@ body.embed:has(#celebrate.show) #lineup {
   }
   /* the clock's text has a px floor: keep its lane at least that wide so the plan chips stay clear of it */
   :root {
-    --clock-lane: max(calc(30 * var(--u)), 76px);
+    --clock-lane: max(calc(30 * var(--u)), 250px);
   }
   #lineup.fight .chip {
+    max-width: calc(50vw - max(calc(17 * var(--u)), 125px));
+  }
+  /* the site's stage shows only the time (no round label, no pips): a narrower lane */
+  body.embed {
+    --clock-lane: max(calc(30 * var(--u)), 76px);
+  }
+  body.embed #lineup.fight .chip {
     max-width: calc(50vw - max(calc(17 * var(--u)), 40px));
   }
   /* on the site's stage the page shows the round above the stage */
