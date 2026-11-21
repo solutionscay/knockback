@@ -69,9 +69,10 @@ describe("bot-only rounds are not public (#67)", () => {
 
     // a finished bot-only round the Arena no longer shows: 404 everywhere, from memory and from storage
     for (const path of [`/api/replays/${bots.id}`, `/share/${bots.id}.svg`, `/api/matches/${bots.id}`, `/api/matches/${bots.id}/report`, `/api/matches/${bots.id}/picks`, `/api/live?match=${bots.id}`]) expect([path, (await call(api, "GET", path)).status]).toEqual([path, 404]);
+    expect(api.matches.has(bots.id)).toBe(true); // still in memory, and not listed
+    expect((await call(api, "GET", "/api/matches")).data.matches.map((m: { id: string }) => m.id).sort()).toEqual([warm.id, feat.id, bots2.id].sort());
     api.matches.delete(bots.id);
     expect((await call(api, "GET", `/api/matches/${bots.id}/report`)).status).toBe(404);
-    expect((await call(api, "GET", "/api/matches")).data.matches.map((m: { id: string }) => m.id).sort()).toEqual([warm.id, feat.id, bots2.id].sort());
     // ...while the round the Arena shows now (its win screen) stays reachable, bot-only or not
     expect((await call(api, "GET", `/api/matches/${bots2.id}`)).status).toBe(200);
     // the agent rounds are public

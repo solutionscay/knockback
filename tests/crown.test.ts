@@ -95,19 +95,36 @@ describe("the crown (#65)", () => {
     // applied once: catching up again changes nothing
     await b.arena.catchUpCrown();
     expect(await store.getCrown()).toMatchObject({ round: 10, crown: { streak: 1 } });
+    // Ann takes the crown back: a new streak of 1 never lowers her best of 3
+    await stored(store, 11, ["Ann", "Ben", null, null], 0);
+    await b.arena.catchUpCrown();
+    expect(b.arena.crownView()).toMatchObject({ holder: { agent: "Ann" }, streak: 1, ranked: 1 });
 
     const board = (await call(b, "GET", "/api/leaderboard")).data;
     expect(board.agents.map((x: any) => [x.name, x.owner, x.vsAgents, x.vsHouse, x.bestStreak])).toEqual([
-      ["Ann", "Oz", { rounds: 5, wins: 3 }, { rounds: 2, wins: 1 }, 3],
+      ["Ann", "Oz", { rounds: 6, wins: 4 }, { rounds: 2, wins: 1 }, 3],
       ["Cat", "Cy", { rounds: 4, wins: 2 }, { rounds: 0, wins: 0 }, 2],
-      ["Ben", "Oz", { rounds: 2, wins: 0 }, { rounds: 0, wins: 0 }, 0],
+      ["Ben", "Oz", { rounds: 3, wins: 0 }, { rounds: 0, wins: 0 }, 0],
     ]);
     expect(board.owners.map((x: any) => [x.owner, x.agents, x.vsAgents, x.vsHouse, x.bestStreak, x.bestBy])).toEqual([
-      ["Oz", 2, { rounds: 7, wins: 3 }, { rounds: 2, wins: 1 }, 3, "Ann"],
+      ["Oz", 2, { rounds: 9, wins: 4 }, { rounds: 2, wins: 1 }, 3, "Ann"],
       ["Cy", 1, { rounds: 4, wins: 2 }, { rounds: 0, wins: 0 }, 2, "Cat"],
     ]);
     expect(board.agents[0].label).toBe("remote/Ann@claude-opus-5-5|claude-code/2.1.0");
-    expect(board.crown).toMatchObject({ holder: { kind: "house", seat: 3 }, streak: 1 });
+    expect(board.crown).toMatchObject({ holder: { kind: "agent", agent: "Ann" }, streak: 1 });
+  });
+
+  test("each stored round counts once, however often the crown catches up", async () => {
+    const store = new SqliteStore(":memory:");
+    for (const o of ["Oz", "Cy"]) await store.createOwner(o, `k-${o}`);
+    const a = arenaServer(join(outDir, "once"), {}, store);
+    await stored(store, 1, ["Ann", "Ben", null, null], 0);
+    await stored(store, 2, ["Ann", "Ben", null, null], 0);
+    await a.arena.catchUpCrown();
+    await a.arena.catchUpCrown();
+    await arenaServer(join(outDir, "once"), {}, store).resume(); // a restart catches up too
+    expect((await store.getCrown()).crown).toMatchObject({ holder: { name: "Ann" }, streak: 2, ranked: 2, wonRound: 2 });
+    expect(await store.listStreaks()).toEqual([{ name: "Ann", owner: "Oz", best: 2, round: 2 }]);
   });
 
   test("live: the winner takes the crown and starts the next round with the crown mark", async () => {
