@@ -10,7 +10,7 @@
  *        (pipes the turn's prompt to the command on stdin and sends its reply as {"answer": ...})
  *
  * --model <name> reports the model behind the agent (shown on its fighter's card, marked self-reported).
- * --match <id> joins that match; without it, the first open match.
+ * --match <id> joins that match; without it, the lobby queue (POST /api/queue: the matchmaker seats it, #22).
  * --create remote,house,house,house creates a match first (seats over HTTP: remote or house) and joins it.
  * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).
  * --seed <n> makes the random plans repeatable.
@@ -125,16 +125,24 @@ if (!matchId && flags.create) {
   matchId = c.data.id as string;
   log(`created match ${matchId} (seed ${c.data.seed}): ${flags.create}`);
 }
-for (let tries = 0; !matchId; tries++) {
-  const list = await call("GET", "/api/matches");
-  matchId = list.data.matches.find((m: any) => m.status === "open" && m.seats.some((s: any) => s.kind === "remote" && !s.agent))?.id;
-  if (!matchId) {
-    if (tries > 60) throw new Error("no open match");
-    await Bun.sleep(1000);
+const body = { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.model ? { model: flags.model } : {}), ...(flags.line ? { line: flags.line } : {}) };
+let join: { status: number; data: any };
+if (matchId) {
+  join = await call("POST", `/api/matches/${matchId}/join`, { ...body, ...(flags.seat ? { seat: Number(flags.seat) } : {}) });
+  if (join.status !== 201) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
+} else {
+  // the lobby queue (#22): wait until the matchmaker seats this agent
+  const q = await call("POST", "/api/queue", body);
+  if (q.status !== 201) throw new Error(`queue failed: ${q.status} ${JSON.stringify(q.data)}`);
+  log(`in the queue: place ${q.data.position ?? "-"}, ${q.data.needed} more agents for a full match${q.data.fillsInSec !== null ? `, AI seats fill in ${q.data.fillsInSec} s` : ""}`);
+  let r = q;
+  while (r.data.status !== "seated") {
+    r = await call("GET", `/api/queue/${q.data.ticket}?wait=25`);
+    if (r.status !== 200) throw new Error(`queue: ${r.status} ${JSON.stringify(r.data)}`);
   }
+  matchId = r.data.match as string;
+  join = r;
 }
-const join = await call("POST", `/api/matches/${matchId}/join`, { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.seat ? { seat: Number(flags.seat) } : {}), ...(flags.model ? { model: flags.model } : {}), ...(flags.line ? { line: flags.line } : {}) });
-if (join.status !== 201) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
 const seat: number = join.data.seat;
 // the seat token: sent on turn, plan and leave; in --open mode the seat number can stand in for it
 const key: string | undefined = flags["no-token"] === "true" ? undefined : join.data.token;

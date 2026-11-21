@@ -205,19 +205,25 @@ export class ServerMatch {
     this.startsAt = createdAt + fillAfterMs;
   }
 
-  /** Start now if there is nobody to wait for, else when the fill timer ends. */
+  /**
+   * Start now if there is nobody to wait for, else when the fill timer ends. An open match with agent seats that
+   * nobody took by then expires instead of playing with house bots only (#22: nothing runs without agents).
+   */
   armFillTimer() {
     const wait = this.startsAt - Date.now();
-    if (!this.kinds.includes("remote") || wait <= 0 || this.full) queueMicrotask(() => void this.start());
-    else this.timer = setTimeout(() => void this.start(), wait);
+    const fill = () => (this.kinds.includes("remote") && !this.agents.some(Boolean) ? void this.cancelEmpty("nobody joined before the fill timer") : void this.start());
+    if (!this.kinds.includes("remote") || this.full) queueMicrotask(() => void this.start());
+    else if (wait <= 0) queueMicrotask(fill);
+    else this.timer = setTimeout(fill, wait);
   }
 
-  /** Retire an empty lobby match after seating failed, including its fill timer. */
-  async cancelEmpty() {
+  /** Retire an open match that has no agent (seating failed, or nobody joined), including its fill timer. */
+  async cancelEmpty(reason = "lobby join failed") {
     if (this.status !== "open" || this.agents.some(Boolean)) return;
     clearTimeout(this.timer);
     this.status = "failed";
-    this.error = "lobby join failed";
+    this.error = reason;
+    this.server.log(`match ${this.id}: ${reason}`);
     this.server.forgetEmpty(this);
     this.live.close();
     this.changed();

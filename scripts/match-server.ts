@@ -2,11 +2,11 @@
  * The match server (#20, #25, #27): remote agents play Knockback over HTTP; the viewer
  * watches live. API: src/server/match-server.ts (GET /api lists it).
  *
- *   bun run match-server                              # localhost:5176, one open match (4 remote seats)
+ *   bun run match-server                              # localhost:5176: the lobby waits for agents (no match until one joins)
  *   bun run match-server --host 0.0.0.0               # also on the LAN
  *   bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
  *   bun run match-server --seats remote,claude,house,house   # local providers allowed from the CLI
- *   bun run match-server --no-match                   # matches only via POST /api/matches
+ *   bun run match-server --seats remote,remote,remote,remote   # also open one match at startup (it expires if nobody joins)
  *   bun run match-server --host 0.0.0.0 --open        # trusted LAN: no seat token checks (?seat=N instead)
  *   bun run match-server --db records/match-server.db # storage (the default); --db :memory: keeps nothing
  *   bun run match-server --trust-proxy                # behind a reverse proxy (Caddy): client address from X-Forwarded-For,
@@ -157,9 +157,10 @@ for (const sig of ["SIGINT", "SIGTERM"] as const)
     console.log(`${sig}: closing the database`);
     void store.close().finally(() => process.exit(0));
   });
-if (flags["no-match"] !== "true" && !resumed.open.length && !resumed.running.length) {
+// no automatic match (#22): only when --seats asks for one (it expires if nobody joins before the fill timer)
+if (flags.seats && flags["no-match"] !== "true" && !resumed.open.length && !resumed.running.length) {
   const m = await api.createMatch({
-    seats: (flags.seats ?? "remote,remote,remote,remote").split(",").map((s) => s.trim().toLowerCase()),
+    seats: flags.seats.split(",").map((s) => s.trim().toLowerCase()),
     ...(flags.seed ? { seed: Number(flags.seed) } : {}),
   });
   console.log(`open match: ${m.id}  (join: POST /api/matches/${m.id}/join)`);

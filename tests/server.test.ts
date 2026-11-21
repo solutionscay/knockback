@@ -431,12 +431,24 @@ describe("match server API", () => {
     await c.store.close();
   });
 
-  test("empty remote seats get the house bot when the fill timer ends; the live stream replays history", async () => {
+  test("a match nobody joined expires at the fill timer instead of playing house bots only (#22)", async () => {
     const s = new MatchServer({ outDir: tmp(), defaultFillAfterMs: 50 });
     const m = await s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 5 });
-    for (let i = 0; i < 400 && m.status !== "over"; i++) await Bun.sleep(25);
+    for (let i = 0; i < 40 && m.status === "open"; i++) await Bun.sleep(25);
+    expect(m.status).toBe("failed");
+    expect(m.runner ?? null).toBeNull();
+    expect((await s.store.getMatch(m.id))!.error).toBe("nobody joined before the fill timer");
+    expect(await s.store.listRecords()).toEqual([]);
+  });
+
+  test("empty remote seats get the house bot when the fill timer ends; the live stream replays history", async () => {
+    const s = new MatchServer({ outDir: tmp(), defaultFillAfterMs: 50, open: true });
+    const m = await s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 5, deadlineMs: 300 });
+    // one agent joins and stays silent (its fighter falls back each round); the other remote seat stays empty
+    expect((await client(s)("POST", `/api/matches/${m.id}/join`, { name: "Quiet", persona: SOUL })).status).toBe(201);
+    for (let i = 0; i < 800 && m.status !== "over"; i++) await Bun.sleep(25);
     expect(m.status).toBe("over");
-    expect(m.info().seats.map((x) => x.kind)).toEqual(["house", "house", "house", "house"]);
+    expect(m.info().seats.map((x) => x.kind)).toEqual(["remote", "house", "house", "house"]);
     const res = (await s.handle(new Request(`http://kb.test/api/live?match=${m.id}`)))!;
     expect(res.headers.get("content-type")).toBe("text/event-stream");
     const reader = res.body!.getReader();
