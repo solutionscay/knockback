@@ -65,6 +65,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     lastHitTick: -9999,
     lastHitCause: "",
     kbTick: -1,
+    kbStack: 0,
     shieldTick: -1,
     padCd: 0,
     crushCd: 0,
@@ -136,7 +137,11 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   }
   if (thrust) {
     // Thrust adds acceleration below the flight cap, preserving faster knockback.
-    vy += clamp(sim.ruleset.pickups.power.jetpack.riseSpeed - vy, 0, sim.ruleset.pickups.power.jetpack.thrust * DT);
+    // #41: near the jetpack ceiling (above the highest platform) the flight cap fades to zero.
+    const jp = sim.ruleset.pickups.power.jetpack;
+    const room = sim.topY + jp.ceiling - sim.feetY(f);
+    const rise = room >= jp.fade ? jp.riseSpeed : room <= 0 ? 0 : jp.riseSpeed * (room / jp.fade);
+    vy += clamp(rise - vy, 0, jp.thrust * DT);
     f.jetting = true;
     if (!wasJetting) sim.events.push({ type: "jetpack", tick: sim.tick, fighter: f.id });
     if (--f.power.jetpack === 0) sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power: "jetpack", on: false });

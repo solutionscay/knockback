@@ -27,6 +27,15 @@ export const FIGHTER = {
   ringOutX: 44,
 };
 
+/**
+ * Launch height (#41): keeps fighters near the fight so the camera can follow it. Heights are meters above the
+ * round's highest walkable surface at the start (Sim.topY).
+ * maxUpSpeed: knockback and blasts never leave a fighter rising faster than this (m/s); sideways speed is kept.
+ * stackRetention: the n-th extra kick in the same tick (shotgun pellets, chain blasts) keeps retention^n of its upward push.
+ * ceilingAbove / ceilingDrag: above this height upward speed decays by ceilingDrag per second (air drag, no wall).
+ */
+export const LAUNCH = { maxUpSpeed: 15, stackRetention: 0.5, ceilingAbove: 5, ceilingDrag: 4 };
+
 /** Explosion shape: fighters (damage, knockback), props (blockDamage) and terrain cells (terrainDamage). */
 export interface Blast {
   radius: number;
@@ -238,7 +247,8 @@ export const POWER = {
   heavy: { ticks: 10 * 60, kbMul: 0.5, speedMul: 0.82, densityMul: 3 },
   damage: { ticks: 8 * 60, mul: 2, kbMul: 1.25 },
   jump: { ticks: 12 * 60 },
-  jetpack: { fuelTicks: 90, thrust: 44, riseSpeed: 9, speedMul: 1.35 },
+  /** ceiling: meters above the highest platform where thrust has faded out (#41); fade: meters below it where thrust starts to fade */
+  jetpack: { fuelTicks: 90, thrust: 44, riseSpeed: 9, speedMul: 1.35, ceiling: 4, fade: 1.5 },
 };
 
 /** Loose terrain pieces this small are cleared after this long (keeps body count down). */

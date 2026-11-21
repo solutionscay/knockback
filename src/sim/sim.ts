@@ -46,6 +46,8 @@ export class Sim {
   readonly level: LevelDef;
   readonly grid: Grid;
   nav: NavGraph;
+  /** Highest walkable surface at the start of the round (#41: soft ceiling and jetpack ceiling are measured from it). */
+  readonly topY: number;
   navVersion = 0;
   private lastNavTick = -999;
   readonly rng: Rng;
@@ -118,6 +120,7 @@ export class Sim {
     this.chains = buildChains(this);
     for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
+    this.topY = this.nav.surfaces.reduce((top, s) => Math.max(top, s.y), 0);
     this.navVersion = this.terrain.version;
     this.initialCells = this.grid.countSolid() - this.grid.countMat(Mat.Bedrock);
     const startHalf = this.level.width / 2 - this.ruleset.zone.boundary.edgeInset;
@@ -246,6 +249,7 @@ export class Sim {
       applyInput(this, f, inputs[f.id] ?? NO_INPUT);
       zonePush(this, f);
     }
+    this.softCeiling();
     updateRockets(this);
     updateMines(this);
     updateObjects(this);
@@ -305,6 +309,19 @@ export class Sim {
     }
     if (this.terrain.version !== this.navVersion && tick - this.lastNavTick >= 20) this.rebuildNav();
     this.tick++;
+  }
+
+  /** #41: above the soft ceiling, upward speed decays (air drag) instead of hitting a wall. */
+  private softCeiling() {
+    const launch = this.ruleset.combat.launch;
+    if (launch.ceilingDrag <= 0) return;
+    const keep = Math.max(0, 1 - launch.ceilingDrag * DT);
+    const ceiling = this.topY + launch.ceilingAbove;
+    for (const f of this.fighters) {
+      if (f.removed) continue;
+      const v = f.entity.body.linvel();
+      if (v.y > 0 && this.feetY(f) > ceiling) f.entity.body.setLinvel({ x: v.x, y: v.y * keep }, true);
+    }
   }
 
   private rebuildNav() {

@@ -130,12 +130,15 @@ export function validateRuleset(input: unknown): Ruleset {
 }
 
 export const CLASSIC = validateRuleset({});
-/** Same placement and drop behavior as before the spread-out Classic. */
+/** Launch settings that leave launches as they were before #41: no cap, full stacking, no ceilings. */
+export const UNCAPPED_LAUNCH = { maxUpSpeed: 36_000, stackRetention: 1, ceilingAbove: 0, ceilingDrag: 0 } as const;
+/** Same placement and drop behavior as before the spread-out Classic, and launches as before #41. */
 export const CLOSE_QUARTERS = validateRuleset({
+  combat: { launch: UNCAPPED_LAUNCH },
   arena: { spawns: CLOSE_SPAWNS },
   zone: { suddenDeath: { graceTicks: 0 } },
   tactics: { weapons: { enabled: false } },
-  pickups: { armory: CLOSE_ARMORY, supply: { avoidDistance: 0, firstTick: SUPPLY.firstTick } },
+  pickups: { armory: CLOSE_ARMORY, supply: { avoidDistance: 0, firstTick: SUPPLY.firstTick }, power: { jetpack: { ceiling: 36_000 } } },
 });
 
 const prepared = new WeakSet<object>([CLASSIC, CLOSE_QUARTERS]);

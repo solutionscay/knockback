@@ -88,8 +88,9 @@ describe("model stats over records", () => {
       const seats = fs.rounds[r]!.seats;
       expect(seats.reduce((a, s) => a + s.kos, 0)).toBe(f.fighters.reduce((a, x) => a + x.kosDealt.length, 0));
       for (const s of seats) expect(s.alive).toBeLessThanOrEqual(fs.rounds[r]!.seconds + 0.05);
-      // the round winner was on the field the whole round
-      expect(seats[f.winner]!.alive).toBeCloseTo(fs.rounds[r]!.seconds, 0);
+      // a winner who survived was on the field the whole round (when nobody survives, the last one out wins)
+      if (f.fighters[f.winner]!.survived) expect(seats[f.winner]!.alive).toBeCloseTo(fs.rounds[r]!.seconds, 0);
+      else expect(f.fighters.every((x) => !x.survived)).toBe(true);
     });
   });
 

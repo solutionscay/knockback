@@ -58,8 +58,16 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
     const body = f.entity.body;
     const v = body.linvel();
     const stack = f.kbTick === sim.tick;
+    const launch = sim.ruleset.combat.launch;
+    // #41: each extra kick in the same tick keeps less of its upward push (pellets, chain blasts)
+    f.kbStack = stack ? f.kbStack + 1 : 0;
+    let up = kby * m;
+    // repeated multiply, not **: Math.pow may differ between JS engines in the last bit
+    if (stack && up > 0 && launch.stackRetention < 1) for (let i = 0; i < f.kbStack; i++) up *= launch.stackRetention;
     const nvx = (stack ? v.x : v.x * 0.3) + kbx * m;
-    const nvy = (stack ? v.y : Math.max(v.y * 0.3, 0)) + kby * m;
+    let nvy = (stack ? v.y : Math.max(v.y * 0.3, 0)) + up;
+    // #41: a launch never rises faster than maxUpSpeed (it can't slow a fighter already rising faster)
+    if (nvy > launch.maxUpSpeed) nvy = Math.max(launch.maxUpSpeed, v.y);
     f.kbTick = sim.tick;
     body.setLinvel({ x: nvx, y: nvy }, true);
     kb = length2D(kbx, kby) * m;

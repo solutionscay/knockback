@@ -969,10 +969,10 @@
         ],
         "checkpoints": [
           "39cde66b",
-          "609ebff2"
+          "40c28829"
         ],
-        "finalHash": "70298d66",
-        "ticks": 1553
+        "finalHash": "beca62a8",
+        "ticks": 1313
       },
       "winner": 2,
       "meta": [
@@ -1117,12 +1117,11 @@
         ],
         "checkpoints": [
           "f4f96c24",
-          "bc5391d3",
-          "f145f4d2",
-          "dd070418"
+          "31339c8c",
+          "4ab5af65"
         ],
-        "finalHash": "eae04964",
-        "ticks": 2737
+        "finalHash": "6100d62c",
+        "ticks": 2292
       },
       "winner": 2,
       "meta": [
@@ -1173,7 +1172,7 @@
     "claude"
   ],
   "totalMs": 56697,
-  "engine": 5,
+  "engine": 6,
   "ruleset": {
     "schemaVersion": 1,
     "combat": {
@@ -1191,6 +1190,12 @@
         "impactDamagePerMs": 0.55,
         "ringOutY": -10,
         "ringOutMargin": 6
+      },
+      "launch": {
+        "maxUpSpeed": 15,
+        "stackRetention": 0.5,
+        "ceilingAbove": 5,
+        "ceilingDrag": 4
       },
       "density": 2.2,
       "swapTicks": 10,
@@ -1385,7 +1390,9 @@
           "fuelTicks": 90,
           "thrust": 44,
           "riseSpeed": 9,
-          "speedMul": 1.35
+          "speedMul": 1.35,
+          "ceiling": 4,
+          "fade": 1.5
         }
       },
       "armory": {

@@ -184,6 +184,8 @@ export interface Fighter {
   lastHitTick: number;
   lastHitCause: string;
   kbTick: number;
+  /** extra kicks taken this tick (#41 stack retention) */
+  kbStack: number;
   shieldTick: number;
   padCd: number;
   crushCd: number;
