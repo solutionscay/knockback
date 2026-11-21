@@ -120,7 +120,7 @@ describe("YOUR LAST PLAN (#3)", () => {
     expect(quiet).toEqual(["target: Goldie: you chased nobody for long.", "weapons: grenade: you never got the grenade; you did no damage.", "retaliate: turn: the reflex never fired.", "stance: distance: you had no target to measure."]);
   });
 
-  test("the block is in rounds 2 and 3, the line bank stays out, and prompts stay under 7k characters", () => {
+  test("the block is in rounds 2 and 3, the line bank stays out, and prompts stay under 7.5k characters", () => {
     let longest = 0;
     let checked = 0;
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
@@ -146,8 +146,9 @@ describe("YOUR LAST PLAN (#3)", () => {
       }
     }
     expect(checked).toBeGreaterThan(30);
-    // budget: about 5.9k after #3, plus the RULES section (at most 1,200 by design, #7)
-    expect(longest).toBeLessThan(7000);
+    // budget: about 5.9k after #3, plus the RULES section (at most 1,200 by design, #7), plus the TACTICS paragraph,
+    // three long guns and three stances (#38, about 500)
+    expect(longest).toBeLessThan(7500);
   });
 
   test("examples rotate by seed, round and seat (2 per prompt), and the retaliate text names no trap", () => {
