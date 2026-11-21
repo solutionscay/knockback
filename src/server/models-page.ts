@@ -130,6 +130,24 @@ export function modelsPage(): string {
   a { color: var(--accent); }
   .empty { color: var(--dim); }
   ${BOARD_CSS}
+  /* phones (#60): links big enough to tap; the board drops the interval bar and fallbacks so win rate shows
+     without scrolling (the box still scrolls sideways if a name is long) */
+  @media (pointer: coarse) { header a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 .35rem; } }
+  @media (max-width: 760px) {
+    header { padding: .5rem .8rem; flex-wrap: wrap; row-gap: 0; }
+    main { padding: .6rem; }
+    section { padding: .5rem .6rem; }
+    table.board th, table.board td { padding: .4rem .3rem; }
+    table.board th { white-space: normal; }
+    table.board tr > :nth-child(5), table.board tr > :nth-child(7) { display: none; }
+    table.board tr.cut td { display: table-cell; }
+    table.board td:nth-child(2) { min-width: 7.6rem; }
+    table.board td.num, table.board th.num { padding-left: .2rem; padding-right: .2rem; }
+    table.board .kb-mb, table.h2h .kb-mb { flex-wrap: wrap; white-space: normal; row-gap: .25em; }
+    table.h2h th, table.h2h td { white-space: normal; padding: .35rem .3rem; }
+    table.h2h .kb-mb { --mb-fs: 11px; }
+    .board-note { font-size: .85rem; }
+  }
 </style>
 </head>
 <body>
