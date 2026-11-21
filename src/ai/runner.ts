@@ -24,6 +24,7 @@ import { DEFAULT_TIMING } from "../flow/beats";
 import { answeredTickFast, applyTick, buildCheckinPrompt, CHECKIN, checkinStatus, checkinTicks, parseCheckin, type CheckinAsk, type CheckinConfig } from "./checkin";
 import type { Fight } from "../sim/fight";
 import { checkinSummaryLines, planChangeSummary } from "./checkin-log";
+import { playOutRound } from "./round";
 
 /** The live stream events (the viewer reads `match`, `decisions` and `done`; others are ignored by it). */
 export type RunnerEvent =
@@ -300,10 +301,7 @@ export class MatchRunner {
         match.addUpdate(u);
       }
     } else if (schedule) await this.fightWithCheckins(round, ask, decidedAt);
-    while (!match.step()) {
-      /* the sim plays the round */
-    }
-    const f = match.finishRound();
+    const f = playOutRound(match);
     this.say(`  -> ${names[f.winner]} wins round ${round} after ${f.seconds.toFixed(0)} s (wins ${match.wins.join("-")})`);
     for (const k of f.stats.kos) this.say(`     ${names[k.victim]} ${k.cause === "ringout" ? "rung out" : "knocked out"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]}` : ""} (${k.weapon})`);
     f.stats.summary.forEach((s, i) => this.say(`     ${names[i]}: ${s}`));

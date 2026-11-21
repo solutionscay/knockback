@@ -13,6 +13,7 @@ import type { Soul } from "../sim/soul";
 import { decideRound, type Seat } from "./decide";
 import { evalMatchFrom, targetLabel, type EvalMatch } from "./eval";
 import type { CheckinConfig } from "./checkin";
+import { playRoundHeadless } from "./round";
 import { MatchRunner } from "./runner";
 import { suitUp, type SuitUpResult } from "./suitup";
 
@@ -41,11 +42,7 @@ export function rescoreRecord(rec: MatchRecord, lineup: string[]): EvalMatch {
   while (!match.over) {
     const round = match.round + 1;
     housePlans.push(lineup.map((p, i) => (p !== "house" ? shadowPlan(match, round, i) : undefined)));
-    match.prepareRound();
-    while (!match.step()) {
-      /* replay */
-    }
-    match.finishRound();
+    playRoundHeadless(match);
   }
   if (match.diverged >= 0) throw new ReplayDivergedError(match.diverged);
   return evalMatchFrom(match, lineup, housePlans);
@@ -78,11 +75,7 @@ export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], de
       const s = d.strategy;
       log.push(`  r${round} ${names[i]!.padEnd(12)} [${m.provider}${m.outcome === "house" ? "" : ` ${formatSeconds(m.ms)}`}${m.outcome === "ok" || m.outcome === "house" ? "" : ` ${m.outcome}${m.detail ? ` (${m.detail})` : ""}`}] ${s.stance}, wants ${s.weapons.join(">")}, -> ${targetLabel(s, names)}, retaliate ${s.retaliate ?? "turn"}: "${d.line}"`);
     });
-    match.prepareRound(ask.decisions, ask.meta);
-    while (!match.step()) {
-      /* the sim plays the round */
-    }
-    const f = match.finishRound();
+    const f = playRoundHeadless(match, ask.decisions, ask.meta);
     log.push(`  r${round} -> ${names[f.winner]} wins after ${f.seconds.toFixed(0)} s; ${f.stats.kos.map((k) => `${names[k.victim]} ${k.cause === "ringout" ? "rung out" : "KO"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]}` : ""} (${k.weapon})`).join(", ")}`);
   }
   log.push(`  match -> ${names[match.winner]} (${match.wins.join("-")})`);
