@@ -3,6 +3,7 @@ import type { Controller } from "./controller";
 import type { Link, Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { POWER_LIST, type Fighter, type Input, type Sim, type Weapon } from "./sim";
+import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } from "./tactical";
 
 export interface Goal {
   surface: number;
@@ -28,11 +29,27 @@ export class ControllerNavigation {
   dig: { until: number; dir: 1 | -1 } | null = null;
   /** times the watchdog fired this fight (stats, tests) */
   stuckCount = 0;
+  /** overwatch (#38): the chosen perch and until when it is kept */
+  perch: { surface: number; x: number; y: number; until: number } | null = null;
+  /** flank (#38): the side of the target to come round to, the waypoint reached, since when */
+  flankPlan: { target: number; side: 1 | -1; since: number; around: boolean } | null = null;
+  /** cover (#38): the cover spot being held */
+  coverSpot: { surface: number; x: number; y: number; side: 1 | -1 } | null = null;
+  /** hold (#38): the spot this fighter defends */
+  holdSpot: { surface: number; x: number; y: number } | null = null;
 
   constructor(private readonly controller: Pick<Controller, "fighterId" | "stanceNow" | "pressing" | "rules">) {}
 
   replan(tick: number) {
     this.nextEval = tick;
+  }
+
+  /** A new plan: forget the stance's chosen spots (#38). */
+  resetStance() {
+    this.perch = null;
+    this.flankPlan = null;
+    this.holdSpot = null;
+    this.coverSpot = null;
   }
 
   private zoneBounds(sim: Sim): [number, number] {
@@ -91,6 +108,11 @@ export class ControllerNavigation {
           const rank = me.prefs.indexOf(type as Weapon);
           extra = Math.max(0, rank) * sim.ruleset.tactics.pickup.rankCost;
           limit = !armed ? sim.ruleset.tactics.pickup.unarmedLimit : stance === "item" ? sim.ruleset.tactics.pickup.itemStanceLimit : sim.ruleset.tactics.pickup.upgradeLimit;
+          // overwatch (#38): a long gun first, from further away
+          if (stance === "overwatch" && isLongGun(sim.ruleset, type as Weapon) && !hasLongGun(sim, me)) {
+            limit = Math.max(limit, sim.ruleset.tactics.stances.overwatch.longGunLimit);
+            extra -= 10;
+          }
         } else if (type === "jetpack") limit = sim.ruleset.tactics.pickup.jetpackLimit;
         else if (stance === "item") limit = sim.ruleset.tactics.pickup.itemStanceLimit;
         else if (type === "health" && me.hp < sim.ruleset.tactics.pickup.healthBelowHp) limit = sim.ruleset.tactics.pickup.healthLimit;
@@ -154,21 +176,123 @@ export class ControllerNavigation {
     }
 
     const ideal = reach ? clamp(reach.standOff, reach.min, reach.max) : me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
-    if (stance === "cover") {
-      // cover is not standing still: every so often, peek out somewhere with a clear shot
-      const peek = (sim.tick + this.controller.fighterId * 61) % sim.ruleset.tactics.patience.peekEvery < sim.ruleset.tactics.patience.peekFor;
+    const st = sim.ruleset.tactics.stances;
+    const tac = sim.tactical;
+    const tFeet = sim.feetY(target);
+    if (stance === "overwatch") {
+      // high ground with sightlines over the fight, at the long gun's stand-off; keep a chosen perch a while
+      const ow = st.overwatch;
+      const p0 = this.perch;
+      if (p0 && sim.tick < p0.until && nav.surfaces[p0.surface] && plan.cost[p0.surface] !== Infinity && zonePenalty(p0.x) === 0) return { surface: p0.surface, x: p0.x };
+      const gun = me.weapons.find((w) => isLongGun(sim.ruleset, w));
+      const standOff = gun ? sim.ruleset.tactics.weapons.reach[gun].standOff : ideal;
+      const g = this.bestPoint(sim, plan, (px, py, sid, i) => {
+        const d = length2D(px - tp.x, py - tFeet);
+        let s = -Math.min(Math.max(tac.rise[i]!, 0), ow.maxRise) * ow.riseWeight - tac.view(i) * ow.viewWeight + Math.abs(d - standOff) * ow.reachWeight;
+        if (tac.sees(px, py, tp.x, tFeet)) s -= 3;
+        return s + zonePenalty(px) + fragilePenalty(sid);
+      });
+      this.perch = { ...g, y: nav.surfaces[g.surface]?.y ?? 0, until: sim.tick + ow.holdTicks };
+      return g;
+    }
+    if (stance === "hold") {
+      const hold = st.hold;
+      let spot = this.holdSpot;
+      // the spot's floor broke: the nearest point still there, or a new spot
+      if (spot && (!nav.surfaces[spot.surface] || Math.abs((nav.surfaces[spot.surface]?.y ?? -99) - spot.y) > 0.01 || spot.x < nav.surfaces[spot.surface]!.x0 || spot.x > nav.surfaces[spot.surface]!.x1)) {
+        const i = tac.pointAt(spot.x, spot.y, 2.5);
+        spot = i >= 0 ? { surface: nav.points[i]!.surface, x: nav.points[i]!.x, y: nav.points[i]!.y } : null;
+      }
+      if (!spot || zonePenalty(spot.x) > 0 || plan.cost[spot.surface] === Infinity) {
+        const spots = coverSpots(sim);
+        const caches = sim.items().filter((e) => e.itemType && !(POWER_LIST as readonly string[]).includes(e.itemType)).map((e) => e.body.translation());
+        const g = this.bestPoint(sim, plan, (px, py, sid, i) => {
+          let s = -Math.max(0, tac.rise[i]!) * hold.riseWeight + Math.abs(px - mp.x) * hold.homeWeight;
+          if (spots.some((c) => c.surface === sid && Math.abs(c.x - px) < 0.6)) s -= hold.coverBonus;
+          if (caches.some((c) => Math.abs(c.x - px) < 3 && Math.abs(c.y - py) < 1.5)) s -= hold.itemBonus;
+          return s + zonePenalty(px) * 2 + fragilePenalty(sid);
+        });
+        spot = { ...g, y: nav.surfaces[g.surface]?.y ?? 0 };
+      }
+      this.holdSpot = spot;
+      // a target inside the leash: fight it from within the held area; otherwise stay on the spot
+      const near = length2D(tp.x - spot.x, tFeet - spot.y) <= hold.leash;
+      if (!near) return { surface: spot.surface, x: spot.x };
+      const held = spot;
       return this.bestPoint(sim, plan, (px, py, sid) => {
-        const dx = px - tp.x;
-        const dy = py + 1 - tp.y;
-        const d = length2D(dx, dy);
-        let s = Math.abs(d - ideal) * 0.8 + zonePenalty(px) + fragilePenalty(sid);
-        if (d > 0.5) {
-          const hit = sim.raycast(tp.x, tp.y, dx / d, dy / d, d);
-          const hidden = !!hit && hit.dist > d - 3.2 && (hit.terrain || (!!hit.entity && hit.entity.kind !== "fighter"));
-          if (peek) {
-            if (!hit || hit.entity?.kind === "fighter") s -= 7;
-          } else if (hidden) s -= 7;
-        }
+        const out = length2D(px - held.x, py - held.y);
+        if (out > hold.radius) return 1000 + out;
+        return Math.abs(length2D(px - tp.x, py - tFeet) - ideal) * 0.6 + zonePenalty(px) + fragilePenalty(sid);
+      });
+    }
+    if (stance === "flank") {
+      // route around the target: first a waypoint on its far side, off the straight line (from above when there is
+      // a level above), then close in from there
+      const fl = st.flank;
+      let f = this.flankPlan;
+      if (!f || f.target !== target.id || sim.tick - f.since > fl.giveUpTicks) {
+        f = { target: target.id, side: mp.x < tp.x ? 1 : -1, since: sim.tick, around: false };
+        this.flankPlan = f;
+      }
+      const side = f.side;
+      if ((mp.x - tp.x) * side > 0.4) f.around = true;
+      if (f.around) {
+        const s = target.surface >= 0 ? nav.surfaces[target.surface] : undefined;
+        if (s && plan.cost[s.id] !== Infinity) return { surface: s.id, x: clamp(tp.x + side * Math.max(1.1, reach ? Math.min(reach.max, reach.standOff * 0.5) : 1.1), s.x0 + 0.3, s.x1 - 0.3) };
+      }
+      const myFeet = sim.feetY(me);
+      const lo = Math.min(mp.x, tp.x), hi = Math.max(mp.x, tp.x);
+      return this.bestPoint(sim, plan, (px, py, sid) => {
+        let s = Math.abs(px - (tp.x + side * fl.gap)) + Math.abs(py - (tFeet + 2)) * 0.5;
+        // the straight line: same level as both of us, between us
+        if (px > lo && px < hi && Math.abs(py - tFeet) < 1.5 && Math.abs(py - myFeet) < 1.5) s += fl.corridorPenalty;
+        // behind it: on the side it faces away from
+        if ((px - tp.x) * side > 0 && side === -target.facing) s -= fl.behindBonus;
+        return s + zonePenalty(px) + fragilePenalty(sid);
+      });
+    }
+    if (stance === "cover") {
+      // move between engine-computed cover spots (a wall beside the spot, between it and the target); every so
+      // often peek out somewhere with a clear shot, then duck back
+      const cv = st.cover;
+      const peek = (sim.tick + this.controller.fighterId * 61) % cv.peekEvery < cv.peekFor;
+      if (!peek) {
+        // hide from the nearest rival (the one who can shoot first), keep a spot while it still shelters me,
+        // otherwise the best sheltered spot within reach
+        const threat = nearestRival(sim, me) ?? target;
+        const hp = sim.pos(threat);
+        const hides = (c: { x: number; y: number; side: number }) => c.side === (hp.x > c.x ? 1 : -1) && shelters(sim, threat, c.x, c.y);
+
+        const held = this.coverSpot;
+        if (held && nav.surfaces[held.surface] && plan.cost[held.surface] !== Infinity && hides(held) && zonePenalty(held.x) === 0) return { surface: held.surface, x: held.x };
+        // candidates: the computed cover spots (a wall or a crate beside them) and every nav point (ledges and
+        // platform undersides shelter too); a spot must shelter me from the threat to count
+        let best: { surface: number; x: number; y: number; side: 1 | -1 } | null = null, bs = Infinity;
+        const consider = (surface: number, x: number, y: number, side: 1 | -1, bonus: number) => {
+          const cost = plan.cost[surface]!;
+          if (cost === Infinity || (this.badSurfaces.get(surface) ?? -1) > sim.tick) return;
+          const travel = cost + Math.abs(plan.arriveX[surface]! - x);
+          if (travel > cv.spotRange || zonePenalty(x) > 0) return;
+          const d = length2D(x - tp.x, y - tFeet);
+          // the nearest shelter wins: getting out of the line matters more than the ideal range
+          const sc = Math.abs(d - ideal) * cv.rangeWeight + fragilePenalty(surface) + travel - bonus;
+          if (sc >= bs || !shelters(sim, threat, x, y)) return;
+          bs = sc;
+          best = { surface, x, y, side };
+        };
+        for (const c of coverSpots(sim)) if (c.side === (hp.x > c.x ? 1 : -1)) consider(c.surface, c.x, c.y, c.side, cv.coverBonus);
+        const free = spotFree(sim);
+        for (const p of nav.points) if (free(p)) consider(p.surface, p.x, p.y, hp.x > p.x ? 1 : -1, 0);
+        this.coverSpot = best;
+        if (best) return { surface: (best as { surface: number }).surface, x: (best as { x: number }).x };
+      }
+      // peek (or nowhere to hide): the nearest point with a clear shot when peeking, out of sight otherwise
+      const myFeet = sim.feetY(me);
+      return this.bestPoint(sim, plan, (px, py, sid) => {
+        const d = length2D(px - tp.x, py - tFeet);
+        let s = Math.abs(d - ideal) * cv.rangeWeight + length2D(px - mp.x, py - myFeet) + zonePenalty(px) + fragilePenalty(sid);
+        const clear = tac.sees(px, py, tp.x, tFeet);
+        if (peek ? clear : !clear) s -= 7;
         return s;
       });
     }
@@ -186,13 +310,14 @@ export class ControllerNavigation {
     });
   }
 
-  private bestPoint(sim: Sim, plan: ReturnType<Sim["nav"]["plan"]>, score: (x: number, y: number, s: number) => number): Goal {
+  private bestPoint(sim: Sim, plan: ReturnType<Sim["nav"]["plan"]>, score: (x: number, y: number, s: number, i: number) => number): Goal {
     let best: Goal | null = null;
     let bs = Infinity;
-    for (const p of sim.nav.points) {
+    for (let i = 0; i < sim.nav.points.length; i++) {
+      const p = sim.nav.points[i]!;
       const c = plan.cost[p.surface]!;
       if (c === Infinity) continue;
-      const s = score(p.x, p.y, p.surface) + (c + Math.abs(plan.arriveX[p.surface]! - p.x)) * 0.12;
+      const s = score(p.x, p.y, p.surface, i) + (c + Math.abs(plan.arriveX[p.surface]! - p.x)) * 0.12;
       if (s < bs) {
         bs = s;
         best = { surface: p.surface, x: p.x };
@@ -297,7 +422,9 @@ export class ControllerNavigation {
     if (me.grounded && Math.abs(input.move) > 0.5) {
       const dir = input.move > 0 ? 1 : -1;
       const hit = sim.raycast(mp.x, sim.feetY(me) + 0.35, dir, 0, sim.ruleset.combat.fighter.radius + 0.4, me.entity.collider);
-      if (hit && hit.entity?.kind !== "fighter") input.jump = true;
+      // hop over what is in the way, unless the goal is right here in front of it (#38: a cover spot against a wall)
+      const stopsShort = this.goal?.surface === me.surface && Math.abs(moveTarget - mp.x) < (hit ? hit.dist : 0);
+      if (hit && hit.entity?.kind !== "fighter" && !stopsShort) input.jump = true;
       if (Math.abs(mv.x) < 0.6) this.stuck++;
       else this.stuck = 0;
       if (this.stuck > 18) {

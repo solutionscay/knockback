@@ -14,7 +14,8 @@ import { attackWall, WallPursuit } from "./controller-wall";
 import type { Surface } from "./nav";
 import { availableRule } from "./rules";
 import { RuleEngine } from "./ruleeval";
-import { NO_INPUT, isPickupWeapon, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
+import { inOpen } from "./tactical";
+import { NO_INPUT, isPickupWeapon, isPrecision, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
 
 export { ballisticAim, inReach } from "./controller-aim";
 export type { Goal } from "./controller-navigation";
@@ -86,7 +87,9 @@ export class Controller {
     // engine guards first (stalemates), then an active stance rule, then the plan
     if (sim.suddenDeath >= 0 || sim.openingPressure || sim.alive().length === 2) return "rush";
     const s = this.rules.stance() ?? this.strategy.stance;
-    if (s !== "rush" && sim.tick - Math.max(this.lastDealt, this.lastTaken) > sim.ruleset.tactics.patience.calmTicks) return "rush";
+    const stances = sim.ruleset.tactics.stances;
+    const calm = s === "overwatch" ? stances.overwatch.calmTicks : s === "hold" ? stances.hold.calmTicks : sim.ruleset.tactics.patience.calmTicks;
+    if (s !== "rush" && sim.tick - Math.max(this.lastDealt, this.lastTaken) > calm) return "rush";
     return s;
   }
   /** recent hits taken (for the back-attack reflex) */
@@ -129,6 +132,7 @@ export class Controller {
   setStrategy(s: Strategy, sim: Sim) {
     this.strategy = s;
     this.navigation.replan(sim.tick);
+    this.navigation.resetStance();
     this.nextRetarget = sim.tick;
     sim.setPrefs(this.fighterId, s.weapons ?? []);
     this.rules = new RuleEngine((s.rules ?? []).filter(rule => availableRule(rule, sim.ruleset)), sim.ruleset.tactics.ruleEval);
@@ -220,6 +224,7 @@ export class Controller {
     if (u && u !== "jetpack" && has(u) && (u === "railgun" ? railLine() : inReach(u, dist, los, sim.ruleset))) return u;
     if (ready("hammer") && me.grounded && Math.abs(dy0) < 1.2 && dist < sim.ruleset.weapons.table.hammer.range) return "hammer";
     if (ready("railgun") && railLine()) return "railgun";
+    if (ready("sniper") && los && dist >= sim.ruleset.weapons.table.sniper.minRange && dist < sim.ruleset.weapons.table.sniper.range - 0.5) return "sniper";
     if (this.blocked(dist)) {
       // a wall between us: lob over it, or break through it
       if (has("grenade")) return "grenade";
@@ -233,6 +238,8 @@ export class Controller {
     if (dist < 1.5 && !has("shotgun")) return "fist";
     if (ready("grapple") && los && dist > 3.5 && dist < 14 && (this.onLedge(sim, target, mp.x, mp.y) || has("bat") || has("shotgun"))) return "grapple";
     if (has("shotgun") && dist < 6.5) return "shotgun";
+    if (has("crossbow") && los && dist < sim.ruleset.weapons.table.crossbow.range - 0.5) return "crossbow";
+    if (has("rifle") && los && dist < sim.ruleset.weapons.table.rifle.range - 0.5) return "rifle";
     if (has("grenade") && !los && dist > 2.5 && dist < 14) return "grenade";
     if (ready("mine") && dist > 2.8 && dist <= sim.ruleset.weapons.table.mine.range) return "mine";
     if (has("rocket") && dist >= 3) return "rocket";
@@ -241,6 +248,36 @@ export class Controller {
     // prefer what the strategy likes among what we carry; fists if nothing else
     const carried = me.prefs.filter((w) => has(w));
     return carried[0] ?? "fist";
+  }
+
+  /** Rival in the open to shoot instead of a hidden target (overwatch, hold, cover), re-checked every 6 ticks. */
+  private spot: { id: number; until: number } | null = null;
+  private spotted(sim: Sim, me: Fighter, target: Fighter): Fighter | null {
+    const stance = this.stanceNow(sim);
+    if (stance !== "overwatch" && stance !== "hold" && stance !== "cover") return null;
+    const ranged = me.weapons.some((w) => isPrecision(w) || w === "railgun" || w === "rocket");
+    if (!ranged) return null;
+    if (this.spot && sim.tick < this.spot.until) {
+      const f = this.spot.id >= 0 ? sim.fighters[this.spot.id] : undefined;
+      return f && f.alive && !f.removed ? f : null;
+    }
+    let pick: Fighter | null = null;
+    if (!inOpen(sim, me, target)) {
+      const p = sim.pos(me);
+      let bd = Infinity;
+      for (const o of sim.fighters) {
+        if (o.id === me.id || o.id === target.id || !o.alive || o.removed || this.rules.avoided().includes(o.id)) continue;
+        if (!inOpen(sim, me, o)) continue;
+        const q = sim.pos(o);
+        const d = Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
+        if (d < bd) {
+          bd = d;
+          pick = o;
+        }
+      }
+    }
+    this.spot = { id: pick ? pick.id : -1, until: sim.tick + 6 };
+    return pick;
   }
 
   private blocked(dist: number) {
@@ -275,6 +312,11 @@ export class Controller {
         }
       } else this.reflex = null;
     } else if (rf) this.reflex = null;
+    // overwatch, hold and cover (#38): shoot whoever is in the open when the target is hidden
+    if (target && aimTarget === target && !(rf && sim.tick < rf.until)) {
+      const spot = this.spotted(sim, me, target);
+      if (spot) aimTarget = spot;
+    }
     const mp = sim.pos(me);
     const mv = sim.vel(me);
     const input: Input = { move: 0, jump: false, aimX: me.aimX, aimY: me.aimY, weapon: null, fire: false };
@@ -284,7 +326,10 @@ export class Controller {
       this.targetSince = sim.tick;
     }
     this.targetId = target.id;
-    const wall = this.wallPursuit.observe(sim, me, target, mp);
+    // cover, overwatch and hold keep walls between them and the target on purpose (#38): no wall pursuit unless pressed
+    const stanceNow = this.stanceNow(sim);
+    const defensive = (stanceNow === "cover" || stanceNow === "overwatch" || stanceNow === "hold") && !this.pressing(sim);
+    const wall = defensive ? null : this.wallPursuit.observe(sim, me, target, mp);
     const wallTicks = wall?.ticks ?? 0;
     const flankTick = wallTicks - sim.ruleset.tactics.wall.flankTicks;
     const flank = flankTick >= 0 && flankTick % sim.ruleset.tactics.wall.flankPeriod < sim.ruleset.tactics.wall.flankFor
@@ -312,6 +357,10 @@ export class Controller {
     const sight = tacticalSight ?? sightTarget(sim, me, aimTarget, mp);
     const { dx0, dy0, dist, los } = sight;
     if (!choice && me.railCharge > 0) return aimAndFire(sim, me, mp, input, "railgun", sight, false, this.aimNoise);
+    if (!choice && me.scope > 0 && me.weapons.includes("sniper")) {
+      if (me.grounded) input.move = 0;
+      return aimAndFire(sim, me, mp, input, "sniper", sight, false, this.aimNoise);
+    }
     this.noLos = los ? 0 : this.noLos + 1;
     // a target with no path and no line of sight for long: pick someone else for a while
     const tSurf = target.surface;
@@ -327,7 +376,11 @@ export class Controller {
         input.aimX = dx0 / dist;
         input.aimY = dy0 / dist;
       }
-      return playCombatChoice(sim, me, input, choice, this.aimNoise, !flying && !flank);
+      // steady shots (#38): stop for precision shots once at the stance's spot (rush and flank shoot on the move)
+      const stance = this.stanceNow(sim);
+      const goal = this.navigation.goal;
+      const atGoal = !goal || (goal.surface === me.surface && Math.abs(goal.x - mp.x) < 1);
+      return playCombatChoice(sim, me, input, choice, this.aimNoise, !flying && !flank, stance === "rush" || stance === "flank" ? "move" : atGoal ? "steady" : "transit");
     }
 
     // Close Quarters retains the original weapon and obstruction handling.

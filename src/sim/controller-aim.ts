@@ -1,7 +1,7 @@
 import { length2D } from "./dmath";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { traceRail } from "./rail-terrain";
-import type { Fighter, Input, Sim, Weapon } from "./sim";
+import { isPrecision, type Fighter, type Input, type Sim, type Weapon } from "./sim";
 
 export function sightTarget(sim: Sim, me: Fighter, aimTarget: Fighter, mp: ReturnType<Sim["pos"]>) {
   const atp = sim.pos(aimTarget);
@@ -95,13 +95,20 @@ export function aimAndFire(
     case "flamethrower":
       canFire &&= dist <= sim.ruleset.weapons.table.flamethrower.range - 0.3;
       break;
+    case "rifle":
+    case "crossbow":
+      canFire &&= los && dist <= sim.ruleset.weapons.table[weapon].range - 0.5;
+      break;
+    case "sniper":
+      canFire &&= los && (dist >= sim.ruleset.weapons.table.sniper.minRange || me.scope > 0) && dist <= sim.ruleset.weapons.table.sniper.range - 0.5;
+      break;
   }
-  if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && weapon !== "railgun" && weapon !== "hammer" && !(blocked && weapon === "shotgun")) {
+  if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && weapon !== "railgun" && weapon !== "hammer" && !isPrecision(weapon) && !(blocked && weapon === "shotgun")) {
     const hit = sim.raycast(mp.x, mp.y + 0.25, input.aimX, input.aimY, weapon === "shotgun" ? Math.min(dist, 6) : 2.2, me.entity.collider);
     if (hit && hit.terrain) canFire = false;
   }
   if (canFire) {
-    const n = weapon === "railgun" && me.railCharge + 1 < sim.ruleset.weapons.table.railgun.chargeTicks ? 0 :
+    const n = isPrecision(weapon) || (weapon === "railgun" && me.railCharge + 1 < sim.ruleset.weapons.table.railgun.chargeTicks) ? 0 :
       aimNoise * sim.rng.gauss() * (weapon === "rocket" || weapon === "grenade" ? 1 : weapon === "railgun" ? 0.25 : 0.5);
     const nx = input.aimX - input.aimY * n;
     const ny = input.aimY + input.aimX * n;
@@ -134,6 +141,11 @@ export function inReach(w: Weapon, dist: number, los: boolean, ruleset: Ruleset 
       return los && dist >= 3.5 && dist <= ruleset.weapons.table.grapple.range - 0.5;
     case "flamethrower":
       return los && dist <= ruleset.weapons.table.flamethrower.range - 0.3;
+    case "rifle":
+    case "crossbow":
+      return los && dist <= ruleset.weapons.table[w].range - 0.5;
+    case "sniper":
+      return los && dist >= ruleset.weapons.table.sniper.minRange && dist <= ruleset.weapons.table.sniper.range - 0.5;
     default:
       return dist < 1.5;
   }

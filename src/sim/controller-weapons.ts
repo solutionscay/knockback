@@ -2,7 +2,7 @@ import { ballisticAim, railCanReach, type sightTarget } from "./controller-aim";
 import { length2D } from "./dmath";
 import { Mat } from "./grid";
 import type { Ruleset } from "./ruleset";
-import { usesAmmo, type Fighter, type Input, type Sim, type Weapon } from "./sim";
+import { isPrecision, usesAmmo, type Fighter, type Input, type Sim, type Weapon } from "./sim";
 
 type Point = { x: number; y: number };
 type Sight = ReturnType<typeof sightTarget>;
@@ -10,7 +10,7 @@ type RayHit = ReturnType<Sim["raycast"]>;
 type Shot = { aim: Point; lob?: boolean; wall?: boolean };
 export type WeaponChoice = { weapon: Weapon; shot?: Shot };
 const MELEE: readonly Weapon[] = ["fist", "bat", "hammer"];
-const FIGHTER_ORDER: readonly Weapon[] = ["hammer", "bat", "flamethrower", "shotgun", "railgun", "rocket", "grenade", "mine", "grapple", "fist"];
+const FIGHTER_ORDER: readonly Weapon[] = ["hammer", "bat", "flamethrower", "shotgun", "railgun", "sniper", "rocket", "crossbow", "rifle", "grenade", "mine", "grapple", "fist"];
 const BREACH_ORDER: readonly Weapon[] = ["shotgun", "rocket", "grenade", "bat", "fist", "hammer", "mine"];
 
 export function inWeaponBand(weapon: Weapon, distance: number, ruleset: Ruleset, dy = 0) {
@@ -88,6 +88,8 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   const fighterShot = (w: Weapon): Shot | undefined => {
     if (!hasBand(w)) return;
     if (w === "railgun") return railCanReach(sim, position, target) ? { aim: direct } : undefined;
+    // precision weapons (#38) are hitscan: they need a clear line
+    if (isPrecision(w)) return los ? { aim: direct } : undefined;
     if (!los && w !== "grenade" && w !== "rocket" && (!MELEE.includes(w) || obstruction)) return;
     if (w === "rocket" || w === "grenade" || w === "mine") {
       const aim = arcTo(sim, me, w, origin, target, !los);
@@ -99,6 +101,8 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
     return { aim: direct };
   };
   if (me.railCharge > 0 && carried.includes("railgun")) return { weapon: "railgun", shot: fighterShot("railgun") };
+  // aiming the sniper: keep it while the line stays clear (losing the line lets go and cancels the aim)
+  if (me.scope > 0 && carried.includes("sniper")) return { weapon: "sniper", shot: fighterShot("sniper") };
 
   // A destructible face is a separate target. Use unlimited tools ahead of charged or limited ammo.
   const wallShot = (hit: NonNullable<RayHit>, aim: Point): WeaponChoice | undefined => {
@@ -137,12 +141,26 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
     config.reach[w].max > config.reach[best].max ? w : best, "fist" as Weapon) };
 }
 
-export function playCombatChoice(sim: Sim, me: Fighter, input: Input, choice: WeaponChoice, aimNoise: number, allowWallAdvance: boolean) {
+/**
+ * How precision shots are taken (#38: still = accurate):
+ *   steady   at the stance's spot: stand still to shoot
+ *   move     rush and flank: shoot on the move (wider spread)
+ *   transit  a defensive stance on its way to its spot: rifle and crossbow fire on the move, the sniper waits
+ */
+export type ShotMode = "steady" | "move" | "transit";
+
+export function playCombatChoice(sim: Sim, me: Fighter, input: Input, choice: WeaponChoice, aimNoise: number, allowWallAdvance: boolean, mode: ShotMode = "move") {
   const { weapon, shot } = choice;
   input.weapon = weapon;
   if (!shot) return input;
   input.aimX = shot.aim.x;
   input.aimY = shot.aim.y;
+  if (weapon === "sniper" && mode === "transit" && me.scope === 0) return input;
+  if (isPrecision(weapon) && me.grounded && (mode === "steady" || me.scope > 0) && sim.weapon(me) === weapon) {
+    input.move = 0;
+    input.jump = false;
+    input.thrust = false;
+  }
   if (weapon === "hammer") {
     input.jump = false;
     input.thrust = false;
@@ -152,7 +170,8 @@ export function playCombatChoice(sim: Sim, me: Fighter, input: Input, choice: We
     input.move = Math.sign(shot.aim.x) * sim.ruleset.tactics.weapons.wallAdvance;
   }
   if ((weapon !== "fist" && sim.weapon(me) !== weapon) || me.swap !== 0 || me.cooldown[weapon] !== 0 || me.stun !== 0) return input;
-  if (!shot.wall && !shot.lob && !(weapon === "railgun" && me.railCharge + 1 < sim.ruleset.weapons.table.railgun.chargeTicks)) {
+  // precision weapons get no controller noise: the engine's accuracy model spreads their shots
+  if (!shot.wall && !shot.lob && !isPrecision(weapon) && !(weapon === "railgun" && me.railCharge + 1 < sim.ruleset.weapons.table.railgun.chargeTicks)) {
     const n = aimNoise * sim.rng.gauss() * (weapon === "railgun" ? 0.25 : weapon === "rocket" || weapon === "grenade" ? 1 : 0.5);
     const aim = aimVector(input.aimX - input.aimY * n, input.aimY + input.aimX * n);
     input.aimX = aim.x;
