@@ -170,7 +170,7 @@ export function playCombatChoice(sim: Sim, me: Fighter, input: Input, choice: We
     input.move = Math.sign(shot.aim.x) * sim.ruleset.tactics.weapons.wallAdvance;
   }
   if ((weapon !== "fist" && sim.weapon(me) !== weapon) || me.swap !== 0 || me.cooldown[weapon] !== 0 || me.stun !== 0) return input;
-  // precision weapons get no controller noise: the engine's accuracy model spreads their shots
+  // precision weapons get no controller noise: the sim's accuracy model spreads their shots
   if (!shot.wall && !shot.lob && !isPrecision(weapon) && !(weapon === "railgun" && me.railCharge + 1 < sim.ruleset.weapons.table.railgun.chargeTicks)) {
     const n = aimNoise * sim.rng.gauss() * (weapon === "railgun" ? 0.25 : weapon === "rocket" || weapon === "grenade" ? 1 : 0.5);
     const aim = aimVector(input.aimX - input.aimY * n, input.aimY + input.aimX * n);

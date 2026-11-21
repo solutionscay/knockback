@@ -41,7 +41,7 @@ async function openPage(browser: Browser, base: string, w: number, h: number): P
   await page.goto(`${base}/?record=/records/match.json&capture&video&sounds=off`);
   await page.waitForFunction(() => (window as unknown as { __kb?: { ready: boolean } }).__kb?.ready, null, { timeout: 60000 });
   if (errors.length) throw new Error(`viewer error: ${errors[0]}`);
-  if (await page.$("#refused")) throw new Error("the viewer refused this record (not a current-engine match record)");
+  if (await page.$("#refused")) throw new Error("the viewer refused this record (not a match record)");
   return page;
 }
 

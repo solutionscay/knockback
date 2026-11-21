@@ -1,12 +1,12 @@
 /**
- * Which model is best: the model leaderboard over match records of the current engine.
+ * Which model is best: the model leaderboard over match records.
  *
  *   bun run models records/                       # every record in the folder(s), all labels
  *   bun run models records/ evals/ --real         # only matches with a real AI seat (no stub/test, not all house)
  *   bun run models records/ --min 5 --h2h         # rank models with at least 5 matches; head-to-head matrix
  *   bun run models records/ --json > board.json   # the leaderboard as JSON (same shape as GET /api/models)
  *
- * Copies of the same match (same seed and total time) count once. Records of another engine version are skipped.
+ * Copies of the same match (same seed and total time) count once.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -57,6 +57,6 @@ const h2h = headToHead(kept, lb.rows.map((r) => r.key));
 
 if (flag("json")) console.log(JSON.stringify({ ...lb, headToHead: h2h }, null, 2));
 else {
-  console.log(`${kept.length} match${kept.length === 1 ? "" : "es"} (${dropped} duplicate${dropped === 1 ? "" : "s"} dropped, ${skipped} file${skipped === 1 ? "" : "s"} skipped: not a current-engine record${flag("real") ? " or no real AI seat" : ""})\n`);
+  console.log(`${kept.length} match${kept.length === 1 ? "" : "es"} (${dropped} duplicate${dropped === 1 ? "" : "s"} dropped, ${skipped} file${skipped === 1 ? "" : "s"} skipped: not a match record${flag("real") ? " or no real AI seat" : ""})\n`);
   console.log(leaderboardText(lb, flag("h2h") ? h2h : undefined));
 }

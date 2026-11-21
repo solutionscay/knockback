@@ -266,7 +266,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
   out.push(soulText(soul, ruleset).trim());
   out.push(
     `RULES: best of ${maxRounds} rounds; first to ${winsToTake} round wins takes the match, and if nobody has ${winsToTake} after round ${maxRounds} the round-${maxRounds} winner takes it. Each round is one continuous fight: last fighter standing wins (or most health after ${fightTicks / TICK_RATE} s). You get knocked out by losing all health or by flying off the level (ring-out); knockback grows as health drops. A safe zone shrinks and pushes everyone together. ` +
-      `All four fighters are physically identical and start every round with only their fists (weak). Weapons are pickups (arena, crates, supply drops); you carry 2, a new pickup replaces the one not in your hand, and knocked-out fighters drop theirs. You only choose a plan; the engine moves, picks up, aims and shoots for you.`,
+      `All four fighters are physically identical and start every round with only their fists (weak). Weapons are pickups (arena, crates, supply drops); you carry 2, a new pickup replaces the one not in your hand, and knocked-out fighters drop theirs. You only choose a plan; the game moves, picks up, aims and shoots for you.`,
   );
   out.push(`LEVEL: ${levelLine(x.level)}`);
   out.push(tacticsLines(levelTactics(x.level, ruleset), last ? longGunsLastRound(last.stats, names, ruleset) : null));

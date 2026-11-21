@@ -5,13 +5,12 @@
  *   "remote/Zapbit@claude-opus-5-5" for a remote agent that reported its model at join).
  * - fightStatsOf(facts): per round and seat, what the fight did (knockouts, ring-outs, damage, survival).
  *   Every record carries it as `fightStats`.
- * - seatEntries(record): one entry per seat of a current-engine record, with its model and stats.
+ * - seatEntries(record): one entry per seat of a match record, with its model and stats.
  * - leaderboard(entries): per model, ranked by match win rate, with a 95% interval.
  * - headToHead(entries): for each pair of models that met, how often A finished ahead of B.
  *
- * No DOM, no Bun, no sim imports beyond types and the engine version: runs in the viewer, the server and scripts.
+ * No DOM, no Bun, no sim imports beyond types: runs in the viewer, the server and scripts.
  */
-import { ENGINE_VERSION, isCurrentEngine } from "../sim/engine-version";
 import type { RoundFacts } from "../sim/morale";
 
 export type ModelProvider = "anthropic" | "openai" | "xai" | "google" | "meta" | "mistral" | "deepseek" | "qwen" | "house" | "test" | "other";
@@ -186,7 +185,6 @@ export interface SeatEntry {
 
 interface RecordLike {
   seed?: unknown;
-  engine?: unknown;
   totalMs?: unknown;
   labels?: unknown;
   winner?: unknown;
@@ -222,9 +220,9 @@ export function matchKey(rec: RecordLike): string {
   return `${num(rec.seed) >>> 0}:${typeof rec.totalMs === "number" ? Math.round(rec.totalMs) : `h${hashes}`}`;
 }
 
-/** One entry per seat of a match record. Returns [] unless it is a finished match of the current engine with its fightStats. */
+/** One entry per seat of a match record. Returns [] unless it is a finished match with its fightStats. */
 export function seatEntries(raw: unknown): SeatEntry[] {
-  if (!isCurrentEngine(raw)) return [];
+  if (!raw || typeof raw !== "object") return [];
   const rec = raw as RecordLike;
   const rounds = Array.isArray(rec.rounds) ? (rec.rounds as { winner?: unknown; meta?: unknown }[]) : [];
   if (!rounds.length || !isSeat(rec.winner)) return [];
@@ -470,6 +468,6 @@ export function leaderboardText(lb: Leaderboard, h2h?: HeadToHead): string {
     }
     out.push("");
   };
-  table(`ENGINE v${ENGINE_VERSION}`, lb.rows, lb.matches);
+  table("MODELS", lb.rows, lb.matches);
   return out.join("\n");
 }

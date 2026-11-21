@@ -252,7 +252,7 @@ export class ControllerNavigation {
       });
     }
     if (stance === "cover") {
-      // move between engine-computed cover spots (a wall beside the spot, between it and the target); every so
+      // move between sim-computed cover spots (a wall beside the spot, between it and the target); every so
       // often peek out somewhere with a clear shot, then duck back
       const cv = st.cover;
       const peek = (sim.tick + this.controller.fighterId * 61) % cv.peekEvery < cv.peekFor;

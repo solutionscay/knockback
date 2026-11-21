@@ -1,5 +1,5 @@
 /**
- * Tactical map (#38): cover spots, high ground and sightlines, computed by the engine from the level grid and its
+ * Tactical map (#38): cover spots, high ground and sightlines, computed by the sim from the level grid and its
  * nav graph. The Sim rebuilds it with the nav graph whenever terrain breaks, so it always matches the level as it is
  * now. Static parts read the grid only (props move, so they are left to the runtime checks below, which ray-cast
  * through the physics world and see crates, steel and fighters too). Pure arithmetic: deterministic.

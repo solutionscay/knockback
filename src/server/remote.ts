@@ -6,7 +6,7 @@ import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
  * seat publishes a turn (structured context + the rendered prompt), an agent
  * long-polls for it and submits a plan, and the seat resolves the ask with
  * the plan as JSON text, which decideRound parses like any AI answer. So the
- * engine sees exactly what a local provider would produce, and the record
+ * sim sees exactly what a local provider would produce, and the record
  * replays with no network.
  */
 import { CHECKIN, parseCheckin, type CheckinStatus } from "../ai/checkin";

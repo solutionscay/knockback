@@ -1,6 +1,5 @@
 import { PickPanel } from "./picks";
 import { Application } from "pixi.js";
-import { ENGINE_VERSION, isCurrentEngine } from "../sim/engine-version";
 import { initPhysics } from "../sim/sim";
 import { SoundDirector } from "./audio/director";
 import { AudioEngine, type LoggedCue } from "./audio/engine";
@@ -188,8 +187,8 @@ if (params.has("live")) {
   game.onNeedNewMatch = () => location.reload();
   const { raw, rec } = await fetchRecord(recordUrl);
   if (!rec) {
-    // refuse clearly, on screen: only records of the current engine are loaded
-    const why = raw && typeof raw === "object" && Array.isArray(raw.rounds) && !isCurrentEngine(raw) ? `this record is from another engine version; this viewer loads engine v${ENGINE_VERSION} records only` : "not a Knockback match record";
+    // refuse clearly, on screen
+    const why = "not a Knockback match record";
     seedEl.textContent = `can't replay: ${why}`;
     const box = document.createElement("div");
     box.id = "refused";
@@ -228,7 +227,7 @@ if (capture) {
     loadRecord: async (url: string) => {
       if (!isRecordUrl(url)) throw new Error("records must be /records/<file>.json");
       const { raw, rec } = await fetchRecord(url);
-      if (!rec) throw new Error(`not a match record of engine v${ENGINE_VERSION}`);
+      if (!rec) throw new Error("not a Knockback match record");
       game.newMatch(rec.seed, { recorded: rec, labels: viewerLabels(raw.labels) });
     },
     setCamera: (mode) => game.setCamera(mode),

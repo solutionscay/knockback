@@ -44,7 +44,6 @@ import { lobbyPage } from "./lobby";
 import { siteRoute } from "./site";
 import { queueRoute } from "./queue-routes";
 import type { Matchmaker } from "./matchmaker";
-import { ENGINE_VERSION } from "../sim/engine-version";
 import { checkinSchema, planSchema, RemoteSeat } from "./remote";
 import type { CheckinConfig } from "../ai/checkin";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
@@ -668,7 +667,7 @@ export class ServerMatch {
     const m = r.match;
     // the per-seat model stats go into the record index too: GET /api/models reads them without opening files
     const stats = JSON.stringify(seatEntries(r.savedRecord()));
-    await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), engine: m.record.engine, stats });
+    await this.store.insertRecord({ matchId: this.id, path: `/records/${file}`, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), stats });
     this.server.modelsCache = null;
     await this.store.updateMatch(this.id, { status: "over", winner: m.winner, endedAt: Date.now() });
     this.status = "over";
@@ -994,8 +993,7 @@ export class MatchServer {
       for (const s of await this.store.listSeats(row.id)) loaded.restoreSeat(s);
       await this.restorePicks(loaded, row);
       const rec = await this.store.getRecord(mid);
-      // a finished match whose record is of another engine version is not loaded (its rounds can't replay here)
-      if (row.status === "over" && !rec) throw new HttpError(404, `no match ${mid} on engine v${ENGINE_VERSION}`);
+      if (row.status === "over" && !rec) throw new HttpError(404, `no saved record for match ${mid}`);
       await loaded.loadFinished(row, await this.store.listRounds(mid), rec?.path ?? null);
       this.add(loaded);
       return loaded;
@@ -1033,7 +1031,7 @@ export class MatchServer {
   modelsCache: { at: number; kept: SeatEntry[][]; dropped: number } | null = null;
 
   /**
-   * The model leaderboard from the SQLite record index (current-engine records): each row's per-seat stats, saved
+   * The model leaderboard from the SQLite record index: each row's per-seat stats, saved
    * with the record. Matches with test providers are left out; copies of one match count once.
    */
   async models(min?: number) {
@@ -1055,7 +1053,7 @@ export class MatchServer {
     const { kept, dropped } = this.modelsCache;
     const lb = leaderboard(kept, min !== undefined ? { minMatches: min } : {});
     const h2h = headToHead(kept, lb.rows.map((r) => r.key));
-    return { ...lb, headToHead: h2h, duplicates: dropped, engine: ENGINE_VERSION, note: "match win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter match; models below the minimum are provisional; self-reported models are what remote agents said at join" };
+    return { ...lb, headToHead: h2h, duplicates: dropped, note: "match win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter match; models below the minimum are provisional; self-reported models are what remote agents said at join" };
   }
 
   protected async route(req: Request, url: URL, ip: string): Promise<Response> {
@@ -1116,8 +1114,7 @@ export class MatchServer {
     }
     if (path === "/api/records") {
       allow("GET");
-      // current-engine records only: another version's record is not loaded
-      return json({ engine: ENGINE_VERSION, records: await this.store.listRecords(100) });
+      return json({ records: await this.store.listRecords(100) });
     }
     if (path === "/api/picks") {
       // a replay's crowd split, read-only (#35): the record holds no picks, the index maps it to its match
@@ -1338,12 +1335,12 @@ function apiIndex(open: boolean) {
       "GET /api/queue?name=": "who is waiting (names), seats needed, when AI seats fill, the AI guardrails; ?name gives that agent's place",
       "GET /api/join": "the JOIN panel's data (#42): the public URL, the MCP URL and the queue",
       "GET /models": "the model leaderboard page: which model wins most",
-      "GET /api/models": "model leaderboard from the record index (current engine): match win rate with a 95% interval, round wins, knockouts, ring-outs, damage, survival, fallbacks, autopilot; head-to-head (?min=N sets the provisional cut, default 10)",
+      "GET /api/models": "model leaderboard from the record index: match win rate with a 95% interval, round wins, knockouts, ring-outs, damage, survival, fallbacks, autopilot; head-to-head (?min=N sets the provisional cut, default 10)",
       "GET /api/replays?limit=30&before=": "saved matches, newest first: line-up, models, result, theme, lines and plans per round; next: the cursor for older ones (every finished match is reachable)",
-      "GET /api/replays/:id": "one saved match of the current engine",
+      "GET /api/replays/:id": "one saved match",
       "GET /api/agents/:name": "an agent's bot, owner, soul summary, record and recent matches (from the last 300 stored matches)",
       "GET /share/:id.svg": "the 1200x630 share card of a finished match",
-      "GET /api/records": "index of saved records of the current engine (path, seed, hashes, winner, engine, stats)",
+      "GET /api/records": "index of saved records (path, seed, hashes, winner, stats)",
       "GET /api/matches/:id/picks": "spectators (#35): the pick cards, the crowd's tally, the lock, your pick (anonymous cookie)",
       "POST /api/matches/:id/pick": "spectators (#35): { seat } until the picks lock (right before round 1's plans are shown)",
       "GET /api/picks?record=/records/<file>.json": "a replay's final crowd split (read-only)",

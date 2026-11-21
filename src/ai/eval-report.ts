@@ -21,7 +21,7 @@ export function compareReports(oldR: EvalReport, newR: EvalReport): MetricDelta[
   const fl = (r: EvalReport) => ({ checked: r.facts.checked, mismatches: r.facts.mismatches.length, mismatchRate: r.facts.checked ? r3(r.facts.mismatches.length / r.facts.checked) : 0, warnings: r.facts.warnings ?? 0 });
   const a = flatten({ ...oldR, facts: fl(oldR) });
   const b = flatten({ ...newR, facts: fl(newR) });
-  const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => k !== "version").sort();
+  const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
   return keys.map((k) => ({ metric: k, old: a[k] ?? NA, new: b[k] ?? NA, delta: a[k] !== undefined && b[k] !== undefined ? r3(b[k]! - a[k]!) : NA }));
 }
 

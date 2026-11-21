@@ -6,7 +6,6 @@ import { modelBadgeTitle } from "../../src/viewer/model-badge";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateLevel } from "../../src/sim/levelgen";
-import { ENGINE_VERSION } from "../../src/sim/engine-version";
 import type { MatchRecord } from "../../src/sim/match";
 import type { LoggedCue } from "../../src/viewer/audio/engine";
 import { mixCues, wavBytes } from "../../src/viewer/audio/offline";
@@ -130,7 +129,7 @@ export function writeReadme(dir: string, x: ReadmeInput) {
   const lines = [
     `# Knockback match video: seed ${s.seed}`,
     "",
-    `Made with \`bun run teaser\` (docs/video.md) from ${x.from}. Engine v${ENGINE_VERSION}, arena ${level.name}. **${result}.**`,
+    `Made with \`bun run teaser\` (docs/video.md) from ${x.from}. Arena ${level.name}. **${result}.**`,
     "",
     "## Files",
     "",

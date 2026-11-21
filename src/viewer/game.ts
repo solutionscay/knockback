@@ -268,7 +268,7 @@ export class Game {
     this.checkins.delete(round);
   }
 
-  /** Live: a check-in answer became a plan update (#8); the engine applies it at its tick. */
+  /** Live: a check-in answer became a plan update (#8); the sim applies it at its tick. */
   pushPlanUpdate(round: number, raw: unknown) {
     const u = sanitizePlanUpdate(raw);
     if (!u || !Number.isInteger(round)) return;

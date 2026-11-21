@@ -1,13 +1,11 @@
 /**
  * Contract 1: determinism. The same seed, ruleset and plans give the same fight hash, on every run and every machine.
- * A record replays to its recorded state; a record from another engine version is refused, not replayed into a
- * different result.
+ * A record replays to its recorded state; a record that does not is reported, never replayed into a different result.
  *
- * The golden hashes below change only with ENGINE_VERSION (src/sim/engine-version.ts). If a change moves them without
- * a version bump, old records would replay differently: bump ENGINE_VERSION and update the goldens in the same commit.
+ * The golden hashes below move only when the sim changes on purpose. Then update them in the same commit, and say why.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { CLOSE_QUARTERS, ENGINE_VERSION, Fight, FightDivergedError, initPhysics, Match, OtherEngineError, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
+import { CLOSE_QUARTERS, Fight, FightDivergedError, initPhysics, Match, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
 
 beforeAll(async () => {
   await initPhysics();
@@ -21,8 +19,6 @@ const PLANS: Strategy[] = [
 ];
 const UPDATE: PlanUpdate = { tick: 300, fighter: 1, strategy: { target: "strongest", stance: "rush", weapons: ["bat"], line: "" } };
 
-/** The engine these goldens were made with. */
-const GOLDEN_ENGINE = 7;
 const GOLDEN_MATCH_SEED = 7;
 const GOLDEN = {
   fight: "37127b56",
@@ -52,8 +48,7 @@ const fightRecord = (): FightRecord => JSON.parse(JSON.stringify(fightWithUpdate
 const matchRecord = (): MatchRecord => JSON.parse(JSON.stringify(match().record));
 
 describe("determinism", () => {
-  test("golden hashes of the current engine", () => {
-    expect(ENGINE_VERSION).toBe(GOLDEN_ENGINE); // a version bump: update the goldens below
+  test("golden hashes", () => {
     expect(fight(1001).record.finalHash).toBe(GOLDEN.fight);
     expect(fightWithUpdate().record.finalHash).toBe(GOLDEN.fightWithUpdate);
     expect(fight(1001, { ruleset: CLOSE_QUARTERS }).record.finalHash).toBe(GOLDEN.closeQuarters);
@@ -77,20 +72,10 @@ describe("determinism", () => {
     expect(() => replayMatch(bad)).toThrow(ReplayDivergedError);
   });
 
-  test("a match record from another engine is refused", () => {
-    expect(() => replayMatch({ ...matchRecord(), engine: ENGINE_VERSION - 1 })).toThrow(OtherEngineError);
-    const { engine: _drop, ...noEngine } = matchRecord();
-    expect(() => replayMatch(noEngine as MatchRecord)).toThrow(OtherEngineError);
-  });
-
-  test("a fight record from another engine is refused", () => {
-    expect(() => replayFight({ ...fightRecord(), engine: ENGINE_VERSION - 1 })).toThrow(OtherEngineError);
-  });
-
   test("a fight record that does not reach its recorded hash throws instead of returning another hash", () => {
-    // an unstamped record (made before records carried the engine) whose plans no longer give its hash
-    const { engine: _drop, ...old } = fightRecord();
-    old.strategies = old.strategies.map((s) => ({ ...s, stance: s.stance === "rush" ? "hold" : "rush" }));
-    expect(() => replayFight(old)).toThrow(FightDivergedError);
+    // a record whose plans no longer give its hash (a changed sim or a damaged file)
+    const bad = fightRecord();
+    bad.strategies = bad.strategies.map((s) => ({ ...s, stance: s.stance === "rush" ? "hold" : "rush" }));
+    expect(() => replayFight(bad)).toThrow(FightDivergedError);
   });
 });

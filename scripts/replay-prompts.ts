@@ -18,7 +18,7 @@ await initPhysics();
 const rec = JSON.parse(await Bun.file(file).text()) as MatchRecord;
 let m: Match;
 try {
-  m = new Match(rec.seed, { recorded: rec }); // only records of the current engine load
+  m = new Match(rec.seed, { recorded: rec });
 } catch (e) {
   console.error(`${file}: ${e instanceof Error ? e.message : e}`);
   process.exit(1);

@@ -32,7 +32,6 @@ export function computeReport(matches: EvalMatch[]): EvalReport {
   const ai = changeOf(matches, "ai");
   const house = changeOf(matches, "house");
   return {
-    version: 1,
     matches: matches.length,
     houseInAiPlace: !hasHouseSeats(matches),
     rounds: matches.reduce((a, m) => a + m.rounds.length, 0),

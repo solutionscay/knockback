@@ -11,10 +11,10 @@ bun run teaser --seed 42 --fast                       # a quick 720p30 preview o
 
 | Option | Meaning |
 |---|---|
-| `--record <file>` | A saved match record. It must be from this engine version (see [rules.md](rules.md#engine-version)). |
+| `--record <file>` | A saved match record. It must replay on the current sim (see [rules.md](rules.md#replay)). |
 | `--seed <n>` | A house-bot match with this seed. No AI calls. |
 | `--best-of <n>` | Plays n real AI matches headless in parallel (`scripts/ai-match.ts`, default providers), then keeps the one with the most action per fight second. The score weights explosions, chains, platform falls, ring-outs, K.O.s, sudden death and fire. The README lists every candidate. |
-| `--server <url>` | The newest finished record of a match server (`GET /api/records`, skipping old-engine ones) |
+| `--server <url>` | The newest finished record of a match server (`GET /api/records`) |
 | `--out <dir>` | Output folder (default `videos/<seed or source>-<date>`; `videos/` is git-ignored) |
 | `--sizes 1080,720` | Output heights. Capture runs at the largest one, so `--sizes 720` captures and encodes at 720p only. The 720p copy stays under 30 MB: if a quality-based encode is too big, it is redone at the bitrate that fits. |
 | `--fps 30\|60` | Frame rate (default 60) |
@@ -53,7 +53,7 @@ So a slow or network `--out` costs one copy of the results. With the frames on t
 ## How it works
 
 1. **Record:** from the source, saved as `match.json`.
-2. **Sim pass:** the record is replayed in Bun for its dead stretches per round and its event counts. A record from another engine is refused here.
+2. **Sim pass:** the record is replayed in Bun for its dead stretches per round and its event counts. A record that does not replay is refused here.
 3. **Scan:** a private viewer server (the real `index.html` bundle) and one browser page run the whole match without drawing. `__kb.timeline()` gives every beat's first frame and the sim tick at every frame. Then the planner builds the segments.
 4. **Capture:** N pages each take a contiguous chunk of the planned frames. A page fast-forwards to its chunk without drawing, then steps one frame at a time and saves a JPEG (CDP `Page.captureScreenshot`, `optimizeForSpeed`) for each planned frame. The game is deterministic, so every page plays the same match. Each page also keeps the sound cues from the frame after the previous chunk, so frames skipped between chunks keep their sounds.
 5. **Audio:** the cues go onto the output timeline, into the voice limiter, the compressor and the soft limiter, and out as a WAV.

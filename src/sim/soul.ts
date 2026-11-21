@@ -1,5 +1,5 @@
 /**
- * Souls: a fighter's personality lives in a soul file, not in the engine.
+ * Souls: a fighter's personality lives in a soul file, not in the sim.
  * All fighters are physically equal; the soul gives an attitude, how it
  * talks and what it values in a fight. A soul has no name and no look: each
  * match gives every fighter a generated identity (identity.ts, #17). AI fighters read the

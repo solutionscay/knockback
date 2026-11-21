@@ -1,7 +1,7 @@
 /**
  * Round stats: who damaged whom, how, from which side and range; knockouts;
  * pickups; time near each rival; who each fighter chased. Plus one plain
- * sentence per fighter about its round. Built from engine events (no
+ * sentence per fighter about its round. Built from sim events (no
  * randomness), so fighters (and AIs) can look back and re-plan.
  */
 

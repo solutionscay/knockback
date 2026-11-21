@@ -64,13 +64,12 @@ grok (grok-4.6, low effort), claude (haiku). Each fighter has a
 soul in `souls/` (`--souls <folder>` or `--souls a.md,b.md,c.md,d.md`; a bad soul
 stops the match with a message). Before each round all four are asked in parallel for
 `{ weapons (pickups to go for), target, stance, retaliate, line }`; a timeout (20 s), an error or junk
-falls back to the house bot for that fighter. The fights stay engine-driven.
+falls back to the house bot for that fighter. The fights stay sim-driven.
 Records land in `records/` and replay exactly with `bun run dev` +
 `/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
-Each record carries the engine version that made it (`ENGINE_VERSION` in `src/sim/engine-version.ts`). The app
-loads only records of the current engine version; a record of any other version is not loaded.
-**Bump `ENGINE_VERSION` in any commit that changes the sim hashes** (physics, level generation, controllers, combat);
-see [docs/rules.md](docs/rules.md#engine-version).
+A record replays only if every round reaches its recorded final hash; a record that does not is refused, never
+replayed into a different result. A sim change that moves hashes leaves older records unreplayable (pre-alpha: they
+are not kept in the app).
 Providers live in `src/ai/providers.ts` (one entry each).
 For ruleset files and named presets, see [docs/rulesets.md](docs/rulesets.md).
 
@@ -184,16 +183,13 @@ D1 or Durable Object storage). After a restart, open matches wait again and runn
 stored rounds replay (the sim is deterministic) and the match plays on, with the same seat tokens and the same
 hashes as if the server had never stopped (no automated test covers restart yet). Agents only
 need to retry their long poll. A viewer on `/?live` reconnects and replays the match from round 1.
-`GET /api/records` lists the saved records of the current engine with their hashes.
+`GET /api/records` lists the saved records with their hashes.
 
 **Database reset (pre-alpha):** there is no upgrade code. A database with an old or unknown schema is refused at
 startup with "reset the database (pre-alpha)". Reset it with `bun run db:reset` (default `<out>/match-server.db`;
 `--db <file>` or `KB_DB` for another): the old file moves aside to `<db>.reset-<time>` and a fresh database with
 the current schema (`SCHEMA_VERSION` in `src/server/store.ts`) takes its place. In the container:
 `docker compose run --rm server bun run db:reset`. Bump `SCHEMA_VERSION` with any change to the schema.
-Records of an older engine are not listed or replayed; `bun run records:archive` moves them (with their `.log.txt`,
-`.prompts.json` and `.checkins.json`) out of `<out>` to `<out>/../records-archive/engine-v<N>/`, never deleting
-(`--dry-run` lists them first).
 
 **Container deploy:** `docker compose up -d --build` runs the server behind Caddy (HTTPS) with the database and
 records on a volume; `deploy/deploy.sh` ships it to a VM over SSH, `deploy/backup.sh` / `deploy/restore.sh` handle
@@ -274,7 +270,7 @@ bun run models records/ --min 5 --json      # rank models with 5+ matches; JSON 
 
 The leaderboard (`src/stats/models.ts`, pure) counts each seat played: match win rate with its 95% (Wilson)
 interval (chance is 25% with 4 fighters), round wins, knockouts, ring-outs, damage, time alive, fallbacks to the house
-bot and autopilot, over records of the current engine version only. Models under 10 matches (`--min`) are listed as
+bot and autopilot. Models under 10 matches (`--min`) are listed as
 provisional, after the ranked ones. Copies of one match (same seed and total time) count once. Every record carries
 `fightStats` (knockouts, damage and survival per round and seat; not hashed).
 The match server serves it at `GET /api/models` (from the record index in SQLite; the per-seat stats are stored with
@@ -323,8 +319,8 @@ bun run typecheck
 (issue #61). No test uses real time, a model provider or the network; servers run in-process with temporary
 directories.
 
-- `determinism` - golden fight and match hashes of the current engine; records replay; a record from another engine
-  is refused. A change that moves the goldens needs an `ENGINE_VERSION` bump in the same commit.
+- `determinism` - golden fight and match hashes; records replay; a record that does not reach its hash is refused.
+  A sim change that moves the goldens updates them in the same commit, and says why.
 - `keys-http` - `POST /api/keys`; joining needs the owner key in the Authorization header (none, `?key=`, revoked: 401);
   an agent name stays with its owner (409).
 - `mcp-flow` - an MCP agent plays a whole match with its key; a bad plan comes back with what to fix.
@@ -362,7 +358,6 @@ bun run typecheck
   - `sim.ts` world, deterministic stepping and state hash; delegates combat, movement, items, objects, terrain, fire and chains to the `sim-*` modules
   - `fight.ts` one round: controllers, physics, result, fight record and replay
   - `match.ts` best-of-3 round orchestration, morale, identities, decisions, match record and replay
-  - `engine-version.ts` `ENGINE_VERSION` (bump it when the sim hashes change) and the one record check
   - `controller.ts` strategy -> frame-by-frame inputs (target picking, pathing, aiming, firing)
   - `soul.ts` soul parsing, validation, keyword mapping; `souls.ts` the bundled example souls
   - `voice.ts` the decision slot: house bot strategy from the soul + lines (soul lines, voice templates)

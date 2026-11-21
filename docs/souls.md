@@ -130,7 +130,7 @@ Before every round each fighter (AI or house bot) picks:
   - `ignore`: glance back and stay on the plan.
 - **`line`**: what it says.
 
-## Pickup rules (engine)
+## Pickup rules (sim)
 
 - Everyone starts with fists: a weak, short jab with a small shove (3.5 damage). It never runs out and can defend a pickup, but it won't win a round.
 - A fighter carries 2 weapons. A pickup fills an empty (fists) slot first. Otherwise it replaces the weapon not in hand, and the replaced weapon drops into the arena for anyone to grab. Whoever dropped it can't re-grab it for 0.75 s.

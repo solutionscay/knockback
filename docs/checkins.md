@@ -73,7 +73,7 @@ the usual autopilot callout, recorded as phase `checkin` at that tick; the agent
 
 The live stream sends the round's check-in schedule with its decisions, then `checkin` (seats asked),
 `planUpdate`, `checkinEnd` (per seat), `fightTick` (how far the server's sim is, with the lead) and
-`checkinsDone`. The viewer adds each update to the match; the engine applies it at its tick and the thought
+`checkinsDone`. The viewer adds each update to the match; the sim applies it at its tick and the thought
 bubble and plan chip fire then.
 
 The hold rule: the viewer never shows a tick an update could still land on. While a check-in is open, that

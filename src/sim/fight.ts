@@ -11,7 +11,6 @@
  * same plans at the same ticks and needs no AI.
  */
 import { neutralStrategy } from "./bots";
-import { checkRecordEngine, ENGINE_VERSION } from "./engine-version";
 import { TICK_RATE } from "./constants";
 import { resolveRuleset, type Ruleset } from "./ruleset";
 import { Controller } from "./controller";
@@ -54,17 +53,13 @@ export interface PlanUpdate {
 }
 
 export interface FightRecord {
-  /** the engine version that made it (engine-version.ts); not part of any hash */
-  engine?: number;
   ruleset?: Ruleset;
-  /** 5: carries plan updates (`updates`); 4: none. Both replay. */
-  version: 4 | 5;
   /** The seed makes the level too (levelgen.ts); theme/attempt are informational. */
   seed: number;
   level: { theme: string; attempt: number; width: number };
   strategies: Strategy[];
-  /** mid-round plan updates, sorted by tick then fighter (version 5) */
-  updates?: PlanUpdate[];
+  /** mid-round plan updates, sorted by tick then fighter */
+  updates: PlanUpdate[];
   /** State hash every CHECKPOINT_TICKS, for pinpointing a divergence. */
   checkpoints: string[];
   finalHash: string;
@@ -139,7 +134,7 @@ export class Fight {
       c.peers = this.controllers;
       c.setStrategy(this.strategies[i]!, this.sim);
     }
-    this.record = { engine: ENGINE_VERSION, version: 4, ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), checkpoints: [], finalHash: "", ticks: 0 };
+    this.record = { ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s })), updates: this.updates, checkpoints: [], finalHash: "", ticks: 0 };
     for (const u of updates) this.addUpdate(u);
   }
 
@@ -160,8 +155,6 @@ export class Fight {
     let i = this.updates.length;
     while (i > this.nextUpdate && (this.updates[i - 1]!.tick > u.tick || (this.updates[i - 1]!.tick === u.tick && this.updates[i - 1]!.fighter > u.fighter))) i--;
     this.updates.splice(i, 0, copy);
-    this.record.version = 5;
-    this.record.updates = this.updates;
   }
 
   private applyUpdates() {
@@ -334,13 +327,11 @@ export class Fight {
 }
 
 /**
- * Replay a record from its seed, strategies and plan updates. A record stamped by another engine is refused
- * (OtherEngineError), and a replay that does not reach the recorded final hash throws FightDivergedError: a
- * different hash is never returned as if it were the record's.
+ * Replay a record from its seed, strategies and plan updates. A replay that does not reach the recorded final hash
+ * throws FightDivergedError: a different hash is never returned as if it were the record's.
  */
 export function replayFight(record: FightRecord): { finalHash: string; checkpoints: string[]; match: Fight } {
-  if (record.engine !== undefined) checkRecordEngine(record);
-  const m = new Fight(record.seed, record.strategies, { ruleset: resolveRuleset(record.ruleset) }, record.updates ?? []);
+  const m = new Fight(record.seed, record.strategies, { ruleset: resolveRuleset(record.ruleset) }, record.updates);
   m.playToEnd();
   if (record.finalHash && m.record.finalHash !== record.finalHash) {
     const at = record.checkpoints.findIndex((h, i) => m.record.checkpoints[i] !== h);
@@ -350,10 +341,10 @@ export function replayFight(record: FightRecord): { finalHash: string; checkpoin
   return { finalHash: m.record.finalHash, checkpoints: m.record.checkpoints, match: m };
 }
 
-/** A fight record that does not replay to its recorded final hash (an older engine, or a damaged record). */
+/** A fight record that does not replay to its recorded final hash (a changed sim, or a damaged record). */
 export class FightDivergedError extends Error {
   /** the ticks between which the state first differs (null: only the final state differs) */
   constructor(readonly ticks: [number, number] | null) {
-    super(`this fight record does not replay: ${ticks === null ? "the final state differs" : `the state first differs between ticks ${ticks[0]} and ${ticks[1]}`} (made by another engine version, or damaged)`);
+    super(`this fight record does not replay: ${ticks === null ? "the final state differs" : `the state first differs between ticks ${ticks[0]} and ${ticks[1]}`} (made before a sim change, or damaged)`);
   }
 }

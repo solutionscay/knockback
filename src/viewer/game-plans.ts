@@ -43,7 +43,7 @@ export class GamePlans {
     }
   }
 
-  /** Mid-round plan updates (#8, #10): a thought and the chip, when the engine applies them (at their tick). */
+  /** Mid-round plan updates (#8, #10): a thought and the chip, when the sim applies them (at their tick). */
   applyUpdates(match: Match, shown: Fight, decisions: Decision[], clock: number) {
     const ups = match.record.rounds[match.round - 1]?.planUpdates;
     if (!ups) return;

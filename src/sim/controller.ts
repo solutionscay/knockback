@@ -1,7 +1,7 @@
 /**
  * Strategy controller: turns a fighter's round strategy { target preference,
  * stance, weapon preferences, retaliate } into frame-by-frame inputs. The
- * engine does all target picking, pickup hunting, weapon switching, aiming
+ * controller does all target picking, pickup hunting, weapon switching, aiming
  * and movement. Every fighter gets the same controller and the same aim.
  */
 import { length2D } from "./dmath";
@@ -84,7 +84,7 @@ export class Controller {
   }
 
   stanceNow(sim: Sim): Stance {
-    // engine guards first (stalemates), then an active stance rule, then the plan
+    // controller guards first (stalemates), then an active stance rule, then the plan
     if (sim.suddenDeath >= 0 || sim.openingPressure || sim.alive().length === 2) return "rush";
     const s = this.rules.stance() ?? this.strategy.stance;
     const stances = sim.ruleset.tactics.stances;

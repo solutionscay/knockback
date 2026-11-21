@@ -4,7 +4,7 @@ import type { Ruleset } from "../sim/ruleset";
  * provider, remote agent), the loop that scripts/ai-match.ts used to own.
  *
  * Before each round every seat is asked in parallel (decideRound: per-seat
- * deadline, house-bot fallback), the engine plays the round headless at once
+ * deadline, house-bot fallback), the sim plays the round headless at once
  * (deterministic), and the runner emits the same events the viewer's live
  * stream understands (`match`, `decisions`, `done`) plus a `round` summary.
  * The record (seed + every decision) replays with no network.
@@ -120,7 +120,7 @@ export interface RunnerOptions {
 /** A stored round: what decideRound returned for it. */
 export type StoredRound = Pick<RoundAsk, "decisions" | "meta" | "prompts" | "raw"> & { finalHash?: string | null; planUpdates?: PlanUpdate[] | null };
 
-/** Replaying stored rounds did not reproduce the match (a different engine, or a corrupt store). */
+/** Replaying stored rounds did not reproduce the match (a changed sim, or a corrupt store). */
 export class ResumeError extends Error {}
 
 export interface RoundPrompts {
@@ -301,7 +301,7 @@ export class MatchRunner {
       }
     } else if (schedule) await this.fightWithCheckins(round, ask, decidedAt);
     while (!match.step()) {
-      /* the engine plays the round */
+      /* the sim plays the round */
     }
     const f = match.finishRound();
     this.say(`  -> ${names[f.winner]} wins round ${round} after ${f.seconds.toFixed(0)} s (wins ${match.wins.join("-")})`);

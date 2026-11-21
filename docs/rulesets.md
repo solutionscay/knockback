@@ -4,7 +4,6 @@ Classic is the built-in ruleset and the initial default for new server and MCP l
 
 ```json
 {
-  "schemaVersion": 1,
   "weapons": {
     "enabled": ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "hammer"]
   },
@@ -12,13 +11,12 @@ Classic is the built-in ruleset and the initial default for new server and MCP l
 }
 ```
 
-This example removes railgun pickups and doubles the probability of fire spreading between terrain cells per fire step. Engine version 6 uses Classic for records of its own engine version that lack a ruleset. The viewer shows a summary for records made by earlier engines. New records embed the resolved ruleset in full and include the name and version when selected from a preset. Editing a preset or changing the lobby default affects future matches. Replay, the live viewer, and server recovery all use the match's saved settings.
+This example removes railgun pickups and doubles the probability of fire spreading between terrain cells per fire step. Records embed the resolved ruleset in full and include the name and version when selected from a preset. Editing a preset or changing the lobby default affects future matches. Replay, the live viewer, and server recovery all use the match's saved settings.
 
 ## Settings
 
 | Section | Controls |
 | --- | --- |
-| `schemaVersion` | The ruleset format version, currently 1. |
 | `combat` | Fighter dimensions, health, movement, density, impact damage, ring-outs, launch height, weapon switching, and explosion carve scale. |
 | `weapons` | Enabled pickup weapons, weapon stats and effect tuning, including ammo, cooldowns, charge, reach, knockback and spread. Fists are built in. |
 | `pickups` | Enabled power-ups, weighted drops, power-up strengths and durations, and the armory and supply schedule. An empty power-up list turns off power-ups. |
@@ -39,7 +37,7 @@ Times with a `Ticks` suffix count 60 Hz sim ticks. Fire durations `burnMin` and 
 
 The validator reports the offending field for unknown keys, unknown IDs, invalid types, out-of-range values and incompatible settings. Object keys and enabled lists resolve in Classic order so reordering JSON keys or an enabled list preserves seeded draws. Fixed-width arrays such as minimum/maximum pairs replace the entire array. Theme material rows keep their order and repeat entries to give those materials greater weight. JSON numbers parse as finite IEEE 754 binary64 values in both engines. Numeric strings are rejected, negative zero is normalized to zero, and validation does no rounding or decimal conversion. A record serializes those same values back to JSON for exact round trips.
 
-The arena generator still uses the four-seat layout and places fighters and the armory by the existing algorithms. The 60 Hz tick rate, half-meter grid, collision masks and RNG belong to the engine. Broadcast beat durations and server check-in scheduling use their existing configuration.
+The arena generator still uses the four-seat layout and places fighters and the armory by the existing algorithms. The 60 Hz tick rate, half-meter grid, collision masks and RNG belong to the sim. Broadcast beat durations and server check-in scheduling use their existing configuration.
 
 ## Opening layout
 

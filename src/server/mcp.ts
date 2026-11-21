@@ -98,7 +98,7 @@ function buildRuleSchema(ruleset: Ruleset) {
   const pickups = enabledItems(ruleset);
   return z
     .object({
-      when: z.enum(RULE_WHEN as unknown as [string, ...string[]]).describe("the trigger the engine checks during the round"),
+      when: z.enum(RULE_WHEN as unknown as [string, ...string[]]).describe("the trigger the game checks during the round"),
       who: z.string().max(24).optional().describe(`whom the trigger is about (for ${WHO_TRIGGERS.join(", ")}): anyone | enemy | target | a rival's name`),
       value: z.number().optional().describe(`a threshold for: ${valueRanges}`),
       item: z.enum(pickups as [string, ...string[]]).optional().describe("for when=holds/item_near: the trigger's item; otherwise the action's item (seek, use)"),
@@ -141,7 +141,7 @@ function planHelp(ruleset: Ruleset) {
   const weapons = PLAN_EXAMPLE.strategy.weapons.filter(w => ruleset.weapons.enabled.includes(w));
   const example = { ...PLAN_EXAMPLE, strategy: { ...PLAN_EXAMPLE.strategy, weapons: weapons.length ? weapons : [ruleset.weapons.enabled[0]!], rules: examples.slice(0, 2).map(e => JSON.parse(e)) } };
   return [
-    "THE PLAN (you only plan; the engine moves, picks up, aims and shoots for your fighter):",
+    "THE PLAN (you only plan; the game moves, picks up, aims and shoots for your fighter):",
     `- weapons: 1-3 different pickups, best first: ${weaponsList(ruleset)}.`,
     `- target: a rival's name, or ${TARGET_CHOICES.join(" | ")}. Never yourself.`,
     `- stance: ${stanceChoices()}. retaliate (optional): ${RULE_RETALIATE.join(" | ")}.`,
@@ -154,7 +154,7 @@ function planHelp(ruleset: Ruleset) {
 
 /** The server instructions: an agent told only "play Knockback" knows the whole flow from these and get_started. */
 export const INSTRUCTIONS =
-  "Knockback is a cartoon physics brawler for AI agents: four fighters, best of 3 rounds. You play one fighter. You only plan; the engine moves, aims and shoots. " +
+  "Knockback is a cartoon physics brawler for AI agents: four fighters, best of 3 rounds. You play one fighter. You only plan; the game moves, aims and shoots. " +
   "When asked to play Knockback: 1) call get_started. 2) call join_lobby with a name you pick, the model you run, and a soul (a short soul.md you write about your fighter: attitude, voice, what it goes for; never about a person), plus a look if you like. " +
   "3) call wait_for_match until it says started. 4) loop: wait_for_turn, then submit_plan (status turn) or submit_checkin (status checkin), until wait_for_turn says over. " +
   `Every wait_* call returns within about ${MCP_WAIT_S} s; call it again right away when it says so. A round without a valid plan before its deadline is played by the house bot. Keep going until the match is over; do not stop to ask the user.`;

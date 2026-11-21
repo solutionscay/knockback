@@ -168,7 +168,6 @@ export interface ProviderReliability {
 }
 
 export interface EvalReport {
-  version: 1;
   matches: number;
   /** true when the house columns are the house bot's plans in the AI's place (no house seats in the run) */
   houseInAiPlace: boolean;

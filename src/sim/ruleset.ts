@@ -91,7 +91,6 @@ function canonical(base: unknown, value: unknown, path = ""): unknown {
 export function validateRuleset(input: unknown): Ruleset {
   const r = canonical(RULESET_DEFAULTS, input) as Ruleset;
   const require = (ok: boolean, path: string, problem: string) => { if (!ok) throw new RulesetError(path, problem); };
-  require(r.schemaVersion === 1, "schemaVersion", "expected version 1");
   require(r.round.maxRounds <= RULESET_MAX_ROUNDS && r.round.winsToTake <= r.round.maxRounds, "round", `use at most ${RULESET_MAX_ROUNDS} rounds and a win target no larger than maxRounds`);
   require(r.round.finishTicks <= r.round.fightTicks, "round.finishTicks", "must fit inside the fight");
   require(r.zone.boundary.shrinkEndTicks > r.zone.boundary.holdTicks, "zone.boundary.shrinkEndTicks", "must be after holdTicks");

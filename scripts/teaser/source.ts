@@ -23,7 +23,7 @@ export interface MatchFacts {
   score: number;
 }
 
-/** Replay a record in the sim: dead stretches and the action score. Only current-engine records load. */
+/** Replay a record in the sim: dead stretches and the action score. */
 export async function matchFacts(rec: MatchRecord): Promise<MatchFacts> {
   await initPhysics();
   const m = new Match(rec.seed, { recorded: rec });
@@ -83,7 +83,7 @@ export async function getRecord(src: Source, work: string, log: (s: string) => v
       if (!res.ok) throw new Error(`${src.url}/api/records: HTTP ${res.status}`);
       const list = ((await res.json()) as { records?: { path: string; createdAt: number }[] }).records ?? [];
       const newest = list.sort((a, b) => b.createdAt - a.createdAt)[0];
-      if (!newest) throw new Error(`${src.url} has no finished match recorded with this engine yet`);
+      if (!newest) throw new Error(`${src.url} has no finished match recorded yet`);
       const r = await fetch(`${src.url}${newest.path}`);
       if (!r.ok) throw new Error(`${src.url}${newest.path}: HTTP ${r.status}`);
       return { rec: await r.json(), from: `match server ${src.url}, ${newest.path}` };

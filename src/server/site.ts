@@ -11,7 +11,6 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ENGINE_VERSION, isCurrentEngine } from "../sim/engine-version";
 import type { Identity } from "../sim/identity";
 import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
@@ -53,9 +52,9 @@ const str = (v: unknown, max = 200) => (typeof v === "string" ? v.slice(0, max) 
 const int = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : d);
 const SEATS = [0, 1, 2, 3];
 
-/** Summarize a record's JSON (pure: tested). null unless it is a match record of the current engine. */
+/** Summarize a record's JSON (pure). null unless it is a match record. */
 export function summarizeReplay(raw: unknown, match: string, record: string, createdAt: number): ReplaySummary | null {
-  if (!isCurrentEngine(raw)) return null;
+  if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (!Number.isFinite(r.seed) || !Array.isArray(r.rounds)) return null;
   const seed = Number(r.seed) >>> 0;
@@ -415,14 +414,14 @@ export async function siteRoute(server: MatchServer, req: Request, path: string,
     if (req.method !== "GET") throw new HttpError(405, "use GET for /api/replays", undefined, { allow: "GET" });
     const n = Number(url.searchParams.get("limit") ?? "30");
     const b = Number(url.searchParams.get("before"));
-    return json({ engine: ENGINE_VERSION, ...(await pageReplays(server, Number.isFinite(n) ? n : 30, url.searchParams.has("before") && Number.isFinite(b) ? b : undefined)) });
+    return json({ ...(await pageReplays(server, Number.isFinite(n) ? n : 30, url.searchParams.has("before") && Number.isFinite(b) ? b : undefined)) });
   }
   const rp = /^\/api\/replays\/(m_[0-9a-f]{8})$/.exec(path);
   if (rp) {
     if (req.method !== "GET") throw new HttpError(405, "use GET for /api/replays/:id", undefined, { allow: "GET" });
     const sum = await replayOf(server, rp[1]!);
     if (!sum) throw new HttpError(404, `no saved match ${rp[1]}`);
-    return json({ engine: ENGINE_VERSION, replay: sum });
+    return json({ replay: sum });
   }
   const ag = /^\/api\/agents\/([^/]{1,80})$/.exec(path);
   if (ag) {

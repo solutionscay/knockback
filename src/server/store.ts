@@ -10,7 +10,6 @@
  * can implement it; SqliteStore is the bun:sqlite one for local and LAN use.
  */
 import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, type Ruleset } from "../sim/ruleset";
-import { ENGINE_VERSION } from "../sim/engine-version";
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
@@ -115,8 +114,6 @@ export interface RecordRow {
   hashes: string[];
   winner: number;
   createdAt: number;
-  /** engine version that made the record (src/sim/engine-version.ts): reads return only the current one */
-  engine: number;
   /** per-seat model stats for GET /api/models (src/stats/models.ts SeatEntry[] as JSON) */
   stats: string;
 }
@@ -169,9 +166,8 @@ export interface MatchStore {
   upsertPick(p: PickRow): Promise<void>;
   listPicks(matchId: string): Promise<PickRow[]>;
   insertRecord(r: RecordRow): Promise<void>;
-  /** records of the current engine only (ENGINE_VERSION): another version's record is not loaded */
   getRecord(matchId: string): Promise<RecordRow | null>;
-  /** current-engine records, newest first; `before` (ms) pages back through older ones */
+  /** records, newest first; `before` (ms) pages back through older ones */
   listRecords(limit?: number, before?: number): Promise<RecordRow[]>;
   close(): Promise<void>;
 }
@@ -180,7 +176,7 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
@@ -276,7 +272,6 @@ export const SCHEMA = `
     hashes TEXT NOT NULL,             -- JSON string[] (final hash per round)
     winner INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
-    engine INTEGER NOT NULL,          -- ENGINE_VERSION that made the record: only the current one is loaded
     stats TEXT NOT NULL               -- JSON SeatEntry[] (src/stats/models.ts) for GET /api/models
   );
   CREATE TABLE ruleset_presets (
@@ -532,15 +527,15 @@ export class SqliteStore implements MatchStore {
     }));
   }
   async insertRecord(r: RecordRow) {
-    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, engine, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.engine, r.stats);
+    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, stats) VALUES (?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.stats);
   }
   async getRecord(matchId: string) {
-    const r = this.db.query("SELECT * FROM records WHERE match_id = ? AND engine = ?").get(matchId, ENGINE_VERSION) as Row | null;
+    const r = this.db.query("SELECT * FROM records WHERE match_id = ?").get(matchId) as Row | null;
     return r ? recordOf(r) : null;
   }
   async listRecords(limit = 100, before?: number) {
-    if (before !== undefined) return (this.db.query("SELECT * FROM records WHERE engine = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?").all(ENGINE_VERSION, before, limit) as Row[]).map(recordOf);
-    return (this.db.query("SELECT * FROM records WHERE engine = ? ORDER BY created_at DESC LIMIT ?").all(ENGINE_VERSION, limit) as Row[]).map(recordOf);
+    if (before !== undefined) return (this.db.query("SELECT * FROM records WHERE created_at < ? ORDER BY created_at DESC LIMIT ?").all(before, limit) as Row[]).map(recordOf);
+    return (this.db.query("SELECT * FROM records ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map(recordOf);
   }
   async close() {
     this.db.close();
@@ -554,6 +549,5 @@ const recordOf = (r: Row): RecordRow => ({
   hashes: p<string[]>(r.hashes),
   winner: r.winner as number,
   createdAt: r.created_at as number,
-  engine: r.engine as number,
   stats: r.stats as string,
 });

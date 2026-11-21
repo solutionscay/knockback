@@ -1,7 +1,7 @@
 /**
  * Play one AI match with no viewer (used by scripts/ai-eval.ts): ask every
  * seat before each round, play the round, collect prompts, raw answers, a
- * readable log and the eval input. Engine-driven fights; deterministic
+ * readable log and the eval input. Sim-driven fights; deterministic
  * given the decisions.
  */
 import { formatSeconds } from "../format";
@@ -80,7 +80,7 @@ export async function playAiMatch(seed: number, seats: Seat[], souls: Soul[], de
     });
     match.prepareRound(ask.decisions, ask.meta);
     while (!match.step()) {
-      /* the engine plays the round */
+      /* the sim plays the round */
     }
     const f = match.finishRound();
     log.push(`  r${round} -> ${names[f.winner]} wins after ${f.seconds.toFixed(0)} s; ${f.stats.kos.map((k) => `${names[k.victim]} ${k.cause === "ringout" ? "rung out" : "KO"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]}` : ""} (${k.weapon})`).join(", ")}`);

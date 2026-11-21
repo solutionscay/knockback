@@ -1,8 +1,7 @@
 /**
  * /replay/:id (#22): a finished match from its record in the real viewer, with a scrubber (round segments, event
  * pins for ring-outs, K.O.s and the win, in the victim's or winner's color) and 1x / 2x; under it the seat row and
- * beside it the match's lines as the same short feed as /watch, as far as playback has reached. A record from
- * another engine version cannot replay on this physics: the viewer shows its summary card, and nothing else here.
+ * beside it the match's lines as the same short feed as /watch, as far as playback has reached.
  *
  * The timeline comes from the match report (knockout ticks, fight ticks) and the viewer's own beat timing
  * (src/flow/pacing.ts), the same numbers the server paces broadcasts with.
@@ -25,7 +24,7 @@ function replayFeed(rp: ReplayInfo): FeedEntry[] {
 
 export async function replayPage(root: HTMLElement, id: string) {
   mount(root, html`<div class="wrap"><div class="meta">Loading replay ${id}…</div></div>`);
-  // one match by id (#22: every finished match of the current engine is replayable)
+  // one match by id (#22: every finished match is replayable)
   const [one, info] = await Promise.all([getJson<{ replay: ReplayInfo }>(`/api/replays/${encodeURIComponent(id)}`), getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`)]);
   const rp = one.ok ? one.data.replay : undefined;
   if (!info.ok && !rp) return mount(root, html`<div class="wrap"><div class="wbar"><span class="meta">No match ${id}</span></div><a class="btn" href="/replays">All replays</a></div>`);

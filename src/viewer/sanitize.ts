@@ -1,5 +1,4 @@
 import { resolveRuleset, type Ruleset } from "../sim/ruleset";
-import { isCurrentEngine } from "../sim/engine-version";
 /** Untrusted input (record files, the live stream) -> safe decisions and souls. Pure: no DOM, no Pixi. */
 import type { MatchRecord, PlanUpdate, SuitUpEntry } from "../sim/match";
 import { MORALE_STATES } from "../sim/morale";
@@ -172,10 +171,10 @@ export function sanitizeRuleset(raw: unknown): Ruleset | null {
   try { return resolveRuleset(raw); } catch { return null; }
 }
 
-/** Sanitize a whole match record (replay files are untrusted). null unless it is a record of the current engine. */
+/** Sanitize a whole match record (replay files are untrusted). null unless it is a match record. */
 export function sanitizeRecord(rec: unknown): MatchRecord | null {
   const r = rec as MatchRecord;
-  if (!r || typeof r !== "object" || !isCurrentEngine(r) || !Number.isFinite(r.seed) || !Array.isArray(r.rounds)) return null;
+  if (!r || typeof r !== "object" || !Number.isFinite(r.seed) || !Array.isArray(r.rounds)) return null;
   const ruleset = sanitizeRuleset(r.ruleset);
   if (!ruleset || r.rounds.length > ruleset.round.maxRounds) return null;
   const souls = sanitizeSouls(r.souls);
@@ -195,8 +194,8 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
       const ds = [0, 1, 2, 3].map((i) => sanitizeDecision({ line: rd.lines?.[i], strategy: rd.strategies?.[i] }, i));
       const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(m?.hedged === true ? { hedged: true } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
       const planUpdates = sanitizePlanUpdates((rd as { planUpdates?: unknown }).planUpdates);
-      // the engine replays planUpdates; the fight's own copy of them is not trusted (and not needed)
-      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: undefined } : rd.fight;
+      // the sim replays planUpdates; the fight's own copy of them is not trusted (and not needed)
+      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: [] } : rd.fight;
       return { ...rd, fight, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}), ...(planUpdates.length ? { planUpdates } : { planUpdates: undefined }) };
     }),
   };

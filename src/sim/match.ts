@@ -12,7 +12,6 @@
  * three rounds can have three different winners), the round-3 winner still
  * takes the match. Winner takes all.
  */
-import { checkRecordEngine, ENGINE_VERSION } from "./engine-version";
 import { Fight, type FightRecord, type FightResult, type PlanUpdate } from "./fight";
 import { CLASSIC, resolveRuleset, type Ruleset } from "./ruleset";
 import { generateLevel, type LevelDef } from "./levelgen";
@@ -47,7 +46,7 @@ export interface DecisionMeta {
   hedged?: boolean;
 }
 
-/** A plan update during a round (#8): applied by the engine at its tick (fight.ts), shown by the viewer (#10). */
+/** A plan update during a round (#8): applied by the sim at its tick (fight.ts), shown by the viewer (#10). */
 export type { PlanUpdate };
 
 /** One fighter's mid-round check-in (#9) and how it went: logged in the round record, never replayed. */
@@ -78,7 +77,7 @@ export interface RoundRecord {
   /** provider/timing per fighter, when decisions came from outside (AI) */
   meta?: DecisionMeta[];
   phase: "intro" | "between";
-  /** mid-round plan updates (#8), sorted by tick then fighter; the engine applies them at their ticks */
+  /** mid-round plan updates (#8), sorted by tick then fighter; the sim applies them at their ticks */
   planUpdates?: PlanUpdate[];
   /** every mid-round check-in and its outcome (#9; log only) */
   checkins?: CheckinMeta[];
@@ -113,8 +112,6 @@ export interface MatchRecord {
   ruleset: Ruleset;
   preset?: string;
   presetVersion?: number;
-  /** engine version that made the record (src/sim/engine-version.ts): only records of the current one load. Not hashed. */
-  engine: number;
   /** the souls that played (personality, voice, lines): a replay needs no files */
   souls: Soul[];
   /** each seat's name and look */
@@ -197,7 +194,6 @@ export class Match {
     readonly seed: number,
     readonly opts: MatchOptions = {},
   ) {
-    if (opts.recorded) checkRecordEngine(opts.recorded); // the one check: another engine's record is not loaded
     this.ruleset = resolveRuleset(opts.recorded ? opts.recorded.ruleset : opts.ruleset);
     this.level = generateLevel(seed, undefined, this.ruleset);
     this.souls = (opts.recorded?.souls ?? opts.souls ?? exampleSouls()).map(soulRecord);
@@ -208,7 +204,7 @@ export class Match {
     this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]), this.ruleset.morale);
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { engine: ENGINE_VERSION, ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), ...((opts.recorded?.suitUp ?? opts.suitUp)?.length ? { suitUp: (opts.recorded?.suitUp ?? opts.suitUp)!.map((e) => ({ ...e })) } : {}), rounds: [], winner: -1, wins: this.wins };
+    this.record = { ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), ...((opts.recorded?.suitUp ?? opts.suitUp)?.length ? { suitUp: (opts.recorded?.suitUp ?? opts.suitUp)!.map((e) => ({ ...e })) } : {}), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {

@@ -98,7 +98,7 @@ function renderBoard(el, data, opts) {
   el.replaceChildren();
   if (!data.rows.length) { el.append(mk("div", "No finished matches with AI fighters yet. Play one, then come back.", "empty")); return; }
   el.append(boardTable(compact ? data.rows.slice(0, 8) : data.rows, compact, data.minMatches, data.chance));
-  el.append(mk("div", data.matches + " match" + (data.matches === 1 ? "" : "es") + " on engine v" + data.engine + ". Match win rate per seat played; chance is " + Math.round(data.chance * 100) + "% with 4 fighters. ± is the 95% interval: with few matches it is wide, so rows under " + data.minMatches + " matches are provisional. Self-reported models are what remote agents said at join.", "board-note"));
+  el.append(mk("div", data.matches + " match" + (data.matches === 1 ? "" : "es") + ". Match win rate per seat played; chance is " + Math.round(data.chance * 100) + "% with 4 fighters. ± is the 95% interval: with few matches it is wide, so rows under " + data.minMatches + " matches are provisional. Self-reported models are what remote agents said at join.", "board-note"));
   if (!compact && data.headToHead) {
     const h = h2hTable(data.headToHead, data.rows.map((r) => r.key));
     if (h) { el.append(mk("h2", "Head to head")); el.append(h); el.append(mk("div", "Matches where both models played: how often the row model finished ahead (match winner first, then round wins).", "board-note")); }

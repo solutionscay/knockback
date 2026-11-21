@@ -10,7 +10,7 @@
  *   bun run ai-match --suit-up off         # seeded looks (on by default, #19: each AI chooses its name and look first)
  *        --checkin-cap 60 --checkin-every 10 --checkin-max 8   (seconds; cap = hung-call limit; max = check-ins per seat per round)
  *
- * Before each round all four fighters are asked in parallel; the engine plays
+ * Before each round all four fighters are asked in parallel; the sim plays
  * the round headless at once (it is deterministic), and the decisions are
  * streamed to every connected viewer, which plays the same rounds in real
  * time. The record (seed + all decisions) is saved to records/ and replays

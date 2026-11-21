@@ -29,7 +29,7 @@ export type PowerUp = (typeof POWER_LIST)[number];
 export type ItemType = PowerUp | Weapon;
 /**
  * How a fighter positions itself. #38 adds overwatch (high ground, long gun, shoot whoever is in the open),
- * flank (route around the target) and hold (defend a spot); cover now moves between engine-computed cover spots.
+ * flank (route around the target) and hold (defend a spot); cover now moves between sim-computed cover spots.
  */
 export type Stance = "rush" | "distance" | "cover" | "item" | "overwatch" | "flank" | "hold";
 export type EntityKind = PropKind | "fighter" | "chunk" | "item" | "grenade";
@@ -165,7 +165,7 @@ export interface Powers {
 export interface Fighter {
   id: number;
   name: string;
-  /** cosmetic, from the generated identity (the engine never reads these) */
+  /** cosmetic, from the generated identity (the sim never reads these) */
   color: number;
   look: Look;
   /** weapon pickups this fighter wants, best first (from its strategy) */

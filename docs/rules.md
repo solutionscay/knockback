@@ -68,7 +68,7 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 - **At most 4 rules.** The list order is the priority: the first rule is the most important.
 - **One winner per kind of action.** At any time, at most one rule changes the target (`target` or `avoid`) and at most one changes the stance. The highest active rule wins each. `use`, `seek` and `retaliate` rules can be active alongside them.
 - **Hysteresis:** a rule stays active for at least 1 s (60 ticks) after it starts, and can start again only 1 s after it stops. This stops flicker.
-- **The engine's guards come first:**
+- **The sim's guards come first:**
   - the zone;
   - "unarmed: go for any weapon";
   - the stalemate rules (sudden death and the final duel close in);
@@ -86,12 +86,6 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 
 Match records store fighter identities and plans, including rules. Rules store seat numbers in `who` and the action's item in `doItem`.
 
-### Engine version
+### Replay
 
-Every record carries `engine`: the engine version that made it (`ENGINE_VERSION` in `src/sim/engine-version.ts`).
-
-**The rule:** bump `ENGINE_VERSION` by 1 in the same commit as any change that changes the simulation hashes. Such changes include physics, level generation, controllers, combat and items. The field is not hashed, so the bump itself does not change any hash.
-
-**The one check:** the app loads only records whose `engine` is the current `ENGINE_VERSION` (`isCurrentEngine`). A record of any other version is not loaded: `new Match` with it and `replayMatch` throw `OtherEngineError` before any simulation, the viewer refuses it on screen, and the server leaves it out of `GET /api/records`, `/api/replays` and `/api/models`. There is no fallback and no summary card. A current-engine record still has each round's final state hash checked; a replay that diverges is refused.
-
-After a bump, move the old records out of `records/` (pre-alpha: they are not kept in the app).
+A record replays only when each round reaches its recorded final state hash. A replay that diverges is refused (`ReplayDivergedError` for a match, `FightDivergedError` for a fight). There is no fallback and no summary card. A sim change that moves the hashes leaves older records unreplayable; pre-alpha, they are not kept in the app.

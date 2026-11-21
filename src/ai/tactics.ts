@@ -3,7 +3,7 @@
  * long guns. One builder for every way a fighter is briefed: the round prompt (local AIs and remote/MCP seats get
  * the same prompt), the structured turn context (HTTP and MCP turns) and the mid-round check-in status.
  *
- * Before a round it reads the level as generated (the engine's tactical map: grid + nav graph, no physics). During a
+ * Before a round it reads the level as generated (the sim's tactical map: grid + nav graph, no physics). During a
  * round it reads the live fight (props, broken terrain, positions).
  */
 import { NavGraph } from "../sim/nav";
@@ -44,7 +44,7 @@ export interface LevelTactics {
 
 const cache = new WeakMap<LevelDef, Map<Ruleset, LevelTactics>>();
 
-/** The level's tactical summary, from the engine's tactical map (cached per level and ruleset). */
+/** The level's tactical summary, from the sim's tactical map (cached per level and ruleset). */
 export function levelTactics(level: LevelDef, ruleset: Ruleset = CLASSIC): LevelTactics {
   let byRules = cache.get(level);
   if (!byRules) cache.set(level, (byRules = new Map()));

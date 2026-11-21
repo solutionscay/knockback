@@ -2,7 +2,7 @@
  * A stub match record for viewer work on plan updates and rule firings
  * (#10, #11) and for checking mid-round updates (#8): a house-bot match
  * (house bots carry rules) with many plan updates added to round 1 while it
- * is played, so the engine applies them and the record replays exactly.
+ * is played, so the sim applies them and the record replays exactly.
  * Writes records/stub-plan-updates.json.
  *   bun scripts/stub-record.ts [seed=5] [updates=14]
  *   then: bun run dev, open /?record=/records/stub-plan-updates.json
