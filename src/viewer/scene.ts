@@ -3,7 +3,8 @@
  * World units are meters with y up; the world container maps (x, y) to (x, -y).
  */
 import { Container, Graphics, Rectangle, type Application } from "pixi.js";
-import type { Entity, Sim, SimEvent } from "../sim/sim";
+import type { Sim } from "../sim/sim";
+import type { Entity, SimEvent } from "../sim/sim-types";
 import type { Callout } from "./callouts";
 import { PALETTES } from "./palette";
 import { SceneCamera, type CameraFrame } from "./scene-camera";
@@ -16,7 +17,6 @@ import { ChainView } from "./chains";
 import { FireView } from "./fire";
 import { TerrainView } from "./terrainview";
 
-export type { CamMode } from "./scene-camera";
 
 interface Xform {
   x: number;

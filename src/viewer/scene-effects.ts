@@ -1,5 +1,7 @@
 import { Container, Graphics, Text } from "pixi.js";
-import { clamp, type Sim, type SimEvent } from "../sim/sim";
+import { type Sim } from "../sim/sim";
+import { clamp } from "../sim/dmath";
+import { type SimEvent } from "../sim/sim-types";
 import { Fx } from "./fx";
 import { POWER_COLOR, WEAPON_ACCENT, type Palette } from "./palette";
 import type { CameraFrame, SceneCamera } from "./scene-camera";

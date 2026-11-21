@@ -25,7 +25,6 @@ export const MORALE_STATES: readonly MoraleState[] = ["cocky", "confident", "rat
  * Behavior nudges. Kept small on purpose (batch stats check they do not
  * dominate win rates). aim multiplies the fighter's aim noise.
  */
-export { MORALE_EFFECT } from "./ruleset-defaults";
 
 export type HumiliationKind = "own-explosive" | "bat-ringout" | "hook-ringout" | "crushed" | "barrel";
 

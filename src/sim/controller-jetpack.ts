@@ -1,7 +1,8 @@
 import { DT } from "./constants";
 import { clamp } from "./dmath";
 import type { Surface } from "./nav";
-import type { Fighter, Input, Sim } from "./sim";
+import type { Sim } from "./sim";
+import type { Fighter, Input } from "./sim-types";
 
 type Point = { x: number; y: number };
 type Flight = { x: number; y: number; edge: number; until: number; crossedLip: boolean };

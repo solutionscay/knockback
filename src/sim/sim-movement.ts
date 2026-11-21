@@ -1,7 +1,8 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { DT, G, groups } from "./constants";
 import type { Sim } from "./sim";
-import { ALL_WEAPONS, type Entity, type Fighter, type Input, type Look } from "./sim-types";
+import { ALL_WEAPONS, type Entity, type Fighter, type Input } from "./sim-types";
+import { type Look } from "./identity";
 import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
 

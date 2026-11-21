@@ -1,10 +1,12 @@
 import { Container, Graphics } from "pixi.js";
-import type { Entity, Fighter, Sim } from "../sim/sim";
+import type { Sim } from "../sim/sim";
+import type { Entity, Fighter } from "../sim/sim-types";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
 import { dcos, dsin } from "../sim/dmath";
 import { CELL } from "../sim/grid";
-import { drawArm, drawBody, drawFeet, drawHand, FEET_OVERLAP_PX, FEET_Y, FOOT_X, headTopAt, K, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, hash, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
+import { drawArm, drawBody, drawFeet, drawHand, FEET_OVERLAP_PX, FEET_Y, FOOT_X, headTopAt, K, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
+import { hash } from "./hash";
 import { POWER_COLOR, WEAPON_ACCENT } from "./palette";
 import { pixiPen } from "./pixiPen";
 import { drawWeapon } from "./props";

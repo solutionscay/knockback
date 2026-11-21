@@ -17,7 +17,7 @@ import { CLASSIC, resolveRuleset, type Ruleset } from "./ruleset";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
-import type { SimEvent, Strategy } from "./sim";
+import type { SimEvent, Strategy } from "./sim-types";
 import { assignIdentities, sanitizeIdentity, type Identity, type IdentityWish } from "./identity";
 import { soulRecord, TEMPERAMENT_MORALE, type Soul } from "./soul";
 import { exampleSouls } from "./souls";
@@ -47,7 +47,6 @@ export interface DecisionMeta {
 }
 
 /** A plan update during a round (#8): applied by the sim at its tick (fight.ts), shown by the viewer (#10). */
-export type { PlanUpdate };
 
 /** One fighter's mid-round check-in (#9) and how it went: logged in the round record, never replayed. */
 export interface CheckinMeta {

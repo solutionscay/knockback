@@ -4,7 +4,7 @@
  * misses, latency, prompt size and an estimated token count).
  */
 import type { CheckinMeta, MatchRecord } from "../sim/match";
-import type { Strategy } from "../sim/sim";
+import type { Strategy } from "../sim/sim-types";
 
 const tgt = (s: Strategy, names: string[]) => (s.target === "grudge" && s.grudge !== undefined ? names[s.grudge]! : s.target);
 

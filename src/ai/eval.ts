@@ -11,15 +11,12 @@
  * report "n/a".
  */
 import type { Match } from "../sim/match";
-import type { Strategy } from "../sim/sim";
+import type { Strategy } from "../sim/sim-types";
 import { checkFactsFromStats } from "./factcheck";
 import { changeOf, factsOf, followsOf, hasHouseSeats, looksOf, reliabilityOf, resultsOf, rulesOf, varietyOf, whyOf } from "./eval-metrics";
 import { NA, type EvalMatch, type EvalReport } from "./eval-types";
 import { checkinStats } from "./checkin-log";
 
-export * from "./eval-types";
-export { changeOf, factsOf, followsOf, hasHouseSeats, looksOf, quantile, reliabilityOf, resultsOf, rulesOf, targetLabel, variety, varietyOf, whyOf } from "./eval-metrics";
-export * from "./eval-report";
 
 /** The whole report. Pure. */
 /** Plan updates from check-ins per round (#9), over the rounds that had check-ins on; n/a when none did. */

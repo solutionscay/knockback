@@ -10,7 +10,8 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { DT, G, groups, type Blast } from "./constants";
 import { Mat, type Grid } from "./grid";
-import { generateLevel, type LevelDef, type PropKind } from "./levelgen";
+import { generateLevel, type LevelDef } from "./levelgen";
+import { type PropKind } from "./level-config";
 import { NavGraph } from "./nav";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { Rng } from "./rng";
@@ -24,16 +25,14 @@ import { crumbleUnder, flushTerrain } from "./sim-terrain";
 import { buildChains, updateChains, type Chain } from "./sim-chains";
 import { updateFire } from "./sim-fire";
 import { type CellFire } from "./sim-ignite";
-import { ALL_WEAPONS, LIMITED_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type Look, type Mine, type Rocket, type SimEvent, type Weapon } from "./sim-types";
+import { ALL_WEAPONS, LIMITED_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type Mine, type Rocket, type SimEvent, type Weapon } from "./sim-types";
+import { type Look } from "./identity";
 import { updateMines } from "./sim-mines";
 import { updateRockets } from "./sim-weapons";
 import { SimZone, zoneHalfAt, zonePush } from "./sim-zone";
 import { bodyHeights, TacticalMap } from "./tactical";
 import { Terrain } from "./terrain";
 
-export { clamp } from "./dmath";
-export * from "./sim-types";
-export { zoneHalfAt } from "./sim-zone";
 
 let rapierReady: Promise<void> | null = null;
 export function initPhysics(): Promise<void> {

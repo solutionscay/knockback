@@ -1,7 +1,8 @@
 import { length2D } from "./dmath";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { traceRail } from "./rail-terrain";
-import { isPrecision, type Fighter, type Input, type Sim, type Weapon } from "./sim";
+import { type Sim } from "./sim";
+import { isPrecision, type Fighter, type Input, type Weapon } from "./sim-types";
 
 export function sightTarget(sim: Sim, me: Fighter, aimTarget: Fighter, mp: ReturnType<Sim["pos"]>) {
   const atp = sim.pos(aimTarget);

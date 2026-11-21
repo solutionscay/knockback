@@ -2,7 +2,8 @@ import { arenaQuarter } from "./level-spawns";
 import type { Controller } from "./controller";
 import type { Link, Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
-import { POWER_LIST, type Fighter, type Input, type Sim, type Weapon } from "./sim";
+import { type Sim } from "./sim";
+import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
 import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } from "./tactical";
 
 export interface Goal {

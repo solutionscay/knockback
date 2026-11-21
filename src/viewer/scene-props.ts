@@ -1,5 +1,6 @@
 import { Container, Graphics } from "pixi.js";
-import type { Entity, Sim } from "../sim/sim";
+import type { Sim } from "../sim/sim";
+import type { Entity } from "../sim/sim-types";
 import type { Fx } from "./fx";
 import type { Palette } from "./palette";
 import { drawProp as drawPropShape } from "./props";

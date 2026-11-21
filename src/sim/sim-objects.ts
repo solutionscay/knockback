@@ -3,7 +3,7 @@ import { DT, G, groups } from "./constants";
 import type { Sim } from "./sim";
 import { type Entity } from "./sim-types";
 import { dcos, dsin } from "./dmath";
-import { type PropKind } from "./levelgen";
+import { type PropKind } from "./level-config";
 import { randomDrop } from "./sim-items";
 import { damagePiece } from "./sim-terrain";
 

@@ -116,7 +116,6 @@ export function hsl(h: number, s: number, l: number): number {
   return (f(0) << 16) | (f(8) << 8) | f(4);
 }
 
-export { luminance };
 
 /** Hue in degrees (0-360) and lightness (0-1) of 0xrrggbb. */
 export function hueLight(c: number): { h: number; l: number; s: number } {

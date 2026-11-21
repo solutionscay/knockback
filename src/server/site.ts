@@ -14,7 +14,7 @@ import { join } from "node:path";
 import type { Identity } from "../sim/identity";
 import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
-import type { Weapon } from "../sim/sim";
+import type { Weapon } from "../sim/sim-types";
 import { hex, portraitSvg, type Mood } from "../viewer/portrait";
 import { modelOf } from "../stats/models";
 import { HttpError } from "./limits";

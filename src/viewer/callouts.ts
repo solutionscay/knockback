@@ -9,7 +9,7 @@
  *   - nothing shows while suppressed (knockout slow motion, round end);
  *     rule tags queued meanwhile are dropped, thoughts wait
  */
-import type { Rule, Strategy } from "../sim/sim";
+import type { Rule, Strategy } from "../sim/sim-types";
 
 export const CALLOUT = {
   maxVisible: 2,

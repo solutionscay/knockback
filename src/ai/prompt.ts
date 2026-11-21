@@ -10,7 +10,7 @@ import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 import type { LevelDef } from "../sim/levelgen";
 import type { Match } from "../sim/match";
 import type { HitStat, RoundStats } from "../sim/roundstats";
-import type { Strategy, Weapon } from "../sim/sim";
+import type { Strategy, Weapon } from "../sim/sim-types";
 import type { Soul } from "../sim/soul";
 import type { DecideContext } from "../sim/voice";
 import { RULE_STANCES } from "../sim/rules";

@@ -13,7 +13,7 @@ import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
  */
 import { FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import { planKey, type Fight } from "../sim/fight";
-import type { Strategy } from "../sim/sim";
+import type { Strategy } from "../sim/sim-types";
 import type { Soul } from "../sim/soul";
 import { cleanLine, cleanWhy, jsonObjects, parseRules, validatePlan } from "./parse";
 import { RULE_STANCES } from "../sim/rules";

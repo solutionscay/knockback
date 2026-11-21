@@ -1,5 +1,5 @@
 import type RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import type { PropKind } from "./levelgen";
+import type { PropKind } from "./level-config";
 import type { PieceCell } from "./terrain";
 import { generateIdentities, type Look } from "./identity";
 
@@ -311,6 +311,5 @@ export type SimEvent =
  * How a seat looks: its generated identity (identity.ts). Purely visual: all
  * fighters have the same body, speed, health and fists.
  */
-export type { Look };
 /** Looks for a Sim made without any (tests, tools): the identities of seed 0. */
 export const SEAT_LOOKS: Look[] = generateIdentities(0);

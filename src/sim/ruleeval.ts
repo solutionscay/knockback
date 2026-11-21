@@ -9,7 +9,8 @@
 import type { Controller } from "./controller";
 import { isPickupWeapon } from "./sim-types";
 import { hasLongGun, inCover, inOpen } from "./tactical";
-import type { Fighter, ItemType, Retaliate, Rule, Sim, Stance, Weapon } from "./sim";
+import type { Sim } from "./sim";
+import type { Fighter, ItemType, Retaliate, Rule, Stance, Weapon } from "./sim-types";
 
 /**
  *   everyTicks   regular evaluation interval (events also trigger one)
@@ -18,7 +19,6 @@ import type { Fighter, ItemType, Retaliate, Rule, Sim, Stance, Weapon } from "./
  *   ledgeM, barrelM, chaseTicks, hitTicks, itemCost   trigger thresholds
  */
 import { CLASSIC, type Ruleset } from "./ruleset";
-export { RULE_EVAL } from "./controller-tuning";
 
 
 export interface RuleState {

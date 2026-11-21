@@ -14,12 +14,13 @@ import type { Soul } from "../sim/soul";
 import { DT } from "../sim/constants";
 import type { Fight } from "../sim/fight";
 import { Match, type DecisionMeta, type MatchRecord, type SuitUpEntry } from "../sim/match";
-import type { SimEvent } from "../sim/sim";
+import type { SimEvent } from "../sim/sim-types";
 import { VoiceSession, type Decision } from "../sim/voice";
 import { hex } from "./portrait";
 import { sanitizeDecision, sanitizePlanUpdate } from "./sanitize";
-import type { PlanUpdate } from "../sim/match";
-import { Scene, type CamMode } from "./scene";
+import type { PlanUpdate } from "../sim/fight";
+import { Scene } from "./scene";
+import type { CamMode } from "./scene-camera";
 import { celebrateHtml, dialogueHtml, esc, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, renderDialogueLine, renderRoundClock, restart, saveCamera, saveTally, type Hud } from "./game-hud";
 import { GamePlans } from "./game-plans";
 import { ensureModelBadgeCss, modelBadgeHtml } from "./model-badge";
@@ -27,7 +28,6 @@ import { AutopilotTrack, sanitizeControl, sanitizeOne, type ControlView } from "
 
 const SLOW_TIME = 1.6;
 
-export type { Hud } from "./game-hud";
 
 export interface Moment {
   time: number;

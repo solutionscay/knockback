@@ -19,7 +19,6 @@ import { type PropKind, type Theme } from "./level-config";
 import { validateLevel } from "./level-validate";
 import { CLASSIC, RulesetError, type Ruleset } from "./ruleset";
 import { spreadSpawns } from "./level-spawns";
-export { PROP_HALF, THEMES, type PropKind, type Theme } from "./level-config";
 
 export interface PropSpec {
   kind: PropKind;

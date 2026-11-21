@@ -1,10 +1,10 @@
 import { length2D } from "./dmath";
-import type { Fighter, Input, Sim, Weapon } from "./sim";
+import type { Sim } from "./sim";
+import type { Fighter, Input, Weapon } from "./sim-types";
 
 type Point = { x: number; y: number };
 
 import { WALL_PURSUIT } from "./controller-tuning";
-export { WALL_PURSUIT } from "./controller-tuning";
 
 
 export class WallPursuit {

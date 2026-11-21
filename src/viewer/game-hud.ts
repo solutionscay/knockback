@@ -5,12 +5,13 @@ import { TICK_RATE } from "../sim/constants";
 import { type Match } from "../sim/match";
 import type { MoraleState, RoundFacts } from "../sim/morale";
 import { behindHitText, topDamager } from "../sim/roundstats";
-import type { Sim, Strategy } from "../sim/sim";
+import type { Sim } from "../sim/sim";
+import type { Strategy } from "../sim/sim-types";
 import type { Decision } from "../sim/voice";
 import { bestRule, type KoEvent, type RuleFiring } from "./callouts";
 import { hex, portraitSvg } from "./portrait";
 import { modelBadgeHtml } from "./model-badge";
-import type { CamMode } from "./scene";
+import type { CamMode } from "./scene-camera";
 
 const TALLY_KEY = "knockback.tally.v1";
 const CAM_KEY = "knockback.camera.v1";

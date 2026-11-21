@@ -13,7 +13,8 @@ import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, type Ruleset } from "../sim/ru
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
-import type { DecisionMeta, PlanUpdate } from "../sim/match";
+import type { DecisionMeta } from "../sim/match";
+import type { PlanUpdate } from "../sim/fight";
 import type { Decision } from "../sim/voice";
 
 export type MatchStatus = "open" | "running" | "over" | "failed";

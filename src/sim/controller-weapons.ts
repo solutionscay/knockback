@@ -2,7 +2,8 @@ import { ballisticAim, railCanReach, type sightTarget } from "./controller-aim";
 import { length2D } from "./dmath";
 import { Mat } from "./grid";
 import type { Ruleset } from "./ruleset";
-import { isPrecision, usesAmmo, type Fighter, type Input, type Sim, type Weapon } from "./sim";
+import { type Sim } from "./sim";
+import { isPrecision, usesAmmo, type Fighter, type Input, type Weapon } from "./sim-types";
 
 type Point = { x: number; y: number };
 type Sight = ReturnType<typeof sightTarget>;

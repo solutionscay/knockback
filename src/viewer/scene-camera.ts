@@ -1,5 +1,6 @@
 import type { Container } from "pixi.js";
-import { clamp, type Sim } from "../sim/sim";
+import { type Sim } from "../sim/sim";
+import { clamp } from "../sim/dmath";
 import type { XformAt } from "./scene";
 
 /**

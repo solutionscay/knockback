@@ -18,7 +18,9 @@ import type { LevelDef } from "./levelgen";
 import { type FighterRoundFacts, type HumiliationKind, type MoraleState, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
 import { SAMPLE_TICKS, StatsCollector } from "./roundstats";
-import { NO_INPUT, SEAT_LOOKS, Sim, type Look, type SimEvent, type Strategy } from "./sim";
+import { Sim } from "./sim";
+import { type Look } from "./identity";
+import { NO_INPUT, SEAT_LOOKS, type SimEvent, type Strategy } from "./sim-types";
 import { inCover } from "./tactical";
 
 export interface FightOptions {

@@ -1,5 +1,6 @@
 export * from "./constants";
 export * from "./sim";
+export * from "./sim-types";
 export * from "./fight";
 export * from "./match";
 export * from "./morale";

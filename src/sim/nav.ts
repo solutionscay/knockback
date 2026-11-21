@@ -189,4 +189,3 @@ export class NavGraph {
   }
 }
 
-export { CELL };

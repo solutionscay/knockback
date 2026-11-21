@@ -1,6 +1,6 @@
 import type { Fight } from "../sim/fight";
 import type { Match } from "../sim/match";
-import type { SimEvent, Strategy } from "../sim/sim";
+import type { SimEvent, Strategy } from "../sim/sim-types";
 import type { Decision } from "../sim/voice";
 import { CALLOUT, CalloutManager, planChangeText, ruleTagText, targetText, type KoEvent, type RuleFiring } from "./callouts";
 import { esc } from "./game-hud";

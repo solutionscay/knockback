@@ -1,7 +1,7 @@
 /** Placeholder palettes per theme (the art-direction task replaces these). */
 import { contrast, fromOklch, oklch } from "../sim/color";
 import { Mat } from "../sim/grid";
-import type { Theme } from "../sim/levelgen";
+import type { Theme } from "../sim/level-config";
 
 export interface Palette {
   sky: [number, number];

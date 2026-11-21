@@ -7,11 +7,13 @@
 import { formatSeconds } from "../format";
 import { Match, ReplayDivergedError, type MatchRecord } from "../sim/match";
 import { Rng } from "../sim/rng";
-import type { Strategy } from "../sim/sim";
+import type { Strategy } from "../sim/sim-types";
 import { houseStrategy } from "../sim/voice";
 import type { Soul } from "../sim/soul";
 import { decideRound, type Seat } from "./decide";
-import { evalMatchFrom, targetLabel, type EvalMatch } from "./eval";
+import { evalMatchFrom } from "./eval";
+import { targetLabel } from "./eval-metrics";
+import { type EvalMatch } from "./eval-types";
 import type { CheckinConfig } from "./checkin";
 import { playRoundHeadless } from "./round";
 import { MatchRunner } from "./runner";

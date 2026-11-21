@@ -1,5 +1,5 @@
 import type { DecisionMeta } from "../sim/match";
-import type { Strategy } from "../sim/sim";
+import type { Strategy } from "../sim/sim-types";
 
 import type { CheckinMeta } from "../sim/match";
 import type { CheckinStats } from "./checkin-log";

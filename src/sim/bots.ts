@@ -4,7 +4,7 @@
  * seat has an identity. Matches use souls instead (voice.ts houseStrategy).
  */
 import type { Rng } from "./rng";
-import type { Strategy } from "./sim";
+import type { Strategy } from "./sim-types";
 
 type Plan = Omit<Strategy, "line">;
 

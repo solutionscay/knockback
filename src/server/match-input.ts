@@ -4,7 +4,8 @@
  */
 import { cleanLine } from "../ai/parse";
 import type { IdentityWish } from "../sim/identity";
-import { EYES, luminance, MAJOR_MARKS, MIN_LUMINANCE, MINOR_MARKS, SHAPES, validName } from "../sim/identity";
+import { EYES, MAJOR_MARKS, MIN_LUMINANCE, MINOR_MARKS, SHAPES, validName } from "../sim/identity";
+import { luminance } from "../sim/color";
 import { parseSoul } from "../sim/soul";
 import { MODEL_RE } from "../stats/models";
 import { HttpError } from "./limits";

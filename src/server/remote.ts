@@ -16,7 +16,7 @@ import { lastPlanLines, ruleResultLine, whatHappenedLines, weaponHelp, enabledRu
 import { levelTactics, longGunsLastRound } from "../ai/tactics";
 import type { Provider } from "../ai/providers";
 import type { Match } from "../sim/match";
-import type { Strategy } from "../sim/sim";
+import type { Strategy } from "../sim/sim-types";
 import { MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
 import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 

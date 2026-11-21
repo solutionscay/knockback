@@ -4,8 +4,9 @@
  */
 import type { Identity } from "../sim/identity";
 import type { MoraleState } from "../sim/morale";
-import type { Weapon } from "../sim/sim";
-import { drawArm, drawBody, drawHand, drawVisor, faceFor, hash, WEAPON_SCALE, type FaceMood, type Lod } from "./bot";
+import type { Weapon } from "../sim/sim-types";
+import { drawArm, drawBody, drawHand, drawVisor, faceFor, WEAPON_SCALE, type FaceMood, type Lod } from "./bot";
+import { hash } from "./hash";
 import { drawWeapon } from "./props";
 import { SvgPen } from "./svgPen";
 

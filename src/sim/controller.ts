@@ -15,11 +15,9 @@ import type { Surface } from "./nav";
 import { availableRule } from "./rules";
 import { RuleEngine } from "./ruleeval";
 import { inOpen } from "./tactical";
-import { NO_INPUT, isPickupWeapon, isPrecision, type Fighter, type Input, type Sim, type Stance, type Strategy, type Weapon } from "./sim";
+import { type Sim } from "./sim";
+import { NO_INPUT, isPickupWeapon, isPrecision, type Fighter, type Input, type Stance, type Strategy, type Weapon } from "./sim-types";
 
-export { ballisticAim, inReach } from "./controller-aim";
-export type { Goal } from "./controller-navigation";
-export { AIM_NOISE, PATIENCE, PICKUP } from "./controller-tuning";
 
 const NO_FIRE: Input = { ...NO_INPUT };
 

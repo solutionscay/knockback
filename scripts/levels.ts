@@ -7,7 +7,8 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { launchViewerBrowser } from "./viewer-browser";
-import { THEMES, themeFor } from "../src/sim/levelgen";
+import { themeFor } from "../src/sim/levelgen";
+import { THEMES } from "../src/sim/level-config";
 
 const [out = "levels.jpg", ...rest] = process.argv.slice(2);
 let seeds = rest.map(Number);

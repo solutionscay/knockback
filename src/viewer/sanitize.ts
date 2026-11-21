@@ -1,6 +1,7 @@
 import { resolveRuleset, type Ruleset } from "../sim/ruleset";
 /** Untrusted input (record files, the live stream) -> safe decisions and souls. Pure: no DOM, no Pixi. */
-import type { MatchRecord, PlanUpdate, SuitUpEntry } from "../sim/match";
+import type { MatchRecord, SuitUpEntry } from "../sim/match";
+import type { PlanUpdate } from "../sim/fight";
 import { MORALE_STATES } from "../sim/morale";
 import { checkRule, MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES } from "../sim/rules";
 import { isPickupWeapon, MAX_RULES, TARGET_PREFERENCES, type Rule, type Strategy } from "../sim/sim-types";

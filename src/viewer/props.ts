@@ -1,7 +1,7 @@
 /** Placeholder drawings for props, items and weapons (y-down Graphics, meters). */
 import type { Graphics } from "pixi.js";
 import { TNT } from "../sim/constants";
-import type { Entity } from "../sim/sim";
+import type { Entity } from "../sim/sim-types";
 import type { ShapePen } from "./bot";
 import { POWER_COLOR, shade, WEAPON_ACCENT } from "./palette";
 

@@ -80,7 +80,6 @@ export const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n
 export const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
 
 /** The model behind a seat label: the model spotlight's modelOf (src/stats/models.ts). */
-export { modelOf };
 
 // ------------------------------------------------------------------ lobby
 
