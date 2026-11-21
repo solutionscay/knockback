@@ -28,7 +28,6 @@ ENV NODE_ENV=production \
     PORT=5176 \
     KB_OUT=/data/records \
     KB_DB=/data/match-server.db \
-    KB_NO_MATCH=true \
     KB_VERSION=${KB_VERSION}
 USER bun
 VOLUME ["/data"]

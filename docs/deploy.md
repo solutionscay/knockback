@@ -50,7 +50,7 @@ internet ──443/80──> caddy ──http──> server:5176 (not published)
    ```
    The first run uploads the files, creates `/opt/knockback/.env` from the template,
    and stops with exit code 2. On the VM, edit `.env`: set `KB_DOMAIN`, keep the ports
-   80/443 and `KB_OPEN=false`, and set `KB_BACKUP_REMOTE` if there is one. Then run the
+   80/443, and set `KB_BACKUP_REMOTE` if there is one. Then run the
    same command again. It builds, ships the image (about 275 MB unpacked), starts
    both containers, and waits for the healthcheck.
 4. **Check** from anywhere:
@@ -58,9 +58,10 @@ internet ──443/80──> caddy ──http──> server:5176 (not published)
    curl https://kb-staging.example.com/api/health          # {"ok":true,"version":"<git hash>",...}
    # joining needs an owner key: get one (or use the JOIN panel at /lobby#join)
    export KB_KEY=$(curl -s -X POST -H 'content-type: application/json' -d '{"owner":"staging-check"}' https://kb-staging.example.com/api/keys | jq -r .key)
-   bun scripts/remote-agent.ts --server https://kb-staging.example.com --create remote,house,house,house --mode random
+   bun scripts/remote-agent.ts --server https://kb-staging.example.com --mode random --rounds 3
    ```
-   Watch it in a browser at `https://kb-staging.example.com/?live`.
+   Watch it in a browser at `https://kb-staging.example.com/watch`: the Arena runs house bots in every seat, and the
+   agent takes one from the round after it joins.
 5. **Nightly backups:** add a crontab entry for the deploy user:
    ```
    17 3 * * * cd /opt/knockback && deploy/backup.sh >> backups/backup.log 2>&1
@@ -121,22 +122,22 @@ do a first setup there, then restore.
 |---|---|
 | status | `docker compose ps` (the server shows `healthy`); `curl https://$KB_DOMAIN/api/health` |
 | logs | `docker compose logs -f server` / `caddy` (json-file, rotated at 10 MB × 5 per container) |
-| restart | `docker compose restart server` (matches resume) |
+| restart | `docker compose restart server` (the Arena round in progress resumes; agents join again) |
 | stop / start | `docker compose stop` / `docker compose up -d` (data stays on the volumes) |
-| matches, records | `curl https://$KB_DOMAIN/api/matches`, `/api/records` |
+| Arena, rounds, records | `curl https://$KB_DOMAIN/api/queue` (seats, queue, the round on now), `/api/matches`, `/api/records` |
 | disk | `docker system df`; old images: `docker image prune` (keep the previous tag for rollback) |
 
 - **Volumes:** `knockback_kb-data` holds the database and records. `knockback_caddy-data`
   holds the certificates; keep it, or Let's Encrypt rate limits can block new certificates.
   `docker compose down -v` deletes the volumes. Don't run it unless you mean to.
-- **Settings** live in `.env`: `KB_DEADLINE`, `KB_FILL_AFTER`, `KB_OPEN`, `KB_NO_MATCH`.
-  After an edit, run `docker compose up -d`. `KB_OPEN=true` turns off seat tokens: never use it on the internet.
+- **Settings** live in `.env`: `KB_DEADLINE` (seconds per agent turn), `KB_PUBLIC_URL`, `KB_FAST`, `KB_CHECKINS`.
+  After an edit, run `docker compose up -d`.
 
 ## Troubleshooting
 
 - **Certificate not issued:** `docker compose logs caddy`. The DNS record must point to the VM, and ports 80 and 443 must be open in both firewalls.
 - **502 for more than 20 s:** the server isn't healthy. `docker compose ps`, then `docker compose logs --tail 100 server`.
-- **A resumed match failed** (`GET /api/matches/<id>` shows `error`): the stored rounds don't replay with this version, because the simulation changed. Roll back, let the match finish, then upgrade.
+- **A resumed round failed** (`GET /api/matches/<id>` shows `error`): the stored decisions don't replay with this version, because the simulation changed. The Arena goes on with the next round; to keep that round, roll back, let it finish, then upgrade.
 - **Clients get 429:** the per-address limits. Behind Caddy the server takes the client address from `X-Forwarded-For`, and only from Caddy (private addresses).
 
 ## Rehearsal on a Mac (OrbStack)
@@ -144,6 +145,6 @@ do a first setup there, then restore.
 ```sh
 docker compose --env-file my.env up -d --build      # my.env: KB_DOMAIN=localhost, KB_HTTP_PORT=8080, KB_HTTPS_PORT=8443
 export KB_KEY=$(curl -sk -X POST -H 'content-type: application/json' -d '{"owner":"rehearsal"}' https://localhost:8443/api/keys | jq -r .key)
-bun scripts/remote-agent.ts --server https://localhost:8443 --insecure --create remote,house,house,house --mode fixed
+bun scripts/remote-agent.ts --server https://localhost:8443 --insecure --mode fixed --rounds 3
 KB_HOST=local KB_DIR=/tmp/kb-stage KB_PLATFORM=linux/arm64 deploy/deploy.sh   # the whole deploy flow against the local Docker
 ```

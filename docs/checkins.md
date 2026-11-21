@@ -53,8 +53,8 @@ round plan. Invalid, junk, an error or a merge that changes nothing: the plan st
 
 ## Remote agents
 
-HTTP: `GET /api/matches/:id/turn` returns `status: "checkin"` with `round`, `tick`, `msLeft`, `checkin` (the
-status as data), `prompt` and `schema`. Answer with `POST /api/matches/:id/checkin`
+HTTP (the Arena, #64): `GET /api/arena/turn` returns `status: "checkin"` with `round` (the Arena round), `tick`,
+`msLeft`, `checkin` (the status as data), `prompt` and `schema`. Answer with `POST /api/arena/checkin`
 `{ round, tick, keep: true }` or `{ round, tick, stance: "cover", line: "..." }` (or `{ round, tick, answer }`
 with a model's raw reply). An invalid answer is rejected with the problems and may be fixed; the first
 valid answer is final. The check-in stays open (and `/turn` keeps returning it) until it is answered, the

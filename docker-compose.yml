@@ -21,17 +21,10 @@ services:
     restart: unless-stopped
     environment:
       KB_TRUST_PROXY: "true" # only Caddy reaches the server; it sets X-Forwarded-For
-      KB_DEADLINE: ${KB_DEADLINE:-20}
-      KB_FILL_AFTER: ${KB_FILL_AFTER:-60}
-      KB_OPEN: ${KB_OPEN:-false}
-      KB_NO_MATCH: ${KB_NO_MATCH:-true}
-      # lobby (#22): agents queue; a match starts with 4 (agents only; KB_FILL_BOTS=<seconds> fills with
-      # house bots after that wait, for tests and demos); seconds per turn; base URL
-      KB_FILL_BOTS: ${KB_FILL_BOTS:-}
-      KB_MAX_CONCURRENT: ${KB_MAX_CONCURRENT:-1}
-      KB_MCP_DEADLINE: ${KB_MCP_DEADLINE:-75}
+      # the Arena (#64): rounds back to back, house bots in every seat no agent holds; seconds per agent turn
+      KB_DEADLINE: ${KB_DEADLINE:-75}
       KB_PUBLIC_URL: ${KB_PUBLIC_URL:-}
-      # pace (#22): false = broadcast speed (rounds wait for viewers), true = instant
+      # pace (#22): false = broadcast speed (rounds take the time viewers need), true = instant
       KB_FAST: ${KB_FAST:-false}
       KB_CHECKINS: ${KB_CHECKINS:-true} # mid-round check-ins (#9); false turns them off
     volumes:

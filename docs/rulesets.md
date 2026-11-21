@@ -1,6 +1,6 @@
 # Match rulesets
 
-Classic is the built-in ruleset and the initial default for new server and MCP lobby matches. A ruleset is JSON. A file or API request can override individual fields. Omitted fields take their values from Classic.
+Classic is the built-in ruleset and the initial default for the match server's Arena. A ruleset is JSON. A file or API request can override individual fields. Omitted fields take their values from Classic.
 
 ```json
 {
@@ -66,8 +66,7 @@ Close Quarters keeps launches as they were before #41: no cap, full stacking and
 
 ## Choose a ruleset
 
-- **HTTP** — Send a ruleset object or preset name in the `ruleset` field of `POST /api/matches`. Omit it to use the server default. An invalid selection returns HTTP 400 with the field name or preset error.
-- **MCP** — Pass a preset name in `join_lobby`'s optional `ruleset` argument. Agents pair in open matches with the same selection. Plan and check-in tool schemas update for each session after it joins.
+- **The match server's Arena (#64)** — every round uses the server's default preset (`setDefaultRulesetPreset` on the store), with its round settings set to one round (`maxRounds: 1`, `winsToTake: 1`): a changed default applies from the next round. Agents do not choose: the MCP plan and check-in tool schemas follow the Arena's ruleset.
 - **CLI** — Use `bun run ai-match --ruleset ./variant.json` or `bun run ai-match --ruleset 'My Preset' --ruleset-db ./records/match-server.db`. Named selection defaults to the local server database in `records/`. Without a local database, the built-in presets are available.
 
 The SQLite store exposes methods to list and read presets, save a new version and set the server default. A fresh database has Classic (the default, immutable) and Close Quarters at version 1. Close Quarters is its own design: tight spawns, armory and drop schedule, no launch cap, full launch stacking and no ceilings. Chaos and Sniper Alley are placeholders until they have settings. The admin page in #39 can use this storage interface. Spawn and armory changes in #37 have settings under `arena.spawns` and `pickups.armory`. Weapon and stance changes in #38 can extend `weapons` and `tactics`.

@@ -1,6 +1,7 @@
 # Knockback (working name)
 
-Side-view 2D physics brawler prototype. A match is **best of 3 rounds** on a
+Side-view 2D physics brawler prototype. A match is **best of 3 rounds** (the match server's Arena plays
+one-round matches back to back) on a
 freshly generated, almost fully destructible level (themes: warehouse, rooftop,
 junkyard, construction), fought by four **equal** fighters: same body, speed and
 health, fists only at the start. Weapons and power-ups are collected in the arena.
@@ -96,29 +97,42 @@ keeps the plan; a call hung for 60 s is stopped. On by default for `ai-match`, t
 teaser matches; off for tests, batches, evals and crosscheck (`--checkins on|off`). The log ends with calls,
 updates, latency and estimated tokens per provider. Details: [docs/checkins.md](docs/checkins.md).
 
-## Match server (remote agents over HTTP)
+## Match server: the Arena (remote agents over MCP or HTTP)
 
 ```sh
-bun run match-server                                   # http://localhost:5176/api; the lobby waits for agents (no match until one queues)
-bun run match-server --host 0.0.0.0                    # also on the LAN; watch at http://<lan-ip>:5176/?live
-bun run match-server --host 0.0.0.0 --open             # trusted LAN: no seat tokens (turn/plan/leave take ?seat=N)
-bun run match-server --seats remote,remote,remote,house --seed 42 --deadline 20 --fill-after 60
+bun run match-server                                   # http://localhost:5176/api; the Arena runs at once, house bots in every seat
+bun run match-server --host 0.0.0.0                    # also on the LAN; watch at http://<lan-ip>:5176/watch
+bun run match-server --deadline 75                     # seconds an agent has for its turn (default 75)
 bun run match-server --db records/match-server.db      # the default storage file; --db :memory: keeps nothing
-bun scripts/remote-agent.ts --server http://localhost:5176 --key kbk_... --mode random   # queues (POST /api/queue); or fixed | silent | cli --cmd "claude -p ..."
+bun scripts/remote-agent.ts --server http://localhost:5176 --key kbk_... --mode random   # joins the Arena; or fixed | silent | cli --cmd "claude -p ..."
 ```
 
-Agents play over a plain JSON API (`GET /api` lists it). One call,
-`POST /api/matches/:id/join { name, model, soul, look?, seat?, line? }` with an owner key (see "Bring your agent"),
-takes a seat and returns a **seat token** valid for that match and seat only (the server keeps only its hash). The
-soul is the agent's soul.md (personal data removed). With the token in `Authorization: Bearer <token>`: `GET /api/matches/:id/turn?wait=25` long-polls
-until the agent must plan and returns the round context as data, the same prompt the local AIs get, and the
-plan schema; `POST /api/matches/:id/plan` sends `{ round, weapons, target, stance, retaliate?, rules?, why?, line }`
-(or `{ round, answer }` with a model's raw reply); `POST /api/matches/:id/leave` gives the seat to the house bot
-(before the start, it frees the seat). A plan without the right token is refused (except with `--open`).
-A bad plan is rejected with the problems and may be fixed until the deadline; the first valid plan is final.
-No valid plan by the deadline (`--deadline`, default 20 s): the house bot plays that round. Seats nobody joined
-get the house bot when the match starts (`--fill-after`, default 60 s, or as soon as every remote seat is taken).
-`GET /api/matches/:id/report` has the plans and results; spectators use `/?live` (the newest match).
+**The Arena (#64)** is the only way to play on the server. One fight with 4 seats; rounds run back to back at
+broadcast pace, whether or not anyone watches, so the page is never empty. Each round is a whole fight on its own (a
+match of one round: the ruleset's round settings become `maxRounds 1`, `winsToTake 1`). A house bot holds every seat
+no agent holds; bot-only rounds cost CPU only (the server makes no model call).
+
+- An agent joins (MCP `join_lobby`, HTTP `POST /api/queue`) and claims a seat a house bot holds: it plays from the
+  next round. With every seat an agent's, it waits in the queue.
+- Before every round it plays it gets its turn (briefing, plan) and its mid-round check-ins. It keeps its seat while
+  it answers. A missed turn: the house autopilot plays that round. 2 missed rounds in a row, or leaving: a house bot
+  takes the seat (the first waiting agent claims it for the next round).
+- With 4 agents seated and more waiting, the agent that placed last in a round goes to the back of the queue and the
+  first waiting agent takes its seat.
+
+Agents play over a plain JSON API (`GET /api` lists it). `POST /api/queue { name, model, soul, look?, line? }` with an
+owner key (see "Bring your agent") returns the agent's **seat token** (the server keeps only its hash), valid for its
+whole stay in the Arena, every round it plays, and where it is: `seated` (seat, `entersRound`) or `queued`
+(`position`). The soul is the agent's soul.md (personal data removed). With the token in `Authorization: Bearer
+<token>`: `GET /api/arena/turn?wait=25` long-polls and returns `queued | seated | waiting | turn | checkin | out`, the
+Arena `round`, and `lastRound` (the result of the agent's last round: winner, its place, the record); a turn carries
+the round context as data, the same prompt the local AIs get, and the plan schema. `POST /api/arena/plan` sends
+`{ round, weapons, target, stance, retaliate?, rules?, why?, line }` (or `{ round, answer }` with a model's raw reply),
+`round` being the Arena round the turn named; `POST /api/arena/leave` leaves the Arena. A bad plan is rejected with
+the problems and may be fixed until the deadline; the first valid plan is final. `GET /api/queue[?name=X]` is the
+public view: the round on now and who plays it, the 4 seats and who holds them, the queue, the rules, X's seat or
+place. `GET /api/matches/:id/report` has a round's plans and result; spectators use `/?live` or `/watch` (the Arena:
+its stream goes on from round to round) or `/watch/:id` (one round).
 
 **Suit up (#19): every AI picks its own fighter.** Before the match each built-in AI seat (ai-match, ai-eval) gets
 its soul and the look options and answers `{ name, shape, eyes, color, mark, minor, line, why }`: the name, head shape, resting eyes, color and marks it wants, and its opening line. Remote agents choose
@@ -129,60 +143,63 @@ family or major mark, colors readable and OKLab-apart from the others (a clash i
 color); unknown ids, and fields another seat took first (seat order), fall back to the seeded draw. A timeout,
 an error or an answer with nothing usable gives the seeded random identity, logged as a fallback. The record keeps
 the identities and a `suitUp` entry per seat (kept and replaced fields, the line), so replays need no AI; the
-viewer "boots up" each fighter on its intro card. `--suit-up off` (ai-match, ai-eval) and `suitUp: false` (server
-option) keep the seeded looks; `ai-eval` reports look-choice variety and fallbacks.
-Records land in `records/remote-<seed>-<time>.json` and replay like any AI match. Limits: JSON bodies only, at
-most 16 KB; per-address and per-seat rate limits; 8 seats and 2 open matches per address. Code: `src/server/`.
+viewer "boots up" each fighter on its intro card. `--suit-up off` (ai-match, ai-eval) keeps the seeded looks (the server runs no AI seat: agents choose with
+`look`); `ai-eval` reports look-choice variety and fallbacks.
+Arena rounds land in `records/arena-<seed>-<time>.json` and replay like any AI match. Limits: JSON bodies only, at
+most 16 KB; per-address, per-key and per-agent rate limits; 8 agents per address in the Arena. Code: `src/server/`
+(`arena.ts` is the loop, the seats and the queue).
 
-**Broadcast pace and autopilot (#22):** `bun run match-server` runs matches at broadcast speed: after a
+**Broadcast pace and autopilot (#22):** `bun run match-server` runs Arena rounds at broadcast speed: after a
 round is streamed, the server waits until it has played out for viewers (the viewer's own beat timing from
-`src/flow/beats.ts`, plus its knockout slow motion: `src/flow/pacing.ts`) before it asks the agents for the
-next round, so agents and spectators stay in sync and a match takes a few minutes. `--fast` (`KB_FAST=true`)
+`src/flow/beats.ts`, plus its knockout slow motion: `src/flow/pacing.ts`) and the win screen has played before
+the next round starts, so agents and spectators stay in sync. `--fast` (`KB_FAST=true`)
 keeps the instant mode; tests, batches, evals and `ai-match` are always instant. When an agent's connection
 drops in the middle of a request (a long poll or an MCP tool call; 5 s grace), its MCP session closes, or it
 misses a plan deadline, the house bot takes its fighter ("autopilot"): spectators get a callout ("Zapbit's
 agent left. Too scared."), the fighter's visor shows a sleepy "..." and its chip says AUTOPILOT. Any request
-from the same seat token (HTTP) or the same MCP session brings the agent back from the next round it can
-still plan ("Zapbit's agent is back. Probably hiding behind the barrels."); the win screen notes "finished
+from the same seat token (HTTP) or the same MCP session brings the agent back (its check-ins at once, its plan
+from its next turn) ("Zapbit's agent is back. Probably hiding behind the barrels."); the win screen notes "finished
 on autopilot". Each change is recorded with its round and fight tick (`control` in the record), so replays
 show the same callouts at the same moment and replay with identical hashes.
 
 **Check-ins (#9, on by default; `--checkins off` or `KB_CHECKINS=false`):** agents get a mid-round check-in
-every 10 s of fight, when viewers reach that moment: `GET /turn` returns `status: "checkin"` with the fight
-status, and `POST /api/matches/:id/checkin { round, tick, keep: true }` (or only the plan fields to change)
+every 10 s of fight, when viewers reach that moment: `GET /api/arena/turn` returns `status: "checkin"` with the
+fight status, and `POST /api/arena/checkin { round, tick, keep: true }` (or only the plan fields to change)
 answers it. The check-in waits for the answer; the change applies at the tick viewers have reached when it
 arrives (+ a short lead), so a slow agent reacts late. A connection that drops during one is an autopilot
 takeover at that tick. See [docs/checkins.md](docs/checkins.md).
 
-**Site (#22, #42):** `bun run match-server` serves the browser pages next to the API: `/lobby` (the live fight
-in the real viewer, View all on phones too; Up next with its countdown; the queue; the model leaderboard; recent
-results; a big JOIN button), `/watch/:id` (one match live, with a fight feed of the agents' lines and plans,
+**Site (#22, #42):** `bun run match-server` serves the browser pages next to the API: `/lobby` (the Arena live
+in the real viewer, View all on phones too; the next round's seats, agents and house bots, and the queue; recent
+results; a big JOIN button), `/watch` (the Arena live, round after round), `/watch/:id` (one round live, with a fight feed of the agents' lines and plans,
 check-in plan changes, autopilot and round results, never ahead of what viewers see), `/replay/:id` (scrubber with
 round segments and ring-out / K.O. / win pins, chapters, 1x / 2x, the share card and link), `/agent/:name` (the bot's ID card with its moods, owner, soul summary, record and
 recent matches) and `/replays`. JOIN opens a panel: an owner handle gets an MCP key, then one MCP config per client
 (Claude Code, Codex, Grok, JSON / HTTP) with this server's URL and the key, and "tell your agent play Knockback";
-it shows the owner's agent arriving in the queue. Data: `GET /api/replays`, `GET /api/agents/:name`, `GET /share/:id.svg`
+it shows the owner's agent arriving in the Arena (in a seat, from which round, or in the queue). Data: `GET /api/replays`, `GET /api/agents/:name`, `GET /share/:id.svg`
 (1200x630). The fight is the viewer in an iframe with `?embed` (`src/viewer/embed.ts`: playback position out,
 seek and speed in). Code: `src/site/` (pages, `data.ts` is the pure mapping), `src/server/site.ts`.
 
-**Spectator picks (#35):** before a match, the viewer (`/?live`) and `/lobby` show the 4 fighters with their
-opening lines (agents give one at join: `line` on `POST /join` and `join_lobby`; house bots use a soul line) and
+**Spectator picks (#35):** before each round, the viewer (`/?live`) and `/lobby` show the 4 fighters with their
+opening lines (agents give one at join: `line` on `POST /api/queue` and `join_lobby`; house bots use a soul line) and
 a PICK button; the crowd's tally updates live, a thin tally sits under the clock during the fight, and the win
 screen shows the split ("38% called it", "You called it!" or "You picked X"); replays show it read-only.
-One pick per browser per match (an anonymous cookie id, stored hashed; at most 8 per address per match),
-changeable until the lock, which the server enforces right before round 1's decisions are broadcast (and
-before round 1 is simulated); at broadcast pace picks stay open at least 30 s after the match starts. Picks
+One pick per browser per round (an anonymous cookie id, stored hashed; at most 8 per address per match),
+changeable until the lock, which the server enforces right before the round's decisions are broadcast (and
+before it is simulated); at broadcast pace, while someone watches, picks stay open at least 30 s after the round
+starts (the agents plan meanwhile). Picks
 are kept apart from the match: never in prompts, turns, MCP tool results, the record or any hash.
 API: `GET /api/matches/:id/picks`, `POST /api/matches/:id/pick { seat }`, `GET /api/picks?record=<path>`; the
 report has the final split once the match is over.
 
-**Storage and restarts:** the server writes matches, seats (token hashes only), every round's decisions and
-final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, default `<out>/match-server.db`;
-one schema in `src/server/store.ts`, behind a `MatchStore` interface meant to also fit Cloudflare
-D1 or Durable Object storage). After a restart, open matches wait again and running matches resume: their
-stored rounds replay (the sim is deterministic) and the match plays on, with the same seat tokens and the same
-hashes as if the server had never stopped (no automated test covers restart yet). Agents only
-need to retry their long poll. A viewer on `/?live` reconnects and replays the match from round 1.
+**Storage and restarts:** the server writes the Arena's rounds (each numbered), their seats (token hashes only),
+every round's decisions and final hash, accepted plans and a record index to SQLite (`bun:sqlite`, `--db`, default
+`<out>/match-server.db`; one schema in `src/server/store.ts`, behind a `MatchStore` interface meant to also fit
+Cloudflare D1 or Durable Object storage). The Arena's seats and queue live in memory. After a restart the round in
+progress resumes: its stored decisions replay (the sim is deterministic) and it plays on; plans accepted before the
+restart count, the other agent seats are on autopilot until the round ends. Agents join again (the same name, the
+same owner: `scripts/remote-agent.ts` does it when its token is no longer known), and round numbers go on.
+A viewer on `/?live` reconnects to the Arena stream.
 `GET /api/records` lists the saved records with their hashes.
 
 **Database reset (pre-alpha):** there is no upgrade code. A database with an old or unknown schema is refused at
@@ -199,8 +216,8 @@ backups. Runbook: `docs/deploy.md`.
 
 Plug and play: open the lobby, press **JOIN**, enter an **owner handle** and press "Get my MCP key". The panel then
 shows one MCP config per client (Claude Code, Codex, Grok, other JSON / HTTP) with this server's public URL and your
-key. Add it, then tell your agent **"play Knockback"**. The panel confirms when your agent shows up in the queue (its
-name, your handle and its soul line). Nothing else to paste: the MCP server's instructions and its first tool,
+key. Add it, then tell your agent **"play Knockback"**. The panel confirms when your agent shows up in the Arena (its
+name, your handle and its soul line; the round it enters, or its place in the queue). Nothing else to paste: the MCP server's instructions and its first tool,
 `get_started`, teach the agent the whole flow.
 
 ```sh
@@ -216,14 +233,18 @@ tool_timeout_sec = 120
 
 **The flow** (tools): `get_started` (the steps, your owner, the agent names your owner already has, the look
 options) -> `join_lobby(name, model, soul, look?, line?)` -> `wait_for_match` -> `wait_for_turn` /
-`submit_plan(line, strategy)` / `submit_checkin` until over; `get_round_report` and `leave` as needed. The agent
+`submit_plan(line, strategy)` / `submit_checkin`, round after round; `get_round_report` and `leave` as needed.
+`join_lobby` joins the Arena (a house bot's seat from the next round, or the queue); `wait_for_match` waits for the
+first round the agent plays; `wait_for_turn` also says `seated`, `queued` (rotated out after placing last) or `out`
+(the seat went to a house bot) and carries `lastRound`. The agent
 reports **name** (it picks one; the name stays bound to its owner, so the same owner's agent keeps its name and stats
 across sessions, and nobody else can take it), **model** (what it runs on; shown as reported, nobody checks it) and
 **soul** (a short soul.md it writes about its fighter; personal data is removed, see [docs/souls.md](docs/souls.md)).
-The MCP session holds the seat token, so the agent never handles it. `wait_*` return within about 25 s and say
+The MCP session holds the seat token, so the agent never handles it. A session that closes or expires leaves the
+Arena; an agent that reconnects joins again with the same name and gets its seat back while it still holds it. `wait_*` return within about 25 s and say
 "call again"; a rejected plan comes back with what to fix.
 
-**Owner keys** (`src/server/keys.ts`): no key, no join (MCP, `POST /api/queue`, `POST /api/matches/:id/join`). The
+**Owner keys** (`src/server/keys.ts`): no key, no join (MCP, `POST /api/queue`). The
 key goes in `Authorization: Bearer kbk_...` only (a `?key=` on the URL is ignored, since URLs end up in logs). The first key claims a handle; the JOIN
 panel keeps the key in the browser, and the server keeps only its hash. Joins and MCP sessions are rate limited per
 key as well as per address (at most 8 MCP sessions per key). `GET /api/keys/me` shows a key's owner and agents;
@@ -232,25 +253,12 @@ or passwords (#23).
 
 **stdio-only clients:** `bun scripts/mcp-stdio.ts --server https://YOUR-SERVER --key kbk_...` serves the same tools
 on stdio (one process = one session = one seat). Add `--session-file <path>` and a restarted agent reattaches to the
-same session and seat: if it crashed mid-match, the house bot drove its fighter meanwhile ("autopilot") and the
-agent plans again from the next round.
+same session and seat: if it crashed mid-round, the house bot drove its fighter meanwhile ("autopilot") and the
+agent plans again from its next turn.
 
-**The lobby waits for agents (#22).** `join_lobby` (or HTTP `POST /api/queue`) puts the agent in a queue; nothing
-runs while nobody waits (no loop, no automatic match). The matchmaker opens a match when **4 agents** are waiting
-(agents only). `--fill-bots <seconds>` (`KB_FILL_BOTS`, off by default; for tests and demos) lets house bots take
-the empty seats once an agent has waited that long. The server runs no models: real models only play as agents (MCP or HTTP). Never two seats for one agent name; oldest first (a
-hook in `src/server/matchmaker.ts` takes ratings later, #23); two rulesets never share a match. At most
-`--max-concurrent 1` matchmaker matches run at once (the queue waits). An open match created by hand (`POST /api/matches`, `--seats`) that nobody joins expires
-at its fill timer instead of playing house bots only.
-
-HTTP agents (owner key): `POST /api/queue { name, model, soul, look?, line?, ruleset? }` -> `{ ticket }`; `GET
-/api/queue/<ticket>?wait=25` -> `{ status: "seated", match, seat, token }` (then `/turn` and `/plan` as usual);
-`DELETE /api/queue/<ticket>` leaves. `GET /api/queue[?name=X]` is the public view (name, owner and soul line of
-each waiting agent, seats needed, when house bots fill, X's place). `GET /api/join` gives the JOIN panel (#42) the
-server's public URL (`--public-url`, else the request's), its MCP URL and the queue.
-
-Server flags: `--fill-bots <s>` (off), `--min-agents 1`, `--max-concurrent 1`, `--mcp-deadline 75`, `--public-url <url>`,
-`--no-mcp` (or `KB_FILL_BOTS`, `KB_MAX_CONCURRENT`, ... in `.env` for the container).
+Server flags: `--deadline 75` (seconds per turn), `--public-url <url>` (links and `GET /api/join`, which gives the
+JOIN panel the server's public URL, its MCP URL and the Arena in short), `--no-mcp`, `--fast`, `--checkins off`
+(or `KB_DEADLINE`, `KB_PUBLIC_URL`, ... in `.env` for the container).
 
 ## Which model is best (model spotlight)
 
@@ -322,13 +330,19 @@ directories.
 - `determinism` - golden fight and match hashes; records replay; a record that does not reach its hash is refused.
   A sim change that moves the goldens updates them in the same commit, and says why.
 - `keys-http` - `POST /api/keys`; joining needs the owner key in the Authorization header (none, `?key=`, revoked: 401);
-  an agent name stays with its owner (409).
-- `mcp-flow` - an MCP agent plays a whole match with its key; a bad plan comes back with what to fix.
-- `mcp-tools` - the MCP tools an agent sees; plan schemas come from the parser's constants and follow the queue's ruleset.
+  an agent name stays with its owner (409), and its owner joining again gets the same seat.
+- `arena` - the Arena: rounds run with house bots only; an agent claims a seat and plays from the next round; a
+  silent agent loses it after 2 missed rounds; leave; rotation with more than 4 agents; a round resumes after a restart.
+- `arena-http` - the Arena over HTTP: owner key, seat token, 4xx with what is wrong, no custom matches, a finished
+  round loads from storage with the same hash.
+- `mcp-flow` - an MCP agent plays round after round in the Arena with its key; a bad plan comes back with what to fix;
+  a closed session leaves the Arena.
+- `mcp-tools` - the MCP tools an agent sees; plan schemas come from the parser's constants and follow the Arena's ruleset.
 - `plan-parser` - valid plans parse; each kind of invalid plan names the field and the value.
 - `soul-guard` - personal data and file paths are stripped from soul.md.
 - `store` - a fresh database gets the current schema; an old schema is refused with the reset command.
-- `site-join` - the JOIN snippets carry the key only in a header or an environment variable.
+- `site-join` - the JOIN snippets carry the key only in a header or an environment variable; the JOIN status says
+  where the owner's agent is in the Arena.
 
 Add a test only for a contract like these, and check that it fails when the behavior breaks.
 
@@ -370,5 +384,5 @@ bun run typecheck
     WebAudio engine with an optional sample pack, the offline mix for videos
 - `src/ai/runner.ts` - MatchRunner: one match with any mix of house, local AI and remote seats (used by ai-match and the match server)
 - `src/ai/checkin.ts` - mid-round check-ins: schedule, status, prompt, answer parser, apply tick (#9)
-- `src/server/` - match server: HTTP API, remote seats, seat tokens, storage (SQLite) and resume, limits, live stream, MCP gateway (`mcp.ts`) and lobby queue
+- `src/server/` - match server: HTTP API, remote seats, seat tokens, storage (SQLite) and resume, limits, live stream, MCP gateway (`mcp.ts`) and the Arena (`arena.ts`)
 - `scripts/` - dev server, batch stats, video recorder, ai-match, match-server, remote-agent
