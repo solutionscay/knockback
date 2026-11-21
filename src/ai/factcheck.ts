@@ -14,8 +14,8 @@ export interface CheckFacts {
   damage: number[][];
   /** hits from behind: behind[attacker][victim] */
   behind: number[][];
-  /** weapons that did damage: weapons[attacker][victim] (optional: older eval inputs lack it) */
-  weapons?: string[][][];
+  /** weapons that did damage: weapons[attacker][victim] */
+  weapons: string[][][];
 }
 
 export type ClaimKind = "knockout" | "back" | "hit" | "weapon";
@@ -52,7 +52,6 @@ export function checkLine(line: string, me: number, names: string[], f: CheckFac
   if (!claims.length) return { checked: false, mismatches: [] };
   const out: Mismatch[] = [];
   for (const c of claims) {
-    if (c.kind === "weapon" && !f.weapons) continue;
     // a possessive ("Zapko's rocket") belongs to the name right before it; otherwise the nearest name before, else after
     const before = mentions.filter((x) => x.at < c.at).sort((a, b) => b.at - a.at)[0];
     const after = mentions.filter((x) => x.at > c.at).sort((a, b) => a.at - b.at)[0];
@@ -64,10 +63,10 @@ export function checkLine(line: string, me: number, names: string[], f: CheckFac
           ? (f.behind[who]?.[me] ?? 0) > 0
           : c.kind === "hit"
             ? (f.damage[who]?.[me] ?? 0) > 0
-            : (f.weapons![who]?.[me] ?? []).includes(c.weapon!);
+            : (f.weapons[who]?.[me] ?? []).includes(c.weapon!);
     if (fits) continue;
     const ko = f.kos.find((k) => k.victim === me);
-    const used = f.weapons ? ` with ${(f.weapons[who]?.[me] ?? []).join(", ") || "nothing"}` : "";
+    const used = ` with ${(f.weapons[who]?.[me] ?? []).join(", ") || "nothing"}`;
     out.push({
       claim: `${c.kind}${c.weapon ? ` (${c.weapon})` : ""} by ${names[who]}`,
       facts: `${names[who]} dealt ${Math.round(f.damage[who]?.[me] ?? 0)}${used} (${f.behind[who]?.[me] ?? 0} hits from behind); ${ko ? `knocked out by ${ko.by >= 0 ? names[ko.by] : "the level"} (${ko.weapon})` : "not knocked out"}`,

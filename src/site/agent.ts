@@ -18,7 +18,7 @@ interface Profile {
   signature: string;
   stats: { matches: number; won: number; lost: number; rounds: number; roundsWon: number; planChanges: number; autopilot: number };
   style: { stance: string | null; target: string | null; weapon: string | null };
-  matches: { match: string; seat: number; status: string; createdAt: string; fighter: string | null; place: number | null; wins: number[] | null; theme: string; record: string | null; old: boolean; rivals: { name: string; identity: Identity | null }[]; autopilot: boolean }[];
+  matches: { match: string; seat: number; status: string; createdAt: string; fighter: string | null; place: number | null; wins: number[] | null; theme: string; record: string | null; rivals: { name: string; identity: Identity | null }[]; autopilot: boolean }[];
   now: { match: string; status: string } | null;
 }
 
@@ -54,7 +54,7 @@ export async function agentPage(root: HTMLElement, name: string) {
                 <td>${cap(m.theme) || "Match"}</td>
                 <td class="dim">${ago(m.createdAt)}</td>
                 <td>${m.wins ? `${m.wins[m.seat]} round${m.wins[m.seat] === 1 ? "" : "s"}` : ""}${m.autopilot ? html` <span class="tag">AUTOPILOT</span>` : ""}</td>
-                <td style="text-align:right">${m.status === "over" ? html`<a class="rp${m.old ? " old" : ""}" href="/replay/${m.match}">${m.old ? "Summary" : "Replay"}</a>` : m.status === "running" || m.status === "open" ? html`<a class="rp" href="/watch/${m.match}">Watch</a>` : ""}</td>
+                <td style="text-align:right">${m.status === "over" ? html`<a class="rp" href="/replay/${m.match}">Replay</a>` : m.status === "running" || m.status === "open" ? html`<a class="rp" href="/watch/${m.match}">Watch</a>` : ""}</td>
               </tr>`,
             )}</tbody></table>`
           : html`<div class="empty">No matches yet.</div>`

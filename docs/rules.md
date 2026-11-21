@@ -84,19 +84,14 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 
 ## Records
 
-**Match records are version 4.** They store fighter identities and plans, including rules. Rules store seat numbers in `who` and the action's item in `doItem`. The reader also accepts the version 2 and 3 schemas.
+Match records store fighter identities and plans, including rules. Rules store seat numbers in `who` and the action's item in `doItem`.
 
 ### Engine version
 
-Every record carries `engine`: the engine version that made it (`ENGINE_VERSION` in `src/sim/engine-version.ts`). A record without the field counts as version 0.
+Every record carries `engine`: the engine version that made it (`ENGINE_VERSION` in `src/sim/engine-version.ts`).
 
 **The rule:** bump `ENGINE_VERSION` by 1 in the same commit as any change that changes the simulation hashes. Such changes include physics, level generation, controllers, combat and items. The field is not hashed, so the bump itself does not change any hash.
 
-Replay checks the engine version first, before any simulation:
+**The one check:** the app loads only records whose `engine` is the current `ENGINE_VERSION` (`isCurrentEngine`). A record of any other version is not loaded: `new Match` with it and `replayMatch` throw `OtherEngineError` before any simulation, the viewer refuses it on screen, and the server leaves it out of `GET /api/records`, `/api/replays` and `/api/models`. There is no fallback and no summary card. A current-engine record still has each round's final state hash checked; a replay that diverges is refused.
 
-- **Same version:** the record replays, and each round's final state hash is still checked. If a replay diverges anyway, the headless verifier refuses it and the viewer shows a divergence warning. This check is the real safety net.
-- **Another version:** the record does not replay. The viewer shows a card, "Recorded with an older engine (vN). This replay can't be shown on the current physics.", with the line-up, the result and the lines from the record (none of these need the simulation). `replayMatch`, `ai-eval --rescore` and `replay-prompts` refuse it with a clear message.
-
-`GET /api/records` and the lobby show each record's engine version and mark old ones.
-
-Version 1 is the engine with the wall generation and combat of #28 and #29 and the breakable chains of #34. Records from before it (version 0) play only with the commit that made them.
+After a bump, move the old records out of `records/` (pre-alpha: they are not kept in the app).

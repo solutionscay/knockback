@@ -25,7 +25,7 @@ function replayFeed(rp: ReplayInfo): FeedEntry[] {
 
 export async function replayPage(root: HTMLElement, id: string) {
   mount(root, html`<div class="wrap"><div class="meta">Loading replay ${id}…</div></div>`);
-  // one match by id, however old (#22: every finished match is replayable)
+  // one match by id (#22: every finished match of the current engine is replayable)
   const [one, info] = await Promise.all([getJson<{ replay: ReplayInfo }>(`/api/replays/${encodeURIComponent(id)}`), getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`)]);
   const rp = one.ok ? one.data.replay : undefined;
   if (!info.ok && !rp) return mount(root, html`<div class="wrap"><div class="wbar"><span class="meta">No match ${id}</span></div><a class="btn" href="/replays">All replays</a></div>`);
@@ -36,7 +36,6 @@ export async function replayPage(root: HTMLElement, id: string) {
   const labels = rp?.labels ?? (info.ok ? info.data.seats.map((s) => s.label ?? "house") : []);
   const w = rp?.winner ?? -1;
   const when = rp ? new Date(rp.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-  const old = rp?.old ?? (info.ok ? !!info.data.recordOld : false);
   const agents = info.ok ? info.data.seats.map((s) => s.agent) : [];
 
   mount(
@@ -45,20 +44,20 @@ export async function replayPage(root: HTMLElement, id: string) {
       <div class="main">
         <div class="wbar"><span class="meta">Replay · ${when}</span><span class="sp"></span><input id="r-link" hidden readonly value="${location.origin}/replay/${id}" /><button class="btn small ghost" type="button" data-copy="#r-link">Copy link</button></div>
         <div class="stage" id="r-stage"><div class="seeking" id="r-seek" hidden>Rewinding…</div></div>
-        ${old ? "" : html`<div class="scrub" id="r-scrub"><button class="play" id="r-play" type="button" aria-label="Pause">❚❚</button><div class="track" id="r-track" role="slider" aria-label="Replay position" tabindex="0"></div><span class="tm" id="r-tm"></span><div class="speed"><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="2" aria-pressed="false">2×</button></div></div>`}
+        ${html`<div class="scrub" id="r-scrub"><button class="play" id="r-play" type="button" aria-label="Pause">❚❚</button><div class="track" id="r-track" role="slider" aria-label="Replay position" tabindex="0"></div><span class="tm" id="r-tm"></span><div class="speed"><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="2" aria-pressed="false">2×</button></div></div>`}
         <div class="seatrow" id="r-seats"></div>
       </div>
       <aside class="feed" id="r-feed" hidden></aside>
     </div>`,
   );
-  if (rp && !old)
+  if (rp)
     renderSeats(
       $("#r-seats")!,
       ids.map((x, i) => ({ name: names[i] ?? x.name, id: x, label: labels[i] ?? "house", wins: rp.wins[i] ?? 0, autopilot: rp.control.some((c) => c.seat === i && c.mode === "autopilot"), agent: agents[i] ?? null })),
       new Picks(() => undefined),
       w,
     );
-  const entries = rp && !old ? replayFeed(rp) : [];
+  const entries = rp ? replayFeed(rp) : [];
   let feedKeys = "";
   const renderFeed = () => {
     const vis = visibleFeed(entries, stage.pos).filter((e) => e.kind === "round" || (e.kind === "line" && e.text));
@@ -95,7 +94,6 @@ export async function replayPage(root: HTMLElement, id: string) {
     },
   });
   stage.record(record);
-  if (old) return;
 
   const rep = await getJson<{ rounds: ReportRound[] }>(`/api/matches/${encodeURIComponent(id)}/report`);
   if (!rep.ok) {

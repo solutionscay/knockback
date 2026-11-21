@@ -136,11 +136,9 @@ export function validateRuleset(input: unknown): Ruleset {
 }
 
 export const CLASSIC = validateRuleset({});
-/** Launch settings that leave launches as they were before #41: no cap, full stacking, no ceilings. */
-export const UNCAPPED_LAUNCH = { maxUpSpeed: 36_000, stackRetention: 1, ceilingAbove: 0, ceilingDrag: 0 } as const;
-/** Same placement and drop behavior as before the spread-out Classic, and launches as before #41. */
+/** Close Quarters: tight spawns and drops, no launch cap, full stacking, no ceilings, no tactical reach. */
 export const CLOSE_QUARTERS = validateRuleset({
-  combat: { launch: UNCAPPED_LAUNCH },
+  combat: { launch: { maxUpSpeed: 36_000, stackRetention: 1, ceilingAbove: 0, ceilingDrag: 0 } },
   arena: { spawns: CLOSE_SPAWNS },
   zone: { suddenDeath: { graceTicks: 0 } },
   tactics: { weapons: { enabled: false } },

@@ -30,15 +30,12 @@ export interface MatchInfo {
   wins: number[] | null;
   winner: string | null;
   record: string | null;
-  recordOld?: boolean;
 }
 export interface ReplayInfo {
   match: string;
   record: string;
   createdAt: string;
   seed: number;
-  engine: number;
-  old: boolean;
   theme: string;
   names: string[];
   labels: string[];

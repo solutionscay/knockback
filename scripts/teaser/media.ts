@@ -6,7 +6,8 @@ import { modelBadgeTitle } from "../../src/viewer/model-badge";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateLevel } from "../../src/sim/levelgen";
-import { summarizeRecord } from "../../src/sim/engine-version";
+import { ENGINE_VERSION } from "../../src/sim/engine-version";
+import type { MatchRecord } from "../../src/sim/match";
 import type { LoggedCue } from "../../src/viewer/audio/engine";
 import { mixCues, wavBytes } from "../../src/viewer/audio/offline";
 import { outTime, type Plan } from "./plan";
@@ -107,7 +108,7 @@ export function sceneList(plan: Plan, names: string[]): string[] {
 }
 
 export interface ReadmeInput {
-  rec: unknown;
+  rec: MatchRecord & { labels?: string[] };
   from: string;
   plan: Plan;
   files: { file: string; bytes: number }[];
@@ -119,7 +120,8 @@ export interface ReadmeInput {
 }
 
 export function writeReadme(dir: string, x: ReadmeInput) {
-  const s = summarizeRecord(x.rec)!;
+  const r = x.rec;
+  const s = { seed: r.seed, names: r.identities.map((id) => id.name), labels: r.labels ?? [], winner: r.winner, wins: r.wins, rounds: r.rounds };
   const level = generateLevel(s.seed);
   const mb = (b: number) => `${(b / 1e6).toFixed(1)} MB`;
   const winner = s.winner >= 0 ? s.names[s.winner] : "?";
@@ -128,7 +130,7 @@ export function writeReadme(dir: string, x: ReadmeInput) {
   const lines = [
     `# Knockback match video: seed ${s.seed}`,
     "",
-    `Made with \`bun run teaser\` (docs/video.md) from ${x.from}. Engine v${s.engine}, arena ${level.name}. **${result}.**`,
+    `Made with \`bun run teaser\` (docs/video.md) from ${x.from}. Engine v${ENGINE_VERSION}, arena ${level.name}. **${result}.**`,
     "",
     "## Files",
     "",

@@ -24,7 +24,6 @@ export const FIGHTER = {
   impactThreshold: 13,
   impactDamagePerMs: 0.55,
   ringOutY: -10,
-  ringOutX: 44,
 };
 
 /**
@@ -311,7 +310,6 @@ export function groups(member: number, filter: number): number {
  * fighters are pushed inward (no health drain), which can shove them into the pit.
  */
 export const ZONE = {
-  startHalf: 26,
   endHalf: 4.5,
   holdTicks: 10 * TICK_RATE,
   shrinkEndTicks: 80 * TICK_RATE,

@@ -9,7 +9,8 @@
  * types) so a Cloudflare backend (#26: D1, or a Durable Object's own SQLite)
  * can implement it; SqliteStore is the bun:sqlite one for local and LAN use.
  */
-import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, UNCAPPED_LAUNCH, type Ruleset } from "../sim/ruleset";
+import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, type Ruleset } from "../sim/ruleset";
+import { ENGINE_VERSION } from "../sim/engine-version";
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
@@ -26,7 +27,7 @@ export interface RulesetPreset {
 }
 
 export interface MatchRow {
-  ruleset?: Ruleset;
+  ruleset: Ruleset;
   preset?: string;
   presetVersion?: number;
   id: string;
@@ -90,7 +91,7 @@ export interface RoundRow {
   raw: (string | null)[];
   /** set once the round has been played */
   finalHash: string | null;
-  /** the round's mid-round plan updates (#8/#9), set with the final hash; null before, or for rounds stored before the column */
+  /** the round's mid-round plan updates (#8/#9), set with the final hash; null before */
   planUpdates?: PlanUpdate[] | null;
 }
 
@@ -111,10 +112,10 @@ export interface RecordRow {
   hashes: string[];
   winner: number;
   createdAt: number;
-  /** engine version that made the record (src/sim/engine-version.ts); rows from before the column are 0 */
+  /** engine version that made the record (src/sim/engine-version.ts): reads return only the current one */
   engine: number;
-  /** per-seat model stats for GET /api/models (src/stats/models.ts SeatEntry[] as JSON); null on rows from before it */
-  stats?: string | null;
+  /** per-seat model stats for GET /api/models (src/stats/models.ts SeatEntry[] as JSON) */
+  stats: string;
 }
 
 export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt" | "suitUp">>;
@@ -149,141 +150,121 @@ export interface MatchStore {
   upsertPick(p: PickRow): Promise<void>;
   listPicks(matchId: string): Promise<PickRow[]>;
   insertRecord(r: RecordRow): Promise<void>;
+  /** records of the current engine only (ENGINE_VERSION): another version's record is not loaded */
   getRecord(matchId: string): Promise<RecordRow | null>;
-  /** newest first; `before` (ms) pages back through older ones */
+  /** current-engine records, newest first; `before` (ms) pages back through older ones */
   listRecords(limit?: number, before?: number): Promise<RecordRow[]>;
-  /** fill in a record's model stats (rows saved before the column) */
-  setRecordStats(matchId: string, stats: string): Promise<void>;
   close(): Promise<void>;
 }
 
-/** Schema versions, applied in order, each once (table schema_migrations). Plain SQLite: D1 runs the same SQL. */
-export const MIGRATIONS: string[] = [
-  `CREATE TABLE matches (
-     id TEXT PRIMARY KEY,
-     seed INTEGER NOT NULL,
-     kinds TEXT NOT NULL,              -- JSON array of 4 seat kinds
-     deadline_ms INTEGER NOT NULL,
-     fill_after_ms INTEGER NOT NULL,
-     status TEXT NOT NULL CHECK (status IN ('open','running','over','failed')),
-     created_at INTEGER NOT NULL,
-     started_at INTEGER,
-     ended_at INTEGER,
-     creator TEXT,
-     error TEXT,
-     winner INTEGER
-   );
-   CREATE INDEX matches_status ON matches(status);
-   CREATE TABLE seats (
-     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-     seat INTEGER NOT NULL CHECK (seat BETWEEN 0 AND 3),
-     name TEXT NOT NULL,
-     persona TEXT NOT NULL,
-     look TEXT,                        -- JSON identity wish or NULL
-     token_hash TEXT NOT NULL UNIQUE,  -- sha256 hex of the seat token; the token itself is never stored
-     joined_at INTEGER NOT NULL,
-     left_at INTEGER,
-     left_round INTEGER,
-     PRIMARY KEY (match_id, seat)
-   );
-   CREATE TABLE rounds (
-     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-     round INTEGER NOT NULL,
-     decisions TEXT NOT NULL,          -- JSON Decision[4] as played
-     meta TEXT NOT NULL,               -- JSON DecisionMeta[4]
-     prompts TEXT NOT NULL,            -- JSON string[4]
-     raw TEXT NOT NULL,                -- JSON (string|null)[4]
-     final_hash TEXT,
-     PRIMARY KEY (match_id, round)
-   );
-   CREATE TABLE plans (
-     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-     round INTEGER NOT NULL,
-     seat INTEGER NOT NULL,
-     raw TEXT NOT NULL,
-     at INTEGER NOT NULL,
-     PRIMARY KEY (match_id, round, seat)
-   );
-   CREATE TABLE records (
-     match_id TEXT PRIMARY KEY REFERENCES matches(id) ON DELETE CASCADE,
-     path TEXT NOT NULL,
-     seed INTEGER NOT NULL,
-     hashes TEXT NOT NULL,             -- JSON string[] (final hash per round)
-     winner INTEGER NOT NULL,
-     created_at INTEGER NOT NULL
-   );`,
-  // 2 (#22): who controls each fighter, as it changes (autopilot / agent back)
-  `CREATE TABLE control (
-     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-     idx INTEGER NOT NULL,
-     event TEXT NOT NULL,              -- JSON ControlEvent (seat, mode, round, phase, tick, reason, line, fromRound)
-     PRIMARY KEY (match_id, idx)
-   );`,
-  // 3: the engine version that made each record; older rows count as 0
-  `ALTER TABLE records ADD COLUMN engine INTEGER NOT NULL DEFAULT 0;`,
-  // 4 (#8/#9): the mid-round plan updates of each played round (JSON PlanUpdate[]), so a resume replays them
-  `ALTER TABLE rounds ADD COLUMN plan_updates TEXT;`,
-  // 5 (model spotlight): the model a remote agent reported at join; per-seat model stats of each record
-  `ALTER TABLE seats ADD COLUMN model TEXT;
-   ALTER TABLE records ADD COLUMN stats TEXT;`,
-  // 6 (#36): ruleset presets and the settings pinned to each match
-  `CREATE TABLE ruleset_presets (
-     name TEXT PRIMARY KEY COLLATE NOCASE,
-     body TEXT,
-     version INTEGER NOT NULL DEFAULT 1,
-     is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
-     CHECK (is_default = 0 OR body IS NOT NULL)
-   );
-   CREATE UNIQUE INDEX one_default_ruleset ON ruleset_presets(is_default) WHERE is_default = 1;
-   INSERT INTO ruleset_presets (name, body, is_default) VALUES ('Classic', '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}', 1);
-   INSERT INTO ruleset_presets (name) VALUES ('Sniper Alley'), ('Close Quarters'), ('Chaos');
-   ALTER TABLE matches ADD COLUMN ruleset_body TEXT;
-   ALTER TABLE matches ADD COLUMN ruleset_preset TEXT;
-   ALTER TABLE matches ADD COLUMN ruleset_version INTEGER;`,
-  // 7 (#37): fill the new layout keys in existing snapshots before changing the built-in Classic.
-  `UPDATE matches SET ruleset_body = json_set(ruleset_body,
-       '$.arena.spawns.spread', json('${JSON.stringify(CLOSE_QUARTERS.arena.spawns.spread)}'),
-       '$.pickups.armory.spread', json('${JSON.stringify(CLOSE_QUARTERS.pickups.armory.spread)}'),
-       '$.pickups.supply.avoidDistance', 0,
-       '$.zone.suddenDeath.graceTicks', 0,
-       '$.tactics.weapons', json('{"enabled":false}'))
-     WHERE ruleset_body IS NOT NULL AND json_type(ruleset_body, '$.arena.spawns.spread') IS NULL;
-   UPDATE ruleset_presets SET body = json_set(body,
-       '$.arena.spawns.spread', json('${JSON.stringify(CLOSE_QUARTERS.arena.spawns.spread)}'),
-       '$.pickups.armory.spread', json('${JSON.stringify(CLOSE_QUARTERS.pickups.armory.spread)}'),
-       '$.pickups.supply.avoidDistance', 0,
-       '$.zone.suddenDeath.graceTicks', 0,
-       '$.tactics.weapons', json('{"enabled":false}'))
-     WHERE body IS NOT NULL AND json_type(body, '$.arena.spawns.spread') IS NULL;
-   UPDATE ruleset_presets SET body = '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', version = version + 1 WHERE name = 'Classic';
-   UPDATE ruleset_presets SET body = '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}' WHERE name = 'Close Quarters' AND body IS NULL;`,
-  // 8 (#35): spectator picks, the pick lock, agents' opening lines
-  `CREATE TABLE picks (
-     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-     spectator TEXT NOT NULL,          -- sha256 of the spectator cookie id; the id itself is never stored
-     seat INTEGER NOT NULL CHECK (seat BETWEEN 0 AND 3),
-     ip TEXT NOT NULL,
-     created_at INTEGER NOT NULL,
-     updated_at INTEGER NOT NULL,
-     PRIMARY KEY (match_id, spectator)
-   );
-   ALTER TABLE matches ADD COLUMN picks_locked_at INTEGER;
-   ALTER TABLE seats ADD COLUMN opening_line TEXT;`,
-  // 9 (#19): the built-in AI seats' suit-up answers (their chosen looks and opening lines)
-  `ALTER TABLE matches ADD COLUMN suit_up TEXT;`,
-  // 10 (#41): pinned snapshots and saved presets keep the launches they were made with; Classic takes the launch cap.
-  `UPDATE matches SET ruleset_body = json_set(ruleset_body,
-       '$.combat.launch', json('${JSON.stringify(UNCAPPED_LAUNCH)}'),
-       '$.pickups.power.jetpack.ceiling', ${CLOSE_QUARTERS.pickups.power.jetpack.ceiling},
-       '$.pickups.power.jetpack.fade', ${CLOSE_QUARTERS.pickups.power.jetpack.fade})
-     WHERE ruleset_body IS NOT NULL AND json_type(ruleset_body, '$.combat.launch') IS NULL;
-   UPDATE ruleset_presets SET body = json_set(body,
-       '$.combat.launch', json('${JSON.stringify(UNCAPPED_LAUNCH)}'),
-       '$.pickups.power.jetpack.ceiling', ${CLOSE_QUARTERS.pickups.power.jetpack.ceiling},
-       '$.pickups.power.jetpack.fade', ${CLOSE_QUARTERS.pickups.power.jetpack.fade})
-     WHERE body IS NOT NULL AND json_type(body, '$.combat.launch') IS NULL;
-   UPDATE ruleset_presets SET body = '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', version = version + 1 WHERE name = 'Classic';`,
-];
+/**
+ * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
+ * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
+ */
+export const SCHEMA_VERSION = 1;
+
+/** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
+export const SCHEMA = `
+  CREATE TABLE matches (
+    id TEXT PRIMARY KEY,
+    seed INTEGER NOT NULL,
+    kinds TEXT NOT NULL,              -- JSON array of 4 seat kinds
+    deadline_ms INTEGER NOT NULL,
+    fill_after_ms INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('open','running','over','failed')),
+    created_at INTEGER NOT NULL,
+    started_at INTEGER,
+    ended_at INTEGER,
+    creator TEXT,
+    error TEXT,
+    winner INTEGER,
+    ruleset_body TEXT NOT NULL,       -- JSON Ruleset pinned at creation: later preset edits cannot affect the match
+    ruleset_preset TEXT,
+    ruleset_version INTEGER,
+    picks_locked_at INTEGER,          -- spectator picks locked (#35)
+    suit_up TEXT                      -- JSON SuitUpAnswer[] of the built-in AI seats (#19)
+  );
+  CREATE INDEX matches_status ON matches(status);
+  CREATE TABLE seats (
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    seat INTEGER NOT NULL CHECK (seat BETWEEN 0 AND 3),
+    name TEXT NOT NULL,
+    persona TEXT NOT NULL,
+    look TEXT,                        -- JSON identity wish or NULL
+    token_hash TEXT NOT NULL UNIQUE,  -- sha256 hex of the seat token; the token itself is never stored
+    joined_at INTEGER NOT NULL,
+    left_at INTEGER,
+    left_round INTEGER,
+    model TEXT,                       -- the model the agent reported at join (unverified)
+    opening_line TEXT,
+    PRIMARY KEY (match_id, seat)
+  );
+  CREATE TABLE rounds (
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,
+    decisions TEXT NOT NULL,          -- JSON Decision[4] as played
+    meta TEXT NOT NULL,               -- JSON DecisionMeta[4]
+    prompts TEXT NOT NULL,            -- JSON string[4]
+    raw TEXT NOT NULL,                -- JSON (string|null)[4]
+    final_hash TEXT,
+    plan_updates TEXT,                -- JSON PlanUpdate[] of the played round (#8/#9), so a resume replays them
+    PRIMARY KEY (match_id, round)
+  );
+  CREATE TABLE plans (
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,
+    seat INTEGER NOT NULL,
+    raw TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (match_id, round, seat)
+  );
+  CREATE TABLE control (
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    event TEXT NOT NULL,              -- JSON ControlEvent (seat, mode, round, phase, tick, reason, line, fromRound)
+    PRIMARY KEY (match_id, idx)
+  );
+  CREATE TABLE picks (
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    spectator TEXT NOT NULL,          -- sha256 of the spectator cookie id; the id itself is never stored
+    seat INTEGER NOT NULL CHECK (seat BETWEEN 0 AND 3),
+    ip TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (match_id, spectator)
+  );
+  CREATE TABLE records (
+    match_id TEXT PRIMARY KEY REFERENCES matches(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    seed INTEGER NOT NULL,
+    hashes TEXT NOT NULL,             -- JSON string[] (final hash per round)
+    winner INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    engine INTEGER NOT NULL,          -- ENGINE_VERSION that made the record: only the current one is loaded
+    stats TEXT NOT NULL               -- JSON SeatEntry[] (src/stats/models.ts) for GET /api/models
+  );
+  CREATE TABLE ruleset_presets (
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    body TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+    CHECK (is_default = 0 OR body IS NOT NULL)
+  );
+  CREATE UNIQUE INDEX one_default_ruleset ON ruleset_presets(is_default) WHERE is_default = 1;
+  INSERT INTO ruleset_presets (name, body, is_default) VALUES ('Classic', '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', 1);
+  INSERT INTO ruleset_presets (name, body) VALUES ('Close Quarters', '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}');
+  INSERT INTO ruleset_presets (name) VALUES ('Sniper Alley'), ('Chaos');
+`;
+
+/** A database whose schema is not SCHEMA_VERSION: refused, never upgraded (pre-alpha). */
+export class SchemaError extends Error {
+  constructor(
+    readonly path: string,
+    readonly found: number,
+  ) {
+    super(`database ${path} has ${found === 0 ? "a schema from before the single schema" : `schema v${found}`}, not the current schema v${SCHEMA_VERSION}: reset the database (pre-alpha): bun run db:reset --db ${path}`);
+  }
+}
 
 type Row = Record<string, unknown>;
 const j = (v: unknown) => JSON.stringify(v);
@@ -293,7 +274,7 @@ const matchOf = (r: Row): MatchRow => ({
   id: r.id as string,
   seed: r.seed as number,
   kinds: p(r.kinds),
-  ...(r.ruleset_body ? { ruleset: resolveRuleset(p(r.ruleset_body)) } : {}),
+  ruleset: resolveRuleset(p(r.ruleset_body)),
   ...(r.ruleset_preset ? { preset: r.ruleset_preset as string, presetVersion: r.ruleset_version as number } : {}),
   deadlineMs: r.deadline_ms as number,
   fillAfterMs: r.fill_after_ms as number,
@@ -334,24 +315,24 @@ const COLS: Record<string, string> = { status: "status", startedAt: "started_at"
 export class SqliteStore implements MatchStore {
   readonly db: Database;
 
-  /** `path`: a file, or ":memory:" */
+  /** `path`: a file, or ":memory:". An empty database gets SCHEMA; one with another schema throws SchemaError. */
   constructor(path: string) {
     this.db = new Database(path, { create: true, strict: true });
-    this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;");
-    this.migrate();
-  }
-
-  /** Apply the migrations this file has not seen yet. Returns the schema version. */
-  migrate(): number {
-    this.db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)");
-    const have = (this.db.query("SELECT MAX(version) AS v FROM schema_migrations").get() as { v: number | null }).v ?? 0;
-    for (let v = have + 1; v <= MIGRATIONS.length; v++) {
-      this.db.transaction(() => {
-        this.db.exec(MIGRATIONS[v - 1]!);
-        this.db.query("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(v, Date.now());
-      })();
+    try {
+      this.db.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;");
+      const version = (this.db.query("PRAGMA user_version").get() as { user_version: number }).user_version;
+      const tables = (this.db.query("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'").get() as { n: number }).n;
+      if (tables === 0) {
+        this.db.transaction(() => {
+          this.db.exec(SCHEMA);
+          this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+        })();
+      } else if (version !== SCHEMA_VERSION) throw new SchemaError(path, version);
+      this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
+    } catch (e) {
+      this.db.close();
+      throw e;
     }
-    return MIGRATIONS.length;
   }
 
   private patch(table: string, where: string, args: unknown[], patch: Record<string, unknown>) {
@@ -395,7 +376,7 @@ export class SqliteStore implements MatchStore {
   async insertMatch(m: MatchRow) {
     this.db
       .query("INSERT INTO matches (id, seed, kinds, deadline_ms, fill_after_ms, status, created_at, started_at, ended_at, creator, error, winner, ruleset_body, ruleset_preset, ruleset_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(m.id, m.seed, j(m.kinds), m.deadlineMs, m.fillAfterMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.creator, m.error, m.winner, m.ruleset ? j(m.ruleset) : null, m.preset ?? null, m.presetVersion ?? null);
+      .run(m.id, m.seed, j(m.kinds), m.deadlineMs, m.fillAfterMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.creator, m.error, m.winner, j(m.ruleset), m.preset ?? null, m.presetVersion ?? null);
   }
   async updateMatch(id: string, patch: MatchPatch) {
     this.patch("matches", "id = ?", [id], patch);
@@ -473,18 +454,15 @@ export class SqliteStore implements MatchStore {
     }));
   }
   async insertRecord(r: RecordRow) {
-    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, engine, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.engine, r.stats ?? null);
+    this.db.query("INSERT OR REPLACE INTO records (match_id, path, seed, hashes, winner, created_at, engine, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.seed, j(r.hashes), r.winner, r.createdAt, r.engine, r.stats);
   }
   async getRecord(matchId: string) {
-    const r = this.db.query("SELECT * FROM records WHERE match_id = ?").get(matchId) as Row | null;
+    const r = this.db.query("SELECT * FROM records WHERE match_id = ? AND engine = ?").get(matchId, ENGINE_VERSION) as Row | null;
     return r ? recordOf(r) : null;
   }
-  async setRecordStats(matchId: string, stats: string) {
-    this.db.query("UPDATE records SET stats = ? WHERE match_id = ?").run(stats, matchId);
-  }
   async listRecords(limit = 100, before?: number) {
-    if (before !== undefined) return (this.db.query("SELECT * FROM records WHERE created_at < ? ORDER BY created_at DESC LIMIT ?").all(before, limit) as Row[]).map(recordOf);
-    return (this.db.query("SELECT * FROM records ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map(recordOf);
+    if (before !== undefined) return (this.db.query("SELECT * FROM records WHERE engine = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?").all(ENGINE_VERSION, before, limit) as Row[]).map(recordOf);
+    return (this.db.query("SELECT * FROM records WHERE engine = ? ORDER BY created_at DESC LIMIT ?").all(ENGINE_VERSION, limit) as Row[]).map(recordOf);
   }
   async close() {
     this.db.close();
@@ -498,6 +476,6 @@ const recordOf = (r: Row): RecordRow => ({
   hashes: p<string[]>(r.hashes),
   winner: r.winner as number,
   createdAt: r.created_at as number,
-  engine: (r.engine as number | null) ?? 0,
-  stats: (r.stats as string | null) ?? null,
+  engine: r.engine as number,
+  stats: r.stats as string,
 });

@@ -8,9 +8,6 @@ import { MODEL_BADGE_CSS } from "../viewer/model-badge";
 
 /** Styles for the board (page and lobby panel), plus the badge. */
 export const BOARD_CSS = `${MODEL_BADGE_CSS}
-.board-tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin: 0 0 .6rem; }
-.board-tabs button { font: 600 .8rem system-ui, sans-serif; color: var(--dim); background: transparent; border: 1px solid var(--line); border-radius: 3px; padding: .25rem .6rem; cursor: pointer; }
-.board-tabs button.on { color: var(--text); border-color: var(--accent); }
 table.board td, table.board th { white-space: nowrap; }
 table.board td.num, table.board th.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.board td.rank { color: var(--dim); width: 1.6rem; }
@@ -97,25 +94,15 @@ function h2hTable(h, keys) {
 let rowsByKey = {};
 function renderBoard(el, data, opts) {
   const compact = !!(opts && opts.compact);
-  const views = [...data.engines.map((e) => ({ id: "v" + e.engine, label: "engine v" + e.engine + (e.engine === data.engine ? " (current)" : ""), rows: e.rows, matches: e.matches }))];
-  if (data.engines.length > 1) views.push({ id: "all", label: "all engines", rows: data.all.rows, matches: data.all.matches });
-  rowsByKey = {}; for (const r of data.all.rows) rowsByKey[r.key] = r;
-  let cur = el.dataset.view && views.find((v) => v.id === el.dataset.view) ? el.dataset.view : (views[0] ? views[0].id : "");
-  const draw = () => {
-    el.replaceChildren();
-    if (!views.length) { el.append(mk("div", "No finished matches with AI fighters yet. Play one, then come back.", "empty")); return; }
-    const tabs = mk("div", null, "board-tabs");
-    for (const v of views) { const b = mk("button", v.label + " · " + v.matches, v.id === cur ? "on" : ""); b.type = "button"; b.onclick = () => { cur = v.id; el.dataset.view = cur; draw(); }; tabs.append(b); }
-    el.append(tabs);
-    const v = views.find((x) => x.id === cur);
-    el.append(boardTable(compact ? v.rows.slice(0, 8) : v.rows, compact, data.minMatches, data.chance));
-    el.append(mk("div", "Match win rate per seat played; chance is " + Math.round(data.chance * 100) + "% with 4 fighters. ± is the 95% interval: with few matches it is wide, so rows under " + data.minMatches + " matches are provisional. Self-reported models are what remote agents said at join." + (v.id === "all" ? " Different engine versions have different physics." : ""), "board-note"));
-    if (!compact && data.headToHead) {
-      const h = h2hTable(data.headToHead, data.all.rows.map((r) => r.key));
-      if (h) { el.append(mk("h2", "Head to head")); el.append(h); el.append(mk("div", "Matches where both models played: how often the row model finished ahead (match winner first, then round wins). All engines.", "board-note")); }
-    }
-  };
-  draw();
+  rowsByKey = {}; for (const r of data.rows) rowsByKey[r.key] = r;
+  el.replaceChildren();
+  if (!data.rows.length) { el.append(mk("div", "No finished matches with AI fighters yet. Play one, then come back.", "empty")); return; }
+  el.append(boardTable(compact ? data.rows.slice(0, 8) : data.rows, compact, data.minMatches, data.chance));
+  el.append(mk("div", data.matches + " match" + (data.matches === 1 ? "" : "es") + " on engine v" + data.engine + ". Match win rate per seat played; chance is " + Math.round(data.chance * 100) + "% with 4 fighters. ± is the 95% interval: with few matches it is wide, so rows under " + data.minMatches + " matches are provisional. Self-reported models are what remote agents said at join.", "board-note"));
+  if (!compact && data.headToHead) {
+    const h = h2hTable(data.headToHead, data.rows.map((r) => r.key));
+    if (h) { el.append(mk("h2", "Head to head")); el.append(h); el.append(mk("div", "Matches where both models played: how often the row model finished ahead (match winner first, then round wins).", "board-note")); }
+  }
 }
 `;
 

@@ -3,7 +3,7 @@
  * what the match server already stores (the record index, seats, the record files); nothing new is written.
  *
  *   GET /api/replays?limit=n&before=ms  saved matches, newest first, with their line-up and result; `next` pages back
- *   GET /api/replays/:id            one saved match (any age)
+ *   GET /api/replays/:id            one saved match
  *   GET /api/agents/:name           an agent's bot, persona summary, record and recent matches
  *   GET /share/:matchId.svg         the 1200x630 share card of a finished match
  *
@@ -11,7 +11,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ENGINE_VERSION, recordEngine } from "../sim/engine-version";
+import { ENGINE_VERSION, isCurrentEngine } from "../sim/engine-version";
 import type { Identity } from "../sim/identity";
 import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
@@ -27,9 +27,6 @@ export interface ReplaySummary {
   record: string;
   createdAt: string;
   seed: number;
-  engine: number;
-  /** made by another engine version: shows as a summary card, not a replay */
-  old: boolean;
   theme: string;
   names: string[];
   /** provider label per seat ("claude/haiku", "remote/Brixel", "house") */
@@ -56,18 +53,17 @@ const str = (v: unknown, max = 200) => (typeof v === "string" ? v.slice(0, max) 
 const int = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : d);
 const SEATS = [0, 1, 2, 3];
 
-/** Summarize a record's JSON (any version; pure: tested). null when it isn't a match record. */
+/** Summarize a record's JSON (pure: tested). null unless it is a match record of the current engine. */
 export function summarizeReplay(raw: unknown, match: string, record: string, createdAt: number): ReplaySummary | null {
-  if (!raw || typeof raw !== "object") return null;
+  if (!isCurrentEngine(raw)) return null;
   const r = raw as Record<string, unknown>;
   if (!Number.isFinite(r.seed) || !Array.isArray(r.rounds)) return null;
   const seed = Number(r.seed) >>> 0;
-  const engine = recordEngine(raw);
   let identities: Identity[];
   try {
-    identities = matchIdentities(seed, { recorded: { ...(r as unknown as MatchRecord), souls: Array.isArray(r.souls) ? (r.souls as MatchRecord["souls"]) : [] } });
+    identities = matchIdentities(seed, { recorded: r as unknown as MatchRecord });
   } catch {
-    identities = matchIdentities(seed, {});
+    return null;
   }
   const labels = Array.isArray(r.labels) ? r.labels : [];
   const rawRounds = (r.rounds as unknown[]).slice(0, 3).map((x) => (x && typeof x === "object" ? x : {}) as Record<string, unknown>);
@@ -97,8 +93,6 @@ export function summarizeReplay(raw: unknown, match: string, record: string, cre
     record,
     createdAt: new Date(createdAt).toISOString(),
     seed,
-    engine,
-    old: engine !== ENGINE_VERSION,
     theme,
     names: identities.map((id) => id.name),
     labels: SEATS.map((i) => str(labels[i], 60) || str(firstMeta[i]?.provider, 60) || "house"),
@@ -159,7 +153,7 @@ export async function pageReplays(server: MatchServer, limit = 30, before?: numb
   return { replays: out.filter((x): x is ReplaySummary => x !== null), next: rows.length === n ? rows.at(-1)!.createdAt : null };
 }
 
-/** One saved match by id, however old. */
+/** One saved match by id. */
 export async function replayOf(server: MatchServer, match: string): Promise<ReplaySummary | null> {
   const rec = await server.store.getRecord(match);
   return rec ? summarizeReplay(await cacheOf(server).raw(rec.path), match, rec.path, rec.createdAt) : null;
@@ -178,7 +172,6 @@ export interface AgentMatch {
   wins: number[] | null;
   theme: string;
   record: string | null;
-  old: boolean;
   /** the other three: name and look */
   rivals: { name: string; identity: Identity | null }[];
   autopilot: boolean;
@@ -289,7 +282,6 @@ export function buildProfile(
         wins: rp.wins,
         theme: rp.theme,
         record: rp.record,
-        old: rp.old,
         rivals: SEATS.filter((j) => j !== i).map((j) => ({ name: rp.names[j] ?? "?", identity: rp.identities[j] ?? null })),
         autopilot: ap,
       });
@@ -305,7 +297,6 @@ export function buildProfile(
         wins: null,
         theme: "",
         record: null,
-        old: false,
         rivals: s.live?.identities ? SEATS.filter((j) => j !== s.seat).map((j) => ({ name: s.live!.names?.[j] ?? "?", identity: s.live!.identities![j] ?? null })) : [],
         autopilot: s.leftRound !== null,
       });

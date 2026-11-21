@@ -4,13 +4,14 @@
  * - modelOf(label): the model behind a seat label ("claude/haiku", "codex/gpt-6-luna", "house",
  *   "remote/Zapbit@claude-opus-5-5" for a remote agent that reported its model at join).
  * - fightStatsOf(facts): per round and seat, what the fight did (knockouts, ring-outs, damage, survival).
- *   New records carry it as `fightStats`; older ones get it from a replay (same engine) or go without.
- * - seatEntries(record): one entry per seat of a record, with its model and stats.
- * - leaderboard(entries): per model (and engine version), ranked by match win rate, with a 95% interval.
+ *   Every record carries it as `fightStats`.
+ * - seatEntries(record): one entry per seat of a current-engine record, with its model and stats.
+ * - leaderboard(entries): per model, ranked by match win rate, with a 95% interval.
  * - headToHead(entries): for each pair of models that met, how often A finished ahead of B.
  *
- * No DOM, no Bun, no sim imports beyond types: runs in the viewer, the server and scripts.
+ * No DOM, no Bun, no sim imports beyond types and the engine version: runs in the viewer, the server and scripts.
  */
+import { ENGINE_VERSION, isCurrentEngine } from "../sim/engine-version";
 import type { RoundFacts } from "../sim/morale";
 
 export type ModelProvider = "anthropic" | "openai" | "xai" | "google" | "meta" | "mistral" | "deepseek" | "qwen" | "house" | "test" | "other";
@@ -28,13 +29,6 @@ export interface ModelInfo {
   /** remote agent name, when the seat is a remote agent */
   agent?: string;
 }
-
-/** Provider names used as labels by older records and ai-eval (the PROVIDERS entry they ran). Checked by a test. */
-export const PROVIDER_ALIASES: Record<string, string> = {
-  claude: "claude/haiku",
-  codex: "codex/gpt-6-luna",
-  grok: "grok/grok-4.6",
-};
 
 /** Badge colour of the provider mark (only the mark: the bot keeps its own identity colour). */
 export const PROVIDER_COLOR: Record<ModelProvider, string> = {
@@ -98,7 +92,7 @@ const keyOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace
 export function modelOf(label: string | null | undefined): ModelInfo {
   const raw = (label ?? "").trim();
   if (!raw || raw === "house" || raw === "house bot") return { key: "house", name: "HOUSE BOT", provider: "house", selfReported: false, test: false };
-  const full = PROVIDER_ALIASES[raw] ?? raw;
+  const full = raw;
   const slash = full.indexOf("/");
   const head = (slash < 0 ? full : full.slice(0, slash)).toLowerCase();
   const rest = slash < 0 ? "" : full.slice(slash + 1);
@@ -148,7 +142,7 @@ export interface SeatFight {
   alive: number;
 }
 
-/** Saved in new records as `fightStats`: per round, the round's length and each seat's fight. */
+/** Saved in every record as `fightStats`: per round, the round's length and each seat's fight. */
 export interface FightStats {
   v: 1;
   rounds: { seconds: number; seats: SeatFight[] }[];
@@ -175,9 +169,8 @@ export function fightStatsOf(facts: readonly RoundFacts[]): FightStats {
 
 /** One seat in one match: who played it and what happened. */
 export interface SeatEntry {
-  /** dedupe key of the match ("<engine>:<seed>:<totalMs>") */
+  /** dedupe key of the match ("<seed>:<totalMs>") */
   match: string;
-  engine: number;
   seat: number;
   model: ModelInfo;
   wonMatch: boolean;
@@ -188,8 +181,7 @@ export interface SeatEntry {
   fallbacks: number;
   /** the house bot drove this fighter at some point (remote agent dropped, #22) */
   autopilot: boolean;
-  /** null when the record has no fight stats (older engine, not replayed) */
-  fight: { kos: number; ringouts: number; damage: number; taken: number; alive: number; roundSeconds: number } | null;
+  fight: { kos: number; ringouts: number; damage: number; taken: number; alive: number; roundSeconds: number };
 }
 
 interface RecordLike {
@@ -223,26 +215,22 @@ function cleanFightStats(v: unknown, nRounds: number): FightStats | null {
   };
 }
 
-/** The dedupe key of a record: copies of the same match share engine, seed and total time. */
+/** The dedupe key of a record: copies of the same match share seed and total time. */
 export function matchKey(rec: RecordLike): string {
-  const engine = typeof rec.engine === "number" && Number.isInteger(rec.engine) ? rec.engine : 0;
   const rounds = Array.isArray(rec.rounds) ? rec.rounds : [];
   const hashes = rounds.map((r) => String((r as { fight?: { finalHash?: unknown } })?.fight?.finalHash ?? "")).join(",");
-  return `${engine}:${num(rec.seed) >>> 0}:${typeof rec.totalMs === "number" ? Math.round(rec.totalMs) : `h${hashes}`}`;
+  return `${num(rec.seed) >>> 0}:${typeof rec.totalMs === "number" ? Math.round(rec.totalMs) : `h${hashes}`}`;
 }
 
-/**
- * One entry per seat of a match record. `fight` overrides the record's own fightStats (e.g. from a replay).
- * Returns [] when the record is not a finished match.
- */
-export function seatEntries(raw: unknown, fight?: FightStats | null): SeatEntry[] {
-  if (!raw || typeof raw !== "object") return [];
+/** One entry per seat of a match record. Returns [] unless it is a finished match of the current engine with its fightStats. */
+export function seatEntries(raw: unknown): SeatEntry[] {
+  if (!isCurrentEngine(raw)) return [];
   const rec = raw as RecordLike;
   const rounds = Array.isArray(rec.rounds) ? (rec.rounds as { winner?: unknown; meta?: unknown }[]) : [];
   if (!rounds.length || !isSeat(rec.winner)) return [];
-  const engine = typeof rec.engine === "number" && Number.isInteger(rec.engine) && rec.engine >= 0 ? rec.engine : 0;
   const labels = Array.isArray(rec.labels) ? rec.labels : [];
-  const fs = fight ?? cleanFightStats(rec.fightStats, rounds.length);
+  const fs = cleanFightStats(rec.fightStats, rounds.length);
+  if (!fs) return [];
   const control = Array.isArray(rec.control) ? (rec.control as { seat?: unknown; mode?: unknown }[]) : [];
   const key = matchKey(rec);
   return [0, 1, 2, 3].map((seat) => {
@@ -256,18 +244,15 @@ export function seatEntries(raw: unknown, fight?: FightStats | null): SeatEntry[
       plans++;
       if (typeof m.outcome === "string" && m.outcome.startsWith("fallback")) fallbacks++;
     }
-    const f = fs
-      ? fs.rounds.reduce(
-          (a, r) => {
-            const s = r.seats[seat]!;
-            return { kos: a.kos + s.kos, ringouts: a.ringouts + s.ringouts, damage: a.damage + s.damage, taken: a.taken + s.taken, alive: a.alive + s.alive, roundSeconds: a.roundSeconds + r.seconds };
-          },
-          { kos: 0, ringouts: 0, damage: 0, taken: 0, alive: 0, roundSeconds: 0 },
-        )
-      : null;
+    const f = fs.rounds.reduce(
+      (a, r) => {
+        const s = r.seats[seat]!;
+        return { kos: a.kos + s.kos, ringouts: a.ringouts + s.ringouts, damage: a.damage + s.damage, taken: a.taken + s.taken, alive: a.alive + s.alive, roundSeconds: a.roundSeconds + r.seconds };
+      },
+      { kos: 0, ringouts: 0, damage: 0, taken: 0, alive: 0, roundSeconds: 0 },
+    );
     return {
       match: key,
-      engine,
       seat,
       model: modelOf(label),
       wonMatch: rec.winner === seat,
@@ -306,8 +291,6 @@ export interface ModelRow {
   name: string;
   provider: ModelProvider;
   selfReported: boolean;
-  /** "all" or an engine version */
-  engine: number | "all";
   /** seats played (a model in two seats of one match counts twice) */
   matches: number;
   wins: number;
@@ -320,14 +303,12 @@ export interface ModelRow {
   rounds: number;
   roundWins: number;
   roundWinRate: number;
-  /** fight stats over the matches that have them (fightMatches of them) */
-  fightMatches: number;
-  kosPerMatch: number | null;
-  ringoutsPerMatch: number | null;
-  damagePerMatch: number | null;
-  takenPerMatch: number | null;
+  kosPerMatch: number;
+  ringoutsPerMatch: number;
+  damagePerMatch: number;
+  takenPerMatch: number;
   /** share of round time spent alive 0..1 */
-  survival: number | null;
+  survival: number;
   plans: number;
   fallbacks: number;
   fallbackRate: number | null;
@@ -352,25 +333,22 @@ export const MIN_MATCHES = 10;
 /** Chance of winning a 4-fighter match by luck. */
 export const CHANCE = 0.25;
 
-function rowOf(group: SeatEntry[], engine: number | "all", minMatches: number): ModelRow {
+function rowOf(group: SeatEntry[], minMatches: number): ModelRow {
   const m = group[0]!.model;
   const n = group.length;
   const wins = group.filter((e) => e.wonMatch).length;
   const { low, high } = wilson(wins, n);
   const rounds = group.reduce((a, e) => a + e.rounds, 0);
   const roundWins = group.reduce((a, e) => a + e.roundWins, 0);
-  const withFight = group.filter((e) => e.fight);
-  const fm = withFight.length;
-  const sum = (f: (e: SeatEntry) => number) => withFight.reduce((a, e) => a + f(e), 0);
+  const sum = (f: (e: SeatEntry) => number) => group.reduce((a, e) => a + f(e), 0);
   const plans = group.reduce((a, e) => a + e.plans, 0);
   const fallbacks = group.reduce((a, e) => a + e.fallbacks, 0);
-  const secs = sum((e) => e.fight!.roundSeconds);
+  const secs = sum((e) => e.fight.roundSeconds);
   return {
     key: m.key,
     name: m.name,
     provider: m.provider,
     selfReported: m.selfReported,
-    engine,
     matches: n,
     wins,
     winRate: wins / n,
@@ -380,12 +358,11 @@ function rowOf(group: SeatEntry[], engine: number | "all", minMatches: number): 
     rounds,
     roundWins,
     roundWinRate: rounds ? roundWins / rounds : 0,
-    fightMatches: fm,
-    kosPerMatch: fm ? sum((e) => e.fight!.kos) / fm : null,
-    ringoutsPerMatch: fm ? sum((e) => e.fight!.ringouts) / fm : null,
-    damagePerMatch: fm ? sum((e) => e.fight!.damage) / fm : null,
-    takenPerMatch: fm ? sum((e) => e.fight!.taken) / fm : null,
-    survival: fm && secs > 0 ? sum((e) => e.fight!.alive) / secs : null,
+    kosPerMatch: sum((e) => e.fight.kos) / n,
+    ringoutsPerMatch: sum((e) => e.fight.ringouts) / n,
+    damagePerMatch: sum((e) => e.fight.damage) / n,
+    takenPerMatch: sum((e) => e.fight.taken) / n,
+    survival: secs > 0 ? sum((e) => e.fight.alive) / secs : 0,
     plans,
     fallbacks,
     fallbackRate: plans ? fallbacks / plans : null,
@@ -400,10 +377,9 @@ export function rankRows(rows: ModelRow[]): ModelRow[] {
 }
 
 export interface Leaderboard {
-  /** ranked rows per engine version (newest engine first) */
-  engines: { engine: number; matches: number; rows: ModelRow[] }[];
-  /** all engines together (the physics differ between versions: read with care) */
-  all: { matches: number; rows: ModelRow[] };
+  matches: number;
+  /** ranked rows */
+  rows: ModelRow[];
   minMatches: number;
   chance: number;
 }
@@ -411,19 +387,14 @@ export interface Leaderboard {
 /** House-bot seats are not ranked: the leaderboard and head-to-head are about models. */
 const ranked = (e: SeatEntry) => e.model.key !== "house";
 
-/** Group seat entries by model (and engine) and rank them (house bots left out). */
+/** Group seat entries by model and rank them (house bots left out). */
 export function leaderboard(sets: readonly SeatEntry[][], opts: { minMatches?: number } = {}): Leaderboard {
   const min = opts.minMatches ?? MIN_MATCHES;
-  const entries = sets.flat().filter(ranked);
-  const group = (es: SeatEntry[], engine: number | "all") => {
-    const by = new Map<string, SeatEntry[]>();
-    for (const e of es) by.set(e.model.key, [...(by.get(e.model.key) ?? []), e]);
-    return rankRows([...by.values()].map((g) => rowOf(g, engine, min)));
-  };
-  const engines = [...new Set(entries.map((e) => e.engine))].sort((a, b) => b - a);
+  const by = new Map<string, SeatEntry[]>();
+  for (const e of sets.flat().filter(ranked)) by.set(e.model.key, [...(by.get(e.model.key) ?? []), e]);
   return {
-    engines: engines.map((engine) => ({ engine, matches: sets.filter((s) => s[0]?.engine === engine).length, rows: group(entries.filter((e) => e.engine === engine), engine) })),
-    all: { matches: sets.length, rows: group(entries, "all") },
+    matches: sets.length,
+    rows: rankRows([...by.values()].map((g) => rowOf(g, min))),
     minMatches: min,
     chance: CHANCE,
   };
@@ -465,13 +436,13 @@ export function headToHead(sets: readonly SeatEntry[][], order?: string[]): Head
 
 // ------------------------------------------------------------------ text table (CLI)
 
-const pct = (x: number | null) => (x === null ? "  -  " : `${Math.round(x * 100)}%`.padStart(4));
-const f1 = (x: number | null) => (x === null ? "-" : x.toFixed(1));
+const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
+const f1 = (x: number) => x.toFixed(1);
 
 /** The leaderboard as a plain-text table. */
-export function leaderboardText(lb: Leaderboard, h2h?: (engine: number | "all") => HeadToHead): string {
+export function leaderboardText(lb: Leaderboard, h2h?: HeadToHead): string {
   const out: string[] = [];
-  const table = (title: string, rows: ModelRow[], matches: number, engine: number | "all") => {
+  const table = (title: string, rows: ModelRow[], matches: number) => {
     out.push(`${title}: ${matches} match${matches === 1 ? "" : "es"} (chance = ${Math.round(lb.chance * 100)}% in a 4-fighter match; ± is the 95% interval)`);
     out.push(`  #  ${"model".padEnd(28)} ${"matches".padStart(7)} ${"win rate".padStart(14)} ${"rounds".padStart(9)}  ${"KO/m".padStart(5)} ${"RO/m".padStart(5)} ${"dmg/m".padStart(6)} ${"alive".padStart(5)}  ${"fallback".padStart(8)} ${"autopilot".padStart(9)}`);
     let rank = 0;
@@ -484,13 +455,11 @@ export function leaderboardText(lb: Leaderboard, h2h?: (engine: number | "all") 
       const name = `${r.name}${r.selfReported ? " (self-reported)" : ""}`.slice(0, 28);
       const wr = `${pct(r.winRate)} ±${Math.round(r.plusMinus * 100)}`.padStart(9);
       out.push(
-        `  ${r.provisional ? " ·" : String(++rank).padStart(2)} ${name.padEnd(28)} ${String(r.matches).padStart(7)} ${`${r.wins}W ${wr}`.padStart(14)} ${`${r.roundWins}/${r.rounds}`.padStart(9)}  ${f1(r.kosPerMatch).padStart(5)} ${f1(r.ringoutsPerMatch).padStart(5)} ${(r.damagePerMatch === null ? "-" : String(Math.round(r.damagePerMatch))).padStart(6)} ${pct(r.survival).padStart(5)}  ${(r.fallbackRate === null ? "-" : `${r.fallbacks}/${r.plans}`).padStart(8)} ${pct(r.autopilotRate).padStart(9)}`,
+        `  ${r.provisional ? " ·" : String(++rank).padStart(2)} ${name.padEnd(28)} ${String(r.matches).padStart(7)} ${`${r.wins}W ${wr}`.padStart(14)} ${`${r.roundWins}/${r.rounds}`.padStart(9)}  ${f1(r.kosPerMatch).padStart(5)} ${f1(r.ringoutsPerMatch).padStart(5)} ${String(Math.round(r.damagePerMatch)).padStart(6)} ${pct(r.survival).padStart(5)}  ${(r.fallbackRate === null ? "-" : `${r.fallbacks}/${r.plans}`).padStart(8)} ${pct(r.autopilotRate).padStart(9)}`,
       );
     }
-    const noFight = rows.filter((r) => r.fightMatches < r.matches);
-    if (noFight.length) out.push(`     KO/RO/dmg/alive cover only matches with fight stats (${noFight.map((r) => `${r.name} ${r.fightMatches}/${r.matches}`).join(", ")})`);
     if (h2h) {
-      const h = h2h(engine);
+      const h = h2h;
       const keys = rows.map((r) => r.key).filter((k) => h.keys.includes(k));
       if (keys.length > 1) {
         out.push("  head to head: row finished ahead of column (matches where both played)");
@@ -501,7 +470,6 @@ export function leaderboardText(lb: Leaderboard, h2h?: (engine: number | "all") 
     }
     out.push("");
   };
-  for (const e of lb.engines) table(`ENGINE v${e.engine}`, e.rows, e.matches, e.engine);
-  if (lb.engines.length > 1) table("ALL ENGINES (different physics: read with care)", lb.all.rows, lb.all.matches, "all");
+  table(`ENGINE v${ENGINE_VERSION}`, lb.rows, lb.matches);
   return out.join("\n");
 }

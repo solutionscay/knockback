@@ -66,7 +66,6 @@ export function checkinFlags(flags: Record<string, string | undefined>, defaultO
   const on = flags.checkins ?? (defaultOn ? "on" : "off");
   if (on === "off" || on === "false") return false;
   if (on !== "on" && on !== "true") throw new Error(`--checkins: on or off (got ${on})`);
-  if (flags["checkin-deadline"] !== undefined) throw new Error("--checkin-deadline is gone: a check-in waits for the answer (--checkin-cap <s> only stops hung calls)");
   const num = (k: string, lo: number, hi: number) => {
     const v = flags[k];
     if (v === undefined) return undefined;

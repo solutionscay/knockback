@@ -5,7 +5,7 @@
  */
 import { mkdirSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { checkRecordEngine, initPhysics, Match, type MatchRecord } from "../../src/sim";
+import { initPhysics, Match, type MatchRecord } from "../../src/sim";
 import { deadStretches } from "./plan";
 import type { Source } from "./options";
 
@@ -23,9 +23,8 @@ export interface MatchFacts {
   score: number;
 }
 
-/** Replay a record in the sim: dead stretches and the action score. Refuses another engine's record. */
+/** Replay a record in the sim: dead stretches and the action score. Only current-engine records load. */
 export async function matchFacts(rec: MatchRecord): Promise<MatchFacts> {
-  checkRecordEngine(rec);
   await initPhysics();
   const m = new Match(rec.seed, { recorded: rec });
   const dead: [number, number][][] = [];
@@ -82,8 +81,8 @@ export async function getRecord(src: Source, work: string, log: (s: string) => v
     case "server": {
       const res = await fetch(`${src.url}/api/records`);
       if (!res.ok) throw new Error(`${src.url}/api/records: HTTP ${res.status}`);
-      const list = ((await res.json()) as { records?: { path: string; createdAt: number; old?: boolean }[] }).records ?? [];
-      const newest = list.filter((r) => !r.old).sort((a, b) => b.createdAt - a.createdAt)[0];
+      const list = ((await res.json()) as { records?: { path: string; createdAt: number }[] }).records ?? [];
+      const newest = list.sort((a, b) => b.createdAt - a.createdAt)[0];
       if (!newest) throw new Error(`${src.url} has no finished match recorded with this engine yet`);
       const r = await fetch(`${src.url}${newest.path}`);
       if (!r.ok) throw new Error(`${src.url}${newest.path}: HTTP ${r.status}`);

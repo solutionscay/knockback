@@ -19,7 +19,7 @@ import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
 import { Rng } from "./rng";
 import type { SimEvent, Strategy } from "./sim";
-import { assignIdentities, legacyIdentities, sanitizeIdentity, type Identity, type IdentityWish } from "./identity";
+import { assignIdentities, sanitizeIdentity, type Identity, type IdentityWish } from "./identity";
 import { soulRecord, TEMPERAMENT_MORALE, type Soul } from "./soul";
 import { exampleSouls } from "./souls";
 import { houseBrain, VoiceSession, type Brain, type Decision, type DecideContext } from "./voice";
@@ -110,22 +110,15 @@ export interface SuitUpEntry {
 }
 
 export interface MatchRecord {
-  /** Absent on legacy engine-v4 records, which play with Classic. */
-  ruleset?: Ruleset;
+  ruleset: Ruleset;
   preset?: string;
   presetVersion?: number;
-  /**
-   * 4: generated identities (#17); souls have no name or look.
-   * 3: plans may carry rules (#5). 2: no rules. Versions 2 and 3 still load:
-   * their souls' names, colors and marks become the identities.
-   */
-  version: 2 | 3 | 4;
-  /** engine version that made the record (src/sim/engine-version.ts); missing = 0. Not hashed. */
-  engine?: number;
+  /** engine version that made the record (src/sim/engine-version.ts): only records of the current one load. Not hashed. */
+  engine: number;
   /** the souls that played (personality, voice, lines): a replay needs no files */
   souls: Soul[];
-  /** each seat's generated name and look (version 4) */
-  identities?: Identity[];
+  /** each seat's name and look */
+  identities: Identity[];
   /** seats that chose their own look before the match (#19); absent: every look came from the seed */
   suitUp?: SuitUpEntry[];
   /** match seed: makes the level; round physics seeds derive from it */
@@ -204,9 +197,9 @@ export class Match {
     readonly seed: number,
     readonly opts: MatchOptions = {},
   ) {
+    if (opts.recorded) checkRecordEngine(opts.recorded); // the one check: another engine's record is not loaded
     this.ruleset = resolveRuleset(opts.recorded ? opts.recorded.ruleset : opts.ruleset);
     this.level = generateLevel(seed, undefined, this.ruleset);
-    if (opts.recorded) checkRecordVersion(opts.recorded);
     this.souls = (opts.recorded?.souls ?? opts.souls ?? exampleSouls()).map(soulRecord);
     if (this.souls.length !== 4) throw new Error("a match needs 4 souls");
     this.identities = matchIdentities(seed, opts);
@@ -215,7 +208,7 @@ export class Match {
     this.morale = initialMorale(this.souls.map((s) => TEMPERAMENT_MORALE[s.temperament]), this.ruleset.morale);
     this.lineRng = new Rng((seed ^ 0x11e5f00d) >>> 0);
     this.strategyRng = new Rng((seed ^ 0x57a7e9) >>> 0);
-    this.record = { version: 4, engine: ENGINE_VERSION, ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), ...((opts.recorded?.suitUp ?? opts.suitUp)?.length ? { suitUp: (opts.recorded?.suitUp ?? opts.suitUp)!.map((e) => ({ ...e })) } : {}), rounds: [], winner: -1, wins: this.wins };
+    this.record = { engine: ENGINE_VERSION, ruleset: this.ruleset, ...(opts.recorded?.preset || opts.preset ? { preset: opts.recorded?.preset ?? opts.preset, presetVersion: opts.recorded?.presetVersion ?? opts.presetVersion } : {}), seed, souls: this.souls.map(soulRecord), identities: this.identities.map((i) => ({ ...i })), ...((opts.recorded?.suitUp ?? opts.suitUp)?.length ? { suitUp: (opts.recorded?.suitUp ?? opts.suitUp)!.map((e) => ({ ...e })) } : {}), rounds: [], winner: -1, wins: this.wins };
   }
 
   get names(): string[] {
@@ -262,7 +255,7 @@ export class Match {
     const decisions: Decision[] = external
       ? external.map((d) => ({ ...d, strategy: { ...d.strategy } }))
       : rec
-        ? rec.strategies.map((s, i) => ({ line: rec.lines[i]!, strategy: { ...s, weapons: (s.weapons ?? []).slice() } }))
+        ? rec.strategies.map((s, i) => ({ line: rec.lines[i]!, strategy: { ...s, weapons: s.weapons.slice() } }))
         : this.brains.map((brain, me) => brain(this.contextFor(me)));
     if (!meta && rec?.meta) meta = rec.meta;
     this.round++;
@@ -271,7 +264,7 @@ export class Match {
     const ps = physicsSeed(this.seed, this.round);
     this.moraleAtStart.push(this.morale.map((m) => ({ ...m })));
     // a replay applies the record's mid-round plan updates at their ticks (#8)
-    const updates = rec ? (rec.planUpdates ?? rec.fight?.updates ?? []) : [];
+    const updates = rec?.planUpdates ?? [];
     this.fight = new Fight(
       ps,
       decisions.map((d) => d.strategy),
@@ -329,7 +322,7 @@ export class Match {
     const fight = this.fight!;
     const res = fight.result();
     const facts = fight.facts(this.round);
-    // replaying a record: it must end in the recorded state, or the record came from another engine version
+    // replaying a record: it must end in the recorded state
     const want = this.opts.recorded?.rounds[this.round - 1]?.fight.finalHash;
     if (want && want !== fight.record.finalHash && this.diverged < 0) this.diverged = this.round;
     this.results.push(res);
@@ -371,43 +364,28 @@ export class Match {
   }
 }
 
-/**
- * The identities of a match: a record's own (version 4), an old record's
- * souls (versions 2 and 3), or generated from the seed and any wishes.
- */
+/** The identities of a match: a record's own, the exact ones given, or generated from the seed and any wishes. */
 export function matchIdentities(seed: number, opts: Pick<MatchOptions, "recorded" | "identityWishes" | "identities">): Identity[] {
-  const rec = opts.recorded;
-  if (!rec && opts.identities?.length === 4) {
+  const given = opts.recorded?.identities ?? opts.identities;
+  if (given?.length === 4) {
     const gen = assignIdentities(seed);
-    return opts.identities.map((v, i) => sanitizeIdentity(v, i, gen[i]!));
+    return given.map((v, i) => sanitizeIdentity(v, i, gen[i]!));
   }
-  if (rec && Array.isArray(rec.identities) && rec.identities.length === 4) {
-    const gen = assignIdentities(seed);
-    return rec.identities.map((v, i) => sanitizeIdentity(v, i, gen[i]!));
-  }
-  if (rec) return legacyIdentities(seed, rec.souls);
+  if (opts.recorded) throw new Error("this match record has no identities");
   return assignIdentities(seed, opts.identityWishes);
-}
-
-/** Match record versions this engine loads; anything else is refused with a clear message. */
-export const RECORD_VERSIONS = [2, 3, 4] as const;
-export function checkRecordVersion(rec: { version?: unknown; souls?: unknown }) {
-  if (!(RECORD_VERSIONS as readonly unknown[]).includes(rec.version) || !Array.isArray(rec.souls))
-    throw new Error(`can't load this match record: version ${JSON.stringify(rec.version)}${Array.isArray(rec.souls) ? "" : " without souls"}; this engine loads versions ${RECORD_VERSIONS.slice(0, -1).join(", ")} and ${RECORD_VERSIONS[RECORD_VERSIONS.length - 1]} (version 1 records come from the classes engine)`);
 }
 
 /** Replay a whole match from its record (recorded decisions, same seeds). */
 export function replayMatch(record: MatchRecord): Match {
-  checkRecordEngine(record); // another engine's physics can't replay it: refuse before simulating
   const m = new Match(record.seed, { recorded: record });
   m.playToEnd();
   if (m.diverged >= 0) throw new ReplayDivergedError(m.diverged);
   return m;
 }
 
-/** A record that no longer replays to its recorded state (made by an older engine). */
+/** A record that does not replay to its recorded state. */
 export class ReplayDivergedError extends Error {
   constructor(readonly round: number) {
-    super(`this record does not replay with the current engine: round ${round} ends in a different state than recorded (it was made by an older engine version); replay it from the commit that made it`);
+    super(`this record does not replay: round ${round} ends in a different state than recorded`);
   }
 }
