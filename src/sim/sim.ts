@@ -74,6 +74,8 @@ export class Sim {
   zone: { center: number; half: number; startHalf: number };
   /** Sandbox switch (tests): when false the zone neither shrinks nor pushes. */
   zoneEnabled = true;
+  /** The round is decided (set by the fight once one fighter or none is left): the walls stop, no more supply drops. */
+  roundOver = false;
   private supplyCount = 0;
   /** last tick a fighter damaged another fighter (anti-stalemate clock) */
   lastClashTick: number;
@@ -241,17 +243,17 @@ export class Sim {
   step(inputs: readonly Input[]) {
     const tick = this.tick;
     const z = this.zone;
-    if (this.zoneEnabled) {
+    if (this.zoneEnabled && !this.roundOver) {
       z.half = zoneHalfAt(tick, z.startHalf, this.ruleset);
       this.zoneBehavior.checkStalemate(this, tick);
     }
-    if (tick >= this.ruleset.pickups.supply.firstTick && (tick - this.ruleset.pickups.supply.firstTick) % this.ruleset.pickups.supply.interval === 0) supplyDrop(this, this.supplyCount++);
+    if (!this.roundOver && tick >= this.ruleset.pickups.supply.firstTick && (tick - this.ruleset.pickups.supply.firstTick) % this.ruleset.pickups.supply.interval === 0) supplyDrop(this, this.supplyCount++);
 
     for (const f of this.fighters) {
       if (!f.alive) continue;
       tickPowers(this, f);
       applyInput(this, f, inputs[f.id] ?? NO_INPUT);
-      zonePush(this, f);
+      if (!this.roundOver) zonePush(this, f);
     }
     this.softCeiling();
     updateRockets(this);

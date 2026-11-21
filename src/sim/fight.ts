@@ -197,7 +197,10 @@ export class Fight {
         this.controllers.map((c, i) => (sim.fighters[i]!.alive && !sim.fighters[i]!.removed && sim.fighters[i]!.weapons.some((w) => w !== "fist") ? c.stanceNow(sim) : "")),
         sim.fighters.map((f) => inCover(sim, f)),
       );
-    if (this.finishLeft < 0 && sim.alive().length <= 1) this.finishLeft = sim.ruleset.round.finishTicks;
+    if (this.finishLeft < 0 && sim.alive().length <= 1) {
+      this.finishLeft = sim.ruleset.round.finishTicks;
+      sim.roundOver = true; // the walls stop and nothing more drops: the winner celebrates
+    }
     if (this.finishLeft > 0) this.finishLeft--;
     if (this.finishLeft === 0 || sim.tick >= sim.ruleset.round.fightTicks) {
       this.over = true;
