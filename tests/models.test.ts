@@ -1,15 +1,17 @@
 /** Model spotlight: who plays each seat, model stats over records, GET /api/models, /models, the badge. */
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seatsFor } from "../src/ai/decide";
-import { PROVIDERS, registerStubs } from "../src/ai/providers";
+import { registerStubs } from "../src/ai/providers";
 import { MatchRunner } from "../src/ai/runner";
 import { MatchServer } from "../src/server/match-server";
 import { SqliteStore } from "../src/server/store";
 import { exampleSouls, initPhysics } from "../src/sim";
 import { Match } from "../src/sim/match";
+import { ENGINE_VERSION } from "../src/sim/engine-version";
+import { CLASSIC } from "../src/sim/ruleset";
 import {
   dedupe,
   fightStatsOf,
@@ -20,7 +22,6 @@ import {
   matchKey,
   modelOf,
   prettyModel,
-  PROVIDER_ALIASES,
   remoteLabel,
   seatEntries,
   wilson,
@@ -37,27 +38,21 @@ beforeAll(async () => {
 const SOUL = readFileSync("souls/rat.md", "utf8");
 const tmp = () => mkdtempSync(join(tmpdir(), "kb-models-"));
 
-/** A finished house-bot match with the given labels (and its facts). */
+/** A finished house-bot match with the given labels and its fight stats, as saved. */
 function played(seed: number, labels: string[]) {
   const m = new Match(seed);
   m.playToEnd();
-  return { m, rec: { ...JSON.parse(JSON.stringify(m.record)), labels, totalMs: seed * 10 } };
+  return { m, rec: { ...JSON.parse(JSON.stringify(m.record)), labels, totalMs: seed * 10, fightStats: fightStatsOf(m.facts) } };
 }
 
 describe("modelOf: who plays a seat", () => {
-  test("provider labels, bare provider names, house, test stubs", () => {
+  test("provider labels, house, test stubs", () => {
     expect(modelOf("claude/haiku")).toMatchObject({ key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", selfReported: false });
     expect(modelOf("codex/gpt-6-luna")).toMatchObject({ key: "gpt-6-luna", name: "GPT-6 LUNA (CODEX)", provider: "openai" });
     expect(modelOf("grok/grok-4.6")).toMatchObject({ key: "grok-4-6", name: "GROK 4.6", provider: "xai" });
     expect(modelOf("house")).toMatchObject({ key: "house", name: "HOUSE BOT", provider: "house" });
     expect(modelOf(null).name).toBe("HOUSE BOT");
     expect(modelOf("stub/test")).toMatchObject({ name: "STUB (TEST)", test: true });
-    // older records and ai-eval used the provider name as the label: same model, same row
-    for (const [bare, full] of Object.entries(PROVIDER_ALIASES)) expect(modelOf(bare)).toEqual(modelOf(full));
-  });
-
-  test("the aliases name the models PROVIDERS really runs", () => {
-    for (const [bare, full] of Object.entries(PROVIDER_ALIASES)) expect(PROVIDERS[bare]?.label).toBe(full);
   });
 
   test("remote agents: shown as reported, marked self-reported; without a model, not guessed", () => {
@@ -94,7 +89,7 @@ describe("model stats over records", () => {
     });
   });
 
-  test("seat entries: wins, rounds, fallbacks, autopilot; fight stats when the record has them", () => {
+  test("seat entries: wins, rounds, fallbacks, autopilot, fight stats; nothing without fightStats or from another engine", () => {
     const { m, rec } = played(42, ["claude/haiku", "codex/gpt-6-luna", "house", "remote/Zap@grok-4.6"]);
     rec.rounds[0].meta = [
       { provider: "claude/haiku", ms: 10, outcome: "ok" },
@@ -103,51 +98,50 @@ describe("model stats over records", () => {
       { provider: "remote/Zap@grok-4.6", ms: 5, outcome: "ok" },
     ];
     rec.control = [{ seat: 3, mode: "autopilot", round: 1, phase: "fight", tick: 10, reason: "connection lost", line: "x" }];
-    let es = seatEntries(rec);
+    const es = seatEntries(rec);
     expect(es.map((e) => e.model.key)).toEqual(["claude-haiku", "gpt-6-luna", "house", "self:grok-4-6"]);
     expect(es.filter((e) => e.wonMatch).map((e) => e.seat)).toEqual([m.winner]);
     expect(es.map((e) => e.roundWins)).toEqual(m.wins);
     expect(es[1]).toMatchObject({ plans: 1, fallbacks: 1 });
     expect(es[2]!.plans).toBe(0);
     expect(es[3]!.autopilot).toBe(true);
-    expect(es[0]!.fight).toBeNull(); // no fightStats in this record
-    es = seatEntries({ ...rec, fightStats: fightStatsOf(m.facts) });
-    expect(es[0]!.fight).not.toBeNull();
-    expect(es.reduce((a, e) => a + e.fight!.kos, 0)).toBe(m.facts.reduce((a, f) => a + f.stats.kos.filter((k) => k.by >= 0 && k.by !== k.victim).length, 0));
+    expect(seatEntries({ ...rec, fightStats: undefined })).toEqual([]);
+    expect(seatEntries({ ...rec, engine: ENGINE_VERSION - 1 })).toEqual([]);
+    expect(es.reduce((a, e) => a + e.fight.kos, 0)).toBe(m.facts.reduce((a, f) => a + f.stats.kos.filter((k) => k.by >= 0 && k.by !== k.victim).length, 0));
     expect(seatEntries({ seed: 1 })).toEqual([]);
     expect(isRealAi(es)).toBe(true);
     expect(isRealAi(seatEntries({ ...rec, labels: ["house", "house", "house", "house"] }))).toBe(false);
     expect(isRealAi(seatEntries({ ...rec, labels: ["stub/test", "claude/haiku", "house", "house"] }))).toBe(false);
   });
 
-  test("copies of a match count once (engine + seed + total time)", () => {
+  test("copies of a match count once (seed + total time)", () => {
     const { rec } = played(43, ["claude/haiku", "house", "house", "house"]);
     const a = seatEntries(rec);
     const b = seatEntries(JSON.parse(JSON.stringify(rec)));
-    const c = seatEntries({ ...rec, engine: 99 }); // another engine: another match
+    const c = seatEntries({ ...rec, totalMs: rec.totalMs + 1 }); // another match
     expect(matchKey(rec)).toBe(a[0]!.match);
     const { kept, dropped } = dedupe([a, b, c]);
     expect(kept.length).toBe(2);
     expect(dropped).toBe(1);
   });
 
-  test("leaderboard: per engine, ranked by win rate, small samples provisional, ± from the Wilson interval", () => {
+  test("leaderboard: ranked by win rate, small samples provisional, ± from the Wilson interval", () => {
     // synthetic entries: A wins 6 of 10, B 2 of 10, C 1 of 2 (provisional)
-    const mk = (match: string, key: string, won: boolean, engine = 4): SeatEntry => ({ match, engine, seat: 0, model: { ...modelOf("house"), key, name: key.toUpperCase(), provider: "other" }, wonMatch: won, rounds: 3, roundWins: won ? 2 : 0, plans: 3, fallbacks: 0, autopilot: false, fight: null });
+    const fight = { kos: 1, ringouts: 0, damage: 50, taken: 40, alive: 60, roundSeconds: 90 };
+    const mk = (match: string, key: string, won: boolean): SeatEntry => ({ match, seat: 0, model: { ...modelOf("house"), key, name: key.toUpperCase(), provider: "other" }, wonMatch: won, rounds: 3, roundWins: won ? 2 : 0, plans: 3, fallbacks: 0, autopilot: false, fight });
     const sets: SeatEntry[][] = [];
     for (let i = 0; i < 10; i++) sets.push([mk(`m${i}`, "a", i < 6), mk(`m${i}`, "b", i >= 6 && i < 8)]);
-    sets.push([mk("x1", "c", true, 3), mk("x1", "a", false, 3)]);
-    sets.push([mk("x2", "c", false, 3), mk("x2", "a", true, 3)]);
+    const ab = leaderboard(sets, { minMatches: 5 });
+    expect(ab.rows.map((r) => r.key)).toEqual(["a", "b"]);
+    expect(ab.rows[0]).toMatchObject({ matches: 10, wins: 6, winRate: 0.6, provisional: false, kosPerMatch: 1, survival: 60 / 90 });
+    expect(ab.rows[0]!.low).toBeLessThan(0.6);
+    expect(ab.rows[0]!.high).toBeGreaterThan(0.6);
+    sets.push([mk("x1", "c", true), mk("x1", "a", false)]);
+    sets.push([mk("x2", "c", false), mk("x2", "a", true)]);
     const lb = leaderboard(sets, { minMatches: 5 });
-    expect(lb.engines.map((e) => e.engine)).toEqual([4, 3]);
-    const v4 = lb.engines[0]!.rows;
-    expect(v4.map((r) => r.key)).toEqual(["a", "b"]);
-    expect(v4[0]).toMatchObject({ matches: 10, wins: 6, winRate: 0.6, provisional: false });
-    expect(v4[0]!.low).toBeLessThan(0.6);
-    expect(v4[0]!.high).toBeGreaterThan(0.6);
-    const all = lb.all.rows;
-    expect(all.find((r) => r.key === "c")!.provisional).toBe(true);
-    expect(all.at(-1)!.key).toBe("c"); // provisional rows after the ranked ones, even with a 50% win rate
+    expect(lb.matches).toBe(12);
+    expect(lb.rows.find((r) => r.key === "c")!.provisional).toBe(true);
+    expect(lb.rows.at(-1)!.key).toBe("c"); // provisional rows after the ranked ones, even with a 50% win rate
     expect(wilson(0, 0)).toEqual({ low: 0, high: 1 });
     const w = wilson(5, 10);
     expect(w.low).toBeCloseTo(0.237, 2);
@@ -155,8 +149,8 @@ describe("model stats over records", () => {
     const h = headToHead(sets);
     expect(h.cell.a!.b).toEqual({ ahead: 6, met: 10 });
     expect(h.cell.b!.a).toEqual({ ahead: 2, met: 10 });
-    const text = leaderboardText(lb, () => h);
-    expect(text).toContain("ENGINE v4");
+    const text = leaderboardText(lb, h);
+    expect(text).toContain(`ENGINE v${ENGINE_VERSION}`);
     expect(text).toContain("provisional");
     expect(text).toContain("head to head");
   });
@@ -170,7 +164,7 @@ describe("records carry fight stats", () => {
     expect(saved.fightStats).toEqual(fightStatsOf(r.match.facts));
     const es = seatEntries(JSON.parse(JSON.stringify(saved)));
     expect(es[0]!.model.name).toBe("STUB (TEST)");
-    expect(es.every((e) => e.fight !== null)).toBe(true);
+    expect(es.length).toBe(4);
   });
 });
 
@@ -212,9 +206,9 @@ describe("match server: self-reported models and GET /api/models", () => {
     // the leaderboard reads the record index (stats saved with the record)
     const lb = (await call("GET", "/api/models?min=1")).data;
     expect(lb.minMatches).toBe(1);
-    const row = lb.engines[0].rows.find((r: { key: string }) => r.key === "self:claude-opus-5-5");
-    expect(row).toMatchObject({ matches: 1, selfReported: true, fightMatches: 1 });
-    expect(lb.all.rows.some((r: { key: string }) => r.key === "house")).toBe(true);
+    const row = lb.rows.find((r: { key: string }) => r.key === "self:claude-opus-5-5");
+    expect(row).toMatchObject({ matches: 1, selfReported: true });
+    expect(lb.rows.some((r: { key: string }) => r.key === "house")).toBe(true);
   });
 
   test("the seat's model survives a restart (stored with the seat)", async () => {
@@ -229,37 +223,29 @@ describe("match server: self-reported models and GET /api/models", () => {
     await store.close();
   });
 
-  test("older index rows (no stats): read once from the record file, test providers left out, copies counted once", async () => {
-    const out = tmp();
+  test("the index's stats: test providers left out, copies counted once, other engines not loaded", async () => {
     const store = new SqliteStore(":memory:");
-    const s = new MatchServer({ outDir: out, store });
+    const s = new MatchServer({ outDir: tmp(), store });
     const a = played(61, ["claude/haiku", "codex/gpt-6-luna", "grok/grok-4.6", "house"]).rec;
     const t = played(62, ["stub/test", "house", "house", "house"]).rec;
-    writeFileSync(join(out, "a.json"), JSON.stringify(a));
-    writeFileSync(join(out, "a-copy.json"), JSON.stringify(a));
-    writeFileSync(join(out, "t.json"), JSON.stringify(t));
-    const row = (id: string, seed: number) => store.insertMatch({ id, seed, kinds: ["house", "house", "house", "house"], deadlineMs: 1, fillAfterMs: 1, status: "over", createdAt: 1, startedAt: 1, endedAt: 2, creator: null, error: null, winner: 0 });
-    await row("m1", 61);
-    await row("m2", 61);
-    await row("m3", 62);
-    await row("m4", 63);
-    await store.insertRecord({ matchId: "m1", path: "/records/a.json", seed: 61, hashes: [], winner: a.winner, createdAt: 1, engine: a.engine ?? 0 });
-    await store.insertRecord({ matchId: "m2", path: "/records/a-copy.json", seed: 61, hashes: [], winner: a.winner, createdAt: 2, engine: a.engine ?? 0 });
-    await store.insertRecord({ matchId: "m3", path: "/records/t.json", seed: 62, hashes: [], winner: t.winner, createdAt: 3, engine: t.engine ?? 0 });
-    await store.insertRecord({ matchId: "m4", path: "/records/gone.json", seed: 63, hashes: [], winner: 0, createdAt: 4, engine: 0 });
+    const row = (id: string, seed: number) => store.insertMatch({ id, seed, kinds: ["house", "house", "house", "house"], deadlineMs: 1, fillAfterMs: 1, status: "over", createdAt: 1, startedAt: 1, endedAt: 2, creator: null, error: null, winner: 0, ruleset: CLASSIC });
+    for (const [id, seed] of [["m1", 61], ["m2", 61], ["m3", 62], ["m4", 63]] as const) await row(id, seed);
+    const rec = (matchId: string, r: typeof a, createdAt: number, engine = ENGINE_VERSION) => store.insertRecord({ matchId, path: `/records/${matchId}.json`, seed: r.seed, hashes: [], winner: r.winner, createdAt, engine, stats: JSON.stringify(seatEntries(r)) });
+    await rec("m1", a, 1);
+    await rec("m2", a, 2); // a copy of m1
+    await rec("m3", t, 3); // test provider
+    await rec("m4", a, 4, ENGINE_VERSION - 1); // another engine version: not loaded
     const lb = (await client(s)("GET", "/api/models")).data;
-    expect(lb.all.matches).toBe(1);
+    expect(lb.matches).toBe(1);
     expect(lb.duplicates).toBe(1);
-    expect(lb.all.rows.map((r: { name: string }) => r.name).sort()).toEqual(["CLAUDE HAIKU", "GPT-6 LUNA (CODEX)", "GROK 4.6", "HOUSE BOT"]);
-    expect(lb.all.rows.every((r: { provisional: boolean }) => r.provisional)).toBe(true); // 1 match < 10
-    expect((await store.getRecord("m1"))!.stats).toContain("claude-haiku"); // filled in
-    expect((await store.getRecord("m4"))!.stats).toBe("[]"); // missing file: marked, never read again
+    expect(lb.rows.map((r: { name: string }) => r.name).sort()).toEqual(["CLAUDE HAIKU", "GPT-6 LUNA (CODEX)", "GROK 4.6", "HOUSE BOT"]);
+    expect(lb.rows.every((r: { provisional: boolean }) => r.provisional)).toBe(true); // 1 match < 10
     // ?min only re-ranks the cached entries: no rebuild per query string
     const cached = s.modelsCache;
     const again = (await client(s)("GET", "/api/models?min=1")).data;
     expect(s.modelsCache).toBe(cached);
     expect(again.minMatches).toBe(1);
-    expect(again.all.rows.every((r: { provisional: boolean }) => !r.provisional)).toBe(true);
+    expect(again.rows.every((r: { provisional: boolean }) => !r.provisional)).toBe(true);
     await store.close();
   });
 

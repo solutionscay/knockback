@@ -45,10 +45,3 @@ test("the record owns the ruleset and replays a custom match through viewer sani
   expect(checkpoints(replayMatch(record!))).toEqual(checkpoints(match));
   expect(sanitizeRecord({ ...record, ruleset: { fire: { spread: "too much" } } })).toBeNull();
 });
-
-test("older records with no ruleset still replay on Classic", () => {
-  const match = new Match(42);
-  match.playToEnd();
-  const { ruleset: _, ...legacy } = match.record;
-  expect(checkpoints(replayMatch(legacy))).toEqual(checkpoints(match));
-});

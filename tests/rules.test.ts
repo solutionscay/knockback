@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { parseAnswer, parseRules } from "../src/ai/parse";
 import { checkRule } from "../src/sim/rules";
 import { initPhysics, Match, MAX_RULES, ReplayDivergedError, replayMatch, type Rule } from "../src/sim";
@@ -119,30 +118,22 @@ describe("stored rules and records (#5)", () => {
     expect(out[1]!.label.length).toBe(40);
   });
 
-  test("new records are version 4 and keep rules; version 2 and 3 records still load; others are refused clearly", () => {
+  test("records keep rules; a record replays to its hashes; a diverging or identity-less record is refused", () => {
     const m = new Match(3);
     m.prepareRound([0, 1, 2, 3].map((i) => ({ line: "x", strategy: { target: "nearest", stance: "rush", weapons: ["bat"], rules: i === 0 ? [{ when: "alone_with", do: "stance", stance: "rush", label: "duel" }] : undefined, line: "x" } })));
-    expect(m.record.version).toBe(4);
     expect(m.record.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
     expect(sanitizeRecord(JSON.parse(JSON.stringify(m.record)))!.rounds[0]!.strategies[0]!.rules![0]!.label).toBe("duel");
-    // The older schema still loads, replays to its recorded hashes and preserves identities. The fixture's engine
-    // outputs (hashes, checkpoints, ticks, winners) are re-recorded whenever the physics changes (including #31 and #34);
-    // its inputs (seed, souls, strategies, lines) stay as they were.
-    const rec = JSON.parse(readFileSync(`${import.meta.dir}/fixtures/record-v2-match-1001.json`, "utf8"));
-    expect(rec.version).toBe(2);
-    expect(() => replayMatch(rec)).not.toThrow();
-    expect(sanitizeRecord(rec)).not.toBeNull();
-    expect(replayMatch(sanitizeRecord(rec)!).names).toEqual(rec.souls.map((s: { name: string }) => s.name));
+    const played = new Match(1001);
+    played.playToEnd();
+    const rec = JSON.parse(JSON.stringify(played.record));
+    expect(replayMatch(sanitizeRecord(rec)!).record.rounds.map((r) => r.fight.finalHash)).toEqual(played.record.rounds.map((r) => r.fight.finalHash));
+    expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).identities).toEqual(played.identities);
     // a record whose hashes don't match this engine is refused
     const stale = JSON.parse(JSON.stringify(rec));
     stale.rounds[0].fight.finalHash = "00000000";
     expect(() => replayMatch(stale)).toThrow(ReplayDivergedError);
-    expect(new Match(rec.seed, { recorded: sanitizeRecord(rec)! }).identities.map((i) => i.color)).toEqual(rec.souls.map((s: { color: number }) => s.color));
-    const v2made = new Match(11);
-    v2made.playToEnd();
-    const rec2 = { ...JSON.parse(JSON.stringify(v2made.record)), version: 2 };
-    expect(replayMatch(rec2).record.rounds.map((r) => r.fight.finalHash)).toEqual(v2made.record.rounds.map((r) => r.fight.finalHash));
-    expect(() => new Match(1, { recorded: { ...rec2, version: 1 } })).toThrow(/version 1.*loads versions 2, 3 and 4/);
-    expect(sanitizeRecord({ ...rec2, version: 1 })).toBeNull();
+    const { identities: _, ...noIds } = rec;
+    expect(sanitizeRecord(noIds)).toBeNull();
+    expect(() => new Match(1, { recorded: noIds })).toThrow(/no identities/);
   });
 });

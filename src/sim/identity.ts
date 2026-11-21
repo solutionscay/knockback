@@ -46,7 +46,7 @@ export const MINOR_CHANCE = 0.5;
 
 export type Shape = (typeof SHAPES)[number];
 export type Eyes = (typeof EYES)[number];
-/** "none" is only for old records: generated fighters always get a mark. */
+/** A mark; "none" only as a minor mark (no second mark). */
 export type Mark = (typeof MARKS)[number] | "none";
 export type MajorMark = (typeof MAJOR_MARKS)[number];
 export type MinorMark = (typeof MINOR_MARKS)[number];
@@ -55,7 +55,7 @@ export interface Identity {
   name: string;
   shape: Shape;
   eyes: Eyes;
-  /** the major mark (old records may carry any mark, or "none") */
+  /** the major mark (one of MAJOR_MARKS) */
   mark: Mark;
   /** an optional minor mark; missing or "none" means no second mark */
   minor?: Mark;
@@ -359,31 +359,10 @@ export function sanitizeIdentity(v: unknown, seat: number, fallback: Identity): 
     name: name || fallback.name || `Fighter ${seat + 1}`,
     shape: (SHAPES as readonly unknown[]).includes(o.shape) ? (o.shape as Shape) : fallback.shape,
     eyes: (EYES as readonly unknown[]).includes(o.eyes) ? (o.eyes as Eyes) : fallback.eyes,
-    mark: o.mark === "none" || (MARKS as readonly unknown[]).includes(o.mark) ? (o.mark as Mark) : fallback.mark,
-    // a record without a minor mark (version 4 from before the marks were split) keeps its single mark
+    mark: (MAJOR_MARKS as readonly unknown[]).includes(o.mark) ? (o.mark as Mark) : fallback.mark,
     minor: (MINOR_MARKS as readonly unknown[]).includes(o.minor) ? (o.minor as Mark) : "none",
     color: validColor(o.color) ? o.color : fallback.color,
   };
-}
-
-/** Head shapes for the four marks of old (version 2 and 3) records, so old matches keep a familiar look. */
-const LEGACY_SHAPE: Record<string, Shape> = { headband: "keystone", antenna: "dome", ears: "bun", crown: "shield", none: "squircle" };
-
-/**
- * Identities for an old record: its souls carried a name, a color and a mark.
- * What is missing comes from the seed.
- */
-export function legacyIdentities(seed: number, souls: readonly unknown[]): Identity[] {
-  const gen = generateIdentities(seed);
-  const out: Identity[] = [];
-  gen.forEach((g, i) => {
-    const s = (souls[i] && typeof souls[i] === "object" ? souls[i] : {}) as Record<string, unknown>;
-    const mark = typeof s.mark === "string" ? s.mark : undefined;
-    const want = mark && LEGACY_SHAPE[mark] ? LEGACY_SHAPE[mark] : g.shape;
-    const shape = out.some((o) => o.shape === want) ? g.shape : want;
-    out.push(sanitizeIdentity({ name: s.name, color: s.color, mark: mark ?? g.mark, shape, eyes: "tall" }, i, g));
-  });
-  return out;
 }
 
 /** Cosmetic look of a seat, as the sim stores it on each Fighter. */

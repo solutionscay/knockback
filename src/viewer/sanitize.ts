@@ -1,4 +1,5 @@
 import { resolveRuleset, type Ruleset } from "../sim/ruleset";
+import { isCurrentEngine } from "../sim/engine-version";
 /** Untrusted input (record files, the live stream) -> safe decisions and souls. Pure: no DOM, no Pixi. */
 import type { MatchRecord, PlanUpdate, SuitUpEntry } from "../sim/match";
 import { MORALE_STATES } from "../sim/morale";
@@ -64,11 +65,7 @@ export function sanitizeRules(v: unknown, fighter: number): Rule[] {
   return out;
 }
 
-/**
- * A soul from a record or the stream: known values only, strings clipped.
- * Old (version 2 and 3) souls also carry a name, color and mark: those are
- * kept as `legacy` so the match can turn them into identities.
- */
+/** A soul from a record or the stream: known values only, strings clipped. */
 export function sanitizeSoul(v: unknown, seat: number): Soul {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const lines: LineTemplate[] = (Array.isArray(o.lines) ? o.lines : []).slice(0, 120).flatMap((l): LineTemplate[] => {
@@ -77,7 +74,6 @@ export function sanitizeSoul(v: unknown, seat: number): Soul {
     return [[l[0].slice(0, 20), st === "*" || st.length ? st : "*", l[2].slice(0, 200)]];
   });
   const ws = (Array.isArray(o.weapons) ? o.weapons : []).filter((w) => isPickupWeapon(w)).slice(0, 3) as Soul["weapons"];
-  const legacy = typeof o.name === "string" || Number.isInteger(o.color) || typeof o.mark === "string" ? { name: str(o.name, 16), color: o.color, mark: str(o.mark, 16) } : null;
   return {
     id: str(o.id, 24).replace(/[^a-z0-9_-]/g, "") || `soul${seat + 1}`,
     temperament: oneOf(o.temperament, SAFE_TEMPER, "confident"),
@@ -90,7 +86,6 @@ export function sanitizeSoul(v: unknown, seat: number): Soul {
     catchphrase: str(o.catchphrase, 80),
     body: str(o.body, 4000),
     lines,
-    ...(legacy ? (legacy as object) : {}),
   };
 }
 
@@ -177,19 +172,18 @@ export function sanitizeRuleset(raw: unknown): Ruleset | null {
   try { return resolveRuleset(raw); } catch { return null; }
 }
 
-/** Sanitize a whole match record (replay files are untrusted). */
+/** Sanitize a whole match record (replay files are untrusted). null unless it is a record of the current engine. */
 export function sanitizeRecord(rec: unknown): MatchRecord | null {
   const r = rec as MatchRecord;
-  if (!r || typeof r !== "object" || !Number.isFinite(r.seed) || !Array.isArray(r.rounds) || (r.version !== 2 && r.version !== 3 && r.version !== 4)) return null;
+  if (!r || typeof r !== "object" || !isCurrentEngine(r) || !Number.isFinite(r.seed) || !Array.isArray(r.rounds)) return null;
   const ruleset = sanitizeRuleset(r.ruleset);
   if (!ruleset || r.rounds.length > ruleset.round.maxRounds) return null;
   const souls = sanitizeSouls(r.souls);
   if (!souls) return null;
-  const identities = r.version === 4 ? sanitizeIdentities(r.identities, Number(r.seed) >>> 0) : undefined;
-  if (r.version === 4 && !identities) return null;
+  const identities = sanitizeIdentities(r.identities, Number(r.seed) >>> 0);
+  if (!identities) return null;
   return {
     ...r,
-    version: r.version,
     ruleset,
     preset: typeof r.preset === "string" ? r.preset.slice(0, 64) : undefined,
     presetVersion: Number.isInteger(r.presetVersion) && (r.presetVersion ?? 0) > 0 ? r.presetVersion : undefined,

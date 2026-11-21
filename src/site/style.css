@@ -165,7 +165,6 @@ a { color: inherit; }
 .results .wn { font: 900 14px/1.1 var(--display); color: var(--ci, var(--ink)); }
 .results .sc { font-size: 12px; color: var(--dim); }
 a.rp { font: 800 12px/1 var(--text); color: var(--yellow); text-decoration: none; padding: 6px 8px; border-radius: 3px; background: #ffd23f14; white-space: nowrap; }
-a.rp.old { color: #ffb347; background: #ffb34714; }
 
 .bring { margin-top: 22px; display: grid; grid-template-columns: 1fr auto; gap: 10px 26px; align-items: center; }
 .bring h2 { margin: 0; font: 900 26px/1 var(--display); }
@@ -258,11 +257,6 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .sharecard { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 630; border-radius: 3px; box-shadow: 0 0 0 3px var(--shadow), 0 16px 40px #000a; background: #1a1d29; }
 .linkrow { display: flex; gap: 8px; margin-top: 12px; }
 .linkrow input { flex: 1; min-width: 0; background: #000; color: var(--ink); border: 2px solid var(--rim); border-radius: 3px; padding: 0 12px; font: 13px ui-monospace, Menlo, monospace; }
-.oldcard { border-left: 6px solid #ffb347; }
-.oldcard h2 { color: #ffb347; }
-.oldcard .lines { display: grid; gap: 8px; margin-top: 10px; }
-.oldcard .lines div { display: grid; grid-template-columns: 34px 1fr; gap: 8px; align-items: center; font-size: 13px; }
-.oldcard svg { width: 34px; height: 32px; }
 
 /* ---------------------------------------------------------------- replays list */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }

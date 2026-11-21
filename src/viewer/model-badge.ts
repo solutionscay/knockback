@@ -1,7 +1,7 @@
 /**
  * ModelBadge: the model behind a fighter, big and readable ("CLAUDE HAIKU", "GPT-6 LUNA (CODEX)", "GROK 4.6",
  * "HOUSE BOT"). One component for every place a fighter appears: dialogue cards, HUD chips, round end, win screen,
- * scoreboard, the old-record card, the lobby and the /models page (and spectator pick cards, when they adopt it).
+ * scoreboard, the lobby and the /models page (and spectator pick cards, when they adopt it).
  *
  * The badge is neutral (dark, white text) so it never fights the bot's identity colour; only the small provider
  * mark on its left is tinted. A remote agent's model is what the agent said at join: it gets a small

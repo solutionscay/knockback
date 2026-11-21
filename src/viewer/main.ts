@@ -1,7 +1,6 @@
 import { PickPanel } from "./picks";
 import { Application } from "pixi.js";
-import { checkRecordEngine, isOtherEngine, summarizeRecord } from "../sim/engine-version";
-import { showOldRecord } from "./old-record";
+import { ENGINE_VERSION, isCurrentEngine } from "../sim/engine-version";
 import { initPhysics } from "../sim/sim";
 import { SoundDirector } from "./audio/director";
 import { AudioEngine, type LoggedCue } from "./audio/engine";
@@ -188,14 +187,9 @@ if (params.has("live")) {
   game.autoNext = null;
   game.onNeedNewMatch = () => location.reload();
   const { raw, rec } = await fetchRecord(recordUrl);
-  // a record from another engine version can't replay on this physics: show what it says instead of a divergence
-  const summary = isOtherEngine(raw) ? summarizeRecord(raw) : null;
-  if (summary) {
-    seedEl.textContent = `seed ${summary.seed} · recorded with engine v${summary.engine}`;
-    showOldRecord(summary);
-  } else if (!rec) {
-    // refuse clearly, on screen
-    const why = raw && typeof raw === "object" && "version" in raw && raw.version !== 2 && raw.version !== 3 ? `record version ${JSON.stringify(raw.version)}; this viewer replays versions 2 and 3` : "not a Knockback match record";
+  if (!rec) {
+    // refuse clearly, on screen: only records of the current engine are loaded
+    const why = raw && typeof raw === "object" && Array.isArray(raw.rounds) && !isCurrentEngine(raw) ? `this record is from another engine version; this viewer loads engine v${ENGINE_VERSION} records only` : "not a Knockback match record";
     seedEl.textContent = `can't replay: ${why}`;
     const box = document.createElement("div");
     box.id = "refused";
@@ -234,8 +228,7 @@ if (capture) {
     loadRecord: async (url: string) => {
       if (!isRecordUrl(url)) throw new Error("records must be /records/<file>.json");
       const { raw, rec } = await fetchRecord(url);
-      checkRecordEngine(raw);
-      if (!rec) throw new Error("not a Knockback match record");
+      if (!rec) throw new Error(`not a match record of engine v${ENGINE_VERSION}`);
       game.newMatch(rec.seed, { recorded: rec, labels: viewerLabels(raw.labels) });
     },
     setCamera: (mode) => game.setCamera(mode),

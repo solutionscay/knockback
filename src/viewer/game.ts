@@ -397,7 +397,7 @@ export class Game {
         const decided = this.match.over;
         h.callout.innerHTML = `<span class="small">ROUND ${facts.round} · ${res.reason === "time-out" ? "TIME!" : "LAST ONE STANDING"}</span><span style="color:${hex(w.color)}">${esc(w.name.toUpperCase())}!</span><span class="rmodel">${modelBadgeHtml(this.seatLabels()[facts.winner]!, "lg")}</span>${pipsHtml(this.match, "big")}${decided ? `<span class="small">TAKES THE MATCH</span>` : Math.max(...this.match.wins) === this.match.ruleset.round.winsToTake - 1 && this.match.round === this.match.ruleset.round.maxRounds - 1 ? `<span class="small">ONE ROUND LEFT · WINNER TAKES ALL</span>` : ""}`;
         h.callout.innerHTML += recapHtml(this.match, facts, this.plans.roundFirings, this.plans.roundKos, this.seatLabels());
-        if (this.match.diverged >= 0) h.callout.innerHTML += `<span class="small diverged">REPLAY DIVERGED IN ROUND ${this.match.diverged} · THIS RECORD WAS MADE BY AN OLDER ENGINE</span>`;
+        if (this.match.diverged >= 0) h.callout.innerHTML += `<span class="small diverged">REPLAY DIVERGED IN ROUND ${this.match.diverged}</span>`;
         restart(h.callout, "show");
         if (decided) this.flow.append(closingBeats());
         else if (this.live) {

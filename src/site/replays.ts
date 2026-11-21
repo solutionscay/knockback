@@ -1,6 +1,6 @@
 /**
  * /replays (#22): every saved match, newest first: the winner in its win pose, the result, the arena, the
- * models that played, and a link to the replay (or the summary card for a record from an older engine).
+ * models that played, and a link to the replay.
  * "More" pages back through older matches (GET /api/replays?before=), so every finished match is reachable.
  */
 import { badge } from "./badge";
@@ -14,7 +14,7 @@ const card = (x: ReplayInfo): Raw => {
   return html`<a class="rcard" href="/replay/${x.match}" style="${colorVars(ids[w]!.color)}">
     ${bot(ids[w]!, x.weapons[w], "win")}
     <div style="min-width:0"><div class="t">${x.names[w]} wins</div>
-      <div class="dim" style="font-size:13px;margin-top:4px">${scoreline(x.wins)} · ${cap(x.theme)} · ${ago(x.createdAt)}${x.old ? html` · <span class="tag" style="background:#ffb347">OLDER ENGINE</span>` : ""}</div>
+      <div class="dim" style="font-size:13px;margin-top:4px">${scoreline(x.wins)} · ${cap(x.theme)} · ${ago(x.createdAt)}</div>
       <div class="heads">${ids.map((v, i) => (i === w ? "" : bot(v, "fist", "ko", true)))}</div>
       <div class="models">${[...new Map(x.labels.map((l) => [modelOf(l).key, l])).values()].map((l) => badge(l))}</div>
     </div></a>`;

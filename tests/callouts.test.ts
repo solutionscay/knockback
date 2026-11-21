@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Strategy } from "../src/sim";
+import { ENGINE_VERSION, generateIdentities, type Strategy } from "../src/sim";
 import { bestRule, CALLOUT, CalloutManager, planChangeText, ruleTagText } from "../src/viewer/callouts";
 import { sanitizeDecision, sanitizePlanUpdates, sanitizeRecord } from "../src/viewer/sanitize";
 
@@ -127,9 +127,10 @@ describe("sanitizing the new fields", () => {
     const d = sanitizeDecision({ line: "x", strategy: { target: "nearest", stance: "rush", weapons: ["bat"], rules: [{ when: "alone_with", do: "stance", stance: "rush", label: "x".repeat(99) }] } }, 0);
     expect(d.strategy.rules![0]!.label.length).toBe(40);
     const rec = sanitizeRecord({
-      version: 3,
+      engine: ENGINE_VERSION,
       seed: 1,
-      souls: [0, 1, 2, 3].map((i) => ({ name: `F${i}` })),
+      souls: [0, 1, 2, 3].map((i) => ({ id: `f${i}` })),
+      identities: generateIdentities(1),
       rounds: [{ strategies: [], lines: [], meta: [{ provider: "x", ms: 1, outcome: "ok", why: "y".repeat(300) }], planUpdates: [{ tick: 5, fighter: 1, strategy: {} }], fight: { finalHash: "0" } }],
     });
     expect(rec!.rounds[0]!.meta![0]!.why!.length).toBe(100);

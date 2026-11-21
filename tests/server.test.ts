@@ -234,7 +234,6 @@ describe("match server API", () => {
     expect((await call("POST", J, undefined, undefined, { type: "text/plain", text: "{}" })).status).toBe(415);
     expect((await call("POST", J, undefined, undefined, { text: JSON.stringify({ name: "Big", persona: "x".repeat(20_000) }) })).status).toBe(413);
     expect((await call("POST", J, undefined, undefined, { text: "[1,2]" })).status).toBe(400);
-    expect((await call("POST", "/api/agents", joinBody("Old"))).status).toBe(410); // registration is gone
     expect((await call("POST", "/api/matches", { seats: ["house", "house", "house", "house"] })).data.problems.join()).toContain("remote");
     expect((await call("POST", "/api/matches", { seats: ["remote", "claude", "house", "house"] })).status).toBe(400); // no local AI over HTTP
     expect((await call("POST", "/api/matches", { deadlineSec: 999 })).data.problems.join()).toContain("deadlineSec");

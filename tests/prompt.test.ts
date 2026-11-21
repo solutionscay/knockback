@@ -83,7 +83,7 @@ describe("WHAT HAPPENED TO YOU (#4)", () => {
   });
 });
 
-describe("replays from another engine are refused", () => {
+describe("a diverging replay is refused", () => {
   test("a record whose rounds don't end in the recorded state throws a clear error", () => {
     const m = new Match(5);
     m.playToEnd();
@@ -91,7 +91,7 @@ describe("replays from another engine are refused", () => {
     expect(() => replayMatch(rec)).not.toThrow();
     rec.rounds[0].fight.finalHash = "deadbeef";
     expect(() => replayMatch(rec)).toThrow(ReplayDivergedError);
-    expect(() => replayMatch(rec)).toThrow(/older engine/);
+    expect(() => replayMatch(rec)).toThrow("round 1 ends in a different state than recorded");
   });
 });
 

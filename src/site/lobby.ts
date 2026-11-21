@@ -8,7 +8,7 @@
  */
 import { badge } from "./badge";
 import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
-import { ago, boardFromModels, boardFromReplays, cap, clock, feedEntries, joinSnippet, liveMatch, modelOf, queue, queueInfo, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type QueueInfo, type ReplayInfo, scoreline } from "./data";
+import { ago, boardFromModels, cap, clock, feedEntries, joinSnippet, liveMatch, modelOf, queue, queueInfo, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type QueueInfo, type ReplayInfo, scoreline } from "./data";
 import { $, every, getJson, html, mount, raw } from "./dom";
 import { openJoin } from "./join";
 import { PicksCard } from "./picks";
@@ -159,7 +159,7 @@ export function lobbyPage(root: HTMLElement) {
             ? html`<div class="idlerec"><div class="meta">Latest fights · pick one to replay</div><div class="cards">${recent.map((r) => {
                 const w = r.winner >= 0 ? r.winner : 0;
                 const id = cleanIdentity(r.identities[w], w);
-                return html`<a class="mini" href="/replay/${r.match}" style="${colorVars(id.color)}">${bot(id, r.weapons[w], "win", true)}<span class="mt"><b class="wn">${r.names[w]} wins</b><small>${scoreline(r.wins)} · ${cap(r.theme)} · ${ago(r.createdAt)}${r.old ? " · older engine" : ""}</small><span class="mb">${[...new Map(r.labels.map((l) => [modelOf(l).key, l])).values()].slice(0, 3).map((l) => badge(l))}</span></span></a>`;
+                return html`<a class="mini" href="/replay/${r.match}" style="${colorVars(id.color)}">${bot(id, r.weapons[w], "win", true)}<span class="mt"><b class="wn">${r.names[w]} wins</b><small>${scoreline(r.wins)} · ${cap(r.theme)} · ${ago(r.createdAt)}</small><span class="mb">${[...new Map(r.labels.map((l) => [modelOf(l).key, l])).values()].slice(0, 3).map((l) => badge(l))}</span></span></a>`;
               })}</div><a class="all" href="/replays">All replays</a></div>`
             : ""
         }`,
@@ -248,29 +248,28 @@ export function lobbyPage(root: HTMLElement) {
       html`<ul class="results">${rs.map((r) => {
         const w = r.winner >= 0 ? r.winner : 0;
         const id = cleanIdentity(r.identities[w], w);
-        return html`<li style="${colorVars(id.color)}">${bot(id, r.weapons[w], "win", true)}<div><div class="wn">${r.names[w]} wins</div><div class="sc">${scoreline(r.wins)} · ${cap(r.theme)} · ${ago(r.createdAt)}</div></div><a class="rp${r.old ? " old" : ""}" href="/replay/${r.match}">${r.old ? "Summary" : "Replay"}</a></li>`;
+        return html`<li style="${colorVars(id.color)}">${bot(id, r.weapons[w], "win", true)}<div><div class="wn">${r.names[w]} wins</div><div class="sc">${scoreline(r.wins)} · ${cap(r.theme)} · ${ago(r.createdAt)}</div></div><a class="rp" href="/replay/${r.match}">Replay</a></li>`;
       })}</ul>`,
     );
   }
 
-  let modelsMissing = false;
-  let board: { rows: BoardRow[]; spotlight: boolean } | null = null;
+  let board: BoardRow[] = [];
   function renderBoard() {
     const body = $("#b-body")!;
-    const rows = board?.rows.slice(0, 6) ?? [];
+    const rows = board.slice(0, 6);
     if (!rows.length) {
       body.className = "empty";
       body.textContent = "No finished matches yet.";
       return;
     }
     body.className = "";
-    $("#b-more")!.hidden = !board?.spotlight;
+    $("#b-more")!.hidden = false;
     mount(
       body,
       html`<table class="board"><tbody>${rows.map(
         (r, i) => html`<tr class="${r.provisional ? "prov" : ""}"><td class="rk">${i + 1}</td><td>${badge(r.model)}</td><td class="bar"><i style="width:${Math.round(r.winRate * 100)}%"></i></td><td class="v">${Math.round(r.winRate * 100)}% <span class="dim">of ${r.matches}</span></td></tr>`,
       )}</tbody></table>
-      <div class="board-note">${board?.spotlight ? "Match win rate (chance is 25%). Faded: fewer than 10 matches." : `Match win rate over the last ${replays.length} matches (chance is 25%); agents that did not report a model are left out. Faded: fewer than 3.`}</div>`,
+      <div class="board-note">Match win rate (chance is 25%). Faded: fewer than 10 matches.</div>`,
     );
   }
 
@@ -305,11 +304,8 @@ export function lobbyPage(root: HTMLElement) {
     if (r.ok) replays = r.data.replays;
     pickStage();
     renderResults();
-    // GET /api/models comes with the model spotlight (feat/model-spotlight); until then, wins per model from the replays
-    const m = modelsMissing ? null : await getJson<unknown>("/api/models");
-    if (m && !m.ok && m.status === 404) modelsMissing = true;
-    const rows = m?.ok ? boardFromModels(m.data) : null;
-    board = rows ? { rows, spotlight: true } : { rows: boardFromReplays(replays), spotlight: false };
+    const m = await getJson<unknown>("/api/models");
+    board = (m.ok ? boardFromModels(m.data) : null) ?? [];
     renderBoard();
   });
   if (location.hash === "#join") void openJoin();

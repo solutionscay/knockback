@@ -7,7 +7,7 @@ import { decideRound, loadSouls, parseLineup, seatsFor } from "../src/ai/decide"
 import { cleanLine, jsonObjects, MAX_LINE, parseAnswer } from "../src/ai/parse";
 import { buildPrompt } from "../src/ai/prompt";
 import { grokText, registerStubs } from "../src/ai/providers";
-import { exampleSouls, Fight, houseStrategy, initPhysics, initialMorale, isPickupWeapon, Match, parseSoul, REFLEX, replayMatch, Rng, StatsCollector, TEMPERAMENT_MORALE, VoiceSession, type DecideContext, type Soul } from "../src/sim";
+import { ENGINE_VERSION, exampleSouls, Fight, houseStrategy, initPhysics, initialMorale, isPickupWeapon, Match, parseSoul, REFLEX, replayMatch, Rng, StatsCollector, TEMPERAMENT_MORALE, VoiceSession, type DecideContext, type Soul } from "../src/sim";
 import { sanitizeDecision, sanitizeRecord } from "../src/viewer/sanitize";
 
 setDefaultTimeout(240_000);
@@ -412,7 +412,7 @@ describe("collectible weapons", () => {
     const m = new Match(31, { souls: custom });
     m.playToEnd();
     const rec = JSON.parse(JSON.stringify(m.record));
-    expect(rec.version).toBe(4);
+    expect(rec.engine).toBe(ENGINE_VERSION);
     expect(rec.souls[2].id).toBe("cold");
     expect(rec.identities).toEqual(m.identities);
     const r = replayMatch(rec);

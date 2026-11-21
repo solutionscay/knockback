@@ -3,7 +3,6 @@ import { roundPlayback } from "../src/flow/pacing";
 import {
   ago,
   boardFromModels,
-  boardFromReplays,
   clock,
   feedEntries,
   firstPrompt,
@@ -134,19 +133,11 @@ describe("lobby data", () => {
     expect(modelOf("remote/Brixel")).toMatchObject({ name: "MODEL NOT REPORTED", agent: "Brixel" });
     expect(modelOf("remote/Brixel@claude-opus-5-5")).toMatchObject({ name: "CLAUDE OPUS 5.5", provider: "anthropic", selfReported: true, agent: "Brixel" });
   });
-  test("leaderboard: /api/models rows when there, else wins per model from replays (once per match)", () => {
-    expect(boardFromModels({ all: { rows: [{ key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", matches: 4, wins: 2, winRate: 0.5, provisional: true }] } })).toEqual([
+  test("leaderboard: the /api/models rows", () => {
+    expect(boardFromModels({ rows: [{ key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", matches: 4, wins: 2, winRate: 0.5, provisional: true }] })).toEqual([
       { model: { key: "claude-haiku", name: "CLAUDE HAIKU", provider: "anthropic", selfReported: false, test: false }, name: "CLAUDE HAIKU", matches: 4, wins: 2, winRate: 0.5, provisional: true },
     ]);
     expect(boardFromModels({ nope: 1 })).toBeNull();
-    const rp = (labels: string[], winner: number, old = false) => ({ labels, winner, old }) as unknown as ReplayInfo;
-    const rows = boardFromReplays([rp(["claude/haiku", "claude/haiku", "house", "remote/X"], 0), rp(["claude/haiku", "grok/grok-4.6", "house", "house"], 2), rp(["grok", "house", "house", "house"], 0), rp(["claude/haiku", "house", "house", "house"], 0, true)], 2);
-    const by = Object.fromEntries(rows.map((r) => [r.name, r]));
-    expect(by["CLAUDE HAIKU"]).toMatchObject({ matches: 2, wins: 1, winRate: 0.5, provisional: false });
-    expect(by["HOUSE BOT"]).toMatchObject({ matches: 3, wins: 1 });
-    expect(by["GROK 4.6"]).toMatchObject({ matches: 2, wins: 1 });
-    expect(by["MODEL NOT REPORTED"]).toBeUndefined();
-    for (const r of rows) expect(r.winRate).toBeLessThanOrEqual(1);
   });
 });
 

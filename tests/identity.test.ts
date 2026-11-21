@@ -8,7 +8,6 @@ import {
   generateIdentities,
   hueLight,
   initPhysics,
-  legacyIdentities,
   luminance,
   MARKS,
   Match,
@@ -130,21 +129,6 @@ describe("generated identities (#17)", () => {
     expect(validName("Pebble")).toBe(false);
     expect(validName("Bolt")).toBe(false);
     expect(n).toBe(2000);
-  });
-
-  test("old records keep their names and colors; their marks pick familiar head shapes", () => {
-    const souls = [
-      { name: "Brick", color: 0xff4f4f, mark: "headband" },
-      { name: "Pike", color: 0x47a3ff, mark: "antenna" },
-      { name: "Squeaks", color: 0x4fdc6a, mark: "ears" },
-      { name: "Goldie", color: 0xffc733, mark: "crown" },
-    ];
-    const ids = legacyIdentities(9, souls);
-    expect(ids.map((i) => i.name)).toEqual(["Brick", "Pike", "Squeaks", "Goldie"]);
-    expect(ids.map((i) => i.color)).toEqual([0xff4f4f, 0x47a3ff, 0x4fdc6a, 0xffc733]);
-    expect(ids.map((i) => i.shape)).toEqual(["keystone", "dome", "bun", "shield"]);
-    expect(ids.map((i) => i.mark)).toEqual(["headband", "antenna", "ears", "crown"]);
-    expect(ids.map((i) => i.minor)).toEqual(["none", "none", "none", "none"]);
   });
 
   test("identity is display data: it never changes a fight", () => {

@@ -3,7 +3,6 @@
  * fighter order, recorded, hashed, replayed exactly.
  */
 import { beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { CHECKPOINT_TICKS, Fight, initPhysics, Match, replayFight, replayMatch, ReplayDivergedError, type MatchRecord, type PlanUpdate, type SimEvent, type Strategy } from "../src/sim";
 import { sanitizeRecord } from "../src/viewer/sanitize";
 
@@ -155,11 +154,5 @@ describe("plan updates in a match (#8)", () => {
     m.prepareRound();
     m.stepUntil(500);
     expect(() => m.addUpdate({ tick: 400, fighter: 0, strategy: m.decisions[0]!.strategy })).toThrow(/already at tick 500/);
-  });
-
-  test("old records (from before plan updates) replay without change", () => {
-    const rec = JSON.parse(readFileSync(`${import.meta.dir}/fixtures/record-v2-match-1001.json`, "utf8"));
-    const m = replayMatch(rec);
-    expect(m.record.rounds.map((r) => r.fight.finalHash)).toEqual(rec.rounds.map((r: { fight: { finalHash: string } }) => r.fight.finalHash));
   });
 });

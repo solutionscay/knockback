@@ -5,7 +5,14 @@ import { join } from "node:path";
 import { registerStubs } from "../src/ai/providers";
 import { MatchServer } from "../src/server/match-server";
 import { labelText, personaSummary, placeOf, shareCardSvg, summarizeReplay } from "../src/server/site";
-import { initPhysics } from "../src/sim";
+import { initPhysics, Match, type MatchRecord } from "../src/sim";
+
+/** A finished house-bot match's record, as saved (JSON round trip). */
+const playedRecord = (): MatchRecord => {
+  const m = new Match(1001);
+  m.playToEnd();
+  return JSON.parse(JSON.stringify(m.record));
+};
 import { ENGINE_VERSION } from "../src/sim/engine-version";
 import { posOfBeat, reached } from "../src/viewer/embed";
 
@@ -44,7 +51,7 @@ describe("site data (#22)", () => {
     const rp = await get(s, "/api/replays");
     expect(rp.status).toBe(200);
     const r = rp.body.replays[0];
-    expect(r).toMatchObject({ match: m.id, seed: 3, old: false, labels: ["remote/Brixel", "house", "house", "house"] });
+    expect(r).toMatchObject({ match: m.id, seed: 3, labels: ["remote/Brixel", "house", "house", "house"] });
     expect(r.identities).toHaveLength(4);
     expect(r.names).toEqual(r.identities.map((i: any) => i.name));
     expect(r.rounds.length).toBeGreaterThanOrEqual(2);
@@ -75,7 +82,7 @@ describe("site data (#22)", () => {
 
     // every finished match is reachable: one by id (any age), and the list pages back with `next`
     const one = await get(s, `/api/replays/${m.id}`);
-    expect(one.body.replay).toMatchObject({ match: m.id, record: r.record, old: false });
+    expect(one.body.replay).toMatchObject({ match: m.id, record: r.record });
     expect((await get(s, "/api/replays/m_00000000")).status).toBe(404);
     const p1 = await get(s, "/api/replays?limit=1");
     expect(p1.body.replays.map((x: any) => x.match)).toEqual([m.id]);
@@ -90,12 +97,12 @@ describe("site data (#22)", () => {
     }
   });
 
-  test("summarizeReplay reads a version 2 record without simulating it", () => {
-    const raw = JSON.parse(readFileSync("tests/fixtures/record-v2-match-1001.json", "utf8"));
+  test("summarizeReplay reads a current-engine record without simulating it; other engines are not loaded", () => {
+    const raw = playedRecord();
     const r = summarizeReplay(raw, "m_00000001", "/records/x.json", 0)!;
-    expect(r.old).toBe(r.engine !== ENGINE_VERSION);
-    expect(r.names).toHaveLength(4);
+    expect(r.names).toEqual(raw.identities.map((i) => i.name));
     expect(r.rounds.length).toBe(raw.rounds.length);
+    expect(summarizeReplay({ ...raw, engine: ENGINE_VERSION - 1 }, "m", "/r", 0)).toBeNull();
     expect(summarizeReplay({ nope: 1 }, "m", "/r", 0)).toBeNull();
   });
 
@@ -118,8 +125,7 @@ describe("site data (#22)", () => {
   });
 
   test("shareCardSvg escapes names", () => {
-    const raw = JSON.parse(readFileSync("tests/fixtures/record-v2-match-1001.json", "utf8"));
-    const r = summarizeReplay(raw, "m_00000001", "/records/x.json", 0)!;
+    const r = summarizeReplay(playedRecord(), "m_00000001", "/records/x.json", 0)!;
     r.names[r.winner] = "<b>&";
     expect(shareCardSvg(r)).not.toContain("<b>&");
   });

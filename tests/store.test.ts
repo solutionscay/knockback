@@ -2,97 +2,55 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CLASSIC, CLOSE_QUARTERS, UNCAPPED_LAUNCH } from "../src/sim/ruleset";
-import { MIGRATIONS, SqliteStore, type MatchRow, type SeatRow } from "../src/server/store";
-import { CLASSIC_PRESET_VERSION, selectRuleset } from "../src/server/match-rulesets";
+import { Database } from "bun:sqlite";
+import { CLASSIC, CLOSE_QUARTERS } from "../src/sim/ruleset";
+import { ENGINE_VERSION } from "../src/sim/engine-version";
+import { SCHEMA_VERSION, SchemaError, SqliteStore, type MatchRow, type SeatRow } from "../src/server/store";
+import { selectRuleset } from "../src/server/match-rulesets";
 
 const file = () => join(mkdtempSync(join(tmpdir(), "kb-store-")), "server.db");
 const match = (id: string, over: Partial<MatchRow> = {}): MatchRow => ({
   id, seed: 42, kinds: ["remote", "remote", "house", "house"], deadlineMs: 20_000, fillAfterMs: 60_000, status: "open",
-  createdAt: 1000, startedAt: null, endedAt: null, creator: null, error: null, winner: null, ...over,
+  createdAt: 1000, startedAt: null, endedAt: null, creator: null, error: null, winner: null, ruleset: CLASSIC, ...over,
 });
 const seat = (matchId: string, n: number, over: Partial<SeatRow> = {}): SeatRow => ({
   matchId, seat: n, name: `A${n}`, persona: "soul text", look: n ? null : { color: 0xff8800 }, tokenHash: `h${matchId}${n}`, joinedAt: 2000, leftAt: null, leftRound: null, ...over,
 });
 
 describe("SqliteStore", () => {
-  test("migrations run once; a reopened file keeps its data and version", async () => {
+  test("a fresh file gets the one schema and the built-in presets; a reopened file keeps its data", async () => {
     const f = file();
     const a = new SqliteStore(f);
+    expect((a.db.query("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(SCHEMA_VERSION);
+    expect(await a.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: 1, ruleset: CLASSIC });
+    expect((await a.getRulesetPreset("Close Quarters"))!).toMatchObject({ version: 1, ruleset: CLOSE_QUARTERS });
+    expect((await a.listRulesetPresets()).map((x) => x.name)).toEqual(["Classic", "Chaos", "Close Quarters", "Sniper Alley"]);
     await a.insertMatch(match("m1"));
     await a.close();
     const b = new SqliteStore(f);
-    expect(b.migrate()).toBe(MIGRATIONS.length);
-    expect((b.db.query("SELECT COUNT(*) AS n FROM schema_migrations").get() as { n: number }).n).toBe(MIGRATIONS.length);
     expect((await b.getMatch("m1"))!.kinds).toEqual(["remote", "remote", "house", "house"]);
     await b.close();
   });
 
-  test("the spawn spread migration preserves pinned layouts and updates the built-in presets", async () => {
-    const path = file();
-    const old = new SqliteStore(path);
-    const custom = await old.putRulesetPreset("Old Fast Fire", { fire: { spread: 0.18 }, arena: { spawns: CLOSE_QUARTERS.arena.spawns } });
-    await old.insertMatch(match("m_old", { ruleset: custom.ruleset!, preset: custom.name, presetVersion: custom.version }));
-    // Reconstruct a database written by engine v4 before the spread keys existed.
-    const fields = "'$.arena.spawns.spread', '$.pickups.armory.spread', '$.pickups.supply.avoidDistance', '$.combat.launch', '$.pickups.power.jetpack.ceiling', '$.pickups.power.jetpack.fade'";
-    old.db.exec(`UPDATE matches SET ruleset_body = json_remove(ruleset_body, ${fields});
-      UPDATE ruleset_presets SET body = json_remove(body, ${fields}) WHERE name = 'Old Fast Fire';
-      UPDATE ruleset_presets SET version = 1 WHERE name = 'Classic';
-      UPDATE ruleset_presets SET body = NULL WHERE name = 'Close Quarters';
-      DROP TABLE picks; ALTER TABLE matches DROP COLUMN picks_locked_at; ALTER TABLE seats DROP COLUMN opening_line; -- undo 8 (#35) too
-      ALTER TABLE matches DROP COLUMN suit_up; -- and 9 (#19)
-      DELETE FROM schema_migrations WHERE version >= 7;`);
-    await old.close();
-
-    const upgraded = new SqliteStore(path);
-    try {
-      // migration 7 makes Classic version 2; migration 10 (#41) makes it version 3
-      expect(await upgraded.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: 3, ruleset: CLASSIC });
-      expect((await upgraded.getRulesetPreset("Close Quarters"))?.ruleset).toEqual(CLOSE_QUARTERS);
-      const pinned = (await upgraded.getMatch("m_old"))!.ruleset!;
-      expect(pinned.arena.spawns).toEqual(CLOSE_QUARTERS.arena.spawns);
-      expect(pinned.pickups.armory.spread.enabled).toBe(false);
-      expect(pinned.pickups.supply.avoidDistance).toBe(0);
-      expect(pinned.combat.launch).toEqual(UNCAPPED_LAUNCH);
-      expect(pinned.fire.spread).toBe(0.18);
-      expect((await upgraded.getRulesetPreset(custom.name))!.ruleset).toEqual(pinned);
-    } finally {
-      await upgraded.close();
-    }
+  test("a database with an old or unknown schema is refused with the reset command; nothing is changed", async () => {
+    const legacy = file();
+    const db = new Database(legacy);
+    db.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL); INSERT INTO schema_migrations VALUES (10, 1);");
+    db.close();
+    expect(() => new SqliteStore(legacy)).toThrow(SchemaError);
+    expect(() => new SqliteStore(legacy)).toThrow(`reset the database (pre-alpha): bun run db:reset --db ${legacy}`);
+    const after = new Database(legacy);
+    expect((after.query("SELECT version FROM schema_migrations").get() as { version: number }).version).toBe(10);
+    after.close();
+    const future = file();
+    new SqliteStore(future).db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+    expect(() => new SqliteStore(future)).toThrow(`schema v${SCHEMA_VERSION + 1}, not the current schema v${SCHEMA_VERSION}`);
   });
 
-  test("the launch height migration keeps pinned launches and bumps Classic (#41)", async () => {
-    const path = file();
-    const old = new SqliteStore(path);
-    const custom = await old.putRulesetPreset("Old Fast Fire", { fire: { spread: 0.18 } });
-    await old.insertMatch(match("m_old", { ruleset: custom.ruleset!, preset: custom.name, presetVersion: custom.version }));
-    // Reconstruct a database written by engine v5, before the launch keys existed.
-    const fields = "'$.combat.launch', '$.pickups.power.jetpack.ceiling', '$.pickups.power.jetpack.fade'";
-    old.db.exec(`UPDATE matches SET ruleset_body = json_remove(ruleset_body, ${fields});
-      UPDATE ruleset_presets SET body = json_remove(body, ${fields}) WHERE body IS NOT NULL;
-      UPDATE ruleset_presets SET version = 2 WHERE name = 'Classic';
-      DELETE FROM schema_migrations WHERE version = 10;`);
-    await old.close();
-
-    const upgraded = new SqliteStore(path);
-    try {
-      expect(await upgraded.defaultRulesetPreset()).toMatchObject({ name: "Classic", version: CLASSIC_PRESET_VERSION, ruleset: CLASSIC });
-      expect((await upgraded.getRulesetPreset("Close Quarters"))?.ruleset).toEqual(CLOSE_QUARTERS);
-      const pinned = (await upgraded.getMatch("m_old"))!.ruleset!;
-      expect(pinned.combat.launch).toEqual(UNCAPPED_LAUNCH);
-      expect(pinned.pickups.power.jetpack.ceiling).toBe(CLOSE_QUARTERS.pickups.power.jetpack.ceiling);
-      expect(pinned.fire.spread).toBe(0.18);
-      expect((await upgraded.getRulesetPreset(custom.name))!.ruleset).toEqual(pinned);
-    } finally {
-      await upgraded.close();
-    }
-  });
-
-  test("without a stored default, a match gets Classic at the built-in preset's current version", async () => {
+  test("without a stored default, a match gets Classic", async () => {
     const s = new SqliteStore(":memory:");
-    expect((await s.defaultRulesetPreset())!.version).toBe(CLASSIC_PRESET_VERSION);
     s.db.exec("UPDATE ruleset_presets SET is_default = 0");
-    expect(await selectRuleset(s)).toEqual({ ruleset: CLASSIC, preset: "Classic", presetVersion: CLASSIC_PRESET_VERSION });
+    expect(await selectRuleset(s)).toEqual({ ruleset: CLASSIC, preset: "Classic", presetVersion: 1 });
     await s.close();
   });
 
@@ -127,8 +85,8 @@ describe("SqliteStore", () => {
     expect((await s.getPlan("m2", 2, 1))!.raw).toBe('{"a":1}');
     expect(await s.getPlan("m2", 2, 0)).toBeNull();
 
-    await s.insertRecord({ matchId: "m1", path: "/records/x.json", seed: 42, hashes: ["a", "b"], winner: 2, createdAt: 9, engine: 1 });
-    expect((await s.listRecords())[0]).toMatchObject({ path: "/records/x.json", hashes: ["a", "b"], engine: 1 });
+    await s.insertRecord({ matchId: "m1", path: "/records/x.json", seed: 42, hashes: ["a", "b"], winner: 2, createdAt: 9, engine: ENGINE_VERSION, stats: "[]" });
+    expect((await s.listRecords())[0]).toMatchObject({ path: "/records/x.json", hashes: ["a", "b"], engine: ENGINE_VERSION, stats: "[]" });
     await s.close();
   });
 

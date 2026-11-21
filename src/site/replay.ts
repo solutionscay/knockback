@@ -1,8 +1,7 @@
 /**
  * /replay/:id (#22): a finished match from its record in the real viewer, with a scrubber (round segments, event
  * pins for ring-outs, K.O.s and the win, in the victim's or winner's color), chapters, 1x / 2x, and the share card
- * with its link. A record from another engine version cannot replay on this physics: the page shows its line-up,
- * result and lines on a card instead (the viewer does the same).
+ * with its link.
  *
  * The timeline comes from the match report (knockout ticks, fight ticks) and the viewer's own beat timing
  * (src/flow/pacing.ts), the same numbers the server paces broadcasts with.
@@ -16,7 +15,7 @@ import type { Identity } from "../sim/identity";
 
 export async function replayPage(root: HTMLElement, id: string) {
   mount(root, html`<div class="wrap"><div class="meta">Loading replay ${id}…</div></div>`);
-  // one match by id, however old (#22: every finished match is replayable)
+  // one match by id (#22: every finished match of the current engine is replayable)
   const [one, info] = await Promise.all([getJson<{ replay: ReplayInfo }>(`/api/replays/${encodeURIComponent(id)}`), getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`)]);
   const rp = one.ok ? one.data.replay : undefined;
   if (!info.ok && !rp) return mount(root, html`<div class="wrap"><div class="pagehead"><div class="meta">Replay</div><h1>No match ${id}</h1></div><a class="btn" href="/replays">All replays</a></div>`);
@@ -29,7 +28,6 @@ export async function replayPage(root: HTMLElement, id: string) {
   const theme = cap(rp?.theme ?? "");
   const score = rp ? scoreline(rp.wins) : "";
   const when = rp ? new Date(rp.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-  const old = rp?.old ?? (info.ok ? !!info.data.recordOld : false);
   const link = `${location.origin}/replay/${id}`;
   const title = w >= 0 ? (score === "2–0" ? html`${names[w]} sweeps the <span class="arena" style="color:var(--yellow)">${theme || "arena"}</span>` : html`${names[w]} wins the <span class="arena" style="color:var(--yellow)">${theme || "arena"}</span>`) : html`Replay`;
   const agents = info.ok ? info.data.seats.map((s) => s.agent) : [];
@@ -38,14 +36,9 @@ export async function replayPage(root: HTMLElement, id: string) {
     root,
     html`<div class="wrap replay">
       <div style="min-width:0">
-        <div class="stagehead"><div><div class="meta">Replay · ${when}${rp ? ` · engine v${rp.engine}` : ""}</div><h1>${title}</h1></div></div>
+        <div class="stagehead"><div><div class="meta">Replay · ${when}</div><h1>${title}</h1></div></div>
         <div class="stage" id="r-stage"><div class="seeking" id="r-seek" hidden>Rewinding…</div></div>
-        ${
-          old
-            ? html`<section class="card oldcard" style="margin-top:12px"><h2>Recorded with an older engine</h2><p class="dim" style="margin:0">This match was played on engine v${rp?.engine ?? "?"}; the physics changed since, so it can't replay exactly. Here is what the record says.</p>
-                <div class="lines">${rp?.rounds.map((rd, r) => html`<div class="meta" style="margin-top:6px">${r === 0 ? "Intro" : `Before round ${r + 1}`} · ${names[rd.winner] ?? "?"} won the round</div>${rd.lines.map((l, i) => (l ? html`<div style="${colorVars(ids[i]?.color)}">${ids[i] ? bot(ids[i]!, "fist", "fight", true) : ""}<span><b style="color:var(--ci)">${names[i]}</b> ${l}</span></div>` : ""))}`)}</div></section>`
-            : html`<div class="scrub" id="r-scrub"><div class="ctl"><button class="play" id="r-play" type="button" aria-label="Pause">❚❚</button><div class="track" id="r-track" role="slider" aria-label="Replay position" tabindex="0"></div><span class="tm" id="r-tm"></span><div class="speed"><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="2" aria-pressed="false">2×</button></div></div><div class="chapters" id="r-chap"></div></div>`
-        }
+        <div class="scrub" id="r-scrub"><div class="ctl"><button class="play" id="r-play" type="button" aria-label="Pause">❚❚</button><div class="track" id="r-track" role="slider" aria-label="Replay position" tabindex="0"></div><span class="tm" id="r-tm"></span><div class="speed"><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="2" aria-pressed="false">2×</button></div></div><div class="chapters" id="r-chap"></div></div>
         <div class="lineup">${ids.map(
           (x, i) => html`<a class="lu" style="${colorVars(x.color)}" ${agents[i] ? raw(`href="/agent/${encodeURIComponent(agents[i]!)}"`) : ""}>${bot(x, rp?.weapons[i], i === w ? "win" : "fight", true)}<div><div class="n">${names[i]}</div><div class="s">${badge(labels[i])}</div></div><div class="w">${rp?.wins[i] || ""}</div></a>`,
         )}</div>
@@ -81,7 +74,6 @@ export async function replayPage(root: HTMLElement, id: string) {
     },
   });
   stage.record(record);
-  if (old) return;
 
   const rep = await getJson<{ rounds: ReportRound[] }>(`/api/matches/${encodeURIComponent(id)}/report`);
   if (!rep.ok) {

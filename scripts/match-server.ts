@@ -59,7 +59,7 @@ import { MatchServer } from "../src/server/match-server";
 import { Matchmaker } from "../src/server/matchmaker";
 import { McpGateway } from "../src/server/mcp";
 import { inCidrs, parseCidrs } from "../src/server/net";
-import { SqliteStore } from "../src/server/store";
+import { SchemaError, SqliteStore } from "../src/server/store";
 import { initPhysics } from "../src/sim";
 import index from "../index.html";
 import site from "../src/site/index.html";
@@ -84,7 +84,15 @@ const hostname = flags.host ?? "localhost";
 const port = Number(flags.port ?? 5176);
 mkdirSync(outDir, { recursive: true });
 const dbPath = flags.db ?? join(outDir, "match-server.db");
-const store = new SqliteStore(dbPath);
+let store: SqliteStore;
+try {
+  store = new SqliteStore(dbPath);
+} catch (e) {
+  // an old or unknown schema is refused (pre-alpha: no upgrade code); the message says how to reset
+  if (!(e instanceof SchemaError)) throw e;
+  console.error(e.message);
+  process.exit(1);
+}
 const secs = (s: string | undefined, dflt: number) => (s !== undefined ? Math.round(Number(s) * 1000) : dflt);
 
 const api = new MatchServer({
@@ -100,7 +108,6 @@ const api = new MatchServer({
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
 
-if (flags["lobby-seats"]) console.log("--lobby-seats is gone (#22): the matchmaker seats queued agents and fills with --ai-roster");
 const list = (v: string | undefined, d: string) => (v ?? d).split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
 const publicUrl = flags["public-url"]?.replace(/\/$/, "");
 const lobby = await new Matchmaker(api, {

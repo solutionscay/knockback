@@ -6,7 +6,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { buildRoundPrompts } from "../src/ai/prompt";
-import { checkRecordEngine, checkRecordVersion, initPhysics, Match, type MatchRecord } from "../src/sim";
+import { initPhysics, Match, type MatchRecord } from "../src/sim";
 
 const args = process.argv.slice(2);
 const file = args[0];
@@ -16,14 +16,13 @@ if (!file) {
 }
 await initPhysics();
 const rec = JSON.parse(await Bun.file(file).text()) as MatchRecord;
+let m: Match;
 try {
-  checkRecordVersion(rec);
-  checkRecordEngine(rec);
+  m = new Match(rec.seed, { recorded: rec }); // only records of the current engine load
 } catch (e) {
   console.error(`${file}: ${e instanceof Error ? e.message : e}`);
   process.exit(1);
 }
-const m = new Match(rec.seed, { recorded: rec });
 const out: { round: number; prompts: string[] }[] = [];
 while (!m.over) {
   const round = m.round + 1;
@@ -35,7 +34,7 @@ while (!m.over) {
   }
   m.finishRound();
   if (m.diverged >= 0) {
-    console.error(`${file}: round ${m.diverged} ends in a different state than recorded: the record was made by an older engine version, so its prompts can't be rebuilt here. Run this script from the commit that made the record.`);
+    console.error(`${file}: round ${m.diverged} ends in a different state than recorded, so its prompts can't be rebuilt.`);
     process.exit(2);
   }
 }

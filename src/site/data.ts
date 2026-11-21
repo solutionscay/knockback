@@ -30,15 +30,12 @@ export interface MatchInfo {
   wins: number[] | null;
   winner: string | null;
   record: string | null;
-  recordOld?: boolean;
 }
 export interface ReplayInfo {
   match: string;
   record: string;
   createdAt: string;
   seed: number;
-  engine: number;
-  old: boolean;
   theme: string;
   names: string[];
   labels: string[];
@@ -190,37 +187,12 @@ export interface BoardRow {
 
 /** GET /api/models (model spotlight) -> rows; null when the shape is unknown. */
 export function boardFromModels(data: unknown): BoardRow[] | null {
-  const d = data as { all?: { rows?: unknown[] } | unknown[]; engines?: { rows?: unknown[] }[] } | null;
-  const rows = (Array.isArray(d?.all) ? d.all : (d?.all as { rows?: unknown[] } | undefined)?.rows) ?? d?.engines?.[0]?.rows;
+  const rows = (data as { rows?: unknown } | null)?.rows;
   if (!Array.isArray(rows)) return null;
   return rows
     .map((r) => r as Record<string, unknown>)
     .filter((r) => typeof r.name === "string" && typeof r.matches === "number" && r.key !== "remote:unreported")
     .map((r) => ({ model: { key: String(r.key ?? r.name), name: r.name as string, provider: (r.provider as ModelInfo["provider"]) ?? "other", selfReported: r.selfReported === true, test: false }, name: r.name as string, matches: r.matches as number, wins: Number(r.wins) || 0, winRate: Number(r.winRate) || 0, provisional: r.provisional === true }));
-}
-
-/**
- * Until GET /api/models is merged: match wins per model over the saved matches the lobby already loaded.
- * Test providers and copies are not filtered here (the spotlight board does that).
- */
-export function boardFromReplays(rs: ReplayInfo[], minMatches = 3): BoardRow[] {
-  const by = new Map<string, BoardRow>();
-  for (const r of rs) {
-    if (r.old || r.winner < 0) continue;
-    const winner = modelOf(r.labels[r.winner]).key;
-    // each model once per match; agents that did not report a model are not a model, test providers neither
-    const models = new Map(r.labels.map((l) => [modelOf(l).key, modelOf(l)]));
-    for (const [key, model] of models) {
-      if (key === "remote:unreported" || model.test) continue;
-      const row = by.get(key) ?? { model: { ...model, agent: undefined }, name: model.name, matches: 0, wins: 0, winRate: 0, provisional: false };
-      row.matches++;
-      if (key === winner) row.wins++;
-      by.set(key, row);
-    }
-  }
-  return [...by.values()]
-    .map((r) => ({ ...r, winRate: r.matches ? r.wins / r.matches : 0, provisional: r.matches < minMatches }))
-    .sort((a, b) => Number(a.provisional) - Number(b.provisional) || b.winRate - a.winRate || b.matches - a.matches);
 }
 
 /** Round wins as a scoreline: [2,1,0,0] -> "2–1", [2,0,0,0] -> "2–0", [1,1,1,0] -> "1–1–1". */
