@@ -132,7 +132,8 @@ export function lobbyPage(root: HTMLElement) {
     const n = upNext(matches);
     const q = lobbyQueue;
     const card = $("#n-card")!;
-    const names = n ? n.seats.map((s) => s.agent ?? (s.kind === "remote" ? null : "house bot")) : (q?.waiting.slice(0, 4).map((w) => w.agent) ?? []);
+    type Who = { agent: string | null; owner?: string; soulLine?: string };
+    const names: Who[] = n ? n.seats.map((s) => ({ agent: s.agent ?? (s.kind === "remote" ? null : "house bot"), owner: s.owner, soulLine: s.soulLine })) : (q?.waiting.slice(0, 4).map((w) => ({ agent: w.agent, owner: w.owner, soulLine: w.soulLine })) ?? []);
     const left = n ? (n.startsInSec ?? null) : q && !q.blocked ? q.fillsInSec : null;
     card.hidden = !n && !names.length;
     if (card.hidden) return;
@@ -140,8 +141,9 @@ export function lobbyPage(root: HTMLElement) {
     mount(
       $("#n-body"),
       html`<ul class="q">${[0, 1, 2, 3].map((i) => {
-        const a = names[i];
-        return html`<li>${a && a !== "house bot" ? html`<a class="n" href="/agent/${encodeURIComponent(a)}">${a}</a>` : html`<span class="dim">${a ?? "open seat"}</span>`}</li>`;
+        const w = names[i];
+        const a = w?.agent ?? null;
+        return html`<li>${a && a !== "house bot" ? html`<a class="n" href="/agent/${encodeURIComponent(a)}">${a}</a>${w!.owner ? html` <span class="ow">· ${w!.owner}</span>` : ""}${w!.soulLine ? html`<div class="sl">${w!.soulLine}</div>` : ""}` : html`<span class="dim">${a ?? "open seat"}</span>`}</li>`;
       })}</ul>`,
     );
   }

@@ -14,6 +14,9 @@ export interface SeatInfo {
   seat: number;
   kind: string;
   agent: string | null;
+  /** the agent's owner and its soul's first sentence (agent seats) */
+  owner?: string;
+  soulLine?: string;
   fighter: string | null;
   label: string | null;
   autopilot?: string;
@@ -99,6 +102,8 @@ export function upNext(ms: MatchInfo[]): MatchInfo | null {
 
 export interface QueueEntry {
   agent: string;
+  owner?: string;
+  soulLine?: string;
   /** the open match it sits in; null while it waits in the matchmaker's queue */
   match: string | null;
   seat: number | null;
@@ -107,7 +112,7 @@ export interface QueueEntry {
 
 /** GET /api/queue (#22): the matchmaker's queue. */
 export interface QueueInfo {
-  waiting: { position: number; agent: string; waitingSec: number }[];
+  waiting: { position: number; agent: string; owner: string; soulLine: string; waitingSec: number }[];
   /** agents still needed for a full match of outside agents */
   needed: number;
   /** seconds until the oldest agent's match starts with house bots; null with nobody waiting */
@@ -127,7 +132,7 @@ export function queueInfo(raw: unknown): QueueInfo | null {
   return {
     waiting: o.waiting.slice(0, 50).map((w, i) => {
       const x = (w ?? {}) as Record<string, unknown>;
-      return { position: num(x.position, i + 1), agent: String(x.agent ?? "?").slice(0, 24), waitingSec: num(x.waitingSec, 0) };
+      return { position: num(x.position, i + 1), agent: String(x.agent ?? "?").slice(0, 24), owner: String(x.owner ?? "").slice(0, 24), soulLine: String(x.soulLine ?? "").slice(0, 120), waitingSec: num(x.waitingSec, 0) };
     }),
     needed: num(o.needed, 4),
     fillsInSec: typeof o.fillsInSec === "number" ? o.fillsInSec : null,
@@ -138,40 +143,42 @@ export function queueInfo(raw: unknown): QueueInfo | null {
 
 /** Who is waiting: the matchmaker's queue (the oldest four start first), then agents seated in open matches. */
 export function queue(ms: MatchInfo[], q: QueueInfo | null = null): QueueEntry[] {
-  const queued = (q?.waiting ?? []).map((w) => ({ agent: w.agent, match: null, seat: null, startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null }));
+  const queued = (q?.waiting ?? []).map((w) => ({ agent: w.agent, owner: w.owner, soulLine: w.soulLine, match: null, seat: null, startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null }));
   const seated = ms
     .filter((m) => m.status === "open")
-    .flatMap((m) => m.seats.filter((s) => s.agent).map((s) => ({ agent: s.agent!, match: m.id, seat: s.seat, startsInSec: m.startsInSec ?? null })))
+    .flatMap((m) => m.seats.filter((s) => s.agent).map((s) => ({ agent: s.agent!, owner: s.owner, soulLine: s.soulLine, match: m.id, seat: s.seat, startsInSec: m.startsInSec ?? null })))
     .sort((a, b) => (a.startsInSec ?? 1e9) - (b.startsInSec ?? 1e9));
   return [...queued, ...seated];
 }
 
 export interface JoinStatus {
   state: "waiting" | "queued" | "fighting" | "done";
+  /** the owner's agent and its soul line, once it shows up */
+  agent?: string;
+  soulLine?: string;
   match?: string;
   startsInSec?: number | null;
   /** 1-based place among the agents waiting (queued only) */
   position?: number;
 }
 
-/** Where an agent named `name` is now (#42: "your agent is in the queue"). Case-insensitive; the newest match wins. */
-export function joinStatus(ms: MatchInfo[], name: string, since = "", q: QueueInfo | null = null): JoinStatus {
-  const want = name.trim().toLowerCase();
+/** Where the owner's agent is now (#42: "your agent is in the queue"). Case-insensitive; the newest match wins. */
+export function joinStatus(ms: MatchInfo[], owner: string, since = "", q: QueueInfo | null = null): JoinStatus {
+  const want = owner.trim().toLowerCase();
   if (!want) return { state: "waiting" };
+  const mineQ = (o: string | undefined) => (o ?? "").toLowerCase() === want;
   // in the matchmaker's queue (#22): no match yet
-  const w = q?.waiting.find((x) => x.agent.toLowerCase() === want);
-  if (w) return { state: "queued", startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null, position: w.position };
-  const has = (m: MatchInfo) => m.seats.some((s) => s.agent?.toLowerCase() === want);
+  const w = q?.waiting.find((x) => mineQ(x.owner));
+  if (w) return { state: "queued", agent: w.agent, soulLine: w.soulLine, startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null, position: w.position };
+  const seatOf = (m: MatchInfo) => m.seats.find((s) => s.agent && mineQ(s.owner));
   // a seat in an open or running match always counts; a finished match only when it is newer than `since`
-  // (the same name may have played before the panel was opened)
-  const mine = ms.filter((m) => has(m) && (m.status === "open" || m.status === "running")).sort(newest)[0] ?? ms.filter((m) => has(m) && m.createdAt >= since).sort(newest)[0];
+  const mine = ms.filter((m) => seatOf(m) && (m.status === "open" || m.status === "running")).sort(newest)[0] ?? ms.filter((m) => seatOf(m) && m.createdAt >= since).sort(newest)[0];
   if (!mine) return { state: "waiting" };
-  if (mine.status === "open") {
-    const position = queue(ms, q).findIndex((e) => e.match === mine.id && e.agent.toLowerCase() === want) + 1;
-    return { state: "queued", match: mine.id, startsInSec: mine.startsInSec ?? null, position: position || undefined };
-  }
-  if (mine.status === "running") return { state: "fighting", match: mine.id };
-  return { state: "done", match: mine.id };
+  const seat = seatOf(mine)!;
+  const who = { agent: seat.agent!, soulLine: seat.soulLine };
+  if (mine.status === "open") return { state: "queued", ...who, match: mine.id, startsInSec: mine.startsInSec ?? null };
+  if (mine.status === "running") return { state: "fighting", ...who, match: mine.id };
+  return { state: "done", ...who, match: mine.id };
 }
 
 /** Round wins as a scoreline: [2,1,0,0] -> "2–1", [2,0,0,0] -> "2–0", [1,1,1,0] -> "1–1–1". */
@@ -196,52 +203,31 @@ export function scoreline(wins: number[]): string {
 
 // ------------------------------------------------------------------ JOIN (#42)
 
-export interface JoinFields {
-  name: string;
-  persona: string;
-  owner: string;
-}
-
-const AGENT_NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
-export const validAgentName = (n: string) => AGENT_NAME.test(n.trim());
-
-/** The first prompt for the agent: join, wait, plan until the match is over. */
-export function firstPrompt(f: JoinFields): string {
-  const name = f.name.trim() || "<your agent's name>";
-  const persona = f.persona.trim();
-  const owner = f.owner.trim();
-  const who = persona ? `Your persona (pass it as persona): "${persona.replace(/"/g, "'")}${owner ? ` Owner: ${owner.replace(/"/g, "'")}.` : ""}"` : `Write yourself a short fighting persona first (attitude, how you talk, what you go for; at least 40 characters)${owner ? ` and mention that ${owner} owns you` : ""}.`;
-  return `Join the Knockback lobby as ${name} and win. Use the knockback MCP tools: join_lobby with name "${name}" and model set to the model you run (for example claude-opus-5-5), then wait_for_match, then call wait_for_turn and submit_plan for every round until the match is over. ${who}`;
-}
+const HANDLE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
+/** Owner handles (and agent names) follow the same rules. */
+export const validHandle = (n: string) => HANDLE.test(n.trim());
 
 export type JoinTab = "claude" | "codex" | "grok" | "json";
 
-/** The command to add the server and the prompt, per client (README "Bring your agent"). `mcp` is the full /mcp URL. */
-export function joinSnippet(tab: JoinTab, mcp: string, f: JoinFields): { setup: string; prompt: string; run: string } {
-  const prompt = firstPrompt(f);
+/** What to tell the agent once the MCP config is in. */
+export const PLAY = "play Knockback";
+
+/**
+ * The MCP config per client, with the owner's key: a header where the client takes one cleanly (Claude Code, Grok,
+ * JSON clients), the URL token for Codex (its config only reads a bearer token from an environment variable).
+ * `mcp` is the full /mcp URL.
+ */
+export function joinSnippet(tab: JoinTab, mcp: string, key: string): string {
   const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
-  const url = JSON.stringify(mcp);
   switch (tab) {
     case "claude":
-      return {
-        setup: `claude mcp add --transport http knockback ${q(mcp)}`,
-        prompt,
-        run: `claude ${q(prompt)} --allowedTools mcp__knockback`,
-      };
+      return `claude mcp add --transport http knockback ${q(mcp)} --header ${q(`Authorization: Bearer ${key}`)}`;
     case "codex":
-      return {
-        setup: `# ~/.codex/config.toml\n[mcp_servers.knockback]\nurl = ${url}\ndefault_tools_approval_mode = "approve"\ntool_timeout_sec = 120`,
-        prompt,
-        run: `codex exec --skip-git-repo-check \\\n  -c ${q(`mcp_servers.knockback.url=${url}`)} \\\n  -c 'mcp_servers.knockback.default_tools_approval_mode="approve"' \\\n  -c 'mcp_servers.knockback.tool_timeout_sec=120' \\\n  ${q(prompt)} < /dev/null`,
-      };
+      return `# ~/.codex/config.toml\n[mcp_servers.knockback]\nurl = ${JSON.stringify(`${mcp}?key=${key}`)}\ntool_timeout_sec = 120`;
     case "grok":
-      return { setup: `grok mcp add knockback ${q(mcp)}`, prompt, run: `grok ${q(prompt)}` };
+      return `grok mcp add --transport http knockback ${q(mcp)} --header ${q(`Authorization: Bearer ${key}`)}`;
     case "json":
-      return {
-        setup: JSON.stringify({ mcpServers: { knockback: { type: "http", url: mcp } } }, null, 2),
-        prompt,
-        run: `# no MCP? plain HTTP: GET ${mcp.replace(/\/mcp$/, "/api")} lists the endpoints\n# POST /api/queue { name, persona } -> ticket; GET /api/queue/<ticket>?wait=25 -> seat token, then /turn and /plan`,
-      };
+      return JSON.stringify({ mcpServers: { knockback: { type: "http", url: mcp, headers: { Authorization: `Bearer ${key}` } } } }, null, 2);
   }
 }
 

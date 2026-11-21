@@ -1,12 +1,13 @@
 /**
- * The JOIN panel (#42): one click from the lobby to what to paste. Tabs per client with the real server URL,
- * a ready first prompt, optional name / persona / owner that fill the prompt, then the agent's place in the
- * queue once it connects ("Brixel is in the queue, match starts in 0:40").
+ * The JOIN panel (#42), plug and play: the person enters an owner handle and gets an MCP key; the panel then shows
+ * only the MCP config per client (with that key and the server's public URL from GET /api/join), and one line:
+ * tell your agent "play Knockback". The MCP server teaches the agent the rest. The confirmation is the owner's agent
+ * showing up in the queue with its name and soul line.
  *
- * No secret is needed today: seat tokens are per match and the MCP session holds them. When per-agent keys come
- * with accounts (#23), this is where one is generated and put into the command.
+ * The key stays in this browser (localStorage); the server keeps only its hash. Every agent joined with the key
+ * belongs to the owner; an agent name stays bound to its owner across sessions.
  */
-import { clock, joinSnippet, joinStatus, mcpUrlFrom, queueInfo, validAgentName, type JoinFields, type JoinTab, type MatchInfo } from "./data";
+import { clock, joinSnippet, joinStatus, mcpUrlFrom, PLAY, queueInfo, validHandle, type JoinTab, type MatchInfo } from "./data";
 import { $, every, getJson, html, mount } from "./dom";
 
 const TABS: [JoinTab, string][] = [
@@ -15,114 +16,146 @@ const TABS: [JoinTab, string][] = [
   ["grok", "Grok"],
   ["json", "Other (JSON / HTTP)"],
 ];
-const KEY = "kb.join";
+const STORE = "kb.join";
+
+interface Saved {
+  owner: string;
+  key: string;
+  tab: JoinTab;
+}
 
 let dialog: HTMLDialogElement | null = null;
 let mcp = `${location.origin}/mcp`;
 let stopPoll: (() => void) | null = null;
+let since = "";
 
-function saved(): JoinFields & { tab: JoinTab } {
+function load(): Saved {
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? "{}");
-    return { name: String(v.name ?? ""), persona: String(v.persona ?? ""), owner: String(v.owner ?? ""), tab: TABS.some(([t]) => t === v.tab) ? v.tab : "claude" };
+    const v = JSON.parse(localStorage.getItem(STORE) ?? "{}");
+    const key = typeof v.key === "string" && /^kbk_[0-9a-f]{32}$/.test(v.key) ? v.key : "";
+    return { owner: key ? String(v.owner ?? "") : "", key, tab: TABS.some(([t]) => t === v.tab) ? v.tab : "claude" };
   } catch {
-    return { name: "", persona: "", owner: "", tab: "claude" };
+    return { owner: "", key: "", tab: "claude" };
   }
 }
+const save = (s: Saved) => localStorage.setItem(STORE, JSON.stringify(s));
 
 function build(): HTMLDialogElement {
   const d = document.createElement("dialog");
   d.className = "joinp";
   d.setAttribute("aria-labelledby", "join-title");
-  const s = saved();
-  mount(
-    d,
-    html`<div class="in">
-      <div class="hd">
-        <div><div class="meta">Bring your agent</div><h2 id="join-title">JOIN THE FIGHT</h2></div>
-        <button class="x" type="button" data-close aria-label="Close">✕</button>
-      </div>
-      <div class="fields">
-        <label>Agent name <input id="j-name" maxlength="24" autocomplete="off" placeholder="Brixel" value="${s.name}" /></label>
-        <label>Owner (optional) <input id="j-owner" maxlength="40" autocomplete="off" placeholder="you" value="${s.owner}" /></label>
-        <label class="wide">Persona / vibe (optional) <textarea id="j-persona" maxlength="600" placeholder="A smug sniper who hates getting close and never stops talking.">${s.persona}</textarea></label>
-      </div>
-      <div class="tabs" role="tablist">${TABS.map(([t, l]) => html`<button type="button" role="tab" data-tab="${t}" aria-selected="${t === s.tab}">${l}</button>`)}</div>
-      <div class="stp"><b>1</b><div><p id="j-setup-l">Add the Knockback server (once)</p><div class="snipwrap"><pre class="snip" id="j-setup"></pre><button class="copy" type="button" data-copy="#j-setup">Copy</button></div></div></div>
-      <div class="stp"><b>2</b><div><p>Paste this as your agent's first prompt</p><div class="snipwrap"><pre class="snip" id="j-prompt"></pre><button class="copy" type="button" data-copy="#j-prompt">Copy</button></div></div></div>
-      <div class="stp"><b>3</b><div><p id="j-run-l">Or run it in one go</p><div class="snipwrap"><pre class="snip" id="j-run"></pre><button class="copy" type="button" data-copy="#j-run">Copy</button></div></div></div>
-      <div class="status" id="j-status" aria-live="polite"></div>
-    </div>`,
-  );
-  d.addEventListener("click", (e) => {
+  document.body.append(d);
+  d.addEventListener("click", async (e) => {
     const t = e.target as HTMLElement;
-    if (t === d || t.closest("[data-close]")) d.close();
+    if (t === d || t.closest("[data-close]")) return d.close();
     const tab = t.closest<HTMLElement>("[data-tab]");
     if (tab) {
-      for (const b of d.querySelectorAll<HTMLElement>("[data-tab]")) b.setAttribute("aria-selected", String(b === tab));
-      refresh();
+      save({ ...load(), tab: tab.dataset.tab as JoinTab });
+      render();
+    }
+    if (t.closest("[data-forget]")) {
+      save({ owner: "", key: "", tab: load().tab });
+      render();
+      $<HTMLInputElement>("#j-owner", d)?.focus();
     }
   });
-  d.addEventListener("input", () => refresh());
+  d.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = $<HTMLInputElement>("#j-owner", d)!;
+    const owner = input.value.trim();
+    const err = $("#j-err", d)!;
+    if (!validHandle(owner)) {
+      input.setAttribute("aria-invalid", "true");
+      err.textContent = "1-24 characters: letters, digits, space, _ . - (starting with a letter or digit).";
+      return;
+    }
+    const res = await fetch("/api/keys", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner }) });
+    const body = (await res.json().catch(() => ({}))) as { key?: string; owner?: string; error?: string };
+    if (!res.ok || !body.key) {
+      input.setAttribute("aria-invalid", "true");
+      err.textContent = body.error ?? `Couldn't get a key (${res.status}).`;
+      return;
+    }
+    save({ owner: body.owner ?? owner, key: body.key, tab: load().tab });
+    render();
+    $<HTMLButtonElement>('[data-tab][aria-selected="true"]', d)?.focus();
+  });
   d.addEventListener("close", () => {
     stopPoll?.();
     stopPoll = null;
     if (location.hash === "#join") history.replaceState(null, "", location.pathname + location.search);
   });
-  document.body.append(d);
   return d;
 }
 
-function fields(): JoinFields & { tab: JoinTab } {
-  const v = (id: string) => ($<HTMLInputElement>(id, dialog!)?.value ?? "").trim();
-  const tab = (dialog!.querySelector<HTMLElement>('[data-tab][aria-selected="true"]')?.dataset.tab ?? "claude") as JoinTab;
-  return { name: v("#j-name"), owner: v("#j-owner"), persona: v("#j-persona"), tab };
-}
-
-let since = "";
-function refresh() {
-  const f = fields();
-  localStorage.setItem(KEY, JSON.stringify(f));
-  const nameEl = $<HTMLInputElement>("#j-name", dialog!)!;
-  nameEl.setAttribute("aria-invalid", String(!!f.name && !validAgentName(f.name)));
-  const s = joinSnippet(f.tab, mcp, f);
-  $("#j-setup", dialog!)!.textContent = s.setup;
-  $("#j-prompt", dialog!)!.textContent = s.prompt;
-  $("#j-run", dialog!)!.textContent = s.run;
-  $("#j-setup-l", dialog!)!.textContent = f.tab === "json" ? "Add the server to your MCP client's config" : f.tab === "codex" ? "Add the server (once), or skip to 3" : "Add the Knockback server (once)";
-  $("#j-run-l", dialog!)!.textContent = f.tab === "json" ? "No MCP client? The plain HTTP API" : "Or run it in one go";
+function render() {
+  const d = dialog!;
+  const s = load();
+  const head = html`<div class="hd">
+    <div><div class="meta">Bring your agent</div><h2 id="join-title">JOIN THE FIGHT</h2></div>
+    <button class="x" type="button" data-close aria-label="Close">✕</button>
+  </div>`;
+  if (!s.key) {
+    mount(
+      d,
+      html`<div class="in">${head}
+        <form class="owner" novalidate>
+          <label>Owner handle <input id="j-owner" maxlength="24" autocomplete="off" required placeholder="you" /></label>
+          <button class="btn small" type="submit">Get my MCP key</button>
+        </form>
+        <div class="err" id="j-err" role="alert"></div>
+        <p class="dim">Your agents fight under this handle. The key goes into your agent's MCP config; this browser keeps it.</p>
+      </div>`,
+    );
+    return;
+  }
+  const snip = joinSnippet(s.tab, mcp, s.key);
+  mount(
+    d,
+    html`<div class="in">${head}
+      <div class="who">Owner <b>${s.owner}</b> <button class="link" type="button" data-forget>Use another owner</button></div>
+      <div class="tabs" role="tablist">${TABS.map(([t, l]) => html`<button type="button" role="tab" data-tab="${t}" aria-selected="${t === s.tab}">${l}</button>`)}</div>
+      <div class="snipwrap"><pre class="snip" id="j-config">${snip}</pre><button class="copy" type="button" data-copy="#j-config">Copy</button></div>
+      <p class="tell">Then tell your agent “<b>${PLAY}</b>”.</p>
+      <div class="status" id="j-status" aria-live="polite"></div>
+    </div>`,
+  );
+  void poll();
 }
 
 async function poll() {
-  const st = $("#j-status", dialog!)!;
-  const f = fields();
-  if (!f.name || !validAgentName(f.name)) {
-    mount(st, html`<span class="dim">Give your agent a name (letters, digits, space, _ . -) to see it arrive in the queue.</span>`);
-    st.className = "status";
-    return;
-  }
+  const st = dialog && $("#j-status", dialog);
+  const s = load();
+  if (!st || !s.key) return;
   const [r, q] = await Promise.all([getJson<{ matches: MatchInfo[] }>("/api/matches"), getJson<unknown>("/api/queue")]);
   if (!r.ok) return;
-  const j = joinStatus(r.data.matches, f.name, since, q.ok ? queueInfo(q.data) : null);
+  const j = joinStatus(r.data.matches, s.owner, since, q.ok ? queueInfo(q.data) : null);
   st.className = `status ${j.state}`;
-  if (j.state === "waiting") mount(st, html`<i class="spin" aria-hidden="true"></i><div>Waiting for <b>${f.name}</b> to connect… paste the prompt and it shows up here.</div>`);
+  const soul = j.soulLine ? html`<div class="sl">“${j.soulLine}”</div>` : "";
+  if (j.state === "waiting") mount(st, html`<i class="spin" aria-hidden="true"></i><div>Waiting for an agent of <b>${s.owner}</b>… it shows up here when it joins.</div>`);
   else if (j.state === "queued")
-    mount(st, html`<div><div class="big">Your agent ${f.name} is in the queue</div><div class="dim">${j.startsInSec !== null && j.startsInSec !== undefined ? html`Match starts in <b>${clock(j.startsInSec)}</b>` : "Match starts when the seats fill"}${j.position ? ` · #${j.position} in the queue` : ""}. ${j.startsInSec !== null && j.startsInSec !== undefined ? "With fewer than 4 agents, house bots fill the empty seats." : "A match starts when 4 agents are in the queue."}</div></div>`);
-  else if (j.state === "fighting") mount(st, html`<div class="big">${f.name} is fighting now</div><a class="btn small" href="/watch/${j.match}">Watch</a>`);
-  else mount(st, html`<div><div class="big">${f.name}'s match is over</div></div><a class="btn small ghost" href="/agent/${encodeURIComponent(f.name)}">See ${f.name}</a>`);
+    mount(st, html`<div><div class="big">${j.agent} is in the queue</div><div class="dim">owner ${s.owner}</div>${soul}<div class="dim">${j.startsInSec !== null && j.startsInSec !== undefined ? html`Match starts in <b>${clock(j.startsInSec)}</b>` : "Match starts when the seats fill"}${j.position ? ` · #${j.position} in the queue` : ""}. ${j.startsInSec !== null && j.startsInSec !== undefined ? "With fewer than 4 agents, house bots fill the empty seats." : "A match starts when 4 agents are in the queue."}</div></div>`);
+  else if (j.state === "fighting") mount(st, html`<div><div class="big">${j.agent} is fighting now</div>${soul}</div><a class="btn small" href="/watch/${j.match}">Watch</a>`);
+  else mount(st, html`<div><div class="big">${j.agent}'s match is over</div>${soul}</div><a class="btn small ghost" href="/agent/${encodeURIComponent(j.agent ?? "")}">See ${j.agent}</a>`);
 }
 
 /** Open the panel (the big JOIN button, the nav link, or /lobby#join). */
 export async function openJoin() {
   dialog ??= build();
-  // only matches made after the panel opened count as "your agent arrived" (a name used earlier would match)
+  // only matches made after the panel opened count as "your agent arrived"
   since = new Date(Date.now() - 60_000).toISOString();
-  refresh();
-  if (!dialog.open) dialog.showModal();
-  if (location.hash !== "#join") history.replaceState(null, "", "#join");
+  const s = load();
+  if (s.key) {
+    // a revoked key: forget it and ask for an owner again
+    const me = await fetch("/api/keys/me", { headers: { authorization: `Bearer ${s.key}` } }).catch(() => null);
+    if (me?.status === 401) save({ owner: "", key: "", tab: s.tab });
+  }
   const j = await getJson<unknown>("/api/join"); // the server's public URL (#22)
   mcp = mcpUrlFrom(j.ok ? j.data : null, location.origin);
-  refresh();
+  render();
+  if (!dialog.open) dialog.showModal();
+  $<HTMLInputElement>("#j-owner", dialog)?.focus();
+  if (location.hash !== "#join") history.replaceState(null, "", "#join");
   stopPoll?.();
   stopPoll = every(3000, poll);
 }

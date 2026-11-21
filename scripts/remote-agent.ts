@@ -1,15 +1,18 @@
 /**
  * A small HTTP client for the match server (#20, #25): joins a match (one
- * call: name + persona -> seat token), long-polls for turns and sends plans.
+ * call: name + model + soul -> seat token), long-polls for turns and sends plans.
  * Also the reference for writing an agent.
  *
- *   bun scripts/remote-agent.ts --server http://localhost:5176 --name Rando --mode random
+ * Joining needs an owner key (the JOIN panel, or POST /api/keys { owner }): --key kbk_... or KB_KEY.
+ *
+ *   bun scripts/remote-agent.ts --server http://localhost:5176 --key kbk_... --name Rando --mode random
  *   bun scripts/remote-agent.ts --mode fixed  --soul souls/sniper.md
  *   bun scripts/remote-agent.ts --mode silent              # joins, never answers (the house bot plays)
  *   bun scripts/remote-agent.ts --mode cli --cmd "claude -p --model haiku --tools '' --no-session-persistence"
  *        (pipes the turn's prompt to the command on stdin and sends its reply as {"answer": ...})
  *
- * --model <name> reports the model behind the agent (shown on its fighter's card, marked self-reported).
+ * --model <name> reports the model behind the agent (shown as reported; default "scripted" for the built-in modes).
+ * --soul <file> is the fighter's soul.md (default souls/brawler.md).
  * --match <id> joins that match; without it, the lobby queue (POST /api/queue: the matchmaker seats it, #22).
  * --create remote,house,house,house creates a match first (seats over HTTP: remote or house) and joins it.
  * --insecure accepts a self-signed TLS certificate (a local Caddy on https://localhost).
@@ -34,7 +37,9 @@ const flags = parseFlags(process.argv.slice(2));
 const server = (flags.server ?? "http://localhost:5176").replace(/\/$/, "");
 const mode = flags.mode ?? "random";
 const name = flags.name ?? `${mode}-${Math.floor(Math.random() * 1000)}`;
-const persona = readFileSync(flags.soul ?? "souls/brawler.md", "utf8");
+const soul = readFileSync(flags.soul ?? "souls/brawler.md", "utf8");
+const ownerKey = flags.key ?? process.env.KB_KEY;
+if (!ownerKey) throw new Error("an owner key is needed: --key kbk_... or KB_KEY (the JOIN panel, or POST /api/keys { owner })");
 const rng = new Rng(Number(flags.seed ?? Date.now()) >>> 0);
 const log = (s: string) => console.log(`[${name}] ${s}`);
 
@@ -125,14 +130,14 @@ if (!matchId && flags.create) {
   matchId = c.data.id as string;
   log(`created match ${matchId} (seed ${c.data.seed}): ${flags.create}`);
 }
-const body = { name, persona, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.model ? { model: flags.model } : {}), ...(flags.line ? { line: flags.line } : {}) };
+const body = { name, model: flags.model ?? "scripted", soul, ...(flags.color ? { look: { color: flags.color } } : {}), ...(flags.line ? { line: flags.line } : {}) };
 let join: { status: number; data: any };
 if (matchId) {
-  join = await call("POST", `/api/matches/${matchId}/join`, { ...body, ...(flags.seat ? { seat: Number(flags.seat) } : {}) });
+  join = await call("POST", `/api/matches/${matchId}/join`, { ...body, ...(flags.seat ? { seat: Number(flags.seat) } : {}) }, ownerKey);
   if (join.status !== 201) throw new Error(`join failed: ${join.status} ${JSON.stringify(join.data)}`);
 } else {
   // the lobby queue (#22): wait until the matchmaker seats this agent
-  const q = await call("POST", "/api/queue", body);
+  const q = await call("POST", "/api/queue", body, ownerKey);
   if (q.status !== 201) throw new Error(`queue failed: ${q.status} ${JSON.stringify(q.data)}`);
   log(`in the queue: place ${q.data.position ?? "-"}, ${q.data.needed} more agents for a full match${q.data.fillsInSec !== null ? `, AI seats fill in ${q.data.fillsInSec} s` : ""}`);
   let r = q;

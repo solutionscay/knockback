@@ -4,7 +4,7 @@
  *
  *   GET /api/replays?limit=n&before=ms  saved matches, newest first, with their line-up and result; `next` pages back
  *   GET /api/replays/:id            one saved match
- *   GET /api/agents/:name           an agent's bot, persona summary, record and recent matches
+ *   GET /api/agents/:name           an agent's bot, owner, soul summary, record and recent matches
  *   GET /share/:matchId.svg         the 1200x630 share card of a finished match
  *
  * Record files never change once written, so their summaries are cached by path.
@@ -179,6 +179,8 @@ export interface AgentMatch {
 
 export interface AgentProfile {
   name: string;
+  /** the owner the agent's name is bound to */
+  owner: string;
   /** the bot from the agent's newest match (null before its first match starts) */
   identity: Identity | null;
   weapon: Weapon;
@@ -194,10 +196,10 @@ export interface AgentProfile {
   now: { match: string; status: string } | null;
 }
 
-/** The first plain paragraph of a persona (soul text), at most ~280 characters (pure: tested). */
-export function personaSummary(persona: string): { summary: string; catchphrase: string } {
-  const p = parseSoul(persona, 0, "agent");
-  const body = p.soul.body || persona;
+/** The first plain paragraph of a soul.md, at most ~280 characters (pure: tested). */
+export function soulSummary(soul: string): { summary: string; catchphrase: string } {
+  const p = parseSoul(soul, 0, "agent");
+  const body = p.soul.body || soul;
   const para =
     body
       .split(/\n\s*\n/)
@@ -230,7 +232,7 @@ export function placeOf(seat: number, winner: number, wins: number[]): number {
 /** Build an agent's profile from its seats (newest first) and the summaries of those matches (pure: tested). */
 export function buildProfile(
   name: string,
-  seats: { match: string; seat: number; status: string; createdAt: number; persona: string; leftRound: number | null; live?: { fighter: string | null; identities: Identity[] | null; names: string[] | null } }[],
+  seats: { match: string; seat: number; status: string; createdAt: number; soul: string; owner: string; leftRound: number | null; live?: { fighter: string | null; identities: Identity[] | null; names: string[] | null } }[],
   replays: Map<string, ReplaySummary>,
 ): AgentProfile {
   const matches: AgentMatch[] = [];
@@ -302,9 +304,9 @@ export function buildProfile(
       });
     }
   }
-  const persona = seats[0]?.persona ?? "";
-  const { summary, catchphrase } = persona ? personaSummary(persona) : { summary: "", catchphrase: "" };
-  return { name, identity, weapon, label, summary, catchphrase, signature: signature || catchphrase, stats, style: { stance: mode(stances), target: mode(targets), weapon: mode(weapons) }, matches, now };
+  const soul = seats[0]?.soul ?? "";
+  const { summary, catchphrase } = soul ? soulSummary(soul) : { summary: "", catchphrase: "" };
+  return { name, owner: seats[0]?.owner ?? "", identity, weapon, label, summary, catchphrase, signature: signature || catchphrase, stats, style: { stance: mode(stances), target: mode(targets), weapon: mode(weapons) }, matches, now };
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
@@ -329,7 +331,8 @@ export async function agentProfile(server: MatchServer, name: string): Promise<A
         seat: s.seat,
         status: mem?.status ?? row.status,
         createdAt: row.createdAt,
-        persona: s.persona,
+        soul: s.soul,
+        owner: s.owner,
         leftRound: s.leftRound,
         ...(r ? { live: { fighter: r.names[s.seat] ?? null, identities: r.match.identities, names: r.names } } : {}),
       });

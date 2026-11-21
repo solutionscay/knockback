@@ -7,7 +7,7 @@ import { selectRuleset, storedRuleset, type MatchRuleset } from "./match-ruleset
  *   POST /api/matches                 create: { seats?, seed?, deadlineSec?, fillAfterSec? }
  *   GET  /api/matches                 list
  *   GET  /api/matches/:id             status and seats
- *   POST /api/matches/:id/join        { name, persona, look?, seat?, model? } -> { seat, token }
+ *   POST /api/matches/:id/join        (owner key) { name, model, soul, look?, seat?, line? } -> { seat, token }
  *   GET  /api/models                  the model leaderboard (from the record index)
  *   GET  /api/matches/:id/turn        (seat token) long poll: ?wait=0-30 s -> open | turn | checkin | waiting | over
  *   POST /api/matches/:id/plan        (seat token) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
@@ -17,7 +17,7 @@ import { selectRuleset, storedRuleset, type MatchRuleset } from "./match-ruleset
  *   GET  /api/live?match=:id          spectator stream (SSE); without ?match: the newest match
  *   GET  /api/replays, /api/agents/:name, /share/:id.svg   read-only data for the site pages (site.ts)
  *
- * Joining returns a seat token valid for that match and seat only; turn, plan
+ * Joining needs an owner key (src/server/keys.ts: `Authorization: Bearer kbk_...`) and returns a seat token valid for that match and seat only; turn, plan
  * and leave need it in `Authorization: Bearer <token>`. The server keeps only
  * its sha256. With `open: true` (the CLI's --open, for a trusted LAN) tokens
  * are not checked: those calls name the seat with ?seat=N instead.
@@ -58,6 +58,8 @@ import { dedupe, headToHead, leaderboard, MODEL_RE, modelOf, remoteLabel, seatEn
 import { modelsPage } from "./models-page";
 import { lookOptions } from "../ai/looks";
 import { settleSuitUp, suitUp, type SuitUpAnswer, type SuitUpResult } from "../ai/suitup";
+import { checkOwnerHandle, claimName, hashKey, keyOf, newKey, ownerOf } from "./keys";
+import { cleanSoul, MAX_SOUL, MIN_SOUL, soulLine } from "./soul-guard";
 
 /** GET /api/models reads at most this many of the newest records */
 const MODELS_MAX_RECORDS = 5000;
@@ -65,24 +67,25 @@ const MODELS_MAX_RECORDS = 5000;
 /** The model badge data of a seat label; null for an open seat. */
 const seatModel = (label: string | null) => (label === null ? null : modelOf(label));
 
-export const MAX_PERSONA = 8_000;
-export const MIN_PERSONA = 40;
 export const MAX_WAIT_S = 30;
 /** per address: seats held in open or running matches, and open or running matches created over HTTP */
 export const SEATS_PER_IP = 8;
 export const MATCHES_PER_IP = 2;
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 const LOOK_KEYS = ["name", "shape", "eyes", "mark", "minor", "color"] as const;
-const JOIN_KEYS = ["name", "persona", "look", "seat", "model", "line"];
+const JOIN_KEYS = ["name", "model", "soul", "look", "seat", "line"];
 
 /** Who sits in a remote seat. */
 export interface SeatAgent {
   name: string;
-  persona: string;
+  /** soul.md: the fighter persona the agent wrote (personal data stripped) */
+  soul: string;
+  /** the owner whose key joined this agent */
+  owner: string;
   soulId: string;
   look: IdentityWish | null;
-  /** the model the agent says it runs (self-reported at join, unverified), or null */
-  model: string | null;
+  /** the model the agent says it runs (reported at join, shown as reported) */
+  model: string;
   /** sha256 (hex) of the seat token */
   tokenHash: string;
   joinedAt: number;
@@ -154,28 +157,30 @@ export interface ServerOptions {
 const hex = (bytes: number) => randomBytes(bytes).toString("hex");
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-/** Validate a join body: name, persona (a soul text), optional look wishes and seat. */
-export function checkJoin(body: Record<string, unknown>): { name: string; persona: string; look: IdentityWish | null; model: string | null; seat?: number; soulId: string; warnings: string[]; line: string | null } {
+/** Validate a join body: name, model, soul (soul.md: personal data stripped), optional look wishes, seat and line. */
+export function checkJoin(body: Record<string, unknown>): { name: string; soul: string; look: IdentityWish | null; model: string; seat?: number; soulId: string; warnings: string[]; line: string | null } {
   const problems: string[] = [];
   const extra = Object.keys(body).filter((k) => !JOIN_KEYS.includes(k));
   if (extra.length) problems.push(`unknown fields: ${extra.join(", ")} (allowed: ${JOIN_KEYS.join(", ")})`);
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!NAME_RE.test(name)) problems.push("name: 1-24 characters: letters, digits, space, _ . - (starting with a letter or digit)");
-  const persona = body.persona;
-  if (typeof persona !== "string" || persona.length < MIN_PERSONA || persona.length > MAX_PERSONA) problems.push(`persona: a soul text of ${MIN_PERSONA}-${MAX_PERSONA} characters (format: docs/souls.md)`);
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  if (!MODEL_RE.test(model)) problems.push("model: the model you run, as you would name it (1-40 characters: letters, digits, space . _ : + ( ) / -), e.g. claude-opus-5-5");
+  const cleaned = typeof body.soul === "string" ? cleanSoul(body.soul) : null;
+  if (!cleaned || cleaned.soul.length < MIN_SOUL) problems.push(`soul: your fighter's soul.md, ${MIN_SOUL}-${MAX_SOUL} characters about the fighter (attitude, voice, what it goes for), not about a person${cleaned?.removed.length ? ` (after removing ${cleaned.removed.join(", ")})` : ""}`);
   const look = body.look === undefined ? null : (checkLook(body.look, problems) ?? null);
   const seat = body.seat;
   if (seat !== undefined && !(Number.isInteger(seat) && (seat as number) >= 0 && (seat as number) <= 3)) problems.push("seat: 0-3");
-  const model = typeof body.model === "string" ? body.model.trim() : body.model;
-  if (model !== undefined && model !== null && model !== "" && !(typeof model === "string" && MODEL_RE.test(model))) problems.push("model: the model you run, as you would name it (1-40 characters: letters, digits, space . _ : + ( ) / -), e.g. claude-opus-5-5");
   // the opening line (#35): shown on spectators' pick cards before the match; validated like a plan's line
   const line = body.line === undefined ? null : typeof body.line === "string" && body.line.length <= 400 ? cleanLine(body.line) : null;
   if (body.line !== undefined && !line) problems.push("line: one short in-character sentence (a non-empty string, at most 400 characters; kept to 120)");
   if (problems.length) throw new HttpError(400, "invalid join", problems);
   const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
-  const parsed = parseSoul(persona as string, 0, soulId);
-  if (parsed.errors.length) throw new HttpError(422, "invalid persona", parsed.errors);
-  return { name, persona: persona as string, look, model: typeof model === "string" && model ? model : null, soulId, warnings: [...parsed.warnings, ...lookWarnings(look)], line, ...(seat !== undefined ? { seat: seat as number } : {}) };
+  const soul = cleaned!.soul;
+  const parsed = parseSoul(soul, 0, soulId);
+  if (parsed.errors.length) throw new HttpError(422, "invalid soul", parsed.errors);
+  const removed = cleaned!.removed.length ? [`soul: removed ${cleaned!.removed.join(", ")} (soul.md is about the fighter, not a person)`] : [];
+  return { name, soul, look, model, soulId, warnings: [...removed, ...parsed.warnings, ...lookWarnings(look)], line, ...(seat !== undefined ? { seat: seat as number } : {}) };
 }
 
 /** Look wishes that cannot be kept as given (#19): they fall back to the seeded draw. Not errors: a warning each. */
@@ -294,7 +299,7 @@ export class ServerMatch {
 
   seatRow(seat: number): SeatRow {
     const a = this.agents[seat]!;
-    return { matchId: this.id, seat, name: a.name, persona: a.persona, look: a.look, model: a.model, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound, openingLine: a.openingLine };
+    return { matchId: this.id, seat, name: a.name, soul: a.soul, owner: a.owner, look: a.look, model: a.model, tokenHash: a.tokenHash, joinedAt: a.joinedAt, leftAt: a.leftAt, leftRound: a.leftRound, openingLine: a.openingLine };
   }
 
   row(): MatchRow {
@@ -303,7 +308,7 @@ export class ServerMatch {
 
   /** Put a stored agent back in its seat (resume). */
   restoreSeat(r: SeatRow) {
-    const agent: SeatAgent = { name: r.name, persona: r.persona, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, model: r.model ?? null, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0, lastSeen: Date.now(), autopilot: null, openingLine: r.openingLine ?? null };
+    const agent: SeatAgent = { name: r.name, soul: r.soul, owner: r.owner, soulId: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent", look: r.look, model: r.model, tokenHash: r.tokenHash, joinedAt: r.joinedAt, leftAt: r.leftAt, leftRound: r.leftRound, ip: "(restored)", polls: 0, lastSeen: Date.now(), autopilot: null, openingLine: r.openingLine ?? null };
     this.agents[r.seat] = agent;
     const rs = this.remoteSeat(r.seat, agent);
     if (r.leftRound !== null) rs.left = true;
@@ -311,18 +316,18 @@ export class ServerMatch {
   }
 
   /** Seat an agent; returns the seat and its token (shown once, stored hashed). */
-  join(j: ReturnType<typeof checkJoin>, ip: string): { seat: number; token: string } {
+  join(j: ReturnType<typeof checkJoin>, owner: string, ip: string): { seat: number; token: string } {
     if (this.status !== "open") throw new HttpError(409, `match ${this.id} is ${this.status}; join an open match`);
     const free = this.kinds.map((k, i) => (k === "remote" && !this.agents[i] ? i : -1)).filter((i) => i >= 0);
     if (j.seat !== undefined && !free.includes(j.seat)) throw new HttpError(409, `seat ${j.seat} is not a free remote seat (free: ${free.join(", ") || "none"})`);
     const seat = j.seat ?? free[0];
     if (seat === undefined) throw new HttpError(409, "no free remote seat");
     const token = `st_${hex(24)}`;
-    const agent: SeatAgent = { name: j.name, persona: j.persona, soulId: j.soulId, look: j.look, model: j.model, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0, lastSeen: Date.now(), autopilot: null, openingLine: j.line };
+    const agent: SeatAgent = { name: j.name, soul: j.soul, owner, soulId: j.soulId, look: j.look, model: j.model, tokenHash: hashToken(token), joinedAt: Date.now(), leftAt: null, leftRound: null, ip, polls: 0, lastSeen: Date.now(), autopilot: null, openingLine: j.line };
     this.agents[seat] = agent;
     this.remoteSeat(seat, agent);
     this.server.tokens.set(agent.tokenHash, { match: this.id, seat });
-    this.server.log(`match ${this.id}: ${agent.name} joined seat ${seat}${agent.model ? ` (says it runs ${agent.model})` : ""}`);
+    this.server.log(`match ${this.id}: ${agent.name} (owner ${owner}) joined seat ${seat} (says it runs ${agent.model})`);
     this.changed();
     this.lineup();
     return { seat, token };
@@ -686,13 +691,13 @@ export class ServerMatch {
     if (e.type === "round") this.changed();
   }
 
-  /** One soul per seat: the agent's persona, or the example soul of that seat; ids made unique. */
+  /** One soul per seat: the agent's soul.md, or the example soul of that seat; ids made unique. */
   protected souls(): Soul[] {
     const base = exampleSouls();
     const used = new Set<string>();
     return this.kinds.map((_, i) => {
       const a = this.agents[i];
-      let soul = a ? parseSoul(a.persona, i, a.soulId).soul : base[i]!;
+      let soul = a ? parseSoul(a.soul, i, a.soulId).soul : base[i]!;
       let sid = soul.id;
       for (let n = 2; used.has(sid); n++) sid = `${soul.id}-${n}`;
       used.add(sid);
@@ -759,6 +764,7 @@ export class ServerMatch {
           seat: i,
           kind: k === "remote" && !a && this.status !== "open" ? "house" : k,
           agent: a?.name ?? null,
+          ...(a ? { owner: a.owner, soulLine: soulLine(a.soul) } : {}),
           ...(a?.leftRound ? { houseFromRound: a.leftRound } : {}),
           ...(a?.autopilot ? { autopilot: a.autopilot, ...(this.status === "over" ? { finishedOnAutopilot: true } : {}) } : {}),
           fighter: r?.names[i] ?? null,
@@ -826,6 +832,10 @@ export class MatchServer {
   // per address: all requests; joins and match creation are scarcer
   readonly ipLimit = new RateLimiter(60, 10);
   readonly joinLimit = new RateLimiter(10, 1 / 6);
+  /** per owner key: joins and queue entries (a key cannot flood the lobby from many addresses) */
+  readonly keyLimit = new RateLimiter(10, 1 / 6);
+  /** new owner keys per address */
+  readonly keyCreateLimit = new RateLimiter(5, 1 / 120);
   readonly createLimit = new RateLimiter(5, 1 / 12);
   readonly seatLimit = new RateLimiter(30, 5);
   // spectator picks (#35): per address
@@ -1074,6 +1084,26 @@ export class MatchServer {
       const b = await readJson(req);
       return json((await this.createMatch({ ...checkCreate(b), ip })).info(), 201);
     }
+    if (path === "/api/keys") {
+      allow("POST");
+      this.keyCreateLimit.take(ip, "new owner keys");
+      const owner = checkOwnerHandle((await readJson(req, MAX_BODY)).owner);
+      const key = newKey();
+      if (!(await this.store.createOwner(owner, hashKey(key)))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the JOIN panel keeps it in this browser); otherwise pick another handle`);
+      this.log(`owner ${owner}: key issued`);
+      return json({ owner, key, use: "send it as Authorization: Bearer <key> (or ?key=<key> on the MCP URL); it is shown once" }, 201);
+    }
+    if (path === "/api/keys/me") {
+      const key = keyOf(req, url);
+      const owner = await ownerOf(this.store, key);
+      if (method === "DELETE") {
+        await this.store.revokeKey(hashKey(key!));
+        this.log(`owner ${owner}: a key was revoked`);
+        return json({ revoked: true, owner });
+      }
+      allow("GET");
+      return json({ owner, agents: await this.store.listAgents(owner) });
+    }
     if (path === "/api/looks") {
       // the suit-up options (#19): shapes, eyes, marks with a line each, the name and palette rules
       allow("GET");
@@ -1130,10 +1160,14 @@ export class MatchServer {
       case "join": {
         allow("POST");
         this.joinLimit.take(ip, "joins");
+        const key = keyOf(req, url);
+        const owner = await ownerOf(this.store, key);
+        this.keyLimit.take(hashKey(key!), "joins with this key");
         const j = checkJoin(await readJson(req, MAX_BODY));
+        await claimName(this.store, j.name, owner);
         const held = [...this.matches.values()].filter((m) => m.status === "open" || m.status === "running").reduce((n, m) => n + m.agents.filter((a) => a?.ip === ip && a.leftAt === null).length, 0);
         if (held >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} seats per address in open or running matches`);
-        const { seat, token } = await this.join(match, j, ip);
+        const { seat, token } = await this.join(match, j, owner, ip);
         return json(
           {
             match: match.id,
@@ -1209,8 +1243,8 @@ export class MatchServer {
   }
 
   /** Hooks a storage-backed server overrides. */
-  protected async join(match: ServerMatch, j: ReturnType<typeof checkJoin>, ip: string) {
-    const r = match.join(j, ip);
+  protected async join(match: ServerMatch, j: ReturnType<typeof checkJoin>, owner: string, ip: string) {
+    const r = match.join(j, owner, ip);
     try {
       await this.store.insertSeat(match.seatRow(r.seat));
     } catch (e) {
@@ -1284,11 +1318,13 @@ function apiIndex(open: boolean) {
     auth: open
       ? "open mode: no seat tokens needed; turn, plan and leave take ?seat=N (a token still works)"
       : "Authorization: Bearer <seat token> (from POST /api/matches/:id/join) for turn, plan and leave",
+    owner: "joining (POST /api/matches/:id/join, POST /api/queue, MCP) needs an owner key: Authorization: Bearer kbk_... (POST /api/keys { owner }, or the JOIN panel)",
     endpoints: {
       "POST /api/matches": '{ seats?: 4 x "remote"|"house", seed?, deadlineSec? (2-120), fillAfterSec? (0-300), ruleset?: preset name or settings } -> match',
       "GET /api/matches": "all matches",
       "GET /api/matches/:id": "status and seats",
-      "POST /api/matches/:id/join": "{ name, persona (soul text, docs/souls.md), look? { name, shape, eyes, mark, minor, color }, seat?, model? (the model you run, e.g. claude-opus-5-5: shown on your fighter's card as self-reported), line? (an opening line for spectators' pick cards) } -> { seat, token }",
+      "POST /api/matches/:id/join": "(owner key) { name, model (the model you run, e.g. claude-opus-5-5: shown as reported), soul (your fighter's soul.md: attitude, voice, what it goes for; not about a person), look? { name, shape, eyes, mark, minor, color }, seat?, line? (an opening line for spectators' pick cards) } -> { seat, token }",
+      "POST /api/keys": "{ owner } -> { owner, key }: a new owner handle and its MCP key (the JOIN panel does this); GET /api/keys/me shows the key's owner and agents, DELETE /api/keys/me revokes it",
       "GET /api/matches/:id/turn?wait=25": "long poll -> { status: open | turn | checkin | waiting | left | over, ... }; a turn carries context, prompt and schema; a checkin (mid-round, when the server runs check-ins) carries the fight status, a prompt and its schema",
       "POST /api/matches/:id/checkin": "{ round, tick, keep: true } or { round, tick, ...plan fields to change (target, stance, weapons, retaliate, rules), line?, why? } -> { accepted, result: keep | update }; the change applies when the answer arrives (fight time)",
       "POST /api/matches/:id/plan": "{ round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer } -> { accepted, plan }",
@@ -1297,22 +1333,22 @@ function apiIndex(open: boolean) {
       "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
       "GET /lobby": "the site (#22): lobby, /watch/:id, /replay/:id, /agent/:name, /replays (served by bun run match-server)",
       "GET /api/looks": "the look options (#19): shapes, eyes, major and minor marks with a line each, the name and palette rules; send your choice as look on join (unknown ids fall back to random)",
-      "POST /api/queue": "the lobby queue (#22): { name, persona, look?, model?, line?, ruleset? } -> { ticket, position }; a match starts with 4 agents, or after the fill wait with house bots",
+      "POST /api/queue": "the lobby queue (#22): (owner key) { name, model, soul, look?, line?, ruleset? } -> { ticket, position }; a match starts with 4 agents, or, when the server fills seats with house bots (off by default), after the fill wait",
       "GET /api/queue/:ticket?wait=25": "long poll -> { status: queued, position } | { status: seated, match, seat, token }; DELETE leaves the queue",
       "GET /api/queue?name=": "who is waiting (names), seats needed, when AI seats fill, the AI guardrails; ?name gives that agent's place",
-      "GET /api/join?name=&persona=&owner=": "the JOIN panel's data (#42): public URL, MCP URL, commands per client (claude, codex, grok, json), a first prompt, the queue",
+      "GET /api/join": "the JOIN panel's data (#42): the public URL, the MCP URL and the queue",
       "GET /models": "the model leaderboard page: which model wins most",
       "GET /api/models": "model leaderboard from the record index (current engine): match win rate with a 95% interval, round wins, knockouts, ring-outs, damage, survival, fallbacks, autopilot; head-to-head (?min=N sets the provisional cut, default 10)",
       "GET /api/replays?limit=30&before=": "saved matches, newest first: line-up, models, result, theme, lines and plans per round; next: the cursor for older ones (every finished match is reachable)",
       "GET /api/replays/:id": "one saved match of the current engine",
-      "GET /api/agents/:name": "an agent's bot, persona summary, record and recent matches (from the last 300 stored matches)",
+      "GET /api/agents/:name": "an agent's bot, owner, soul summary, record and recent matches (from the last 300 stored matches)",
       "GET /share/:id.svg": "the 1200x630 share card of a finished match",
       "GET /api/records": "index of saved records of the current engine (path, seed, hashes, winner, engine, stats)",
       "GET /api/matches/:id/picks": "spectators (#35): the pick cards, the crowd's tally, the lock, your pick (anonymous cookie)",
       "POST /api/matches/:id/pick": "spectators (#35): { seat } until the picks lock (right before round 1's plans are shown)",
       "GET /api/picks?record=/records/<file>.json": "a replay's final crowd split (read-only)",
     },
-    limits: { body: `${MAX_BODY} bytes`, persona: `${MIN_PERSONA}-${MAX_PERSONA} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },
+    limits: { body: `${MAX_BODY} bytes`, soul: `${MIN_SOUL}-${MAX_SOUL} characters`, wait: `0-${MAX_WAIT_S} s`, seatsPerAddress: SEATS_PER_IP, matchesPerAddress: MATCHES_PER_IP },
     schema: planSchema(),
   };
 }

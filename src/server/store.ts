@@ -55,7 +55,10 @@ export interface SeatRow {
   matchId: string;
   seat: number;
   name: string;
-  persona: string;
+  /** the agent's soul.md (a fighter persona, personal data stripped) */
+  soul: string;
+  /** the owner whose key joined this agent */
+  owner: string;
   look: IdentityWish | null;
   /** sha256 of the seat token (hex) */
   tokenHash: string;
@@ -64,8 +67,8 @@ export interface SeatRow {
   leftAt: number | null;
   /** the first round the house bot plays for it (null: left before the start) */
   leftRound: number | null;
-  /** the model the agent reported at join (unverified), or null */
-  model?: string | null;
+  /** the model the agent reported at join (shown as reported) */
+  model: string;
   /** the agent's opening line, shown on spectators' pick cards (#35) */
   openingLine?: string | null;
 }
@@ -134,6 +137,22 @@ export interface MatchStore {
   listMatches(statuses?: MatchStatus[]): Promise<MatchRow[]>;
   insertSeat(s: SeatRow): Promise<void>;
   updateSeat(matchId: string, seat: number, patch: SeatPatch): Promise<void>;
+  /** the owner of a key (sha256 hex) that is not revoked, or null */
+  ownerOfKey(keyHash: string): Promise<string | null>;
+  /** a new owner handle with its first key; false when the handle is taken */
+  createOwner(handle: string, keyHash: string): Promise<boolean>;
+  /** revoke one key (true when it was live) */
+  revokeKey(keyHash: string): Promise<boolean>;
+  /** revoke every live key of an owner; returns how many */
+  revokeOwner(handle: string): Promise<number>;
+  /** a new key for an existing owner (the operator's reissue after a revoke) */
+  addKey(handle: string, keyHash: string): Promise<void>;
+  /** owners with their live key count, newest first */
+  listOwners(): Promise<{ handle: string; createdAt: number; liveKeys: number; agents: string[] }[]>;
+  /** bind an agent name to an owner: the name's owner (this one, or the one it already belongs to) */
+  claimAgent(name: string, owner: string): Promise<string>;
+  /** the agent names bound to an owner */
+  listAgents(owner: string): Promise<string[]>;
   /** a seat freed before the start */
   deleteSeat(matchId: string, seat: number): Promise<void>;
   listSeats(matchId: string): Promise<SeatRow[]>;
@@ -161,7 +180,7 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
@@ -185,17 +204,34 @@ export const SCHEMA = `
     suit_up TEXT                      -- JSON SuitUpAnswer[] of the built-in AI seats (#19)
   );
   CREATE INDEX matches_status ON matches(status);
+  CREATE TABLE owners (
+    handle TEXT PRIMARY KEY COLLATE NOCASE,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE owner_keys (
+    key_hash TEXT PRIMARY KEY,         -- sha256 hex of the MCP key; the key itself is never stored
+    owner TEXT NOT NULL COLLATE NOCASE REFERENCES owners(handle) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    revoked_at INTEGER
+  );
+  CREATE INDEX owner_keys_owner ON owner_keys(owner);
+  CREATE TABLE agents (
+    name TEXT PRIMARY KEY COLLATE NOCASE, -- an agent name stays bound to its owner (same name, same stats)
+    owner TEXT NOT NULL COLLATE NOCASE REFERENCES owners(handle) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL
+  );
   CREATE TABLE seats (
     match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
     seat INTEGER NOT NULL CHECK (seat BETWEEN 0 AND 3),
     name TEXT NOT NULL,
-    persona TEXT NOT NULL,
+    soul TEXT NOT NULL,               -- the agent's soul.md (personal data stripped)
+    owner TEXT NOT NULL COLLATE NOCASE,
     look TEXT,                        -- JSON identity wish or NULL
     token_hash TEXT NOT NULL UNIQUE,  -- sha256 hex of the seat token; the token itself is never stored
     joined_at INTEGER NOT NULL,
     left_at INTEGER,
     left_round INTEGER,
-    model TEXT,                       -- the model the agent reported at join (unverified)
+    model TEXT NOT NULL,              -- the model the agent reported at join (shown as reported)
     opening_line TEXT,
     PRIMARY KEY (match_id, seat)
   );
@@ -300,13 +336,14 @@ const seatOf = (r: Row): SeatRow => ({
   matchId: r.match_id as string,
   seat: r.seat as number,
   name: r.name as string,
-  persona: r.persona as string,
+  soul: r.soul as string,
+  owner: r.owner as string,
   look: r.look ? p(r.look) : null,
   tokenHash: r.token_hash as string,
   joinedAt: r.joined_at as number,
   leftAt: (r.left_at as number | null) ?? null,
   leftRound: (r.left_round as number | null) ?? null,
-  model: (r.model as string | null) ?? null,
+  model: r.model as string,
   openingLine: (r.opening_line as string | null) ?? null,
 });
 
@@ -391,10 +428,51 @@ export class SqliteStore implements MatchStore {
       : (this.db.query("SELECT * FROM matches ORDER BY created_at DESC, rowid DESC").all() as Row[]);
     return rows.map(matchOf);
   }
+  async ownerOfKey(keyHash: string) {
+    const r = this.db.query("SELECT owner FROM owner_keys WHERE key_hash = ? AND revoked_at IS NULL").get(keyHash) as Row | null;
+    return r ? (r.owner as string) : null;
+  }
+  async createOwner(handle: string, keyHash: string) {
+    return this.db.transaction(() => {
+      if (this.db.query("SELECT 1 FROM owners WHERE handle = ?").get(handle)) return false;
+      const now = Date.now();
+      this.db.query("INSERT INTO owners (handle, created_at) VALUES (?, ?)").run(handle, now);
+      this.db.query("INSERT INTO owner_keys (key_hash, owner, created_at) VALUES (?, ?, ?)").run(keyHash, handle, now);
+      return true;
+    })();
+  }
+  async revokeKey(keyHash: string) {
+    return this.db.query("UPDATE owner_keys SET revoked_at = ? WHERE key_hash = ? AND revoked_at IS NULL").run(Date.now(), keyHash).changes > 0;
+  }
+  async revokeOwner(handle: string) {
+    return this.db.query("UPDATE owner_keys SET revoked_at = ? WHERE owner = ? AND revoked_at IS NULL").run(Date.now(), handle).changes;
+  }
+  async addKey(handle: string, keyHash: string) {
+    const o = this.db.query("SELECT handle FROM owners WHERE handle = ?").get(handle) as Row | null;
+    if (!o) throw new Error(`no owner ${handle}`);
+    this.db.query("INSERT INTO owner_keys (key_hash, owner, created_at) VALUES (?, ?, ?)").run(keyHash, o.handle as string, Date.now());
+  }
+  async listOwners() {
+    const rows = this.db.query("SELECT o.handle, o.created_at, (SELECT COUNT(*) FROM owner_keys k WHERE k.owner = o.handle AND k.revoked_at IS NULL) AS live FROM owners o ORDER BY o.created_at DESC").all() as Row[];
+    return Promise.all(rows.map(async (r) => ({ handle: r.handle as string, createdAt: r.created_at as number, liveKeys: r.live as number, agents: await this.listAgents(r.handle as string) })));
+  }
+  async claimAgent(name: string, owner: string) {
+    return this.db.transaction(() => {
+      const r = this.db.query("SELECT owner FROM agents WHERE name = ?").get(name) as Row | null;
+      if (r) return r.owner as string;
+      const o = this.db.query("SELECT handle FROM owners WHERE handle = ?").get(owner) as Row | null;
+      if (!o) throw new Error(`no owner ${owner}`);
+      this.db.query("INSERT INTO agents (name, owner, created_at) VALUES (?, ?, ?)").run(name, o.handle as string, Date.now());
+      return o.handle as string;
+    })();
+  }
+  async listAgents(owner: string) {
+    return (this.db.query("SELECT name FROM agents WHERE owner = ? ORDER BY created_at").all(owner) as Row[]).map((r) => r.name as string);
+  }
   async insertSeat(s: SeatRow) {
     this.db
-      .query("INSERT INTO seats (match_id, seat, name, persona, look, token_hash, joined_at, left_at, left_round, model, opening_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(s.matchId, s.seat, s.name, s.persona, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound, s.model ?? null, s.openingLine ?? null);
+      .query("INSERT INTO seats (match_id, seat, name, soul, owner, look, token_hash, joined_at, left_at, left_round, model, opening_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(s.matchId, s.seat, s.name, s.soul, s.owner, s.look ? j(s.look) : null, s.tokenHash, s.joinedAt, s.leftAt, s.leftRound, s.model, s.openingLine ?? null);
   }
   async updateSeat(matchId: string, seat: number, patch: SeatPatch) {
     this.patch("seats", "match_id = ? AND seat = ?", [matchId, seat], patch);

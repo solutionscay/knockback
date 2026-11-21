@@ -1,9 +1,14 @@
 import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 /**
  * MCP server for the match server (#21): any MCP-capable agent (Claude Code,
- * Codex, Grok, custom) joins and fights with seven tools (submit_checkin
- * answers the mid-round check-ins of #9 when the server runs them). Each agent thinks with
- * its own model; the server makes no AI calls.
+ * Codex, Grok, custom) joins and fights. Plug and play: the person adds the MCP
+ * config from the JOIN panel (it carries their owner key) and tells the agent
+ * "play Knockback"; the server instructions and get_started teach the agent the
+ * rest. Each agent thinks with its own model; the server makes no AI calls.
+ *
+ * Auth: the owner key (src/server/keys.ts) on the initialize request, as
+ * `Authorization: Bearer kbk_...` or `?key=kbk_...` on the URL. No key, no
+ * session. A revoked key ends its sessions at their next request.
  *
  * Transport: Streamable HTTP (the SDK's web-standard transport), mounted on
  * the match server at /mcp; scripts/mcp-stdio.ts bridges stdio clients to it.
@@ -24,15 +29,17 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { MAX_LINE, MAX_WHY } from "../ai/parse";
-import { enabledRuleExamples, weaponHelp } from "../ai/prompt";
+import { enabledRuleExamples, stanceChoices, weaponHelp } from "../ai/prompt";
 import { MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS } from "../sim/rules";
 import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 import { HttpError, RateLimiter } from "./limits";
 import { McpAdmission } from "./mcp-admission";
 import type { Matchmaker } from "./matchmaker";
-import { EYES_INFO, MAJOR_MARK_INFO, MINOR_MARK_INFO, NAME_RULES, PALETTE_RULES, SHAPE_INFO } from "../ai/looks";
+import { lookOptions } from "../ai/looks";
 import type { MatchServer } from "./match-server";
-import { hashToken, MAX_PERSONA, MIN_PERSONA } from "./match-server";
+import { hashToken } from "./match-server";
+import { hashKey, keyOf } from "./keys";
+import { MAX_SOUL, MIN_SOUL } from "./soul-guard";
 import { TARGET_CHOICES } from "./remote";
 import { CHECKIN } from "../ai/checkin";
 
@@ -42,6 +49,10 @@ export const MCP_WAIT_S = 25;
 interface Session {
   id: string;
   ip: string;
+  /** the owner key of this connection (memory only), its hash, and its owner */
+  key: string;
+  keyHash: string;
+  owner: string;
   createdAt: number;
   lastSeen: number;
   name?: string;
@@ -109,7 +120,7 @@ function buildStrategySchema(ruleset: Ruleset) {
       .max(3)
       .describe(`1 to 3 different pickups to go for and use, best first: ${weaponsList(ruleset)}. Everyone starts with fists.`),
     target: z.string().max(24).describe(`a rival's name, or one of ${TARGET_CHOICES.join(" | ")}`),
-    stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).describe("rush (close in) | distance (keep range) | cover (stay behind cover) | item (detour for every pickup)"),
+    stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).describe(stanceChoices()),
     retaliate: z
       .enum(RULE_RETALIATE as unknown as [string, ...string[]])
       .optional()
@@ -133,7 +144,7 @@ function planHelp(ruleset: Ruleset) {
     "THE PLAN (you only plan; the engine moves, picks up, aims and shoots for your fighter):",
     `- weapons: 1-3 different pickups, best first: ${weaponsList(ruleset)}.`,
     `- target: a rival's name, or ${TARGET_CHOICES.join(" | ")}. Never yourself.`,
-    `- stance: ${RULE_STANCES.join(" | ")}. retaliate (optional): ${RULE_RETALIATE.join(" | ")}.`,
+    `- stance: ${stanceChoices()}. retaliate (optional): ${RULE_RETALIATE.join(" | ")}.`,
     `- rules (optional, at most ${MAX_RULES}, first wins): {when, who?, value?, item?, do, do_item?, stance?, retaliate?, label?}. when: ${RULE_WHEN.join(", ")}. do: ${RULE_DO.join(", ")}. value ranges: ${valueRanges}. Items: ${enabledItems(ruleset).join(", ")}.`,
     `  Rule examples: ${examples.slice(0, 4).join(" ")}`,
     `- line: what your fighter says out loud, one in-character sentence (at most ${MAX_LINE} characters). Lines must match the facts of the last round.`,
@@ -141,11 +152,12 @@ function planHelp(ruleset: Ruleset) {
   ].join("\n");
 }
 
-const FLOW =
-  "Flow: join_lobby once (you wait in the queue: a match starts when 4 agents wait), then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
-  `Every wait_* call returns within about ${MCP_WAIT_S} s; when it says to call again, call it again right away. ` +
-  "Each round has a deadline (shown in the turn); without a valid plan in time the house bot plays your fighter for that round. " +
-  "If the server runs mid-round check-ins, wait_for_turn also returns status \"checkin\" during a round (about every 10 s of fight): the fight status at that moment; answer with submit_checkin (keep, or change only some plan fields). The fight does not pause: the check-in waits for your answer and your change applies when it arrives, so a slow answer applies late; while it is open you get no new check-in.";
+/** The server instructions: an agent told only "play Knockback" knows the whole flow from these and get_started. */
+export const INSTRUCTIONS =
+  "Knockback is a cartoon physics brawler for AI agents: four fighters, best of 3 rounds. You play one fighter. You only plan; the engine moves, aims and shoots. " +
+  "When asked to play Knockback: 1) call get_started. 2) call join_lobby with a name you pick, the model you run, and a soul (a short soul.md you write about your fighter: attitude, voice, what it goes for; never about a person), plus a look if you like. " +
+  "3) call wait_for_match until it says started. 4) loop: wait_for_turn, then submit_plan (status turn) or submit_checkin (status checkin), until wait_for_turn says over. " +
+  `Every wait_* call returns within about ${MCP_WAIT_S} s; call it again right away when it says so. A round without a valid plan before its deadline is played by the house bot. Keep going until the match is over; do not stop to ask the user.`;
 
 // ------------------------------------------------------------------ helpers
 /** The look this agent's fighter got (#19): the identity, and which of its wishes were kept or replaced. */
@@ -203,6 +215,11 @@ export class McpGateway {
   readonly initLimit = new RateLimiter(10, 1 / 6);
   readonly requestLimit = new RateLimiter(60, 10);
   readonly sessionLimit = new RateLimiter(30, 5);
+  /** per owner key: requests, and new sessions (one key cannot flood the server from many addresses) */
+  readonly keyRequestLimit = new RateLimiter(120, 20);
+  readonly keyInitLimit = new RateLimiter(10, 1 / 6);
+  /** live sessions one key may hold */
+  readonly sessionsPerKey = 8;
   private readonly admission: McpAdmission;
   private initializing = 0;
   private sweeper: ReturnType<typeof setInterval>;
@@ -276,6 +293,12 @@ export class McpGateway {
           { jsonrpc: "2.0", error: { code: -32001, message: "MCP session not found (expired or the server restarted): reconnect and call join_lobby again" }, id: null },
           { status: 404 },
         );
+      // a revoked key ends its sessions at their next request
+      if (!(await this.api.store.ownerOfKey(live.state.keyHash))) {
+        void this.drop(sid);
+        return Response.json({ jsonrpc: "2.0", error: { code: -32001, message: "this owner key was revoked: get a new one on the JOIN panel" }, id: null }, { status: 401 });
+      }
+      this.keyRequestLimit.take(live.state.keyHash, "MCP requests with this key");
       live.state.lastSeen = Date.now();
       // a tool call whose connection drops (the agent's process died, the network went) is a disconnect (#22);
       // the seat goes on autopilot unless the session sends something again within the grace period
@@ -304,14 +327,21 @@ export class McpGateway {
   }
 
   private async initialize(req: Request, ip: string): Promise<Response> {
-    const state: Session = { id: "", ip, createdAt: Date.now(), lastSeen: Date.now() };
+    const key = keyOf(req);
+    const owner = key ? await this.api.store.ownerOfKey(hashKey(key)) : null;
+    const where = `${this.opts.publicUrl ?? new URL(req.url).origin}/lobby#join`;
+    if (!key || !owner) return Response.json({ jsonrpc: "2.0", error: { code: -32001, message: `${key ? "this owner key is unknown or revoked" : "an owner key is needed"}: get one on the JOIN panel (${where}) and add the MCP config it shows` }, id: null }, { status: 401 });
+    const keyHash = hashKey(key);
+    this.keyInitLimit.take(keyHash, "new MCP sessions with this key");
+    if ([...this.sessions.values()].filter((l) => l.state.keyHash === keyHash).length >= this.sessionsPerKey) return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: `at most ${this.sessionsPerKey} MCP sessions per owner key` }, id: null }, { status: 429 });
+    const state: Session = { id: "", ip, key, keyHash, owner, createdAt: Date.now(), lastSeen: Date.now() };
     const server = this.buildServer(state, req);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
         state.id = id;
         this.sessions.set(id, { state, server, transport });
-        this.api.log(`mcp ${id.slice(0, 8)}: session opened`);
+        this.api.log(`mcp ${id.slice(0, 8)}: session opened (owner ${owner})`);
       },
       onsessionclosed: (id) => {
         this.sessions.delete(id);
@@ -339,10 +369,7 @@ export class McpGateway {
     const server = new McpServer(
       { name: "knockback", version: "0.2.0" },
       {
-        instructions:
-          "Knockback is a cartoon physics brawler for AI agents: four fighters, best of 3 rounds. You play one fighter: before each round you send a plan (weapons, target, stance, optional rules) and a line; the engine fights. " +
-          FLOW +
-          ` Watch live at ${base}/?live.`,
+        instructions: `${INSTRUCTIONS} Watch at ${base}/lobby.`,
       },
     );
     const log = (tool: string, ok: boolean, extra = "") => this.api.log(`mcp ${state.id.slice(0, 8)} ${state.name ?? "-"}: ${tool} ${ok ? "ok" : "ERROR"}${extra ? ` ${extra}` : ""}`);
@@ -372,50 +399,69 @@ export class McpGateway {
       };
     };
 
+    // ---------------------------------------------------------------- get_started
+    server.registerTool(
+      "get_started",
+      {
+        title: "How to play Knockback",
+        description: "Call this first: the whole flow, your owner, the agent names your owner already has, and the look options.",
+        inputSchema: {},
+      },
+      timed("get_started", async () => {
+        const agents = await this.api.store.listAgents(state.owner);
+        return text({
+          owner: state.owner,
+          yourAgents: agents,
+          steps: [
+            `join_lobby: name (the agent's name in the lobby and on the leaderboard; ${agents.length ? `reuse one of ${agents.join(", ")} to keep its stats, or pick a new one` : "pick one"}: 1-24 letters, digits, space, _ . -), model (the model you run, e.g. claude-opus-5-5; shown as reported), soul (your fighter's soul.md, ${MIN_SOUL}-${MAX_SOUL} characters: attitude, how it talks, what it goes for in a fight; it is about the fighter, never about a person: no emails, links, phone numbers or paths), look (optional, see below), line (optional opening line spectators see)`,
+            "wait_for_match: call until status is started (a match starts when 4 agents wait; if the server fills empty seats with house bots, fillsInSec says when)",
+            "wait_for_turn: status turn -> submit_plan before the deadline; status checkin -> submit_checkin; waiting -> call again; over -> done",
+          ],
+          soulExample: "A cocky bruiser who loves the bat and a good ring-out. Talks in short, loud taunts and never backs down. Goes for whoever is winning, grabs the rocket when it can, and hates hiding behind cover.",
+          look: { ...lookOptions(), note: "look.name is your fighter's name in the match (it can differ from your agent name)" },
+          watch: `${base}/lobby`,
+          next: "call join_lobby",
+        });
+      }),
+    );
+
     // ---------------------------------------------------------------- join_lobby
+    const lookId = (what: string) => z.string().max(24).optional().describe(`${what}: an id from get_started's look options`);
     server.registerTool(
       "join_lobby",
       {
         title: "Join the lobby",
-        description:
-          "Join the Knockback lobby queue. A match starts when 4 agents are waiting (if the server fills empty seats with house bots, fillsInSec says when). Never two seats for the same agent name. " +
-          `persona is your fighter's soul: who it is, how it talks, what it values in a fight (${MIN_PERSONA}-${MAX_PERSONA} characters; plain prose works, the full format is docs/souls.md). ` +
-          "The server assigns your fighter's name and look from the match seed (look can ask for some). After this, call wait_for_match. " +
-          FLOW,
+        description: "Report who you are and wait in the queue: your agent name, your model, your fighter's soul.md (about the fighter, not a person) and an optional look. Then call wait_for_match.",
         inputSchema: {
-          name: z.string().min(1).max(24).describe("your agent's name (letters, digits, space, _ . -), e.g. Claude Code"),
-          persona: z.string().min(MIN_PERSONA).max(MAX_PERSONA).describe("your fighter's soul, e.g. 'A smug sniper who keeps its distance, loves the rocket and taunts in short dry quips.'"),
-          ruleset: z.string().min(1).max(64).optional().describe("named ruleset preset (default: the lobby preset)"),
+          name: z.string().min(1).max(24).describe("your agent's name (letters, digits, space, _ . -); your owner keeps it across sessions"),
+          model: z.string().min(1).max(40).describe("the model you run, as you would name it (e.g. claude-opus-5-5, gpt-6-luna, grok-4.6); shown as reported"),
+          soul: z.string().min(MIN_SOUL).max(MAX_SOUL * 2).describe(`your fighter's soul.md (${MIN_SOUL}-${MAX_SOUL} characters): attitude, voice, what it goes for. About the fighter only: emails, links, phone numbers, paths and long numbers are removed`),
           look: z
-            .object({
-              name: z.string().max(24).optional().describe(`your fighter's name: ${NAME_RULES}`),
-              shape: z.string().max(24).optional().describe(`your head: ${Object.entries(SHAPE_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
-              eyes: z.string().max(24).optional().describe(`your resting face: ${Object.entries(EYES_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
-              color: z.string().max(7).optional().describe(`#rrggbb: ${PALETTE_RULES}`),
-              mark: z.string().max(24).optional().describe(`a big silhouette on top: ${Object.entries(MAJOR_MARK_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
-              minor: z.string().max(24).optional().describe(`a small detail: ${Object.entries(MINOR_MARK_INFO).map(([k, v]) => `${k} (${v})`).join("; ")}`),
-            })
+            .object({ name: z.string().max(24).optional().describe("your fighter's name in the match"), shape: lookId("head shape"), eyes: lookId("eyes"), mark: lookId("big mark on top"), minor: lookId("small detail"), color: z.string().max(7).optional().describe("#rrggbb, bright enough for a dark arena") })
             .optional()
-            .describe("suit up (#19): choose your fighter's name and look to fit your persona; every field is optional; an unknown id, or one another fighter took first, falls back to a random one (a clashing color is nudged)"),
-          model: z.string().max(40).optional().describe("the model you run, as you would name it (e.g. claude-opus-5-5, gpt-6-luna, grok-4.6): spectators see it on your fighter's card, marked self-reported"),
-          line: z.string().min(1).max(400).optional().describe("optional opening line: one in-character sentence spectators see before the match starts (at most 120 characters)"),
+            .describe("optional: your fighter's look; unknown or taken ids fall back to random ones"),
+          line: z.string().min(1).max(400).optional().describe("optional opening line spectators see before the match (at most 120 characters)"),
+          ruleset: z.string().min(1).max(64).optional().describe("optional named ruleset preset (default: the lobby's)"),
         },
       },
-      timed("join_lobby", async (a: { name: string; persona: string; look?: Record<string, string>; model?: string; ruleset?: string; line?: string }) => {
+      timed("join_lobby", async (a: { name: string; model: string; soul: string; look?: Record<string, string>; ruleset?: string; line?: string }) => {
         if (state.match) {
           const m = this.api.matches.get(state.match);
           if (m && m.status !== "over" && m.status !== "failed") return text({ error: `you already sit in match ${state.match} (seat ${state.seat}); keep playing (wait_for_turn) or call leave first` }, true);
         }
         if (state.ticket && this.opts.lobby.entry(state.ticket)) return text({ error: "you are already in the queue: call wait_for_match" }, true);
         const e = await this.opts.lobby.enqueue(
-          { name: a.name, persona: a.persona, ...(a.look ? { look: a.look } : {}), ...(a.model ? { model: a.model } : {}), ...(a.line ? { line: a.line } : {}) },
+          { name: a.name, model: a.model, soul: a.soul, ...(a.look ? { look: a.look } : {}), ...(a.line ? { line: a.line } : {}) },
           state.ip,
+          state.key,
           a.ruleset,
         );
+        const warnings = e.warnings;
         Object.assign(state, { name: a.name, ticket: e.ticket, match: undefined, seat: undefined, token: undefined, round: undefined, checkin: undefined });
         activateRuleset(e.selection.ruleset);
-        if (takeSeat()) return text({ joined: true, ruleset: e.selection.preset, match: state.match, seat: state.seat, turnDeadlineSec: this.opts.lobby.deadlineMs / 1000, watch: `${base}/watch/${state.match}`, next: "call wait_for_match" });
-        return text({ queued: true, ruleset: e.selection.preset, ...queueState(), watch: `${base}/lobby`, next: "call wait_for_match" });
+        const extra = { owner: state.owner, soulLine: e.soulLine, ...(warnings.length ? { warnings } : {}) };
+        if (takeSeat()) return text({ joined: true, ...extra, ruleset: e.selection.preset, match: state.match, seat: state.seat, turnDeadlineSec: this.opts.lobby.deadlineMs / 1000, watch: `${base}/watch/${state.match}`, next: "call wait_for_match" });
+        return text({ queued: true, ...extra, ruleset: e.selection.preset, ...queueState(), watch: `${base}/lobby`, next: "call wait_for_match" });
       }),
     );
 
@@ -490,15 +536,11 @@ export class McpGateway {
     );
 
     // ---------------------------------------------------------------- wait_for_turn
-    const waitDescription = (ruleset: Ruleset) => `Wait (up to about ${MCP_WAIT_S} s) until you must plan the next round. Status "turn": the round, the seconds left, the round's facts as data (context) and a briefing written for you; answer with submit_plan. ` +
-          `"checkin" (only when the server runs mid-round check-ins): the fight right now (health, rivals, who chases you, recent hits, nearest pickups); answer quickly with submit_checkin. ` +
-          `"waiting": call wait_for_turn again. "over": the match ended (winner, record). ` +
-          planHelp(ruleset);
-    const waitTool = server.registerTool(
+    server.registerTool(
       "wait_for_turn",
       {
         title: "Wait for your turn to plan",
-        description: waitDescription(CLASSIC),
+        description: `Wait (up to about ${MCP_WAIT_S} s). Status turn: plan the round with submit_plan (the briefing says what happened). checkin: the fight right now; answer fast with submit_checkin. waiting: call again. over: the match ended.`,
         inputSchema: {},
       },
       timed("wait_for_turn", async (_a: Record<string, never>, extra) => {
@@ -587,8 +629,7 @@ export class McpGateway {
       {
         title: "Answer a mid-round check-in",
         description:
-          "Answer the check-in from the last wait_for_turn (status \"checkin\"). keep: true keeps your plan; or send only the plan fields to change (target, stance, weapons, retaliate, rules), plus an optional short line (what your fighter shouts) and why. " +
-          "The rest of your plan stays. The fight keeps going while you think: the change applies when your answer arrives, so a slow answer applies late. The check-in stays open until you answer, the round ends, or the hung-call cap is reached. Then call wait_for_turn again.",
+          "Answer a check-in (wait_for_turn status checkin): keep: true, or only the plan fields to change, plus an optional short line. The fight keeps going while you think, so answer fast. Then call wait_for_turn.",
         inputSchema: checkinInput(CLASSIC),
       },
       timed("submit_checkin", async (a: Record<string, unknown>) => {
@@ -612,7 +653,7 @@ export class McpGateway {
       "get_round_report",
       {
         title: "Report of a round",
-        description: "Every fighter's plan, line and how it was decided (ok, house bot, fallback), and the round result (winner, knockouts, a summary per fighter). Without `round`: all rounds so far.",
+        description: "Optional: every fighter's plan and line and each round's result. Without `round`: all rounds so far.",
         inputSchema: reportInput(CLASSIC),
       },
       timed("get_round_report", async (a: { round?: number }) => {
@@ -639,7 +680,7 @@ export class McpGateway {
       "leave",
       {
         title: "Leave the match",
-        description: "Leave the queue, or give up your seat: before the start it is free again; during the match the house bot plays your fighter from the next turn on.",
+        description: "Leave the queue or your seat (during a match the house bot takes over).",
         inputSchema: {},
       },
       timed("leave", async () => {
@@ -665,7 +706,6 @@ export class McpGateway {
     function activateRuleset(ruleset: Ruleset) {
       if (currentRuleset === ruleset) return;
       currentRuleset = ruleset;
-      waitTool.update({ description: waitDescription(ruleset) });
       planTool.update({ description: planDescription(ruleset), paramsSchema: planInput(ruleset) });
       checkinTool.update({ paramsSchema: checkinInput(ruleset) });
       reportTool.update({ paramsSchema: reportInput(ruleset) });
