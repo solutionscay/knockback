@@ -177,16 +177,16 @@ describe("scratch on the local disk", () => {
   });
 
   test("all scratch goes under the temp dir (or --work), never inside --out", () => {
-    const p = teaserPaths("/Volumes/share/Knockback/v6", "/tmp", "123-456", "/tmp");
-    expect(p.out).toBe("/Volumes/share/Knockback/v6");
+    const p = teaserPaths("/mnt/example-share/Knockback/v6", "/tmp", "123-456", "/tmp");
+    expect(p.out).toBe("/mnt/example-share/Knockback/v6");
     for (const k of ["work", "frames", "audio", "cues", "plan", "aiMatches", "staging"] as const) {
       expect(p[k].startsWith("/tmp/knockback-teaser-123-456")).toBe(true);
       expect(p[k].startsWith(p.out)).toBe(false);
     }
     expect(teaserPaths("/v/out", "/ssd/work", "7", "/tmp").work).toBe("/ssd/work/knockback-teaser-7");
     // --work inside --out (or equal to it) would put the frames on the slow volume: the temp dir is used instead
-    expect(teaserPaths("/Volumes/share/out", "/Volumes/share/out/scratch", "7", "/tmp").work).toBe("/tmp/knockback-teaser-7");
-    expect(teaserPaths("/Volumes/share/out", "/Volumes/share/out", "7", "/tmp").work).toBe("/tmp/knockback-teaser-7");
+    expect(teaserPaths("/mnt/example-share/out", "/mnt/example-share/out/scratch", "7", "/tmp").work).toBe("/tmp/knockback-teaser-7");
+    expect(teaserPaths("/mnt/example-share/out", "/mnt/example-share/out", "7", "/tmp").work).toBe("/tmp/knockback-teaser-7");
     expect(teaserPaths("/v/out", "/tmp", "a/b c", "/tmp").work).toBe("/tmp/knockback-teaser-a_b_c");
   });
 
