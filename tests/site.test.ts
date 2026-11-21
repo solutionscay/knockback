@@ -73,6 +73,16 @@ describe("site data (#22)", () => {
     expect(card.body).toContain(`${r.names[r.winner].toUpperCase()}`);
     expect((await get(s, "/share/m_00000000.svg")).status).toBe(404);
 
+    // every finished match is reachable: one by id (any age), and the list pages back with `next`
+    const one = await get(s, `/api/replays/${m.id}`);
+    expect(one.body.replay).toMatchObject({ match: m.id, record: r.record, old: false });
+    expect((await get(s, "/api/replays/m_00000000")).status).toBe(404);
+    const p1 = await get(s, "/api/replays?limit=1");
+    expect(p1.body.replays.map((x: any) => x.match)).toEqual([m.id]);
+    expect(typeof p1.body.next).toBe("number");
+    const p2 = await get(s, `/api/replays?limit=1&before=${p1.body.next}`);
+    expect(p2.body).toMatchObject({ replays: [], next: null });
+
     const rep = await get(s, `/api/matches/${m.id}/report`);
     for (const round of rep.body.rounds) {
       expect(round.result.ticks).toBeGreaterThan(0);

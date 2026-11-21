@@ -2,7 +2,8 @@
  * Data for the site pages (#22): the lobby, /replays, /agent/:name and the share card. Read-only, built from
  * what the match server already stores (the record index, seats, the record files); nothing new is written.
  *
- *   GET /api/replays?limit=n        saved matches, newest first, with their line-up and result
+ *   GET /api/replays?limit=n&before=ms  saved matches, newest first, with their line-up and result; `next` pages back
+ *   GET /api/replays/:id            one saved match (any age)
  *   GET /api/agents/:name           an agent's bot, persona summary, record and recent matches
  *   GET /share/:matchId.svg         the 1200x630 share card of a finished match
  *
@@ -145,11 +146,23 @@ const cacheOf = (s: MatchServer) => {
   return c;
 };
 
-/** Saved matches, newest first. */
-export async function listReplays(server: MatchServer, limit = 30): Promise<ReplaySummary[]> {
-  const rows = await server.store.listRecords(Math.max(1, Math.min(100, limit)));
+/** Saved matches, newest first; `before` (ms) pages back through older ones. */
+export async function listReplays(server: MatchServer, limit = 30, before?: number): Promise<ReplaySummary[]> {
+  return (await pageReplays(server, limit, before)).replays;
+}
+
+/** A page of saved matches and the cursor for the next (older) page, null at the end. */
+export async function pageReplays(server: MatchServer, limit = 30, before?: number): Promise<{ replays: ReplaySummary[]; next: number | null }> {
+  const n = Math.max(1, Math.min(100, limit));
+  const rows = await server.store.listRecords(n, before);
   const out = await Promise.all(rows.map(async (row) => summarizeReplay(await cacheOf(server).raw(row.path), row.matchId, row.path, row.createdAt)));
-  return out.filter((x): x is ReplaySummary => x !== null);
+  return { replays: out.filter((x): x is ReplaySummary => x !== null), next: rows.length === n ? rows.at(-1)!.createdAt : null };
+}
+
+/** One saved match by id, however old. */
+export async function replayOf(server: MatchServer, match: string): Promise<ReplaySummary | null> {
+  const rec = await server.store.getRecord(match);
+  return rec ? summarizeReplay(await cacheOf(server).raw(rec.path), match, rec.path, rec.createdAt) : null;
 }
 
 // ------------------------------------------------------------------ agents
@@ -407,7 +420,15 @@ export async function siteRoute(server: MatchServer, req: Request, path: string,
   if (path === "/api/replays") {
     if (req.method !== "GET") throw new HttpError(405, "use GET for /api/replays", undefined, { allow: "GET" });
     const n = Number(url.searchParams.get("limit") ?? "30");
-    return json({ engine: ENGINE_VERSION, replays: await listReplays(server, Number.isFinite(n) ? n : 30) });
+    const b = Number(url.searchParams.get("before"));
+    return json({ engine: ENGINE_VERSION, ...(await pageReplays(server, Number.isFinite(n) ? n : 30, url.searchParams.has("before") && Number.isFinite(b) ? b : undefined)) });
+  }
+  const rp = /^\/api\/replays\/(m_[0-9a-f]{8})$/.exec(path);
+  if (rp) {
+    if (req.method !== "GET") throw new HttpError(405, "use GET for /api/replays/:id", undefined, { allow: "GET" });
+    const sum = await replayOf(server, rp[1]!);
+    if (!sum) throw new HttpError(404, `no saved match ${rp[1]}`);
+    return json({ engine: ENGINE_VERSION, replay: sum });
   }
   const ag = /^\/api\/agents\/([^/]{1,80})$/.exec(path);
   if (ag) {

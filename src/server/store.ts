@@ -148,7 +148,8 @@ export interface MatchStore {
   listPicks(matchId: string): Promise<PickRow[]>;
   insertRecord(r: RecordRow): Promise<void>;
   getRecord(matchId: string): Promise<RecordRow | null>;
-  listRecords(limit?: number): Promise<RecordRow[]>;
+  /** newest first; `before` (ms) pages back through older ones */
+  listRecords(limit?: number, before?: number): Promise<RecordRow[]>;
   /** fill in a record's model stats (rows saved before the column) */
   setRecordStats(matchId: string, stats: string): Promise<void>;
   close(): Promise<void>;
@@ -464,7 +465,8 @@ export class SqliteStore implements MatchStore {
   async setRecordStats(matchId: string, stats: string) {
     this.db.query("UPDATE records SET stats = ? WHERE match_id = ?").run(stats, matchId);
   }
-  async listRecords(limit = 100) {
+  async listRecords(limit = 100, before?: number) {
+    if (before !== undefined) return (this.db.query("SELECT * FROM records WHERE created_at < ? ORDER BY created_at DESC LIMIT ?").all(before, limit) as Row[]).map(recordOf);
     return (this.db.query("SELECT * FROM records ORDER BY created_at DESC LIMIT ?").all(limit) as Row[]).map(recordOf);
   }
   async close() {
