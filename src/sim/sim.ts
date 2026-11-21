@@ -13,7 +13,7 @@ import { Mat, type Grid } from "./grid";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { type PropKind } from "./level-config";
 import { NavGraph } from "./nav";
-import { mobilityKey, strategyBuild, type Build } from "./build";
+import { mobilityKey, NEUTRAL_BUILD, strategyBuild, type Build } from "./build";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { Rng } from "./rng";
 import { explode } from "./sim-blast";
@@ -43,8 +43,6 @@ export function initPhysics(): Promise<void> {
 }
 
 const ALL = 0xffff;
-/** the levels a mobility key reads (speed, jump) of a neutral build */
-const NEUTRAL_MOBILITY = { speed: 0, jump: 0 };
 const SHOT_FILTER = groups(ALL, G.TERRAIN | G.FIGHTER | G.PROP);
 
 export class Sim {
@@ -141,7 +139,7 @@ export class Sim {
     this.chains = buildChains(this);
     for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
-    this.navs.set(mobilityKey(NEUTRAL_MOBILITY), this.nav);
+    this.navs.set(mobilityKey(NEUTRAL_BUILD), this.nav);
     this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.topY = this.nav.surfaces.reduce((top, s) => Math.max(top, s.y), 0);
     this.navVersion = this.terrain.version;
@@ -369,7 +367,7 @@ export class Sim {
 
   private rebuildNav() {
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
-    this.navs = new Map([[mobilityKey(NEUTRAL_MOBILITY), this.nav]]);
+    this.navs = new Map([[mobilityKey(NEUTRAL_BUILD), this.nav]]);
     this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.navVersion = this.terrain.version;
     this.lastNavTick = this.tick;

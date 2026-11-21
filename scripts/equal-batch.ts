@@ -4,12 +4,13 @@
  * Reports win spread per seat (with its 95% noise band) and per soul, time to
  * first weapon pickup, how often a rival was near at that pickup, pickups per
  * round, round length and knockouts per weapon.
- *   bun scripts/equal-batch.ts [N=200] [firstSeed=1] [--close] [--ruleset overrides.json] [--json out.json]
+ *   bun scripts/equal-batch.ts [N=200] [firstSeed=1] [--close] [--ruleset overrides.json] [--builds random:SEED] [--json out.json]
  * --close starts from Close Quarters instead of Classic; --ruleset applies a
- * partial ruleset (JSON) on top of it.
+ * partial ruleset (JSON) on top of it; --builds random:SEED gives every seat a
+ * seeded random legal build each round (#79; default: all neutral).
  */
-import { CLASSIC, CLOSE_QUARTERS, exampleSouls, initPhysics, Match, validateRuleset, WEAPON_LIST, type Weapon } from "../src/sim";
-import { comparisonBatchOptions, sampleQuantile } from "./batch-options";
+import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, validateRuleset, WEAPON_LIST, type Weapon } from "../src/sim";
+import { buildsSeed, comparisonBatchOptions, sampleQuantile, withRandomBuilds } from "./batch-options";
 
 /** A rival this close at a fighter's first weapon pickup makes that pickup contested (meters, roundstats NEAR_M). */
 const CONTEST_RANGE = 7;
@@ -22,7 +23,8 @@ const flag = (name: string) => {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : undefined;
 };
-const valueFlags = new Set(["--ruleset", "--json"]);
+const valueFlags = new Set(["--ruleset", "--json", "--builds"]);
+const buildSeed = buildsSeed(argv);
 const { count: N, first, houseRules } = comparisonBatchOptions(argv.filter((a, i) => !valueFlags.has(a) && !valueFlags.has(argv[i - 1]!)));
 const rulesetFile = flag("--ruleset");
 const jsonOut = flag("--json");
@@ -58,7 +60,8 @@ for (let k = 0; k < N; k++) {
   const seed = first + k;
   const rot = (seed - 1) % 4;
   const order = [0, 1, 2, 3].map((i) => (i + rot) % 4);
-  const m = new Match(seed, { souls: order.map((i) => souls[i]!), houseRules, ruleset });
+  const brains = buildSeed === null ? undefined : withRandomBuilds(order.map(() => houseBrain), buildSeed, seed);
+  const m = new Match(seed, { souls: order.map((i) => souls[i]!), houseRules, ruleset, brains });
   while (!m.over) {
     m.prepareRound();
     const fw = [-1, -1, -1, -1];
@@ -143,7 +146,7 @@ const metrics = {
   knockouts: K,
 };
 const out: string[] = [];
-out.push(`${N} matches (seeds ${first}..${first + N - 1}), ${R} rounds, ${((performance.now() - t0) / 1000).toFixed(0)} s (souls rotated across seats every match)${rulesetFile ? `, ruleset ${rulesetFile}` : ""}${base === CLOSE_QUARTERS ? ", Close Quarters" : ""}`);
+out.push(`${N} matches (seeds ${first}..${first + N - 1}), ${R} rounds, ${((performance.now() - t0) / 1000).toFixed(0)} s (souls rotated across seats every match)${rulesetFile ? `, ruleset ${rulesetFile}` : ""}${base === CLOSE_QUARTERS ? ", Close Quarters" : ""}, ${buildSeed === null ? "neutral builds" : `random builds (seed ${buildSeed})`}`);
 out.push(`round wins per seat:  ${seatRounds.map((w, i) => `seat ${i + 1} ${pct(w, R)}`).join(", ")}  (95% noise band 25% ± ${(100 * band).toFixed(1)}%; largest gap ${(100 * seatDev).toFixed(1)}%: ${seatDev <= band ? "within noise" : "OUTSIDE noise"})`);
 out.push(`match wins per seat:  ${seatMatches.map((w, i) => `seat ${i + 1} ${pct(w, N)}`).join(", ")}`);
 out.push(`round wins per soul:  ${soulRounds.map((w, i) => `${souls[i]!.id} ${pct(w, R)}`).join(", ")}`);

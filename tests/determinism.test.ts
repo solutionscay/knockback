@@ -55,6 +55,13 @@ describe("determinism", () => {
     expect(match().record.rounds.map((r) => r.fight.finalHash)).toEqual(GOLDEN.match);
   });
 
+  test("neutral builds are the old game (#79): plans with explicit neutral builds give the golden hashes", () => {
+    const neutral = { health: 0, speed: 0, jump: 0, weight: 0, power: 0 };
+    const f = new Fight(1001, PLANS.map((s) => ({ ...s, build: neutral })));
+    f.playToEnd();
+    expect(f.record.finalHash).toBe(GOLDEN.fight);
+  });
+
   test("a fight record replays to its recorded hash and checkpoints", () => {
     const rec = fightRecord();
     const r = replayFight(rec);

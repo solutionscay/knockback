@@ -61,10 +61,6 @@ export function strategyBuild(build: Build | undefined): Build {
   return { health: build.health, speed: build.speed, jump: build.jump, weight: build.weight, power: build.power };
 }
 
-export function isNeutral(build: Build): boolean {
-  return BUILD_ATTRIBUTES.every((a) => build[a] === 0);
-}
-
 /** What moves a fighter around the level (#79): the values its navigation graph and jump arcs are made with. */
 export interface Mobility {
   walkSpeed: number;

@@ -23,6 +23,7 @@ This example removes railgun pickups and doubles the probability of fire spreadi
 | `arena` | Size, generation, themes and their prop and material mixtures, spawn constraints, walls, terrain, prop dimensions, chain tuning and navigation. |
 | `zone` | Safe-zone width, shrink schedule, pressure, and sudden-death rules. |
 | `fire` | Burn times, fuel materials and props, spread, ignition and damage. |
+| `builds` | What each fighter-build attribute level does (#79): max HP, speed, jump, weight and power tables, and the caps when a build stacks with a power-up. |
 | `morale` | State thresholds, gains and losses, anger, score limits, and aim effects. |
 | `round` | Round limit, wins required, fight timeout and time past the last knockout. |
 | `tactics` | Controller aim, patience, pickup and wall pursuit tuning, retaliation and plan-rule evaluation. |
@@ -52,6 +53,19 @@ Classic waits for the first fighter-on-fighter damage before the sudden-death co
 `tactics.weapons.reach` sets each weapon's effective range for aiming, choosing shots, attacking obstructions and positioning. The settings also set vertical reach for melee and a preferred stand-off distance within the band. The controller favors ready weapons and treats obstructing destructibles as targets. Ammunition and fuel still come from the weapon table and carried inventory.
 
 Close Quarters keeps its original opening timer and weapon selection through its ruleset settings.
+
+## Fighter builds
+
+A fighter's strategy for a round can carry a build (#79): five attribute levels, `health`, `speed`, `jump`, `weight` and `power`, that add up to 0. `speed` and `jump` run from 0 to +2 (never below the base, so every generated level stays reachable); the others run from -2 to +2. No build means neutral, all 0, and a neutral fighter plays the `combat.fighter` values exactly. The build is fixed for the round; a mid-round plan update does not change it.
+
+- `builds.health.hpBonus` is added to `combat.fighter.maxHp` (levels -2 to +2). Health bars, healing, knockback growth and the health rules use the fighter's own max HP.
+- `builds.speed.mul` scales walk speed and ground acceleration (levels 0 to +2).
+- `builds.jump.mul` scales jump speed (levels 0 to +2); jump height grows with its square.
+- `builds.weight.knockback` scales knockback taken, `builds.weight.density` the body's density (levels -2 to +2).
+- `builds.power.mul` scales damage and knockback dealt (levels -2 to +2).
+- `builds.caps` limit a build stacked with a power-up, as multiples of the base values: the highest walk speed and ground acceleration with Speed, the highest Jump air jump, the lowest knockback taken and highest density with Heavy, the highest damage and knockback dealt with Damage.
+
+Level 0 of every table must be the base (hpBonus 0, multipliers 1), and no cap may bind a neutral fighter; the validator refuses anything else. To turn builds off, set every entry to its level-0 value. Each fighter plans its routes on a navigation graph for its own (speed, jump) profile; level generation and validation use the base profile.
 
 ## Launch height
 

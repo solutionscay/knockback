@@ -10,12 +10,14 @@
  * and, for a batch, the seat spread (round wins per seat) and the median round length.
  *
  *   bun scripts/behavior.ts record.json [--rounds]          a recorded match (the record's plans on the current sim)
- *   bun scripts/behavior.ts [count=200] [first=1] [--ruleset classic|close-quarters] [--stances] [--json out.json]
+ *   bun scripts/behavior.ts [count=200] [first=1] [--ruleset classic|close-quarters] [--stances] [--builds random:SEED] [--json out.json]
  *     --stances: every fighter plays a rotating stance (all stances show up); default: the house bots' own plans
+ *     --builds random:SEED: every seat plays a seeded random legal build each round (#79); default: all neutral
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { houseBrain, initPhysics, Match, RULE_STANCES, TICK_RATE, type Brain, type Input, type Stance, type Weapon } from "../src/sim";
 import { CLASSIC, CLOSE_QUARTERS } from "../src/sim/ruleset";
+import { buildsSeed, withRandomBuilds } from "./batch-options";
 
 const LONG: readonly Weapon[] = ["rocket", "railgun", "rifle", "sniper", "crossbow"];
 const STILL_MS = 0.6;
@@ -151,7 +153,8 @@ if (import.meta.main) {
   await initPhysics();
   const args = process.argv.slice(2);
   const opt = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
-  const valued = new Set(["--ruleset", "--json"]);
+  const valued = new Set(["--ruleset", "--json", "--builds"]);
+  const buildSeed = buildsSeed(args);
   const pos = args.filter((a, i) => !a.startsWith("--") && !valued.has(args[i - 1] ?? ""));
   const card = newScorecard();
   const t0 = performance.now();
@@ -173,11 +176,12 @@ if (import.meta.main) {
     const ruleset = rulesetName === "close-quarters" ? CLOSE_QUARTERS : CLASSIC;
     const rotate = args.includes("--stances");
     for (let seed = first; seed < first + count; seed++) {
-      const brains: Brain[] | undefined = rotate ? [0, 1, 2, 3].map((seat) => (ctx) => {
+      const plans: Brain[] = rotate ? [0, 1, 2, 3].map((seat) => (ctx) => {
         const d = houseBrain(ctx);
         const stance = RULE_STANCES[(seed * 7 + seat * 3 + ctx.round * 5) % RULE_STANCES.length] as Stance;
         return { ...d, strategy: { ...d.strategy, stance } };
-      }) : undefined;
+      }) : [0, 1, 2, 3].map(() => houseBrain);
+      const brains = buildSeed === null ? plans : withRandomBuilds(plans, buildSeed, seed);
       const m = new Match(seed, { ruleset, brains });
       while (!m.over) {
         m.prepareRound();
@@ -187,7 +191,7 @@ if (import.meta.main) {
         void facts;
       }
     }
-    console.log(report(card, `behavior (#69): ${count} house-bot matches, seeds ${first}..${first + count - 1}, ${rulesetName}${rotate ? ", rotating stances" : ", the house bots' own plans"} (${((performance.now() - t0) / 1000).toFixed(0)} s)`));
+    console.log(report(card, `behavior (#69): ${count} house-bot matches, seeds ${first}..${first + count - 1}, ${rulesetName}${rotate ? ", rotating stances" : ", the house bots' own plans"}, ${buildSeed === null ? "neutral builds" : `random builds (seed ${buildSeed})`} (${((performance.now() - t0) / 1000).toFixed(0)} s)`));
     const json = opt("--json");
     if (json) writeFileSync(json, JSON.stringify({ ...card, byStance: Object.fromEntries(Object.entries(card.byStance).map(([k, b]) => [k, { ...b, longRatio: median(b.longRatio), longDist: median(b.longDist) }])) }, null, 2));
     if (card.falls.length) console.log("\nfalls with no attacker:\n" + card.falls.map((f) => `  seed ${f.seed} round ${f.round} seat ${f.fighter} tick ${f.tick} (${f.stance}${f.zone ? ", zone" : ""}) at x ${f.x.toFixed(1)} y ${f.y.toFixed(1)}`).join("\n"));
