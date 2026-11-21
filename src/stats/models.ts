@@ -143,7 +143,6 @@ export interface SeatFight {
 
 /** Saved in every record as `fightStats`: per round, the round's length and each seat's fight. */
 export interface FightStats {
-  v: 1;
   rounds: { seconds: number; seats: SeatFight[] }[];
 }
 
@@ -152,7 +151,6 @@ const r1 = (x: number) => Math.round(x * 10) / 10;
 /** Fight stats from round facts (the sim's own events: no simulation here). */
 export function fightStatsOf(facts: readonly RoundFacts[]): FightStats {
   return {
-    v: 1,
     rounds: facts.map((f) => ({
       seconds: r1(f.seconds),
       seats: f.fighters.map((x) => {
@@ -198,11 +196,10 @@ const isSeat = (v: unknown): v is number => typeof v === "number" && Number.isIn
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
 function cleanFightStats(v: unknown, nRounds: number): FightStats | null {
-  if (!v || typeof v !== "object" || (v as FightStats).v !== 1 || !Array.isArray((v as FightStats).rounds)) return null;
+  if (!v || typeof v !== "object" || !Array.isArray((v as FightStats).rounds)) return null;
   const rounds = (v as FightStats).rounds;
   if (rounds.length !== nRounds) return null;
   return {
-    v: 1,
     rounds: rounds.map((r) => ({
       seconds: num(r?.seconds),
       seats: [0, 1, 2, 3].map((i) => {
