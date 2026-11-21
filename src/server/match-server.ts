@@ -42,6 +42,8 @@ import { errorResponse, HttpError, json, MAX_BODY, RateLimiter, readJson } from 
 import { LiveStream } from "./live";
 import { lobbyPage } from "./lobby";
 import { siteRoute } from "./site";
+import { queueRoute } from "./queue-routes";
+import type { Matchmaker } from "./matchmaker";
 import { ENGINE_VERSION, recordEngine } from "../sim/engine-version";
 import { checkinSchema, planSchema, RemoteSeat } from "./remote";
 import type { CheckinConfig } from "../ai/checkin";
@@ -750,6 +752,8 @@ export class ServerMatch {
 
 export class MatchServer {
   readonly matches = new Map<string, ServerMatch>();
+  /** the lobby's matchmaker (#22), when this server has one: GET/POST /api/queue, GET /api/join */
+  matchmaker: Matchmaker | null = null;
   /** sha256(seat token) -> its match and seat (dropped when the match leaves memory) */
   readonly tokens = new Map<string, { match: string; seat: number }>();
   protected newest: ServerMatch | null = null;
@@ -1008,6 +1012,8 @@ export class MatchServer {
     // the site pages' read-only data (#22): /api/replays, /api/agents/:name, /share/:id.svg
     const site = await siteRoute(this, req, path, url);
     if (site) return site;
+    const queue = await queueRoute(this, req, path, url, ip);
+    if (queue) return queue;
     if (path === "/api/live") {
       allow("GET");
       const mid = url.searchParams.get("match");
@@ -1240,6 +1246,10 @@ function apiIndex(open: boolean) {
       "GET /api/matches/:id/report": "plans and results so far (?round=n)",
       "GET /api/live?match=:id": "spectator event stream (SSE); without ?match: the newest started match",
       "GET /lobby": "the site (#22): lobby, /watch/:id, /replay/:id, /agent/:name, /replays (served by bun run match-server)",
+      "POST /api/queue": "the lobby queue (#22): { name, persona, look?, model?, line?, ruleset? } -> { ticket, position }; a match starts with 4 agents, or after the fill wait with built-in AI seats",
+      "GET /api/queue/:ticket?wait=25": "long poll -> { status: queued, position } | { status: seated, match, seat, token }; DELETE leaves the queue",
+      "GET /api/queue?name=": "who is waiting (names), seats needed, when AI seats fill, the AI guardrails; ?name gives that agent's place",
+      "GET /api/join?name=&persona=&owner=": "the JOIN panel's data (#42): public URL, MCP URL, commands per client (claude, codex, grok, json), a first prompt, the queue",
       "GET /models": "the model leaderboard page: which model wins most",
       "GET /api/models": "model leaderboard from the record index: per engine version and overall, match win rate with a 95% interval, round wins, knockouts, ring-outs, damage, survival, fallbacks, autopilot; head-to-head (?min=N sets the provisional cut, default 10)",
       "GET /api/replays?limit=30": "saved matches, newest first: line-up, models, result, theme, lines and plans per round",

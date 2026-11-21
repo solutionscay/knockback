@@ -29,7 +29,7 @@ import { MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES, RULE_VALUE, WHO_TRIGGERS 
 import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 import { HttpError, RateLimiter } from "./limits";
 import { McpAdmission } from "./mcp-admission";
-import type { LobbyQueue } from "./lobby-queue";
+import type { Matchmaker } from "./matchmaker";
 import type { MatchServer } from "./match-server";
 import { hashToken, MAX_PERSONA, MIN_PERSONA } from "./match-server";
 import { TARGET_CHOICES } from "./remote";
@@ -48,6 +48,8 @@ interface Session {
   seat?: number;
   /** the seat token: kept here, never shown to the agent */
   token?: string;
+  /** the queue ticket while the agent waits for a seat (#22) */
+  ticket?: string;
   /** the round of the last turn handed out (submit_plan's default) */
   round?: number;
   /** the last check-in handed out (submit_checkin's default) */
@@ -61,7 +63,8 @@ interface Live {
 }
 
 export interface McpOptions {
-  lobby: LobbyQueue;
+  /** the lobby queue (#22): join_lobby waits here until the matchmaker seats the agent */
+  lobby: Matchmaker;
   /** public base URL for links in tool results (e.g. https://kb.example.com); default: from the request */
   publicUrl?: string;
   maxSessions?: number;
@@ -138,7 +141,7 @@ function planHelp(ruleset: Ruleset) {
 }
 
 const FLOW =
-  "Flow: join_lobby once, then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
+  "Flow: join_lobby once (you wait in the queue: a match starts when 4 agents wait, or after a short wait with built-in AI fighters in the empty seats), then wait_for_match until it says the match started, then repeat wait_for_turn -> submit_plan until wait_for_turn says the match is over. " +
   `Every wait_* call returns within about ${MCP_WAIT_S} s; when it says to call again, call it again right away. ` +
   "Each round has a deadline (shown in the turn); without a valid plan in time the house bot plays your fighter for that round. " +
   "If the server runs mid-round check-ins, wait_for_turn also returns status \"checkin\" during a round (about every 10 s of fight): the fight status at that moment; answer with submit_checkin (keep, or change only some plan fields). The fight does not pause: the check-in waits for your answer and your change applies when it arrives, so a slow answer applies late; while it is open you get no new check-in.";
@@ -218,6 +221,7 @@ export class McpGateway {
 
   /** The session is gone for good: the house bot takes its fighter (#22). */
   private handOver(state: Session, reason: string) {
+    if (state.ticket) this.opts.lobby.leave(state.ticket);
     if (state.match === undefined || state.seat === undefined || !state.token) return;
     // only this session's own agent: the seat may have been freed and taken by someone else
     this.api.matches.get(state.match)?.takeover(state.seat, reason, undefined, hashToken(state.token));
@@ -329,7 +333,8 @@ export class McpGateway {
     );
     const log = (tool: string, ok: boolean, extra = "") => this.api.log(`mcp ${state.id.slice(0, 8)} ${state.name ?? "-"}: ${tool} ${ok ? "ok" : "ERROR"}${extra ? ` ${extra}` : ""}`);
     const needMatch = (): CallToolResult | null => {
-      if (!state.match) return text({ error: "you are not in a match: call join_lobby first" }, true);
+      if (!state.match && state.ticket) takeSeat(); // seated while it was not asking: pick the seat up now
+      if (!state.match) return text({ error: state.ticket ? "you are still in the queue: call wait_for_match" : "you are not in a match: call join_lobby first" }, true);
       // the seat was freed on the server (the agent dropped before the start): forget it
       const m = this.api.matches.get(state.match);
       if (m && state.seat !== undefined && state.token && m.agents[state.seat]?.tokenHash !== hashToken(state.token)) {
@@ -359,7 +364,7 @@ export class McpGateway {
       {
         title: "Join the lobby",
         description:
-          "Take a seat in the next Knockback match with a free seat (a new one opens when none has room; empty seats get house bots when it starts). " +
+          "Join the Knockback lobby queue. A match starts when 4 agents are waiting, or when you have waited a short while (see fillsInSec): then built-in AI fighters (Claude, Codex, Grok) take the empty seats. Never two seats for the same agent name. " +
           `persona is your fighter's soul: who it is, how it talks, what it values in a fight (${MIN_PERSONA}-${MAX_PERSONA} characters; plain prose works, the full format is docs/souls.md). ` +
           "The server assigns your fighter's name and look from the match seed (look can ask for some). After this, call wait_for_match. " +
           FLOW,
@@ -380,41 +385,60 @@ export class McpGateway {
           const m = this.api.matches.get(state.match);
           if (m && m.status !== "over" && m.status !== "failed") return text({ error: `you already sit in match ${state.match} (seat ${state.seat}); keep playing (wait_for_turn) or call leave first` }, true);
         }
-        const seated = await this.opts.lobby.seat(
+        if (state.ticket && this.opts.lobby.entry(state.ticket)) return text({ error: "you are already in the queue: call wait_for_match" }, true);
+        const e = await this.opts.lobby.enqueue(
           { name: a.name, persona: a.persona, ...(a.look ? { look: a.look } : {}), ...(a.model ? { model: a.model } : {}), ...(a.line ? { line: a.line } : {}) },
           state.ip,
           a.ruleset,
         );
-        Object.assign(state, { name: a.name, match: seated.match.id, seat: seated.seat, token: seated.token, round: undefined, checkin: undefined });
-        const m = seated.match;
-        activateRuleset(m.selection.ruleset);
-        return text({
-          joined: true,
-          ruleset: m.selection.preset,
-          match: m.id,
-          seat: seated.seat,
-          seated: m.agents.filter(Boolean).map((x) => x!.name),
-          freeSeats: m.kinds.filter((k, i) => k === "remote" && !m.agents[i]).length,
-          startsInSec: Math.max(0, Math.ceil((m.startsAt - Date.now()) / 1000)),
-          turnDeadlineSec: m.deadlineMs / 1000,
-          watch: `${base}/?live`,
-          next: "call wait_for_match",
-        });
+        Object.assign(state, { name: a.name, ticket: e.ticket, match: undefined, seat: undefined, token: undefined, round: undefined, checkin: undefined });
+        activateRuleset(e.selection.ruleset);
+        if (takeSeat()) return text({ joined: true, ruleset: e.selection.preset, match: state.match, seat: state.seat, turnDeadlineSec: this.opts.lobby.deadlineMs / 1000, watch: `${base}/watch/${state.match}`, next: "call wait_for_match" });
+        return text({ queued: true, ruleset: e.selection.preset, ...queueState(), watch: `${base}/lobby`, next: "call wait_for_match" });
       }),
     );
+
+    /** The matchmaker gave this session's ticket a seat: take it (the token stays here). */
+    const takeSeat = (): boolean => {
+      const e = state.ticket ? this.opts.lobby.entry(state.ticket) : null;
+      if (!e?.seated) return false;
+      this.opts.lobby.pickedUp(e.ticket);
+      Object.assign(state, { ticket: undefined, match: e.seated.match, seat: e.seated.seat, token: e.seated.token });
+      return true;
+    };
+    const queueState = () => {
+      const q = this.opts.lobby.summary();
+      return {
+        position: state.name ? this.opts.lobby.position(state.name) : null,
+        waiting: q.waiting.map((w) => w.agent),
+        needed: q.needed,
+        fillsInSec: q.fillsInSec,
+        ...(q.blocked ? { note: "a match is running; yours starts when it ends" } : {}),
+      };
+    };
 
     // ---------------------------------------------------------------- wait_for_match
     server.registerTool(
       "wait_for_match",
       {
         title: "Wait for the match to start",
-        description: `Wait (up to about ${MCP_WAIT_S} s) until your match starts. Returns status "started" with your fighter and the line-up, or "waiting" with who has joined: then call wait_for_match again.`,
+        description: `Wait (up to about ${MCP_WAIT_S} s) until your match starts. Returns status "started" with your fighter and the line-up, or "waiting" with your place in the queue: then call wait_for_match again.`,
         inputSchema: {},
       },
       timed("wait_for_match", async (_a: Record<string, never>, extra) => {
+        const until = Date.now() + MCP_WAIT_S * 1000;
+        // still in the queue: wait for the matchmaker to seat this agent
+        while (state.ticket && !state.match) {
+          if (!this.opts.lobby.entry(state.ticket)) {
+            state.ticket = undefined;
+            return text({ error: "you are no longer in the queue (you were silent too long): call join_lobby again" }, true);
+          }
+          if (takeSeat()) break;
+          if (Date.now() >= until || extra.signal.aborted) return text({ status: "waiting", ...queueState(), next: "call wait_for_match again" });
+          await this.opts.lobby.nextChange(until - Date.now(), extra.signal);
+        }
         const no = needMatch();
         if (no) return no;
-        const until = Date.now() + MCP_WAIT_S * 1000;
         for (;;) {
           const m = this.api.matches.get(state.match!);
           if (!m) return text({ error: `match ${state.match} is gone; call join_lobby again` }, true);
@@ -426,7 +450,7 @@ export class McpGateway {
               you: { seat: state.seat, fighter: info.seats[state.seat!]!.fighter },
               lineUp: info.seats.map((s) => ({ fighter: s.fighter, player: s.agent ? `agent ${s.agent}` : "house bot" })),
               turnDeadlineSec: m.deadlineMs / 1000,
-              watch: `${base}/?live`,
+              watch: `${base}/watch/${m.id}`,
               next: "call wait_for_turn",
             });
           }
@@ -594,10 +618,16 @@ export class McpGateway {
       "leave",
       {
         title: "Leave the match",
-        description: "Give up your seat: before the start it is free again; during the match the house bot plays your fighter from the next turn on.",
+        description: "Leave the queue, or give up your seat: before the start it is free again; during the match the house bot plays your fighter from the next turn on.",
         inputSchema: {},
       },
       timed("leave", async () => {
+        if (state.ticket && !state.match) {
+          this.opts.lobby.leave(state.ticket);
+          state.ticket = undefined;
+          activateRuleset(CLASSIC);
+          return text({ left: "the queue", next: "join_lobby plays again" });
+        }
         const no = needMatch();
         if (no) return no;
         const { status, data } = await this.call(state, "POST", `/api/matches/${state.match}/leave`);

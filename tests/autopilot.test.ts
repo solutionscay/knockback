@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AUTOPILOT_LINES, BACK_LINES, pickLine } from "../src/server/autopilot";
-import { LobbyQueue } from "../src/server/lobby-queue";
+import { Matchmaker } from "../src/server/matchmaker";
 import { MatchServer, type ServerMatch } from "../src/server/match-server";
 import { McpGateway } from "../src/server/mcp";
 import { initPhysics, replayMatch } from "../src/sim";
@@ -164,7 +164,7 @@ describe("MCP agents", () => {
 
   function setup() {
     const api = new MatchServer({ outDir: tmp(), dropGraceMs: 150 });
-    const gw = new McpGateway(api, { lobby: new LobbyQueue(api, { seats: ["remote", "remote", "house", "house"], deadlineMs: 4000, fillAfterMs: 30_000 }) });
+    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { minAgents: 2, fillAfterMs: 0, roster: ["house"], deadlineMs: 4000, usageFile: null, tickMs: 50 }) });
     return { api, gw };
   }
 

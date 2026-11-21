@@ -3,7 +3,9 @@ import { LiveStream } from "../src/server/live";
 import { McpAdmission } from "../src/server/mcp-admission";
 import { HttpError, RateLimiter } from "../src/server/limits";
 import { MatchServer, ServerMatch } from "../src/server/match-server";
-import { LobbyQueue } from "../src/server/lobby-queue";
+import { Matchmaker } from "../src/server/matchmaker";
+
+const lobbyOf = (api: MatchServer) => new Matchmaker(api, { usageFile: null, roster: ["house"], tickMs: 60_000 });
 import { McpGateway } from "../src/server/mcp";
 
 const decode = (v: Uint8Array | undefined) => new TextDecoder().decode(v);
@@ -147,7 +149,7 @@ describe("MCP admission", () => {
 
   test("concurrent initialization reserves session capacity before reading its body", async () => {
     const api = new MatchServer({ outDir: "." });
-    const gw = new McpGateway(api, { lobby: new LobbyQueue(api), maxSessions: 1 });
+    const gw = new McpGateway(api, { lobby: lobbyOf(api), maxSessions: 1 });
     let ctl!: ReadableStreamDefaultController<Uint8Array>;
     let reading!: () => void;
     const ready = new Promise<void>(r => { reading = r; });
@@ -172,7 +174,7 @@ describe("MCP admission", () => {
 
   test("gateway holds admission until an existing session's SSE response is cancelled", async () => {
     const api = new MatchServer({ outDir: "." });
-    const gw = new McpGateway(api, { lobby: new LobbyQueue(api), maxInFlight: 1 });
+    const gw = new McpGateway(api, { lobby: lobbyOf(api), maxInFlight: 1 });
     let calls = 0;
     gw.sessions.set("known", { state: { id: "known", ip: "ip", createdAt: 0, lastSeen: 0 }, transport: { handleRequest: async () => { calls++; return streaming(); }, close: async () => {} } } as any);
     try {
@@ -196,7 +198,7 @@ describe("MCP admission", () => {
       override readonly sessionLimit = new RateLimiter(30, 5, () => 0);
     }
     const api = new MatchServer({ outDir: "." });
-    const gw = new Gateway(api, { lobby: new LobbyQueue(api) });
+    const gw = new Gateway(api, { lobby: lobbyOf(api) });
     let calls = 0;
     // Isolate admission from SDK dispatch; this transport would otherwise accept every call.
     gw.sessions.set("known", { state: { id: "known", ip: "ip", createdAt: 0, lastSeen: 0 }, transport: { handleRequest: async () => { calls++; return new Response(); }, close: async () => {} } } as any);
@@ -218,27 +220,30 @@ describe("MCP admission", () => {
 describe("lobby admission", () => {
   test("invalid joins do not allocate a match or storage row", async () => {
     const api = new MatchServer({ outDir: "." });
-    const lobby = new LobbyQueue(api);
+    const lobby = lobbyOf(api);
     try {
-      await expect(lobby.seat({ name: "bad!", persona }, "ip")).rejects.toBeInstanceOf(HttpError);
+      await expect(lobby.enqueue({ name: "bad!", persona }, "ip")).rejects.toBeInstanceOf(HttpError);
+      expect(lobby.waiting()).toEqual([]);
       expect(api.matches.size).toBe(0);
       expect(await api.store.listMatches()).toEqual([]);
     } finally {
+      lobby.close();
       await api.store.close();
     }
   });
 
   test.each(["rate limit", "storage failure"] as const)("a %s retires a newly created empty match", async (mode) => {
     const api = new MatchServer({ outDir: "." });
-    const lobby = new LobbyQueue(api, { maxOpen: 1 });
+    const lobby = new Matchmaker(api, { usageFile: null, roster: ["house"], tickMs: 60_000, fillAfterMs: 0 });
     const create = api.createMatch.bind(api);
     let created!: ServerMatch;
-    api.createMatch = async options => (created = await create(options));
-    if (mode === "rate limit") for (let i = 0; i < 10; i++) api.joinLimit.take("ip");
+    api.createMatch = async (options, sel) => (created = await create(options, sel));
+    // the queue join takes one of the address's join tokens; the seat join then finds none left
+    if (mode === "rate limit") for (let i = 0; i < 9; i++) api.joinLimit.take("ip");
     else api.store.insertSeat = async () => { throw new Error("storage failure"); };
     try {
-      await expect(lobby.seat({ name: "Agent", persona }, "ip")).rejects.toThrow();
-      expect(lobby.open()).toEqual([]);
+      await lobby.enqueue({ name: "Agent", persona }, "ip");
+      expect(lobby.waiting()).toEqual([]); // the agent could not take its seat: out of the queue
       expect(api.tokens.size).toBe(0);
       const m = created;
       expect(api.matches.size).toBe(0);
@@ -251,6 +256,7 @@ describe("lobby admission", () => {
       expect(m.status).toBe("failed");
       expect(await api.resume()).toEqual({ open: [], running: [] });
     } finally {
+      lobby.close();
       await api.store.close();
     }
   });

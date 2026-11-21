@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { PICKUPS, RULE_RETALIATE, RULE_STANCES } from "../src/sim/rules";
 import { RULE_DO, RULE_WHEN, WEAPON_LIST } from "../src/sim/sim-types";
-import { LobbyQueue } from "../src/server/lobby-queue";
+import { Matchmaker, type MatchmakerOptions } from "../src/server/matchmaker";
 import { MatchServer } from "../src/server/match-server";
 import { briefingOf, fixHints, McpGateway } from "../src/server/mcp";
 import { initPhysics, replayMatch } from "../src/sim";
@@ -20,10 +20,13 @@ const SOUL = readFileSync("souls/rat.md", "utf8");
 const tmp = () => mkdtempSync(join(tmpdir(), "kb-mcp-"));
 const PLAN = { weapons: ["rocket", "bat"], target: "weakest", stance: "rush", retaliate: "attacker", rules: [{ when: "my_health_below", value: 30, do: "seek", item: "health", label: "patch up" }], why: "rush the weak one" };
 
-function setup(lobby: ConstructorParameters<typeof LobbyQueue>[1] = {}) {
+function setup(lobby: MatchmakerOptions = {}) {
   const api = new MatchServer({ outDir: tmp() });
-  const gw = new McpGateway(api, { lobby: new LobbyQueue(api, { deadlineMs: 3000, fillAfterMs: 30_000, ...lobby }), publicUrl: "http://kb.test" });
-  return { api, gw };
+  const mm = new Matchmaker(api, { deadlineMs: 3000, fillAfterMs: 30_000, roster: ["house"], usageFile: null, tickMs: 50, ...lobby });
+  const gw = new McpGateway(api, { lobby: mm, publicUrl: "http://kb.test" });
+  const close = gw.close.bind(gw);
+  gw.close = () => (mm.close(), close());
+  return { api, gw, mm };
 }
 
 /** An MCP client whose HTTP goes straight into the gateway; `seen` collects every tool result's text. */
@@ -111,7 +114,8 @@ describe("MCP tools", () => {
       const standard = await classic.call("join_lobby", { name: "Classic", persona: SOUL });
       expect(joined.isError).toBe(false);
       expect(standard.isError).toBe(false);
-      expect(joined.data.match).not.toBe(standard.data.match);
+      expect(joined.data.ruleset).toBe("Bat Only"); // two rulesets never share a match
+      expect(standard.data.ruleset).not.toBe("Bat Only");
       const tools = (await custom.client.listTools()).tools;
       const plan = tools.find(t => t.name === "submit_plan")! as any;
       expect(plan.inputSchema.properties.strategy.properties.weapons.items.enum).toEqual(["bat"]);
@@ -126,7 +130,7 @@ describe("MCP tools", () => {
   });
 
   test("three MCP agents + a house bot play a full match; the seat token never reaches an agent; the record replays", async () => {
-    const { api, gw } = setup();
+    const { api, gw } = setup({ minAgents: 3, fillAfterMs: 0 });
     const agents = await Promise.all(["A", "B", "C"].map((_, i) => connect(gw, `10.0.0.${i + 1}`)));
     const [ra, rb, rc] = await Promise.all([play(agents[0]!, "Alpha", { bad: true }), play(agents[1]!, "Bravo"), play(agents[2]!, "Charlie", { silent: true })]);
     expect(ra.over.winner).toBe(rb.over.winner);
@@ -156,52 +160,69 @@ describe("MCP tools", () => {
     gw.close();
   });
 
-  test("the queue: agents joining together share one match; a 4th goes to a new one when the first is full", async () => {
-    const { api, gw } = setup({ seats: ["remote", "remote", "remote", "house"], fillAfterMs: 300_000 });
-    const agents = await Promise.all([1, 2, 3, 4].map((i) => connect(gw, `10.1.0.${i}`)));
-    const joins = await Promise.all(agents.slice(0, 3).map((a, i) => a.call("join_lobby", { name: `Q${i}`, persona: SOUL })));
-    expect(new Set(joins.map((j) => j.data.match)).size).toBe(1);
-    expect(joins.map((j) => j.data.seat).sort()).toEqual([0, 1, 2]);
+  test("the queue: nothing runs for 3 waiting agents; the 4th opens one match for all four, oldest first", async () => {
+    const { api, gw, mm } = setup({ fillAfterMs: 300_000 });
+    const agents = await Promise.all([1, 2, 3, 4, 5].map((i) => connect(gw, `10.1.0.${i}`)));
+    for (const [i, a] of agents.slice(0, 3).entries()) {
+      const j = await a.call("join_lobby", { name: `Q${i}`, persona: SOUL });
+      expect(j.data).toMatchObject({ queued: true, position: i + 1, needed: 3 - i, next: "call wait_for_match" });
+    }
+    expect(api.matches.size).toBe(0); // three agents waiting: no match yet, no house bots
+    const w = await agents[0]!.call("wait_for_match");
+    expect(w.data).toMatchObject({ status: "waiting", position: 1, waiting: ["Q0", "Q1", "Q2"], next: "call wait_for_match again" });
+    // the same name twice is refused (never the same agent twice in a match)
+    expect((await agents[4]!.call("join_lobby", { name: "q1", persona: SOUL })).data.error).toContain("already in the queue");
     const fourth = await agents[3]!.call("join_lobby", { name: "Q3", persona: SOUL });
-    expect(fourth.data.match).not.toBe(joins[0]!.data.match);
-    const w = await agents[3]!.call("wait_for_match");
-    expect(w.data.status).toBe("waiting");
-    expect(w.data.next).toBe("call wait_for_match again");
-    for (const m of api.matches.values()) await m.start();
+    expect(fourth.data).toMatchObject({ joined: true, seat: 3 });
+    expect(api.matches.size).toBe(1);
+    const m = [...api.matches.values()][0]!;
+    expect(m.kinds).toEqual(["remote", "remote", "remote", "remote"]);
+    expect(m.agents.map((x) => x!.name)).toEqual(["Q0", "Q1", "Q2", "Q3"]);
+    for (const a of agents.slice(0, 3)) expect((await a.call("wait_for_match")).data.status).toBe("started");
+    expect(mm.waiting()).toEqual([]);
     gw.close();
   });
 
-  test("making lobby matches is charged to the agent's address (POST /api/matches's limit)", async () => {
-    // one remote seat per lobby match: every join opens (and at once starts) a new match
-    const { gw } = setup({ seats: ["remote", "house", "house", "house"], fillAfterMs: 300_000 });
+  test("queue joins are rate-limited per address", async () => {
+    const { gw } = setup({ fillAfterMs: 300_000 });
     const errs: boolean[] = [];
-    for (let i = 0; i < 7; i++) errs.push((await (await connect(gw, "10.3.0.1")).call("join_lobby", { name: `S${i}`, persona: SOUL })).isError);
-    expect(errs.slice(0, 5)).toEqual([false, false, false, false, false]);
-    expect(errs.at(-1)).toBe(true); // 5 burst, then 1 per 12 s per address
+    const one = await connect(gw, "10.3.0.1");
+    for (let i = 0; i < 11; i++) {
+      errs.push((await one.call("join_lobby", { name: `S${i}`, persona: SOUL })).isError);
+      await one.call("leave");
+    }
+    expect(errs.slice(0, 10).every((e) => !e)).toBe(true);
+    expect(errs.at(-1)).toBe(true); // 10 burst, then 1 per 6 s per address
     const other = await connect(gw, "10.3.0.2");
     expect((await other.call("join_lobby", { name: "Other", persona: SOUL })).isError).toBe(false);
     gw.close();
   });
 
-  test("errors explain the fix: no match yet, bad persona, bad enum, wrong state; leave frees the seat", async () => {
-    const { api, gw } = setup({ fillAfterMs: 300_000 });
+  test("errors explain the fix: no match yet, bad persona, bad enum, wrong state; leave takes the agent out of the queue", async () => {
+    const { api, gw, mm } = setup({ fillAfterMs: 300_000 });
     const a = await connect(gw);
     expect((await a.call("wait_for_turn")).data.error).toContain("call join_lobby first");
     const bad = await a.call("join_lobby", { name: "Bad!Name", persona: SOUL });
     expect(bad.isError).toBe(true);
     const j = await a.call("join_lobby", { name: "Ok", persona: SOUL });
-    expect(j.data.next).toBe("call wait_for_match");
-    expect((await a.call("join_lobby", { name: "Ok", persona: SOUL })).data.error).toContain("already sit in match");
-    expect((await a.call("submit_plan", { line: "x", strategy: PLAN })).data.error).toContain("call wait_for_turn first");
-    const enumErr = await a.call("submit_plan", { line: "x", strategy: { ...PLAN, stance: "dance" } });
+    expect(j.data).toMatchObject({ queued: true, next: "call wait_for_match" });
+    expect((await a.call("join_lobby", { name: "Ok", persona: SOUL })).data.error).toContain("already in the queue");
+    expect((await a.call("wait_for_turn")).data.error).toContain("still in the queue");
+    expect((await a.call("leave")).data.left).toBe("the queue");
+    expect(mm.waiting()).toEqual([]);
+    expect(api.matches.size).toBe(0);
+    gw.close();
+    // in a match (one agent, no fill wait: house bots in the other seats)
+    const s2 = setup({ fillAfterMs: 0 });
+    const b = await connect(s2.gw);
+    expect((await b.call("join_lobby", { name: "Ok", persona: SOUL })).data.joined).toBe(true);
+    expect((await b.call("join_lobby", { name: "Ok", persona: SOUL })).data.error).toContain("already sit in match");
+    expect((await b.call("submit_plan", { line: "x", strategy: PLAN })).data.error).toContain("call wait_for_turn first");
+    const enumErr = await b.call("submit_plan", { line: "x", strategy: { ...PLAN, stance: "dance" } });
     expect(enumErr.isError).toBe(true);
     expect(enumErr.text).toMatch(/rush|stance/);
-    const left = await a.call("leave");
-    expect(left.data.status).toBe("open");
-    const m = [...api.matches.values()][0]!;
-    expect(m.agents.filter(Boolean).length).toBe(0);
-    await m.start();
-    gw.close();
+    expect((await b.call("leave")).isError).toBe(false);
+    s2.gw.close();
   });
 
   test("sessions: unknown id -> 404 telling the agent to reconnect; cross-origin -> 403", async () => {

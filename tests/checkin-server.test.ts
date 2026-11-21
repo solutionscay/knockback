@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { LobbyQueue } from "../src/server/lobby-queue";
+import { Matchmaker } from "../src/server/matchmaker";
 import { MatchServer, type ServerMatch } from "../src/server/match-server";
 import { McpGateway } from "../src/server/mcp";
 import { SqliteStore } from "../src/server/store";
@@ -152,7 +152,7 @@ describe("check-ins over MCP", () => {
     // the lobby's match with a fixed seed whose first round lasts past the first check-in
     const create = api.createMatch.bind(api);
     api.createMatch = (c = {}) => create({ ...c, seed: 1 });
-    const gw = new McpGateway(api, { lobby: new LobbyQueue(api, { seats: ["remote", "house", "house", "house"], deadlineMs: 4000, fillAfterMs: 30_000 }), publicUrl: "http://kb.test" });
+    const gw = new McpGateway(api, { lobby: new Matchmaker(api, { fillAfterMs: 0, roster: ["house"], deadlineMs: 4000, usageFile: null, tickMs: 50 }), publicUrl: "http://kb.test" });
     const client = new Client({ name: "checkin-agent", version: "1" });
     await client.connect(new StreamableHTTPClientTransport(new URL("http://kb.test/mcp"), { fetch: (url, init) => gw.handle(new Request(url, init as RequestInit), "10.0.0.9") }));
     const call = async (name: string, args: Record<string, unknown> = {}) => {

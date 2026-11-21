@@ -26,11 +26,14 @@
  * late. --checkin-cap (s, default 60) only stops hung calls; --checkin-every,
  * --checkin-max as in ai-match.
  *
- * MCP (#21): agents connect to /mcp (Streamable HTTP; scripts/mcp-stdio.ts for stdio
- * clients). join_lobby seats them in lobby matches: --lobby-seats (default
- * remote,remote,remote,house), --mcp-deadline seconds per turn (default 75),
- * --lobby-fill seconds before house bots fill empty seats (default 120),
- * --public-url for links in tool results. --no-mcp turns it off.
+ * Lobby (#22): agents wait in a queue (MCP join_lobby at /mcp, or HTTP POST /api/queue). The
+ * matchmaker opens a match when 4 agents wait, or when one has waited --lobby-fill seconds (default
+ * 60; --min-agents, default 1) with built-in AI seats from --ai-roster (default claude,codex,grok;
+ * "house" allowed) in the empty places. Nothing runs while nobody waits: no loop, no automatic
+ * match. Guardrails: --max-concurrent matchmaker matches (default 1), --ai-daily-cap built-in AI
+ * seats per UTC day (default 30; then house bots), every provider call logged to the server log
+ * and <out>/ai-usage.jsonl. --mcp-deadline seconds per turn (default 75), --public-url for links
+ * and GET /api/join. --no-mcp turns MCP off (the HTTP queue stays).
  *
  * Every flag can also come from the environment as KB_<FLAG> (KB_FILL_AFTER=60,
  * KB_OPEN=true, KB_NO_MATCH=true, ...), plus PORT and HOST; command-line flags
@@ -52,7 +55,7 @@ import { mkdirSync } from "node:fs";
 import { registerStubs } from "../src/ai/providers";
 import { MAX_BODY } from "../src/server/limits";
 import { MatchServer } from "../src/server/match-server";
-import { LobbyQueue } from "../src/server/lobby-queue";
+import { Matchmaker } from "../src/server/matchmaker";
 import { McpGateway } from "../src/server/mcp";
 import { inCidrs, parseCidrs } from "../src/server/net";
 import { SqliteStore } from "../src/server/store";
@@ -96,17 +99,19 @@ const api = new MatchServer({
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
 
-const mcp =
-  flags["no-mcp"] === "true"
-    ? null
-    : new McpGateway(api, {
-        lobby: new LobbyQueue(api, {
-          seats: (flags["lobby-seats"] ?? "remote,remote,remote,house").split(",").map((x) => x.trim().toLowerCase()),
-          deadlineMs: secs(flags["mcp-deadline"], 75_000),
-          fillAfterMs: secs(flags["lobby-fill"], 120_000),
-        }),
-        ...(flags["public-url"] ? { publicUrl: flags["public-url"].replace(/\/$/, "") } : {}),
-      });
+if (flags["lobby-seats"]) console.log("--lobby-seats is gone (#22): the matchmaker seats queued agents and fills with --ai-roster");
+const list = (v: string | undefined, d: string) => (v ?? d).split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+const publicUrl = flags["public-url"]?.replace(/\/$/, "");
+const lobby = await new Matchmaker(api, {
+  fillAfterMs: secs(flags["lobby-fill"], 60_000),
+  minAgents: Number(flags["min-agents"] ?? 1),
+  roster: list(flags["ai-roster"], "claude,codex,grok"),
+  deadlineMs: secs(flags["mcp-deadline"], 75_000),
+  maxConcurrent: Number(flags["max-concurrent"] ?? 1),
+  aiSeatsPerDay: Number(flags["ai-daily-cap"] ?? 30),
+  ...(publicUrl ? { publicUrl } : {}),
+}).init();
+const mcp = flags["no-mcp"] === "true" ? null : new McpGateway(api, { lobby, ...(publicUrl ? { publicUrl } : {}) });
 
 /**
  * The client's address for rate limits: behind a proxy, the last X-Forwarded-For
@@ -141,7 +146,8 @@ const server = Bun.serve({
 console.log(`Knockback match server: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/api  (site: /lobby, viewer: /?live)${flags.open === "true" ? "  OPEN MODE: no seat token checks" : ""}`);
 logLanUrls(hostname, server.port, "/lobby");
 console.log(`pace: ${flags.fast === "true" ? "fast (instant rounds)" : "broadcast (rounds wait for viewers; --fast for instant)"}${api.opts.checkins ? "; mid-round check-ins on" : ""}`);
-if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp  (lobby ${mcp.opts.lobby.seats.join(",")}, ${mcp.opts.lobby.deadlineMs / 1000} s turns)`);
+if (mcp) console.log(`MCP: http://${hostname === "0.0.0.0" ? "localhost" : hostname}:${server.port}/mcp`);
+console.log(`lobby: waits for agents; AI seats (${lobby.roster.join(", ")}) after ${lobby.fillAfterMs / 1000} s; ${lobby.deadlineMs / 1000} s turns; at most ${lobby.maxConcurrent} match(es) at once, ${lobby.aiSeatsPerDay} AI seats a day (${lobby.summary().ai.seatsToday} used today)`);
 console.log(`storage: ${dbPath}`);
 const resumed = await api.resume();
 for (const id of resumed.running) console.log(`resumed match: ${id}`);
