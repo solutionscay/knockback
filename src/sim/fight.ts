@@ -19,6 +19,7 @@ import { type FighterRoundFacts, type HumiliationKind, type MoraleState, type Ro
 import { Rng } from "./rng";
 import { SAMPLE_TICKS, StatsCollector } from "./roundstats";
 import { NO_INPUT, SEAT_LOOKS, Sim, type Look, type SimEvent, type Strategy } from "./sim";
+import { inCover } from "./tactical";
 
 export interface FightOptions {
   ruleset?: Ruleset;
@@ -88,7 +89,7 @@ export interface FightResult {
   damage: number[];
   survivors: number[];
   /** Knockouts in order. */
-  koLog: { fighter: number; by: number; cause: "ringout" | "hp"; weapon: string; tick: number }[];
+  koLog: { fighter: number; by: number; cause: "ringout" | "hp"; weapon: string; tick: number; range?: number }[];
 }
 
 export class Fight {
@@ -99,6 +100,8 @@ export class Fight {
   private finishLeft = -1;
   over = false;
   private koLog: FightResult["koLog"] = [];
+  /** the last fighter hit on each fighter and how far away it was (#38: knockout range) */
+  private lastHit: { by: number; dist: number }[] = [0, 1, 2, 3].map(() => ({ by: -1, dist: 0 }));
   // facts for morale and dialogue
   private selfHit = [0, 0, 0, 0];
   private crushed = [0, 0, 0, 0];
@@ -192,6 +195,9 @@ export class Fight {
       this.stats.sample(
         sim.fighters.map((f) => (f.alive && !f.removed ? sim.pos(f) : null)),
         this.controllers.map((c, i) => (sim.fighters[i]!.alive ? c.targetId : -1)),
+        // stance time counts while armed (an unarmed fighter of any stance is out hunting a weapon)
+        this.controllers.map((c, i) => (sim.fighters[i]!.alive && !sim.fighters[i]!.removed && sim.fighters[i]!.weapons.some((w) => w !== "fist") ? c.stanceNow(sim) : "")),
+        sim.fighters.map((f) => inCover(sim, f)),
       );
     if (this.finishLeft < 0 && sim.alive().length <= 1) this.finishLeft = sim.ruleset.round.finishTicks;
     if (this.finishLeft > 0) this.finishLeft--;
@@ -218,7 +224,7 @@ export class Fight {
     for (const e of evs) {
       // events that can change a rule trigger: re-evaluate rules on the next tick
       if (e.type === "pickup" || e.type === "hit" || e.type === "ko") for (const c of this.controllers) c.rules.dirty = true;
-      if (e.type === "ko") this.koLog.push({ fighter: e.fighter, by: e.by, cause: e.cause, weapon: e.weapon, tick: e.tick });
+      if (e.type === "ko") this.koLog.push({ fighter: e.fighter, by: e.by, cause: e.cause, weapon: e.weapon, tick: e.tick, ...(e.by >= 0 && e.by !== e.fighter && this.lastHit[e.fighter]!.by === e.by ? { range: Math.round(this.lastHit[e.fighter]!.dist * 10) / 10 } : {}) });
       else if (e.type === "pickup") this.stats.pickup(e.fighter, e.item, e.tick);
       else if (e.type === "rule") this.stats.rule(e.fighter, e.rule, e.on, e.tick);
       else if (e.type === "hit") {
@@ -231,6 +237,7 @@ export class Fight {
             const behind = v.facing * (ap.x - vp.x) < 0;
             const dist = Math.sqrt((ap.x - vp.x) * (ap.x - vp.x) + (ap.y - vp.y) * (ap.y - vp.y));
             this.stats.hit(e.source, e.target, e.damage, e.cause, dist, behind, e.tick);
+            this.lastHit[e.target] = { by: e.source, dist };
             this.hitLog.push({ tick: e.tick, by: e.source, target: e.target, damage: e.damage, weapon: e.cause });
             this.controllers[e.target]!.onHit(e.source, behind, e.damage, e.tick, this.sim.ruleset);
             this.controllers[e.source]!.onDealt(e.tick);
@@ -280,7 +287,7 @@ export class Fight {
       platformsFallen: sim.stats.platformsFallen,
       biggestHit: this.biggest,
       stats: this.stats.finish(
-        this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause, tick: k.tick })),
+        this.koLog.map((k) => ({ victim: k.fighter, by: k.by, weapon: k.weapon, cause: k.cause, tick: k.tick, ...(k.range !== undefined ? { range: k.range } : {}) })),
         this.sim.fighters.map((f) => f.name),
         this.controllers.map((c) => c.reflexLog.map((x) => ({ ...x }))),
         this.strategies.map((s) => s.rules?.length ?? 0),

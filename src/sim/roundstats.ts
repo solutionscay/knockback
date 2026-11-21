@@ -26,7 +26,11 @@ export interface RoundStats {
   pickups: string[][];
   /** each pickup with the tick it happened */
   pickupTicks: { item: string; tick: number }[][];
-  kos: { victim: number; by: number; weapon: string; cause: "ringout" | "hp"; tick?: number }[];
+  kos: { victim: number; by: number; weapon: string; cause: "ringout" | "hp"; tick?: number; /** meters between them at the knocking-out hit (#38), when a fighter made it */ range?: number }[];
+  /** seconds each fighter played each stance with a weapon in hand (sampled; #38) */
+  stanceSeconds: Record<string, number>[];
+  /** of those, seconds spent in cover (tactical.ts inCover), per stance (#38) */
+  coverSeconds: Record<string, number>[];
   /** average distance (m) to whoever the fighter was chasing, sampled; -1 if never sampled */
   targetDistance: number[];
   /** plan rule firings (#6): rules[fighter][rule index] = times started and ticks active */
@@ -56,6 +60,8 @@ export class StatsCollector {
   private distSum = [0, 0, 0, 0];
   private distN = [0, 0, 0, 0];
   private lastHitTick = [0, 1, 2, 3].map(() => [-1, -1, -1, -1]);
+  stanceSeconds: Record<string, number>[] = [{}, {}, {}, {}];
+  coverSeconds: Record<string, number>[] = [{}, {}, {}, {}];
 
   hit(attacker: number, victim: number, damage: number, weapon: string, distance: number, fromBehind: boolean, tick: number) {
     const s = this.damage[attacker]![victim]!;
@@ -70,11 +76,17 @@ export class StatsCollector {
     s.byRange[rangeOf(distance)]++;
   }
 
-  sample(positions: ({ x: number; y: number } | null)[], targets: number[]) {
+  /** `stances` (the stance each fighter plays now) and `cover` (in cover now) feed the per-stance cover time (#38). */
+  sample(positions: ({ x: number; y: number } | null)[], targets: number[], stances?: string[], cover?: boolean[]) {
     const dt = SAMPLE_TICKS / 60;
     for (let i = 0; i < 4; i++) {
       const a = positions[i];
       if (!a) continue;
+      const st = stances?.[i];
+      if (st) {
+        this.stanceSeconds[i]![st] = (this.stanceSeconds[i]![st] ?? 0) + dt;
+        if (cover?.[i]) this.coverSeconds[i]![st] = (this.coverSeconds[i]![st] ?? 0) + dt;
+      }
       const t = targets[i]!;
       if (t >= 0 && t !== i) {
         this.targetSeconds[i]![t]! += dt;
@@ -137,6 +149,8 @@ export class StatsCollector {
       targetDistance: this.distN.map((n, i) => (n ? Math.round((this.distSum[i]! / n) * 10) / 10 : -1)),
       reflexes,
       rules,
+      stanceSeconds: this.stanceSeconds,
+      coverSeconds: this.coverSeconds,
       summary: [],
     };
     st.summary = [0, 1, 2, 3].map((i) => summarize(st, i, names));
