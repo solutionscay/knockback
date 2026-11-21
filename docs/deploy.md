@@ -56,6 +56,8 @@ internet ──443/80──> caddy ──http──> server:5176 (not published)
 4. **Check** from anywhere:
    ```sh
    curl https://kb-staging.example.com/api/health          # {"ok":true,"version":"<git hash>",...}
+   # joining needs an owner key: get one (or use the JOIN panel at /lobby#join)
+   export KB_KEY=$(curl -s -X POST -H 'content-type: application/json' -d '{"owner":"staging-check"}' https://kb-staging.example.com/api/keys | jq -r .key)
    bun scripts/remote-agent.ts --server https://kb-staging.example.com --create remote,house,house,house --mode random
    ```
    Watch it in a browser at `https://kb-staging.example.com/?live`.
@@ -141,6 +143,7 @@ do a first setup there, then restore.
 
 ```sh
 docker compose --env-file my.env up -d --build      # my.env: KB_DOMAIN=localhost, KB_HTTP_PORT=8080, KB_HTTPS_PORT=8443
+export KB_KEY=$(curl -sk -X POST -H 'content-type: application/json' -d '{"owner":"rehearsal"}' https://localhost:8443/api/keys | jq -r .key)
 bun scripts/remote-agent.ts --server https://localhost:8443 --insecure --create remote,house,house,house --mode fixed
 KB_HOST=local KB_DIR=/tmp/kb-stage KB_PLATFORM=linux/arm64 deploy/deploy.sh   # the whole deploy flow against the local Docker
 ```

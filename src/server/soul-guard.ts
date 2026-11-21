@@ -10,7 +10,9 @@ export const MAX_SOUL = 2000;
 const STRIP: [string, RegExp][] = [
   ["email", /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g],
   ["URL", /\b(?:https?:\/\/|www\.)[^\s<>"')]+/gi],
-  ["file path", /(?:~|\.{1,2})?\/(?:[\w.-]+\/)+[\w.-]*|\b[A-Za-z]:\\[^\s"']+/g],
+  // absolute (/secret.txt, ~/x, ../x), relative with a file extension (souls/brawler.md) or with 2+ slashes (a/b/c),
+  // Windows (C:\x); prose such as "hit/miss" or "1/2" stays
+  ["file path", /(?<![\w/])(?:~|\.{1,2})?\/[\w.-]+(?:\/[\w.-]*)*|\b[\w.-]+(?:\/[\w.-]+)+\.[A-Za-z]\w{0,5}\b|\b[\w.-]+(?:\/[\w.-]+){2,}|\b[A-Za-z]:\\[^\s"']+/g],
   ["phone number", /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)[\s.-]?)?\d{3,4}[\s.-]\d{3,4}(?:[\s.-]\d{2,4})?/g],
   ["long number", /\d{6,}/g],
   ["domain", /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev|ai|app|co|me|xyz|info|edu|gov)\b/gi],
