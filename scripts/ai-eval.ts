@@ -8,7 +8,7 @@
  *   bun run ai-eval --matches 3 --compare evals/baseline/report.json
  *
  * Flags: --matches N, --seeds a-b (or a,b,c), --lineup, --souls, --deadline s,
- * --checkins on (mid-round check-ins, #9; --checkin-deadline/-every/-max),
+ * --checkins on (mid-round check-ins, #9; --checkin-cap/-every/-max),
  * --concurrency 1..4, --out <dir>, --tag <name>, --compare <report.json>, --yes,
  * --suit-up off (no look choice, #19: by default each AI seat chooses its name and look first: one more call a seat).
  * --rescore <run dir>: recompute the report from a run's saved records (exact replay, no AI calls).
@@ -71,7 +71,7 @@ if (!seeds.length) fail("no matches to run");
 const deadline = flags.deadline ? Number(flags.deadline) * 1000 : undefined;
 const deadlineText = deadline !== undefined ? `${deadline / 1000} s` : `per provider (${[...new Set(lineup.filter((p) => p !== "house"))].map((p) => `${p} ${(PROVIDERS[p]?.deadlineMs ?? DEFAULT_DEADLINE_MS) / 1000} s${PROVIDERS[p]?.hedgeAfterMs ? `, hedged at ${PROVIDERS[p]!.hedgeAfterMs! / 1000} s` : ""}`).join("; ")})`;
 const concurrency = Math.max(1, Math.min(4, Number(flags.concurrency ?? 1)));
-// mid-round check-ins (#9): --checkins on, plus --checkin-deadline/--checkin-every/--checkin-max
+// mid-round check-ins (#9): --checkins on, plus --checkin-cap/--checkin-every/--checkin-max
 const checkins = (() => {
   try {
     return checkinFlags(flags);

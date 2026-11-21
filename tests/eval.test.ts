@@ -28,7 +28,7 @@ const facts = (winner: number, kos: EvalRoundFacts["kos"], dmg: [number, number,
   const bh = zero();
   for (const [a, v, d] of dmg) damage[a]![v] = d;
   for (const [a, v, n] of behind) bh[a]![v] = n;
-  return { winner, kos, damage, behind: bh };
+  return { winner, kos, damage, behind: bh, weapons: [0, 1, 2, 3].map(() => [[], [], [], []]) };
 };
 
 /**

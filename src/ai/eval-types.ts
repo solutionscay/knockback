@@ -20,7 +20,7 @@ export interface EvalRoundFacts {
   /** hits from behind: behind[attacker][victim] */
   behind: number[][];
   /** weapons that did damage: weapons[attacker][victim] */
-  weapons?: string[][][];
+  weapons: string[][][];
   /** plan rule firings (#6): rules[seat][rule index] */
   rules?: { fires: number; activeTicks: number }[][];
 }

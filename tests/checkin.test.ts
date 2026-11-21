@@ -75,7 +75,6 @@ describe("check-in schedule and latency rule", () => {
     expect(checkinFlags({ checkins: "on", "checkin-cap": "30", "checkin-max": "3" })).toEqual({ capMs: 30_000, maxPerRound: 3 });
     expect(() => checkinFlags({ checkins: "maybe" })).toThrow(/on or off/);
     expect(() => checkinFlags({ checkins: "on", "checkin-cap": "0" })).toThrow(/checkin-cap/);
-    expect(() => checkinFlags({ checkins: "on", "checkin-deadline": "8" })).toThrow(/is gone/);
   });
 });
 
