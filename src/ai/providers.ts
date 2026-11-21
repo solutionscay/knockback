@@ -127,6 +127,9 @@ export const PROVIDERS: Record<string, Provider> = {
   // per-provider deadlines (#14), from the #7 eval: Claude answered in 2-12 s; Codex is bimodal
   // (18 answers in 5-15 s, 10 past 20 s; a probe saw one at 37.5 s), so it gets 45 s and a
   // hedged second call after 15 s; Grok answered in 6-19 s with one timeout at 20 s, so 30 s.
+  // Grok options (#14, 10 calls each, same round-1 prompt): grok-4.6 low with --max-turns 1 had the
+  // lowest median and maximum (6.7 s / 7.3 s; --max-turns 3: 7.1 / 8.2; grok-4.7-build-fast 8.0 / 10.2;
+  // grok-4.7 13.8 / 15.2; grok-4.5 15.2 / 18.3), every answer valid. CLI start is ~8 ms.
   claude: {
     label: "claude/haiku",
     deadlineMs: 20_000,
@@ -148,7 +151,7 @@ export const PROVIDERS: Record<string, Provider> = {
       cli(
         (prompt) => [
           "grok", "-m", "grok-4.6", "--reasoning-effort", "low", "--output-format", "json", "--tools", "", "--disable-web-search",
-          "--no-subagents", "--no-plan", "--permission-mode", "dontAsk", "--max-turns", "3", "--verbatim", "--system-prompt-override", SYSTEM, "-p", prompt,
+          "--no-subagents", "--no-plan", "--permission-mode", "dontAsk", "--max-turns", "1", "--verbatim", "--system-prompt-override", SYSTEM, "-p", prompt,
         ],
         { stdin: false, decode: grokText },
       ),
