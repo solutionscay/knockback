@@ -283,6 +283,14 @@ export class Controller {
   }
 
   think(sim: Sim): Input {
+    const input = this.decide(sim);
+    // ledge safety (#69) on the final input: combat moves come after steering
+    const me = sim.fighters[this.fighterId]!;
+    if (me.alive && !me.removed && input !== NO_FIRE) this.navigation.guardLedge(sim, me, sim.pos(me), sim.vel(me), input);
+    return input;
+  }
+
+  private decide(sim: Sim): Input {
     const me = sim.fighters[this.fighterId]!;
     if (!me.alive) return NO_FIRE;
     if (this.rules.any) {
@@ -362,7 +370,7 @@ export class Controller {
     this.noLos = los ? 0 : this.noLos + 1;
     // a target with no path and no line of sight for long: pick someone else for a while
     const tSurf = target.surface;
-    const reachable = surf && tSurf >= 0 ? sim.nav.plan(me.surface, mp.x).cost[tSurf] !== Infinity : true;
+    const reachable = surf && tSurf >= 0 ? sim.nav.fighterPlan(sim.grid, me.surface, mp.x, sim.ruleset).cost[tSurf] !== Infinity : true;
     this.noReach = !reachable && !los ? this.noReach + 1 : 0;
     if (this.noReach > sim.ruleset.tactics.patience.unreachTicks && sim.alive().length > 2) {
       this.unreachable.set(target.id, sim.tick + sim.ruleset.tactics.patience.skipTicks);

@@ -1,6 +1,6 @@
 import { arenaQuarter } from "./level-spawns";
 import type { Controller } from "./controller";
-import type { Link, Surface } from "./nav";
+import { runUp, type Link, type Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
@@ -26,6 +26,12 @@ export class ControllerNavigation {
   private prog: { surface: number; x: number; best: number; since: number } | null = null;
   private badSurfaces = new Map<number, number>();
   private linkSince = -1;
+  /** the jump in flight (#69): where it lands, kept as a point so it outlives a nav rebuild */
+  private jumpTo: { x: number; y: number } | null = null;
+  /** where the feet last stood (#69): the ledge to fall back on */
+  private foothold: { x: number; y: number } | null = null;
+  /** the link this fighter is walking to this tick: its edge is not a ledge to stop at */
+  private edgeLink: Link | null = null;
   /** digging out of a pocket: hit the wall toward the goal */
   dig: { until: number; dir: 1 | -1 } | null = null;
   /** times the watchdog fired this fight (stats, tests) */
@@ -340,8 +346,14 @@ export class ControllerNavigation {
 
     const surf = me.surface >= 0 ? nav.surfaces[me.surface] : undefined;
     let moveTarget = tp.x;
+    this.edgeLink = null;
+    if (me.grounded) this.foothold = { x: mp.x, y: sim.feetY(me) };
+    if (me.grounded && me.jumpCd === 0) this.jumpTo = null;
     if (surf) {
-      const plan = nav.plan(me.surface, mp.x);
+      let plan = nav.fighterPlan(sim.grid, me.surface, mp.x, sim.ruleset);
+      // the zone is coming and no jump we can make leads into it: a risky jump beats being pushed into the pit
+      const [zl, zr] = this.zoneBounds(sim);
+      if ((mp.x < zl || mp.x > zr) && !nav.surfaces.some((s) => plan.cost[s.id] !== Infinity && s.x1 > zl && s.x0 < zr)) plan = nav.plan(me.surface, mp.x);
       if (sim.tick >= this.nextEval || !this.goal || !nav.surfaces[this.goal.surface] || plan.cost[this.goal.surface] === Infinity) {
         this.goal = this.chooseGoal(sim, me, target, plan, crossingWall, flank, weapon);
         this.nextEval = sim.tick + 24 + this.controller.fighterId * 3;
@@ -369,15 +381,26 @@ export class ControllerNavigation {
       }
       if (this.activeLink) {
         moveTarget = this.activeLink.landX;
+      } else if (!me.grounded) {
+        // in the air with no jump planned (a hop, a knock, a nav rebuild): head for the landing, then the goal
+        moveTarget = this.jumpTo ? this.jumpTo.x : goal.x;
       } else if (goal.surface !== me.surface) {
         const link = plan.firstLink[goal.surface];
         if (link) {
+          this.edgeLink = link;
           if (link.kind === "jump") {
             moveTarget = link.takeoffX;
-            if (me.grounded && Math.abs(mp.x - link.takeoffX) < 0.4) {
+            if (runUp(nav, link)) {
+              // across a gap (#69): run through the takeoff point at full speed; past it, back up for a run-up
+              const dir = Math.sign(link.landX - link.takeoffX) || 1;
+              const ahead = (mp.x - link.takeoffX) * dir;
+              moveTarget = ahead > 0.4 ? link.takeoffX - dir * 1.2 : ahead > -2.5 ? link.landX : link.takeoffX;
+            }
+            if (Math.abs(mp.x - link.takeoffX) < 0.4 && (!runUp(nav, link) || mv.x * Math.sign(link.landX - link.takeoffX) > sim.ruleset.combat.fighter.walkSpeed * 0.7)) {
               input.jump = true;
               this.activeLink = link;
               this.linkSince = sim.tick;
+              this.jumpTo = { x: link.landX, y: nav.surfaces[link.to]!.y };
               moveTarget = link.landX;
             }
           } else moveTarget = link.landX;
@@ -396,27 +419,8 @@ export class ControllerNavigation {
       }
     }
 
-    // falling over the void: steer to the nearest ledge, double jump if we can
-    if (!me.grounded) {
-      const fall = nav.fallBelow(sim.grid, mp.x, sim.feetY(me));
-      if (fall > 6) {
-        let bx = moveTarget;
-        let bd = Infinity;
-        for (const s of nav.surfaces) {
-          if (s.y > mp.y + 2.5) continue;
-          const ex = mp.x < s.x0 ? s.x0 + 0.6 : mp.x > s.x1 ? s.x1 - 0.6 : mp.x;
-          const d = Math.abs(ex - mp.x) + Math.max(0, mp.y - s.y) * 0.3;
-          if (d < bd) {
-            bd = d;
-            bx = ex;
-          }
-        }
-        moveTarget = bx;
-        if (me.power.jump > 0 && !me.airJumped && mv.y < -1 && me.stun === 0) input.jump = true;
-      } else if (this.activeLink && me.power.jump > 0 && !me.airJumped && mv.y < -2 && nav.surfaces[this.activeLink.to] && sim.feetY(me) < nav.surfaces[this.activeLink.to]!.y) {
-        input.jump = true;
-      }
-    }
+    // in the air (#69): only steer where a surface can still catch us
+    if (!me.grounded) moveTarget = this.landing(sim, me, mp, mv, moveTarget, input);
 
     const diff = moveTarget - mp.x;
     input.move = Math.abs(diff) < 0.15 ? 0 : clamp(diff / 0.7, -1, 1);
@@ -433,6 +437,95 @@ export class ControllerNavigation {
         this.stuck = 0;
       }
     } else this.stuck = 0;
+    this.guardLedge(sim, me, mp, mv, input);
     return surf;
+  }
+
+  /**
+   * Ledge safety on the ground (#69): no input walks the fighter off an edge with nothing below, unless the link it
+   * is taking starts at that edge. Knockback can still throw it off; its own feet cannot.
+   */
+  guardLedge(sim: Sim, me: Fighter, mp: { x: number }, mv: { x: number }, input: Input) {
+    if (!me.grounded || me.surface < 0 || input.move === 0) return;
+    const s = sim.nav.surfaces[me.surface];
+    if (!s) return;
+    const dir = input.move > 0 ? 1 : -1;
+    const edge = dir > 0 ? s.x1 : s.x0;
+    const link = this.edgeLink ?? this.activeLink;
+    if (link && link.from === s.id && Math.abs(link.takeoffX - edge) < 1.2 && Math.sign(link.landX - link.takeoffX) === dir) return;
+    const v = Math.max(0, mv.x * dir);
+    const room = (edge - mp.x) * dir - v * v / (2 * sim.ruleset.combat.fighter.groundAccel);
+    if (room > 0.35) return;
+    if (sim.nav.fallBelow(sim.grid, edge + dir * 0.6, s.y) !== Infinity) return;
+    input.move = 0;
+  }
+
+  /**
+   * Where the fighter can still land from here (#69): for each surface below the arc, the x span it can reach by the
+   * time its feet come down to that surface, from its velocity, air control and gravity.
+   */
+  private landingSpans(sim: Sim, me: Fighter, mp: { x: number }, mv: { x: number; y: number }) {
+    const F = sim.ruleset.combat.fighter, g = sim.ruleset.combat.gravity;
+    const vmax = F.walkSpeed * (me.power.speed > 0 ? sim.ruleset.pickups.power.speed.mul : 1) * (me.power.heavy > 0 ? sim.ruleset.pickups.power.heavy.speedMul : 1);
+    const acc = F.airAccel * (me.power.speed > 0 ? 1.3 : 1);
+    const feet = sim.feetY(me);
+    // distance covered in t seconds when steering hard toward `to` (+1 / -1)
+    const travel = (to: number, t: number) => {
+      const v1 = to * vmax, t1 = Math.abs(v1 - mv.x) / acc;
+      return t <= t1 ? mv.x * t + to * acc * t * t / 2 : (mv.x + v1) / 2 * t1 + v1 * (t - t1);
+    };
+    const spans: { surface: Surface; lo: number; hi: number }[] = [];
+    for (const s of sim.nav.surfaces) {
+      const disc = mv.y * mv.y + 2 * g * (feet - s.y);
+      if (disc < 0) continue;
+      const t = (mv.y + Math.sqrt(disc)) / g;
+      if (t < 0) continue;
+      // a margin for steering that is not perfect, and for the body overhanging the edge
+      const lo = Math.max(s.x0 + 0.15, mp.x + travel(-1, t) + 0.1);
+      const hi = Math.min(s.x1 - 0.15, mp.x + travel(1, t) - 0.1);
+      if (lo <= hi) spans.push({ surface: s, lo, hi });
+    }
+    return spans;
+  }
+
+  /**
+   * Ledge safety in the air (#69): keep steering for `want` while a surface can still catch us there. When none can
+   * (a jump that hit a ceiling, a knock over a pit), land on the planned link's surface if it can still be reached,
+   * else on the surface we left, else on the reachable surface nearest to `want`. Nowhere at all: steer for the
+   * nearest ledge and use the double jump.
+   */
+  private landing(sim: Sim, me: Fighter, mp: { x: number; y: number }, mv: { x: number; y: number }, want: number, input: Input): number {
+    const spans = this.landingSpans(sim, me, mp, mv);
+    const to = this.jumpTo, back = this.foothold;
+    if (to && me.power.jump > 0 && !me.airJumped && mv.y < -2 && me.stun === 0 && sim.feetY(me) < to.y) input.jump = true;
+    if (spans.some((s) => want >= s.lo && want <= s.hi)) return want;
+    const on = (p: { x: number; y: number } | null) => (s: (typeof spans)[number]) => !!p && Math.abs(s.surface.y - p.y) < 0.3 && p.x >= s.surface.x0 - 0.5 && p.x <= s.surface.x1 + 0.5;
+    const pick = spans.find(on(to)) || spans.find(on(back)) ||
+      spans.reduce<(typeof spans)[number] | undefined>((best, s) => {
+        const d = Math.max(s.lo - want, want - s.hi, 0) - s.surface.y * 0.01;
+        return !best || d < Math.max(best.lo - want, want - best.hi, 0) - best.surface.y * 0.01 ? s : best;
+      }, undefined);
+    if (pick) {
+      if (to && !on(to)(pick)) {
+        this.activeLink = null;
+        this.jumpTo = null;
+      }
+      const inset = Math.min(0.5, (pick.hi - pick.lo) / 2);
+      return clamp(want, pick.lo + inset, pick.hi - inset);
+    }
+    // nothing can catch us: the nearest ledge below, and the double jump
+    let bx = want, bd = Infinity;
+    const feet = sim.feetY(me);
+    for (const s of sim.nav.surfaces) {
+      if (s.y > feet) continue;
+      const ex = mp.x < s.x0 ? s.x0 + 0.6 : mp.x > s.x1 ? s.x1 - 0.6 : mp.x;
+      const d = Math.abs(ex - mp.x) + (feet - s.y) * 0.3;
+      if (d < bd) {
+        bd = d;
+        bx = ex;
+      }
+    }
+    if (me.power.jump > 0 && !me.airJumped && mv.y < -1 && me.stun === 0) input.jump = true;
+    return bx;
   }
 }

@@ -48,7 +48,7 @@ export class JetpackPilot {
     const upper = sim.nav.surfaces[target.surface];
     const rise = upper ? upper.y - sim.feetY(me) : 0;
     if (upper && target.grounded && rise > 2.5 && !outside && Math.abs(t.x - p.x) < 11) {
-      const cost = sim.nav.plan(me.surface, p.x).cost[upper.id] ?? Infinity;
+      const cost = sim.nav.fighterPlan(sim.grid, me.surface, p.x, sim.ruleset).cost[upper.id] ?? Infinity;
       if (requested || cost > 15) {
         this.flight = this.route(sim, me, p, upper);
         if (this.flight) return this.fly(sim, me, p, v, input, this.flight);

@@ -33,11 +33,20 @@ export interface NavPoint {
   y: number;
 }
 
+/** A jump across a gap (no overlap between the two surfaces): taken with a run-up through the takeoff point (#69). */
+export function runUp(nav: NavGraph, l: Link): boolean {
+  if (l.kind !== "jump") return false;
+  const a = nav.surfaces[l.from]!, b = nav.surfaces[l.to]!;
+  return Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) <= 0;
+}
+
 export class NavGraph {
   surfaces: Surface[] = [];
   links: Link[] = [];
   out: Link[][] = [];
   points: NavPoint[] = [];
+  /** arcClear per link, worked out the first time a fighter's plan needs it */
+  private readonly arcs = new Map<Link, boolean>();
 
   static fromGrid(grid: Grid, minRun = 2, ruleset: Ruleset = CLASSIC): NavGraph {
     const { headroomCells, dropFall } = ruleset.arena.navigation;
@@ -145,6 +154,58 @@ export class NavGraph {
     }
   }
 
+  /** The plan fighters follow (#69): only the jumps and drops a fighter's body can make (arcClear). */
+  fighterPlan(grid: Grid, start: number, x: number, ruleset: Ruleset = CLASSIC) {
+    return this.plan(start, x, (l) => {
+      let ok = this.arcs.get(l);
+      if (ok === undefined) {
+        ok = this.arcClear(grid, l, ruleset);
+        this.arcs.set(l, ok);
+      }
+      return ok;
+    });
+  }
+
+  /**
+   * Can a fighter make this jump or drop (#69)? Flies the controller's own arc (a run-up across a gap, a standing jump
+   * onto a platform overhead, or walking off for a drop; air control toward the landing; gravity) and moves the body
+   * through the grid: a ceiling stops the rise and the arc goes on, a wall or a landing out of reach makes the link
+   * unusable for fighters. Walks always pass.
+   */
+  arcClear(grid: Grid, l: Link, ruleset: Ruleset = CLASSIC): boolean {
+    if (l.kind === "walk") return true;
+    const from = this.surfaces[l.from]!, to = this.surfaces[l.to]!;
+    const { fighter: F, gravity } = ruleset.combat;
+    const dt = 1 / 30;
+    const dir = Math.sign(l.landX - l.takeoffX) || 1;
+    const r = F.radius - 0.08;
+    const top = 2 * (F.halfHeight + F.radius) - 0.1;
+    // the body: a box a little inside the capsule (its round bottom slides over corners)
+    const blocked = (x: number, feet: number) => {
+      for (let y = feet + 0.3; y <= feet + top + 0.01; y += (top - 0.3) / 3) for (const bx of [x - r, x, x + r]) if (grid.solidAt(bx, y)) return true;
+      return false;
+    };
+    let x = l.takeoffX, feet = from.y;
+    let vx = dir * F.walkSpeed * (runUp(this, l) ? 1 : 0.3), vy = l.kind === "jump" ? F.jumpSpeed : 0;
+    for (let i = 0; i < 90; i++) {
+      const want = Math.max(-1, Math.min(1, (l.landX - x) / 0.7)) * F.walkSpeed;
+      vx += Math.max(-F.airAccel * dt, Math.min(F.airAccel * dt, want - vx));
+      vy -= gravity * dt;
+      const nx = x + vx * dt, nf = feet + vy * dt;
+      if (vy <= 0 && nf <= to.y + 0.05 && nx >= to.x0 - 0.1 && nx <= to.x1 + 0.1) return true;
+      if (vy < 0 && nf < to.y - 0.4) return false;
+      if (!blocked(nx, nf)) {
+        x = nx;
+        feet = nf;
+      } else if (vy > 0 && !blocked(nx, feet)) {
+        // head against a ceiling: the rise stops, the run goes on
+        x = nx;
+        vy = 0;
+      } else return false;
+    }
+    return false;
+  }
+
   /** Surface whose top is at/below (x, feetY) and closest to it. */
   surfaceAt(x: number, feetY: number, tol = 0.45): Surface | null {
     let best: Surface | null = null;
@@ -161,8 +222,8 @@ export class NavGraph {
     return best;
   }
 
-  /** Dijkstra from (surface, x) over adjacency lists. */
-  plan(start: number, x: number): { cost: number[]; firstLink: (Link | null)[]; arriveX: number[] } {
+  /** Dijkstra from (surface, x) over adjacency lists; `usable` leaves links out (a fighter's blocked jumps). */
+  plan(start: number, x: number, usable?: (l: Link) => boolean): { cost: number[]; firstLink: (Link | null)[]; arriveX: number[] } {
     const n = this.surfaces.length;
     const cost = new Array<number>(n).fill(Infinity);
     const firstLink = new Array<Link | null>(n).fill(null);
@@ -177,6 +238,7 @@ export class NavGraph {
       if (u < 0) break;
       done[u] = 1;
       for (const l of this.out[u]!) {
+        if (usable && !usable(l)) continue;
         const c = cost[u]! + Math.abs(arriveX[u]! - l.takeoffX) + l.cost;
         if (c < cost[l.to]!) {
           cost[l.to] = c;

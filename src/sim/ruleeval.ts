@@ -81,7 +81,7 @@ export class RuleEngine {
         return this.some(cand().filter((f) => ctl.hitBy(f.id, sim.tick - this.tuning.hitTicks)));
       case "item_near": {
         if (me.surface < 0) return { on: false, who: [] };
-        const plan = sim.nav.plan(me.surface, pos(me).x);
+        const plan = sim.nav.fighterPlan(sim.grid, me.surface, pos(me).x, sim.ruleset);
         for (const it of sim.items()) {
           if (it.itemType !== r.item) continue;
           const t = it.body.translation();
@@ -112,7 +112,7 @@ export class RuleEngine {
     const others = who.filter((f) => f.id !== me.id);
     if (!others.length) return -1;
     const mp = sim.pos(me);
-    const plan = me.surface >= 0 ? sim.nav.plan(me.surface, mp.x) : null;
+    const plan = me.surface >= 0 ? sim.nav.fighterPlan(sim.grid, me.surface, mp.x, sim.ruleset) : null;
     let best = -1;
     let bc = Infinity;
     for (const f of others) {
