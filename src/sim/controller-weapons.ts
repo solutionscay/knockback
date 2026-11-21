@@ -1,4 +1,4 @@
-import { ballisticAim, railCanReach, type sightTarget } from "./controller-aim";
+import { aimDrop, ballisticAim, leadAim, railCanReach, type sightTarget } from "./controller-aim";
 import { length2D } from "./dmath";
 import { Mat } from "./grid";
 import type { Ruleset } from "./ruleset";
@@ -74,26 +74,32 @@ function breakable(sim: Sim, origin: Point, dir: Point, hit: NonNullable<RayHit>
 function arcTo(sim: Sim, shooter: Fighter, weapon: "grenade" | "rocket" | "mine", origin: Point, target: Sight, high: boolean) {
   const spec = sim.ruleset.weapons.table[weapon];
   const gravity = "gravity" in spec ? spec.gravity : sim.ruleset.combat.gravity;
-  const time = target.dist / spec.speed;
-  const x = target.atp.x - origin.x + target.atv.x * time * 0.6;
-  const y = target.atp.y - origin.y + Math.max(-2, target.atv.y * time * 0.3);
-  const aim = ballisticAim(x, y, spec.speed, gravity, high);
-  if (!high) return aim;
+  const dx = target.atp.x - origin.x, dy = target.atp.y + aimDrop(sim, weapon, target.grounded) - origin.y;
+  const lead = leadAim(dx, dy, target.atv.x, target.atv.y, spec.speed, gravity, high);
+  const aim = { x: lead.x, y: lead.y };
+  // a grenade bounces on and a mine sticks where it lands: only their lobs need a clear arc
+  if (!high && weapon !== "rocket") return aim;
 
-  // Check the high arc up to the target column. A solid ceiling or tall wall requires a new route.
+  // Fly the arc to the led point. A solid ceiling or tall wall on a lob requires a new route; a rocket that would burst
+  // on something short of its point (#73: farther than half its blast radius) is not a shot at the fighter.
   const step = sim.ruleset.tactics.weapons.lobCheckStep;
   const vx = aim.x * spec.speed, vy = aim.y * spec.speed;
-  const end = (target.atp.x - origin.x) / vx;
+  const end = lead.time;
   if (end <= 0 || !Number.isFinite(end) || end > 4) return null;
+  const goal = { x: origin.x + vx * end, y: origin.y + vy * end - gravity * end * end / 2 };
+  const near = weapon === "rocket" ? spec.radius / 2 : 0;
   let p = origin;
   for (let time = step; time <= end + step; time += step) {
     const t = Math.min(end, time);
     const next = { x: origin.x + vx * t, y: origin.y + vy * t - gravity * t * t / 2 };
-    const dx = next.x - p.x, dy = next.y - p.y;
-    const length = length2D(dx, dy);
+    const sx = next.x - p.x, sy = next.y - p.y;
+    const length = length2D(sx, sy);
     if (length > 0) {
-      const hit = sim.raycast(p.x, p.y, dx / length, dy / length, length, shooter.entity.collider);
-      if (hit?.terrain || (hit?.entity && hit.entity.kind !== "fighter")) return null;
+      const hit = sim.raycast(p.x, p.y, sx / length, sy / length, length, shooter.entity.collider);
+      if (hit?.terrain || (hit?.entity && hit.entity.kind !== "fighter")) {
+        const at = { x: p.x + sx / length * hit.dist, y: p.y + sy / length * hit.dist };
+        return length2D(at.x - goal.x, at.y - goal.y) <= near ? aim : null;
+      }
     }
     p = next;
   }

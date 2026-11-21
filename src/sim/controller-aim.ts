@@ -15,7 +15,7 @@ export function sightTarget(sim: Sim, me: Fighter, aimTarget: Fighter, mp: Retur
   const rayDistance = tactical.enabled ? length2D(dx0, dy0 - height) : dist;
   const sight = rayDistance > 0.1 ? sim.raycast(mp.x, mp.y + height, dx0 / rayDistance, (dy0 - height) / rayDistance, rayDistance + 0.5, me.entity.collider) : null;
   const los = !!sight && sight.entity === aimTarget.entity;
-  return { atp, atv, dx0, dy0, dist, los, sight };
+  return { atp, atv, dx0, dy0, dist, los, sight, grounded: aimTarget.grounded };
 }
 
 export function railCanReach(sim: Sim, p: ReturnType<Sim["pos"]>, target: ReturnType<typeof sightTarget>) {
@@ -38,7 +38,7 @@ export function aimAndFire(
   blocked: boolean,
   aimNoise: number,
 ): Input {
-  const { atp, atv, dx0, dy0, dist, los } = target;
+  const { atp, atv, dx0, dy0, dist, los, grounded } = target;
   input.weapon = weapon;
 
   let ax = dx0;
@@ -46,11 +46,8 @@ export function aimAndFire(
   if (weapon === "rocket" || weapon === "grenade" || weapon === "mine") {
     const speed = sim.ruleset.weapons.table[weapon].speed;
     const g = weapon === "grenade" ? sim.ruleset.combat.gravity : sim.ruleset.weapons.table[weapon].gravity;
-    const t = dist / speed;
-    const lx = atp.x + atv.x * t * 0.6 - mp.x;
-    const ly = atp.y + Math.max(-2, atv.y * t * 0.3) - (mp.y + 0.25);
     // over a wall: the high arc
-    const sol = ballisticAim(lx, ly - (weapon === "mine" ? 0.18 : 0), speed, g, blocked && weapon !== "grenade");
+    const sol = leadAim(atp.x - mp.x, atp.y + aimDrop(sim, weapon, grounded) - (mp.y + 0.25) - (weapon === "mine" ? 0.18 : 0), atv.x, atv.y, speed, g, blocked && weapon !== "grenade");
     ax = sol.x;
     ay = sol.y;
   } else {
@@ -160,6 +157,42 @@ export function inReach(w: Weapon, dist: number, los: boolean, ruleset: Ruleset,
     default:
       return dist < 1.5;
   }
+}
+
+/**
+ * Where a lobbed shot aims, from the target's center (#73). A rocket bursts on contact, so at a grounded target it aims
+ * at the floor by the feet: a target that steps or hops away still takes the blast beside it, where a shot at the body
+ * flies past and bursts far behind.
+ */
+export function aimDrop(sim: Sim, weapon: Weapon, grounded: boolean): number {
+  if (weapon !== "rocket" || !grounded) return 0;
+  const body = sim.ruleset.combat.fighter;
+  return -(body.halfHeight + body.radius);
+}
+
+/** Rounds of aim, flight time, aim in leadAim: the third changes the aim by well under a degree. */
+const LEAD_ROUNDS = 3;
+
+/**
+ * Aim a lobbed shot (rocket, grenade, mine) at a moving target (#73): at where the target will be when the shot gets
+ * there. The flight time is the arc's own: the horizontal distance to the led point over the shot's horizontal speed,
+ * found by a few rounds of aim, time, aim. Height: three tenths of the target's vertical speed over that time, and never
+ * more than 2 m down (a falling or jumping fighter lands).
+ * (dx, dy) is the target from the muzzle, (vx, vy) its velocity. Returns a unit direction and the flight time (s).
+ */
+export function leadAim(dx: number, dy: number, vx: number, vy: number, v: number, g: number, high = false): { x: number; y: number; time: number } {
+  let time = length2D(dx, dy) / v;
+  let aim = { x: dx, y: dy };
+  for (let i = 0; i < LEAD_ROUNDS; i++) {
+    const px = dx + vx * time;
+    aim = ballisticAim(px, dy + Math.max(-2, vy * time * 0.3), v, g, high);
+    const l = length2D(aim.x, aim.y) || 1;
+    aim = { x: aim.x / l, y: aim.y / l };
+    const across = Math.abs(aim.x) * v;
+    if (across < 1e-3) break;
+    time = Math.abs(px) / across;
+  }
+  return { ...aim, time };
 }
 
 /**

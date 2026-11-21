@@ -64,7 +64,7 @@ export const WEAPONS = {
     speed: 19,
     gravity: 7,
     radius: 2.7,
-    damage: 2.7,
+    damage: 10,
     knockback: 9,
     blockDamage: 34,
     terrainDamage: 95,
