@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "dev": "bun scripts/dev.ts",
-    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "batch": "bun scripts/batch.ts",
     "record": "bun scripts/record.ts",
