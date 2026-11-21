@@ -27,6 +27,7 @@ import { ALL_WEAPONS, LIMITED_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type E
 import { updateMines } from "./sim-mines";
 import { updateRockets } from "./sim-weapons";
 import { SimZone, zoneHalfAt, zonePush } from "./sim-zone";
+import { bodyHeights, TacticalMap } from "./tactical";
 import { Terrain } from "./terrain";
 
 export { clamp } from "./dmath";
@@ -46,6 +47,8 @@ export class Sim {
   readonly level: LevelDef;
   readonly grid: Grid;
   nav: NavGraph;
+  /** Cover spots, high ground and sightlines (#38): rebuilt with the nav graph when terrain breaks. */
+  tactical: TacticalMap;
   /** Highest walkable surface at the start of the round (#41: soft ceiling and jetpack ceiling are measured from it). */
   readonly topY: number;
   navVersion = 0;
@@ -120,6 +123,7 @@ export class Sim {
     this.chains = buildChains(this);
     for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
+    this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.topY = this.nav.surfaces.reduce((top, s) => Math.max(top, s.y), 0);
     this.navVersion = this.terrain.version;
     this.initialCells = this.grid.countSolid() - this.grid.countMat(Mat.Bedrock);
@@ -326,6 +330,7 @@ export class Sim {
 
   private rebuildNav() {
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
+    this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.navVersion = this.terrain.version;
     this.lastNavTick = this.tick;
     for (const f of this.fighters) {
@@ -375,6 +380,8 @@ export class Sim {
       num(f.burnBy);
       num(f.fuel);
       num(f.railCharge);
+      num(f.scope);
+      num(f.pinned);
       for (const weapon of LIMITED_WEAPONS) num(f.ammo[weapon]);
     }
     for (const r of this.rockets) {
