@@ -102,7 +102,7 @@ export class ControllerNavigation {
     return this.bestPoint(sim, plan, (px, py, sid) => {
       let s = Math.abs(length2D(px - tp.x, py - tFeet) - ideal) * 0.3;
       if (!sim.tactical.sees(px, py, tp.x, tFeet)) s += 8;
-      if (sid === me.surface && Math.abs(px - mp.x) < 1.5) s += 6;
+      if (sid === me.surface && Math.abs(px - mp.x) < 1.5) s += 20;
       if (hold && length2D(px - hold.x, py - hold.y) > sim.ruleset.tactics.stances.hold.radius) s += 1000;
       return s + zonePenalty(px) + fragilePenalty(sid);
     });
@@ -239,7 +239,7 @@ export class ControllerNavigation {
     }
 
     // a spot closer than this to the target wastes a weapon that fights from range (#69)
-    const tooClose = (d: number) => (weapon && isRanged(sim, weapon) && standOff ? Math.max(0, standOff * 0.7 - d) * 1.5 : 0);
+    const tooClose = (d: number) => (weapon && isRanged(sim, weapon) && standOff ? Math.max(0, standOff * 0.7 - d) * 3 : 0);
     const ideal = hangBack ? 12 : standOff !== undefined ? standOff : me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
     const st = sim.ruleset.tactics.stances;
     const tac = sim.tactical;
@@ -342,7 +342,7 @@ export class ControllerNavigation {
         const hides = (c: { x: number; y: number; side: number }) => c.side === (hp.x > c.x ? 1 : -1) && shelters(sim, threat, c.x, c.y);
 
         const held = this.coverSpot;
-        if (held && nav.surfaces[held.surface] && plan.cost[held.surface] !== Infinity && hides(held) && zonePenalty(held.x) === 0) return { surface: held.surface, x: held.x };
+        if (held && nav.surfaces[held.surface] && plan.cost[held.surface] !== Infinity && hides(held) && zonePenalty(held.x) === 0 && tooClose(length2D(held.x - tp.x, held.y - tFeet)) === 0) return { surface: held.surface, x: held.x };
         // candidates: the computed cover spots (a wall or a crate beside them) and every nav point (ledges and
         // platform undersides shelter too); a spot must shelter me from the threat to count
         let best: { surface: number; x: number; y: number; side: 1 | -1 } | null = null, bs = Infinity;
@@ -498,6 +498,11 @@ export class ControllerNavigation {
 
     // in the air (#69): only steer where a surface can still catch us
     if (!me.grounded) moveTarget = this.landing(sim, me, mp, mv, moveTarget, input);
+    // standing on something that falls (a broken-off chunk, a dropped platform) over nothing: jump off it (#69)
+    else if (mv.y < -2 && nav.fallBelow(sim.grid, mp.x, sim.feetY(me)) === Infinity) {
+      input.jump = true;
+      moveTarget = this.landing(sim, me, mp, { x: mv.x, y: sim.ruleset.combat.fighter.jumpSpeed }, moveTarget, input);
+    }
     // wedged between two corners (not grounded, not moving): push the other way a moment to come free (#69)
     this.wedged = !me.grounded && me.stun === 0 && Math.abs(mv.x) < 0.2 && Math.abs(mv.y) < 0.3 ? this.wedged + 1 : 0;
     if (this.wedged >= 12) {
