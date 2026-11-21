@@ -223,22 +223,31 @@ export class Matchmaker {
     }
     for (;;) {
       if (this.live().length >= this.maxConcurrent) return;
-      const w = this.waiting();
-      const oldest = w[0];
-      if (!oldest) return;
-      const key = JSON.stringify(oldest.selection);
-      const names = new Set([oldest.name.toLowerCase()]);
-      const group = [oldest];
-      for (const e of this.order(oldest, w.slice(1).filter((x) => JSON.stringify(x.selection) === key))) {
+      const group = this.readyGroup(now);
+      if (!group) return;
+      await this.open(group);
+    }
+  }
+
+  /**
+   * The first ready group, oldest head first. Every waiting agent is tried as a head, so an agent whose group
+   * cannot fill (a ruleset nobody else picked) does not block the agents behind it.
+   */
+  private readyGroup(now: number): QueueEntry[] | null {
+    const w = this.waiting();
+    for (const [i, head] of w.entries()) {
+      const key = JSON.stringify(head.selection);
+      const names = new Set([head.name.toLowerCase()]);
+      const group = [head];
+      for (const e of this.order(head, w.slice(i + 1).filter((x) => JSON.stringify(x.selection) === key))) {
         if (group.length === 4) break;
         if (names.has(e.name.toLowerCase())) continue;
         names.add(e.name.toLowerCase());
         group.push(e);
       }
-      const ready = group.length === 4 || (this.fillAfterMs !== null && group.length >= this.minAgents && now - oldest.joinedAt >= this.fillAfterMs);
-      if (!ready) return;
-      await this.open(group);
+      if (group.length === 4 || (this.fillAfterMs !== null && group.length >= this.minAgents && now - head.joinedAt >= this.fillAfterMs)) return group;
     }
+    return null;
   }
 
   private async open(group: QueueEntry[]) {
