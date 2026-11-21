@@ -1133,26 +1133,31 @@ body.capture #controls {
   line-height: 1;
   margin-top: 0.4vh;
 }
-#intro .lvmodels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1vh 2vh;
-  margin-top: 1.2vh;
-}
-#intro .lvmodels > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.8vh;
-  font-size: max(1.9vh, 13px);
-}
-#intro .lvmodels > span > b {
-  color: var(--c);
-}
-
 /* site pages (#22): the viewer in an iframe (?embed) keeps the fight HUD, without the seed line and match buttons */
 body.embed #seed,
 body.embed #reset,
 body.embed #new {
+  display: none;
+}
+/* the page shows the picks, the line-up and the result: the viewer keeps only the fight and its plan chips */
+body.embed #picks-panel,
+body.embed #crowd-tally,
+body.embed #picks-flash,
+body.embed #celebrate .board,
+body.embed #celebrate .crowd,
+body.embed #callout .recap .rr,
+body.embed #callout .rmodel,
+body.embed #cam .lbl,
+body.embed #cam .sep,
+body.embed #cam button.f,
+body.embed #dialogue .mood,
+body.embed #dialogue .suit,
+body.embed #dialogue .stat,
+body.embed #dialogue .ai,
+body.embed #dialogue .rules:not(.next),
+body.embed #lineup .chip .fn,
+body.embed #lineup .chip .kb-mb,
+body.embed #clock .pips {
   display: none;
 }
 

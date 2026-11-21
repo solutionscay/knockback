@@ -333,13 +333,13 @@ export class Game {
     switch (b.kind) {
       case "level": {
         const lv = this.match.level;
-        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking</div><div class="lvmodels">${this.seatLabels().map((l, i) => `<span style="--c:${hex(this.match.identities[i]!.color)}"><b>${esc(this.match.identities[i]!.name)}</b>${modelBadgeHtml(l, "md")}</span>`).join("")}</div>` : "";
+        // the arena name only: the line-up is on the page (and on the pick cards), the arena stats told nobody anything
+        const thinking = this.live && this.waitingRound === 1 ? `<div class="lvmeta thinking">the fighters are thinking</div>` : "";
         this.scene.camera.overview = true;
         h.intro.innerHTML = `
           <div class="levelcard">
-            <div class="kicker">ARENA ${lv.seed} · BEST OF 3</div>
+            <div class="kicker">BEST OF 3</div>
             <div class="lvname">${esc(lv.name)}</div>
-            <div class="lvmeta">${lv.width} m wide · ${lv.platforms} platforms · ${lv.props.length} props · ${lv.pits.length} pit${lv.pits.length === 1 ? "" : "s"} · everything breaks</div>
             ${thinking}
           </div>`;
         restart(h.intro, "show level");
