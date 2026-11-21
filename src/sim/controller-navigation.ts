@@ -1,6 +1,7 @@
 import { arenaQuarter } from "./level-spawns";
 import type { Controller } from "./controller";
 import { runUp, type Link, type NavGraph, type Surface } from "./nav";
+import type { Mobility } from "./build";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
@@ -29,6 +30,8 @@ export class ControllerNavigation {
   goal: Goal | null = null;
   private nextEval = 0;
   private activeLink: Link | null = null;
+  /** the walk and jump speed the active link is flown at (#84): the fighter's own, or a weaker profile's */
+  private linkFlight: Mobility | null = null;
   private stuck = 0;
   private navVersion = -1;
   private skipItems = new Map<number, number>();
@@ -425,6 +428,7 @@ export class ControllerNavigation {
 
     const surf = me.surface >= 0 ? nav.surfaces[me.surface] : undefined;
     let moveTarget = tp.x;
+    const lastEdge = this.edgeLink;
     this.edgeLink = null;
     if (me.grounded) this.foothold = { x: mp.x, y: sim.feetY(me) };
     if (me.grounded && me.jumpCd === 0) this.jumpTo = null;
@@ -461,12 +465,11 @@ export class ControllerNavigation {
         this.prog = null;
         this.nextEval = sim.tick;
       }
-      if (this.activeLink) {
-        const l = this.activeLink;
-        const to = nav.surfaces[l.to];
-        // onto a platform overhead (#69): straight up beside its edge until the feet clear its top, then over
-        moveTarget = !runUp(nav, l) && to && mv.y > 0 && sim.feetY(me) < to.y + 0.15 ? l.takeoffX : l.landX;
-      } else if (!me.grounded) {
+      // walked off the edge of a drop link: fly it as planned (#84)
+      if (!this.activeLink && !me.grounded && lastEdge?.kind === "drop" && lastEdge.from === me.surface) this.takeLink(sim, nav, lastEdge);
+      // a link in flight: its landing (the flight rule is applied below, once landing() has had its say)
+      if (this.activeLink) moveTarget = this.activeLink.landX;
+      else if (!me.grounded) {
         // in the air with no jump planned (a hop, a knock, a nav rebuild): head for the landing, then the goal
         moveTarget = this.jumpTo ? this.jumpTo.x : goal.x;
       } else if (goal.surface !== me.surface) {
@@ -481,11 +484,11 @@ export class ControllerNavigation {
               const ahead = (mp.x - link.takeoffX) * dir;
               moveTarget = ahead > 0.4 ? link.takeoffX - dir * 1.2 : ahead > -2.5 ? link.landX : link.takeoffX;
             }
-            if (Math.abs(mp.x - link.takeoffX) < 0.4 && (!runUp(nav, link) || mv.x * Math.sign(link.landX - link.takeoffX) > me.stats.walkSpeed * 0.7)) {
+            const fl = nav.flight(sim.grid, link) ?? nav.mobility;
+            if (Math.abs(mp.x - link.takeoffX) < 0.4 && (!runUp(nav, link) || mv.x * Math.sign(link.landX - link.takeoffX) > fl.walkSpeed * 0.7)) {
               input.jump = true;
-              this.activeLink = link;
-              this.linkSince = sim.tick;
-              this.jumpTo = { x: link.landX, y: nav.surfaces[link.to]!.y };
+              input.jumpSpeed = fl.jumpSpeed;
+              this.takeLink(sim, nav, link);
               moveTarget = link.landX;
             }
           } else moveTarget = link.landX;
@@ -504,8 +507,11 @@ export class ControllerNavigation {
       }
     }
 
-    // in the air (#69): only steer where a surface can still catch us
-    if (!me.grounded) moveTarget = this.landing(sim, me, mp, mv, moveTarget, input);
+    // in the air (#69): only steer where a surface can still catch us; on a link, fly it the planner's way (#84)
+    if (!me.grounded) {
+      moveTarget = this.landing(sim, me, mp, mv, moveTarget, input);
+      if (this.activeLink && nav.surfaces[this.activeLink.to]) moveTarget = nav.flightAim(sim.grid, this.activeLink, mp.x, sim.feetY(me), mv.x, mv.y, moveTarget);
+    }
     // standing on something that falls (a broken-off chunk, a dropped platform) over nothing: jump off it (#69)
     else if (mv.y < -2 && nav.fallBelow(sim.grid, mp.x, sim.feetY(me)) === Infinity) {
       input.jump = true;
@@ -521,7 +527,11 @@ export class ControllerNavigation {
     if (sim.tick < this.rockUntil) moveTarget = mp.x + this.rockDir * 2;
 
     const diff = moveTarget - mp.x;
-    input.move = Math.abs(diff) < 0.15 ? 0 : clamp(diff / 0.7, -1, 1);
+    // a link is run up to and flown at its flight's walk speed (#84), as the planner flew it
+    const near = me.grounded && this.edgeLink && this.edgeLink.kind !== "walk" && Math.abs(mp.x - this.edgeLink.takeoffX) < 3 ? this.edgeLink : null;
+    const fl = !me.grounded && this.activeLink ? this.linkFlight : near ? (nav.flight(sim.grid, near) ?? nav.mobility) : null;
+    const cap = fl ? Math.min(1, fl.walkSpeed / walkSpeedNow(sim.ruleset, me)) : 1;
+    input.move = Math.abs(diff) < 0.15 ? 0 : clamp(diff / 0.7, -1, 1) * cap;
     if (me.grounded && Math.abs(input.move) > 0.5) {
       const dir = input.move > 0 ? 1 : -1;
       const hit = sim.raycast(mp.x, sim.feetY(me) + 0.35, dir, 0, sim.ruleset.combat.fighter.radius + 0.4, me.entity.collider);
@@ -537,6 +547,14 @@ export class ControllerNavigation {
     } else this.stuck = 0;
     this.guardLedge(sim, me, mp, mv, input);
     return surf;
+  }
+
+  /** Start flying `link` (a jump just pressed, or a drop just walked off), at the flight the planner chose (#84). */
+  private takeLink(sim: Sim, nav: NavGraph, link: Link) {
+    this.activeLink = link;
+    this.linkFlight = nav.flight(sim.grid, link) ?? nav.mobility;
+    this.linkSince = sim.tick;
+    this.jumpTo = { x: link.landX, y: nav.surfaces[link.to]!.y };
   }
 
   /**

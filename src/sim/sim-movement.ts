@@ -155,7 +155,7 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   vx += clamp(target - vx, -accel, accel);
   if (inp.jump && f.jumpCd === 0) {
     if (f.grounded) {
-      vy = f.stats.jumpSpeed;
+      vy = Math.min(f.stats.jumpSpeed, inp.jumpSpeed ?? Infinity);
       f.jumpCd = 14;
       f.grounded = false;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: false });

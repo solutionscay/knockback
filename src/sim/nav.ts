@@ -45,6 +45,15 @@ export function runUp(nav: NavGraph, l: Link): boolean {
   return Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) <= 0;
 }
 
+/**
+ * The body the planner flies (#69): a box a little inside the capsule, from 0.3 m above the feet (the capsule's round
+ * bottom slides over corners) to `top` above them, `r` to each side.
+ */
+function bodyBox(ruleset: Ruleset) {
+  const F = ruleset.combat.fighter;
+  return { r: F.radius - 0.08, top: 2 * (F.halfHeight + F.radius) - 0.1 };
+}
+
 /** The base mobility profile: the ruleset's own fighter values (a neutral build). */
 export function baseMobility(ruleset: Ruleset): Mobility {
   const F = ruleset.combat.fighter;
@@ -56,8 +65,8 @@ export class NavGraph {
   links: Link[] = [];
   out: Link[][] = [];
   points: NavPoint[] = [];
-  /** arcClear per link, worked out the first time a fighter's plan needs it */
-  private readonly arcs = new Map<Link, boolean>();
+  /** flight per link, worked out the first time a fighter's plan needs it */
+  private readonly flights = new Map<Link, Mobility | null>();
 
   private constructor(readonly ruleset: Ruleset, readonly mobility: Mobility) {}
 
@@ -181,34 +190,106 @@ export class NavGraph {
     }
   }
 
-  /** The plan fighters follow (#69): only the jumps and drops a body of this graph's mobility can make (arcClear). */
+  /** The plan fighters follow (#69): only the jumps and drops a body of this graph's mobility can make (`flight`). */
   fighterPlan(grid: Grid, start: number, x: number) {
-    return this.plan(start, x, (l) => {
-      let ok = this.arcs.get(l);
-      if (ok === undefined) {
-        ok = this.arcClear(grid, l);
-        this.arcs.set(l, ok);
+    return this.plan(start, x, (l) => this.flight(grid, l) !== null);
+  }
+
+  /**
+   * How a body of this graph's mobility flies link `l` (#84), or null when it cannot: at its own walk and jump speed
+   * when that arc clears, else at the strongest weaker profile of the ruleset's build tables whose arc clears (most
+   * jump first, then most speed). A stronger body can always run slower and jump lower (a capped run and a short hop,
+   * see Input.jumpSpeed), so a profile makes every jump and drop that a weaker profile makes. The controller flies the
+   * link at the mobility given here.
+   */
+  flight(grid: Grid, l: Link): Mobility | null {
+    let m = this.flights.get(l);
+    if (m === undefined) {
+      m = l.kind === "walk" ? this.mobility : (this.weaker().find((w) => this.arcClear(grid, l, w)) ?? null);
+      this.flights.set(l, m);
+    }
+    return m;
+  }
+
+  /** This graph's mobility, then each weaker profile of the build tables, strongest jump first, then speed (#84). */
+  private weaker(): Mobility[] {
+    const F = this.ruleset.combat.fighter, B = this.ruleset.builds, M = this.mobility;
+    const out: Mobility[] = [M];
+    for (const jm of [...B.jump.mul].sort((a, b) => b - a))
+      for (const sm of [...B.speed.mul].sort((a, b) => b - a)) {
+        const w = { walkSpeed: F.walkSpeed * sm, jumpSpeed: F.jumpSpeed * jm, airAccel: M.airAccel };
+        if (w.walkSpeed > M.walkSpeed || w.jumpSpeed > M.jumpSpeed || (w.walkSpeed === M.walkSpeed && w.jumpSpeed === M.jumpSpeed)) continue;
+        out.push(w);
       }
-      return ok;
-    });
+    return out;
+  }
+
+  /**
+   * Where a body in the air on link `l` steers (#69, #84): the one flight rule of the planner (arcClear) and the
+   * controller. `goal` is where it wants to land (the link's landing unless the controller has had to pick another).
+   * - Onto a platform overhead: straight up beside its edge until the feet clear its top, then over.
+   * - Under a ceiling: when a platform overhangs the landing (room to stand under it there, its top above the
+   *   takeoff), the body passes under it, never over it. While the body is too tall to pass under the platform's
+   *   near edge and can rise onto it (its feet, or the top of their rise, within 0.3 m of the platform's top: the
+   *   body box arcClear moves), it holds beside that edge, or steers back out from over the platform; once the feet
+   *   come down far enough, it goes under. A higher jump so lands where a lower one does, instead of rising past the
+   *   edge onto the platform.
+   */
+  flightAim(grid: Grid, l: Link, x: number, feet: number, vx: number, vy: number, goal = l.landX): number {
+    const from = this.surfaces[l.from]!, to = this.surfaces[l.to]!;
+    if (l.kind === "jump" && !runUp(this, l) && feet < to.y + 0.15 && vy > 0) return l.takeoffX;
+    const dir = Math.sign(goal - x);
+    if (!dir) return goal;
+    const { fighter: F, gravity } = this.ruleset.combat;
+    const { r, top: head } = bodyBox(this.ruleset);
+    const floor = grid.cy(to.y + 0.05);
+    // the overhang of column cx: its underside and top, or null (open sky, or a wall at the landing's height)
+    const overhang = (cx: number) => {
+      if (grid.solid(cx, floor)) return null;
+      let cy = floor + 1;
+      while (cy < grid.rows && !grid.solid(cx, cy)) cy++;
+      if (cy >= grid.rows) return null;
+      const under = grid.wy(cy);
+      while (grid.solid(cx, cy + 1)) cy++;
+      const top = grid.wy(cy + 1);
+      return under - to.y >= 2 * (F.halfHeight + F.radius) && top > from.y + 0.05 ? { under, top } : null;
+    };
+    // from the landing back toward the body: the near edge of the platform over the landing (columns whose overhang
+    // overlaps the landing's in height)
+    const front = grid.cx(x + dir * r);
+    let cx = grid.cx(goal + dir * r);
+    const land = overhang(cx);
+    if (!land) return goal;
+    let o = land;
+    for (cx -= dir; (cx - front) * dir >= 0; cx -= dir) {
+      const next = overhang(cx);
+      if (!next || next.under >= land.top || next.top <= land.under) break;
+      o = next;
+    }
+    const near = cx + dir;
+    const rise = vy > 0 ? feet + (vy * vy) / (2 * gravity) : feet;
+    if (rise < o.top - 0.3) return goal;
+    // already under it: on to the landing; above it: back out; short of it: wait until the body fits under, braking
+    // in time to stop beside the edge
+    if (near === front ? feet < o.under : feet + head < o.under) return goal;
+    const closing = Math.max(0, vx * dir);
+    return (dir > 0 ? grid.wx(near) : grid.wx(near + 1)) - dir * (r + 0.02 + (closing * closing) / (2 * this.mobility.airAccel));
   }
 
   /**
    * Can a fighter make this jump or drop (#69)? Flies the controller's own arc (a run-up across a gap, a standing jump
-   * up beside a platform overhead, or walking off for a drop; air control toward the landing; gravity) and moves the body
-   * through the grid: a ceiling stops the rise, a wall stops the run (the body slides along both), and a landing out
-   * of reach makes the link unusable for fighters. Walks always pass. The arc uses this graph's mobility (#79).
+   * up beside a platform overhead, or walking off for a drop; then `flightAim` with the controller's air control;
+   * gravity) and moves the body through the grid: a ceiling stops the rise where the head meets it, a wall stops the
+   * run (the body slides along both), and a landing out of reach makes the arc fail. Walks always pass. Flown at
+   * mobility `M` (#79; `flight` picks it, #84).
    */
-  arcClear(grid: Grid, l: Link): boolean {
+  arcClear(grid: Grid, l: Link, M: Mobility = this.mobility): boolean {
     if (l.kind === "walk") return true;
     const from = this.surfaces[l.from]!, to = this.surfaces[l.to]!;
-    const { fighter: F, gravity } = this.ruleset.combat;
-    const M = this.mobility;
+    const { gravity } = this.ruleset.combat;
     const dt = 1 / 30;
     const dir = Math.sign(l.landX - l.takeoffX) || 1;
-    const r = F.radius - 0.08;
-    const top = 2 * (F.halfHeight + F.radius) - 0.1;
-    // the body: a box a little inside the capsule (its round bottom slides over corners)
+    const { r, top } = bodyBox(this.ruleset);
     const blocked = (x: number, feet: number) => {
       for (let y = feet + 0.3; y <= feet + top + 0.01; y += (top - 0.3) / 3) for (const bx of [x - r, x, x + r]) if (grid.solidAt(bx, y)) return true;
       return false;
@@ -218,9 +299,8 @@ export class NavGraph {
     // a gap jump is run at, a drop is walked off at speed, a jump up beside a platform starts from standing
     let vx = run || l.kind === "drop" ? dir * M.walkSpeed : 0, vy = l.kind === "jump" ? M.jumpSpeed : 0;
     for (let i = 0; i < 90; i++) {
-      // onto a platform overhead: straight up beside its edge until the feet clear its top, then over (the controller)
-      const aim = l.kind === "jump" && !run && feet < to.y + 0.15 && vy > 0 ? l.takeoffX : l.landX;
-      const want = Math.max(-1, Math.min(1, (aim - x) / 0.7)) * M.walkSpeed;
+      const d = this.flightAim(grid, l, x, feet, vx, vy) - x;
+      const want = Math.abs(d) < 0.15 ? 0 : Math.max(-1, Math.min(1, d / 0.7)) * M.walkSpeed;
       vx += Math.max(-M.airAccel * dt, Math.min(M.airAccel * dt, want - vx));
       vy -= gravity * dt;
       const nx = x + vx * dt;
@@ -240,8 +320,15 @@ export class NavGraph {
         feet = nf;
         vx = 0;
       } else if (vy > 0 && !blocked(nx, feet)) {
-        // head against a ceiling: the rise stops, the run goes on
+        // head against a ceiling: the rise stops where the head meets it (not a whole step short), the run goes on
+        let lo = feet, hi = nf;
+        for (let k = 0; k < 5; k++) {
+          const mid = (lo + hi) / 2;
+          if (blocked(nx, mid)) hi = mid;
+          else lo = mid;
+        }
         x = nx;
+        feet = lo;
         vy = 0;
       } else return false;
     }
