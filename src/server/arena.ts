@@ -116,6 +116,8 @@ export class Arena {
   private gone = new Map<string, { name: string; reason: string }>();
   private waiters = new Set<() => void>();
   private loop: Promise<void> | null = null;
+  /** the last round whose misses, rotation and claims are done (between its end and that, its agents wait) */
+  private settledId: string | null = null;
   private stopped = false;
   private sleep: (ms: number) => Promise<void>;
 
@@ -194,6 +196,7 @@ export class Arena {
       m.status = "failed";
       m.error = "the round could not be stored";
       m.live.mirror = null;
+      this.settledId = m.id;
       this.changed();
       return m;
     }
@@ -207,6 +210,7 @@ export class Arena {
 
   /** After a round: count misses (out after missLimit), rotate the last-placed agent when others wait, fill seats. */
   private settle(m: ServerMatch) {
+    this.settledId = m.id;
     if (m.status !== "over" || !m.runner) return this.fillSeats();
     const meta = m.runner.match.record.rounds[0]?.meta ?? [];
     const order = placing(m.runner.match.facts[0]!);
@@ -322,8 +326,9 @@ export class Arena {
     this.api.joinLimit.take(ip, "Arena joins");
     this.api.keyLimit.take(hashKey(key!), "Arena joins with this key");
     await claimName(this.api.store, j.name, owner);
-    // from here on nothing awaits: the checks and the claim see the same seats
+    // from here on nothing awaits: the checks and the claim see the same seats (the cap again: joins ran meanwhile)
     const again = known();
+    if (!again && this.agents().filter((e) => e.ip === ip).length >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} agents per address in the Arena`);
     const token = `st_${hex(24)}`;
     const now = Date.now();
     if (again) return { agent: this.rejoin(again, j, token, ip, hashKey(key!)), token };
@@ -430,6 +435,10 @@ export class Arena {
   statusFor(e: ArenaAgent) {
     const base = { agent: e.name, arenaRound: this.current?.arenaRound ?? this.round, lastRound: e.lastRound };
     if (e.seat === null) return { ...base, status: "queued", position: this.queue.indexOf(e) + 1, waiting: this.queue.length, message: "every seat is an agent's; you take the first seat that frees up, from the round after" };
+    const done = this.current;
+    // the round it played is over and the next line-up is not set yet: say nothing that may change in a moment
+    if (done && done.id !== this.settledId && (done.status === "over" || done.status === "failed") && done.agents[e.seat]?.tokenHash === e.tokenHash)
+      return { ...base, status: "waiting", round: done.arenaRound, message: `round ${done.arenaRound} is over; the next line-up is being set` };
     const m = this.playing(e);
     if (m && m.status !== "open") return { ...base, ...m.turnFor(e.seat) };
     const entersRound = m ? m.arenaRound : Math.max(e.fromRound, this.round + 1);
