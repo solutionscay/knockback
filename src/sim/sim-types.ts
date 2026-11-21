@@ -4,10 +4,20 @@ import type { PieceCell } from "./terrain";
 import { generateIdentities, type Look } from "./identity";
 
 /** "fist" is what everyone starts with; the rest are picked up in the arena. */
-const PICKUP_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
+const PICKUP_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow", "lightning"] as const;
 export type Weapon = (typeof PICKUP_WEAPONS)[number] | "fist";
 export const WEAPON_LIST: readonly Weapon[] = PICKUP_WEAPONS;
+/** Weapons whose ammo runs out: empty, they are thrown away. */
 export const LIMITED_WEAPONS = ["mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
+/**
+ * Weapons that carry a count from pickup to pickup (it goes with the item when dropped): the limited weapons, and
+ * the lightning sword's bolts (#72), which run out while the sword stays.
+ */
+export const AMMO_WEAPONS = [...LIMITED_WEAPONS, "lightning"] as const;
+export type AmmoWeapon = (typeof AMMO_WEAPONS)[number];
+export function hasAmmo(weapon: Weapon): weapon is AmmoWeapon {
+  return (AMMO_WEAPONS as readonly Weapon[]).includes(weapon);
+}
 /** Precision weapons (#38): hitscan, and their spread follows the accuracy model (still or in cover = accurate). */
 export const PRECISION_WEAPONS = ["rifle", "sniper", "crossbow"] as const;
 export type PrecisionWeapon = (typeof PRECISION_WEAPONS)[number];
@@ -15,6 +25,8 @@ export function isPrecision(weapon: unknown): weapon is PrecisionWeapon {
   return (PRECISION_WEAPONS as readonly unknown[]).includes(weapon);
 }
 export type LimitedWeapon = (typeof LIMITED_WEAPONS)[number];
+/** Swung weapons: a ball in front of the fighter hits what it touches. */
+export type MeleeWeapon = "bat" | "fist" | "lightning";
 export function usesAmmo(weapon: Weapon): weapon is LimitedWeapon {
   return (LIMITED_WEAPONS as readonly Weapon[]).includes(weapon);
 }
@@ -183,7 +195,7 @@ export interface Fighter {
   slot: 0 | 1;
   swap: number;
   cooldown: Record<Weapon, number>;
-  ammo: Record<LimitedWeapon, number>;
+  ammo: Record<AmmoWeapon, number>;
   railCharge: number;
   /** sniper (#38): ticks spent aiming down the scope (the laser sight shows while > 0) */
   scope: number;
@@ -209,6 +221,8 @@ export interface Fighter {
   burnCause: string;
   /** flamethrower fuel (#32): pulses left in the tank */
   fuel: number;
+  /** live ground (#72): ticks before another shock can stun this fighter */
+  shockCd: number;
   outsideZone: boolean;
   outsideTicks: number;
   power: Powers;
@@ -243,6 +257,19 @@ export interface Mine {
   mount: { kind: "terrain"; cx: number; cy: number } | { kind: "entity"; id: number; x: number; y: number } | null;
 }
 
+/**
+ * Live ground (#72): a strip of floor a lightning bolt electrified. points: the floor it covers, half a cell apart,
+ * left to right (it follows steps like the hammer's wave). Anyone standing on it, the owner too, is shocked.
+ */
+export interface LiveGround {
+  id: number;
+  owner: number;
+  born: number;
+  /** ticks left */
+  ticks: number;
+  points: { x: number; y: number }[];
+}
+
 export type SimEvent =
   | { type: "fire"; tick: number; fighter: number; weapon: Weapon; x: number; y: number; dx: number; dy: number }
   | { type: "mineStick" | "mineArm"; tick: number; x: number; y: number; entity: number }
@@ -256,7 +283,11 @@ export type SimEvent =
   | { type: "pin"; tick: number; fighter: number; by: number; x: number; y: number }
   | { type: "shockwave"; tick: number; fighter: number; x: number; y: number; paths: { x: number; y: number }[][] }
   | { type: "pellet"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: boolean }
-  | { type: "swing"; tick: number; fighter: number; x: number; y: number; dx: number; dy: number; hit: boolean; weapon: "bat" | "fist" }
+  | { type: "swing"; tick: number; fighter: number; x: number; y: number; dx: number; dy: number; hit: boolean; weapon: MeleeWeapon }
+  /** a lightning bolt (#72): from the sword to the first fighter, prop or surface on its line; ground = the live strip's id, or -1 */
+  | { type: "bolt"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number; ground: number }
+  /** live ground (#72) shocked a fighter: by = the bolt's owner; stun = it was stunned too */
+  | { type: "shock"; tick: number; fighter: number; by: number; x: number; y: number; stun: boolean }
   | { type: "grapple"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number }
   | { type: "swap"; tick: number; fighter: number; weapon: Weapon }
   | {

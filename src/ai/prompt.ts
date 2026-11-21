@@ -57,12 +57,13 @@ export const WEAPON_HELP: Record<string, string> = {
   rifle: "long gun, steady semi-auto (16 rounds)",
   sniper: "long gun, slow laser aim, big hit (4 rounds)",
   crossbow: "long gun, bolt shoves or pins to walls (6 bolts)",
+  lightning: "sword slash up close; at middle range a bolt electrifies the ground: shocks and stuns anyone on it, you too (3 bolts)",
 } satisfies Record<Exclude<Weapon, "fist">, string>;
 
 export function weaponHelp(ruleset: Ruleset = CLASSIC): Record<string, string> {
   const out = Object.fromEntries(Object.entries(WEAPON_HELP).filter(([w]) => ruleset.weapons.enabled.includes(w as Weapon)));
   const table = ruleset.weapons.table;
-  for (const [w, ammo, label] of [["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"], ["rifle", table.rifle.ammo, "rounds"], ["sniper", table.sniper.ammo, "rounds"], ["crossbow", table.crossbow.ammo, "bolts"]] as const) {
+  for (const [w, ammo, label] of [["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"], ["rifle", table.rifle.ammo, "rounds"], ["sniper", table.sniper.ammo, "rounds"], ["crossbow", table.crossbow.ammo, "bolts"], ["lightning", table.lightning.ammo, "bolts"]] as const) {
     if (out[w]) out[w] = out[w].replace(/\d+ (throws|shots|slams|rounds|bolts)/, `${ammo} ${label}`);
   }
   return out;
@@ -105,7 +106,7 @@ export function soulText(s: Soul, ruleset: Ruleset = CLASSIC): string {
   return [s.body, ...facts].join("\n");
 }
 
-const WEAPON_NAME: Record<string, string> = { grapple: "hook", flamethrower: "the flamethrower", fire: "fire", fist: "fists", impact: "a wall", crush: "falling junk", fall: "a fall", zone: "the zone" };
+const WEAPON_NAME: Record<string, string> = { grapple: "hook", flamethrower: "the flamethrower", lightning: "the lightning sword", fire: "fire", fist: "fists", impact: "a wall", crush: "falling junk", fall: "a fall", zone: "the zone" };
 const wname = (w: string) => WEAPON_NAME[w] ?? w;
 
 function topWeapon(stat: HitStat): string | undefined {

@@ -1,7 +1,7 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { DT, G, groups } from "./constants";
 import type { Sim } from "./sim";
-import { type Entity, type Fighter, type Rocket, type Weapon, usesAmmo } from "./sim-types";
+import { type Entity, type Fighter, type MeleeWeapon, type Rocket, type Weapon, usesAmmo } from "./sim-types";
 import { length2D } from "./dmath";
 import { hitProp } from "./sim-objects";
 import { chipTerrain } from "./sim-terrain";
@@ -10,6 +10,7 @@ import { shootChains, swingChains } from "./sim-chains";
 import { fireFlamethrower } from "./sim-fire";
 import { throwMine } from "./sim-mines";
 import { fireRailgun, slamHammer } from "./sim-impact-weapons";
+import { boltLine, castBolt } from "./sim-lightning";
 import { firePrecision } from "./sim-precision";
 
 export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
@@ -78,6 +79,19 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
       f.cooldown[weapon] = sim.ruleset.weapons.table[weapon].cooldown;
       firePrecision(sim, f, weapon, ox, oy, dx, dy);
       break;
+    case "lightning": {
+      // #72: a bolt at what is further off, the slash at what is close (or with no bolt left)
+      const bolt = boltLine(sim, f, ox, oy, dx, dy);
+      if (bolt) {
+        f.cooldown.lightning = sim.ruleset.weapons.table.lightning.boltCooldown;
+        f.ammo.lightning--;
+        castBolt(sim, f, ox, oy, dx, dy, bolt.hit);
+      } else {
+        f.cooldown.lightning = sim.ruleset.weapons.table.lightning.cooldown;
+        swingMelee(sim, f, "lightning", ox, oy, dx, dy);
+      }
+      break;
+    }
   }
   if (usesAmmo(weapon) && --f.ammo[weapon] === 0 && f.weapons[f.slot] === weapon) {
     f.weapons[f.slot] = "fist";
@@ -121,12 +135,12 @@ function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
   }
 }
 
-function swingMelee(sim: Sim, f: Fighter, weapon: "bat" | "fist", ox: number, oy: number, dx: number, dy: number) {
+function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: number, dx: number, dy: number) {
   const spec = sim.ruleset.weapons.table[weapon];
   const tuning = sim.ruleset.weapons.melee[weapon];
   const cx = ox + dx * spec.reach;
   const height = oy + dy * spec.reach;
-  const cy = weapon === "bat" ? height + 0.1 : height;
+  const cy = weapon === "fist" ? height : height + 0.1;
   const found: Entity[] = [];
   sim.world.intersectionsWithShape({ x: cx, y: cy }, 0, new RAPIER.Ball(spec.radius), (c) => {
     const e = sim.entityOf(c);
@@ -154,8 +168,8 @@ function swingMelee(sim: Sim, f: Fighter, weapon: "bat" | "fist", ox: number, oy
       hitAny = true;
     }
   }
-  // bats, and fists with the heavy power-up, hit chains (#34)
-  const chainDamage = weapon === "bat" ? sim.ruleset.arena.chain.batDamage : f.power.heavy > 0 ? sim.ruleset.arena.chain.heavyFistDamage : 0;
+  // bats and swords, and fists with the heavy power-up, hit chains (#34)
+  const chainDamage = weapon !== "fist" ? sim.ruleset.arena.chain.batDamage : f.power.heavy > 0 ? sim.ruleset.arena.chain.heavyFistDamage : 0;
   if (chainDamage > 0 && swingChains(sim, cx, cy, spec.radius, chainDamage, f.id, weapon)) hitAny = true;
   // The swing also damages static terrain just past its hit center.
   const smashed = sim.terrain.carve(cx + dx * tuning.terrainOffset, cy + dy * tuning.terrainOffset, spec.terrainRadius, spec.terrainDamage);

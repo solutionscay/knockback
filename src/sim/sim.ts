@@ -25,8 +25,9 @@ import { crumbleUnder, flushTerrain } from "./sim-terrain";
 import { buildChains, updateChains, type Chain } from "./sim-chains";
 import { updateFire } from "./sim-fire";
 import { type CellFire } from "./sim-ignite";
-import { ALL_WEAPONS, LIMITED_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type Mine, type Rocket, type SimEvent, type Weapon } from "./sim-types";
+import { ALL_WEAPONS, AMMO_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type LiveGround, type Mine, type Rocket, type SimEvent, type Weapon } from "./sim-types";
 import { type Look } from "./identity";
+import { updateLiveGround } from "./sim-lightning";
 import { updateMines } from "./sim-mines";
 import { updateRockets } from "./sim-weapons";
 import { SimZone, zoneHalfAt, zonePush } from "./sim-zone";
@@ -72,6 +73,8 @@ export class Sim {
   readonly chainByCell = new Map<number, Chain>();
   /** burning static cells (#33): grid index -> fire */
   readonly fires = new Map<number, CellFire>();
+  /** live ground (#72): floor strips electrified by lightning bolts, in the order they were made */
+  liveGround: LiveGround[] = [];
   events: SimEvent[] = [];
   zone: { center: number; half: number; startHalf: number };
   /** Sandbox switch (tests): when false the zone neither shrinks nor pushes. */
@@ -271,6 +274,7 @@ export class Sim {
     updateObjects(this);
     updateChains(this);
     updateFire(this);
+    updateLiveGround(this);
     flushTerrain(this);
 
     const pre: { x: number; y: number }[] = this.fighters.map((f) => (f.removed ? { x: 0, y: 0 } : this.vel(f)));
@@ -394,7 +398,8 @@ export class Sim {
       num(f.railCharge);
       num(f.scope);
       num(f.pinned);
-      for (const weapon of LIMITED_WEAPONS) num(f.ammo[weapon]);
+      num(f.shockCd);
+      for (const weapon of AMMO_WEAPONS) num(f.ammo[weapon]);
     }
     for (const r of this.rockets) {
       num(r.x);
@@ -423,6 +428,13 @@ export class Sim {
       num(i);
       num(fire.burn);
       num(fire.by);
+    }
+    for (const strip of this.liveGround) {
+      for (const value of [strip.id, strip.owner, strip.born, strip.ticks, strip.points.length]) num(value);
+      for (const p of strip.points) {
+        num(p.x);
+        num(p.y);
+      }
     }
     for (let i = 0; i < g.flags.length; i++) if (g.flags[i]) num(i * 8 + g.flags[i]!);
     for (const ch of this.chains) {

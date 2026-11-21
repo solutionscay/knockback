@@ -222,7 +222,7 @@ export class Controller {
     // an active use rule: that weapon, when it is carried and can reach
     const u = this.rules.use();
     const railLine = () => dist >= sim.ruleset.weapons.table.railgun.minRange && railCanReach(sim, mp, sight);
-    if (u && u !== "jetpack" && has(u) && (u === "railgun" ? railLine() : inReach(u, dist, los, sim.ruleset))) return u;
+    if (u && u !== "jetpack" && has(u) && (u === "railgun" ? railLine() : inReach(u, dist, los, sim.ruleset, me.ammo.lightning))) return u;
     if (ready("hammer") && me.grounded && Math.abs(dy0) < 1.2 && dist < sim.ruleset.weapons.table.hammer.range) return "hammer";
     if (ready("railgun") && railLine()) return "railgun";
     if (ready("sniper") && los && dist >= sim.ruleset.weapons.table.sniper.minRange && dist < sim.ruleset.weapons.table.sniper.range - 0.5) return "sniper";
@@ -234,6 +234,8 @@ export class Controller {
       if (has("shotgun")) return "shotgun";
     }
     if (has("bat") && dist < 2.4) return "bat";
+    // the lightning sword (#72): the slash up close, a bolt at middle range with a clear line
+    if (has("lightning") && inReach("lightning", dist, los, sim.ruleset, me.ammo.lightning)) return "lightning";
     // flamethrower (#32): up close with a clear line, it outdamages everything else
     if (has("flamethrower") && los && dist < sim.ruleset.weapons.table.flamethrower.range - 0.4) return "flamethrower";
     if (dist < 1.5 && !has("shotgun")) return "fist";
@@ -290,6 +292,7 @@ export class Controller {
     // ledge safety (#69) on the final input: combat moves come after steering
     const me = sim.fighters[this.fighterId]!;
     if (me.alive && !me.removed && input !== NO_FIRE) {
+      this.navigation.guardLiveGround(sim, me, sim.pos(me), input);
       this.navigation.guardLedge(sim, me, sim.pos(me), sim.vel(me), input);
       // no idle gaps (#69): a target we can neither reach nor shoot is left for one we can
       const target = this.targetId >= 0 ? sim.fighters[this.targetId]! : null;

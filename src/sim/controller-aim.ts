@@ -1,5 +1,5 @@
 import { length2D } from "./dmath";
-import { CLASSIC, type Ruleset } from "./ruleset";
+import { type Ruleset } from "./ruleset";
 import { traceRail } from "./rail-terrain";
 import { type Sim } from "./sim";
 import { isPrecision, type Fighter, type Input, type Weapon } from "./sim-types";
@@ -103,8 +103,11 @@ export function aimAndFire(
     case "sniper":
       canFire &&= los && (dist >= sim.ruleset.weapons.table.sniper.minRange || me.scope > 0) && dist <= sim.ruleset.weapons.table.sniper.range - 0.5;
       break;
+    case "lightning":
+      canFire &&= inReach("lightning", dist, los, sim.ruleset, me.ammo.lightning);
+      break;
   }
-  if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "grapple" && weapon !== "railgun" && weapon !== "hammer" && !isPrecision(weapon) && !(blocked && weapon === "shotgun")) {
+  if (canFire && weapon !== "bat" && weapon !== "fist" && weapon !== "lightning" && weapon !== "grapple" && weapon !== "railgun" && weapon !== "hammer" && !isPrecision(weapon) && !(blocked && weapon === "shotgun")) {
     const hit = sim.raycast(mp.x, mp.y + 0.25, input.aimX, input.aimY, weapon === "shotgun" ? Math.min(dist, 6) : 2.2, me.entity.collider);
     if (hit && hit.terrain) canFire = false;
   }
@@ -121,9 +124,16 @@ export function aimAndFire(
   return input;
 }
 
-/** Can this weapon reach a target at this distance (rough ranges, for use rules)? */
-export function inReach(w: Weapon, dist: number, los: boolean, ruleset: Ruleset = CLASSIC): boolean {
+/**
+ * Can this weapon reach a target at this distance (rough ranges, for use rules)? bolts: the lightning sword's bolts
+ * left (#72); with none it reaches as far as its slash.
+ */
+export function inReach(w: Weapon, dist: number, los: boolean, ruleset: Ruleset, bolts: number): boolean {
   switch (w) {
+    case "lightning": {
+      const l = ruleset.tactics.weapons.reach.lightning;
+      return dist <= l.slash || (bolts > 0 && los && dist >= l.min && dist <= l.max);
+    }
     case "mine":
       return dist > 2.4 && dist <= ruleset.weapons.table.mine.range;
     case "railgun":

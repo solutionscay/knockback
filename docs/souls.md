@@ -49,7 +49,7 @@ Use the catchphrase sparingly: at most once a match.
 | `temperament` | `cocky`, `confident`, `calm`, `nervous` | starting morale (45, 25, 8, -15); how morale bends the house bot's plan |
 | `voice` | `brash`, `smug`, `nervous`, `sly`, `plain` | which template lines the house bot falls back on |
 | `values` | comma-separated phrases | shown to the AI ("what you value in a fight"); keywords feed the house bot |
-| `weapons` | 1 to 3 of `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works), `flamethrower` (`flamer` also works), `mine`, `railgun`, `hammer`, best first | the house bot's weapon wishes; a habit the AI is told about |
+| `weapons` | 1 to 3 of `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works), `flamethrower` (`flamer` also works), `mine`, `railgun`, `hammer`, `rifle`, `sniper`, `crossbow`, `lightning` (`sword` also works), best first | the house bot's weapon wishes; a habit the AI is told about |
 | `stance` | `rush`, `distance`, `cover`, `item` | the house bot's stance |
 | `target` | `nearest`, `weakest`, `strongest`, `leader` | the house bot's target preference |
 | `retaliate` | `attacker`, `turn`, `ignore` | what the house bot does when hit from behind by someone it is not chasing |

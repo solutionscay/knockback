@@ -53,6 +53,11 @@ const TACTICAL_WEAPONS = {
     rifle: { min: 0, max: C.WEAPONS.rifle.range, maxDy: 0, standOff: 12 },
     sniper: { min: C.WEAPONS.sniper.minRange, max: C.WEAPONS.sniper.range, maxDy: 0, standOff: 20 },
     crossbow: { min: 1.5, max: C.WEAPONS.crossbow.range, maxDy: 0, standOff: 11 },
+    /**
+     * Lightning sword (#72): bolts from min to max (min keeps the bolt's live ground off the caster), held at standOff;
+     * the slash out to slash (height within slashDy). With no bolt left it is a sword: slash range, slashStandOff.
+     */
+    lightning: { min: 3, max: 11.5, maxDy: 0, standOff: 6.5, slash: 1.6, slashDy: 1.4, slashStandOff: 1.2 },
   },
 };
 
@@ -93,7 +98,7 @@ export const RULESET_DEFAULTS = {
     enabled: WEAPON_LIST,
     table: { ...C.WEAPONS, shotgun: { ...C.WEAPONS.shotgun, spread: 0.16, jitter: 0.03 }, flamethrower: { ...C.WEAPONS.flamethrower, spreadScale: 1 } },
     accuracy: C.ACCURACY,
-    melee: { bat: { propDamage: 15, propMassCap: 4, terrainOffset: 0.3 }, fist: { propDamage: 4, propMassCap: 3, terrainOffset: 0.2 } },
+    melee: { bat: { propDamage: 15, propMassCap: 4, terrainOffset: 0.3 }, fist: { propDamage: 4, propMassCap: 3, terrainOffset: 0.2 }, lightning: { propDamage: 12, propMassCap: 4, terrainOffset: 0.25 } },
   },
   pickups: {
     enabled: POWER_LIST as readonly (typeof POWER_LIST)[number][],

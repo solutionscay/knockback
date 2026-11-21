@@ -4,7 +4,8 @@ import { runUp, type Link, type Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
-import { RANGED_STANDOFF } from "./controller-weapons";
+import { RANGED_STANDOFF, weaponReach } from "./controller-weapons";
+import { onLiveGround } from "./sim-lightning";
 import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } from "./tactical";
 
 /** Still, not firing, with a live target this long: the goal is not working (#69). */
@@ -12,6 +13,8 @@ const IDLE_TICKS = 40;
 /** then look for a spot with a shot this long */
 const VANTAGE_TICKS = 120;
 const isRanged = (sim: Sim, w: Weapon) => w !== "fist" && sim.ruleset.tactics.weapons.reach[w].standOff >= RANGED_STANDOFF;
+/** A goal on live ground (#72) costs this much: fighters stand somewhere else while it is live. */
+const LIVE_GROUND_COST = 25;
 
 export interface Goal {
   surface: number;
@@ -94,9 +97,9 @@ export class ControllerNavigation {
 
   /** A reachable spot, not this one, that sees the target at the stand-off of the longest weapon carried (#69). */
   private vantage(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<Sim["nav"]["plan"]>, zonePenalty: (x: number) => number, fragilePenalty: (s: number) => number): Goal {
-    const reach = sim.ruleset.tactics.weapons.reach;
-    const gun = me.weapons.reduce<Weapon>((best, w) => (reach[w].max > reach[best].max ? w : best), "fist");
-    const ideal = clamp(reach[gun].standOff, reach[gun].min, reach[gun].max);
+    const reach = (w: Weapon) => weaponReach(sim.ruleset, me, w);
+    const gun = me.weapons.reduce<Weapon>((best, w) => (reach(w).max > reach(best).max ? w : best), "fist");
+    const ideal = clamp(reach(gun).standOff, reach(gun).min, reach(gun).max);
     const mp = sim.pos(me), tp = sim.pos(target), tFeet = sim.feetY(target);
     const hold = this.controller.stanceNow(sim) === "hold" ? this.holdSpot : null;
     return this.bestPoint(sim, plan, (px, py, sid) => {
@@ -205,7 +208,7 @@ export class ControllerNavigation {
     }
 
     const tactics = sim.ruleset.tactics.weapons;
-    const reach = weapon ? tactics.reach[weapon] : undefined;
+    const reach = weapon ? weaponReach(sim.ruleset, me, weapon) : undefined;
     // the held weapon's stand-off (#69): every stance fights at its weapon's range
     const standOff = reach ? clamp(reach.standOff, reach.min, reach.max) : undefined;
     if (sim.tick < this.vantageUntil) return this.vantage(sim, me, target, plan, zonePenalty, fragilePenalty);
@@ -391,11 +394,13 @@ export class ControllerNavigation {
   private bestPoint(sim: Sim, plan: ReturnType<Sim["nav"]["plan"]>, score: (x: number, y: number, s: number, i: number) => number): Goal {
     let best: Goal | null = null;
     let bs = Infinity;
+    const live = sim.liveGround.length > 0;
     for (let i = 0; i < sim.nav.points.length; i++) {
       const p = sim.nav.points[i]!;
       const c = plan.cost[p.surface]!;
       if (c === Infinity) continue;
-      const s = score(p.x, p.y, p.surface, i) + (c + Math.abs(plan.arriveX[p.surface]! - p.x)) * 0.12;
+      let s = score(p.x, p.y, p.surface, i) + (c + Math.abs(plan.arriveX[p.surface]! - p.x)) * 0.12;
+      if (live && onLiveGround(sim, p.x, p.y)) s += LIVE_GROUND_COST;
       if (s < bs) {
         bs = s;
         best = { surface: p.surface, x: p.x };
@@ -426,7 +431,7 @@ export class ControllerNavigation {
       const [zl, zr] = this.zoneBounds(sim);
       if ((mp.x < zl || mp.x > zr) && !nav.surfaces.some((s) => plan.cost[s.id] !== Infinity && s.x1 > zl && s.x0 < zr)) plan = nav.plan(me.surface, mp.x);
       // a target inside a ranged weapon's reach: look again soon, to back off in time (#69)
-      const reach = weapon ? sim.ruleset.tactics.weapons.reach[weapon] : undefined;
+      const reach = weapon ? weaponReach(sim.ruleset, me, weapon) : undefined;
       if (reach && isRanged(sim, weapon!) && length2D(tp.x - mp.x, tp.y - mp.y) < reach.standOff * 0.6) this.nextEval = Math.min(this.nextEval, sim.tick + 8);
       if (sim.tick >= this.nextEval || !this.goal || !nav.surfaces[this.goal.surface] || plan.cost[this.goal.surface] === Infinity) {
         this.goal = this.chooseGoal(sim, me, target, plan, crossingWall, flank, weapon);
@@ -529,6 +534,36 @@ export class ControllerNavigation {
     } else this.stuck = 0;
     this.guardLedge(sim, me, mp, mv, input);
     return surf;
+  }
+
+  /**
+   * Live ground (#72): standing on it, walk off it the short way; about to step (or hop) onto it, stop at its edge
+   * and wait (it lasts seconds). Called with the final input, like guardLedge.
+   */
+  guardLiveGround(sim: Sim, me: Fighter, mp: { x: number }, input: Input) {
+    if (!me.grounded || !sim.liveGround.length) return;
+    const feet = sim.feetY(me);
+    const under = onLiveGround(sim, mp.x, feet);
+    if (under) {
+      const first = under.points[0]!, last = under.points[under.points.length - 1]!;
+      const left = mp.x - first.x, right = last.x - mp.x;
+      // off the near end, unless that end is a ledge with nothing below
+      let dir = left <= right ? -1 : 1;
+      const end = (d: number) => (d < 0 ? first.x - 0.8 : last.x + 0.8);
+      if (sim.nav.fallBelow(sim.grid, end(dir), feet) === Infinity) dir = -dir;
+      input.move = dir;
+      input.jump = false;
+      return;
+    }
+    if (input.move === 0) return;
+    const dir = input.move > 0 ? 1 : -1;
+    for (const ahead of [0.45, 0.9, 1.8]) {
+      if (onLiveGround(sim, mp.x + dir * ahead, feet)) {
+        input.move = 0;
+        input.jump = false;
+        return;
+      }
+    }
   }
 
   /**

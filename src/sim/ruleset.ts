@@ -31,7 +31,7 @@ const signed = new Set(["ringOutY", "bottom", "minHeight", "groundMin", "despera
 const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density"]);
 const ranges = new Set(["halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
 const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "skyDrops", "skyDropTicks", "betweenCaches", "holdTicks", "firstTick"]);
-const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "interval", "chargeTicks", "aimTicks", "viewStep", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
+const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "boltCooldown", "pulseTicks", "interval", "chargeTicks", "aimTicks", "viewStep", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
 const integral = /(?:ticks|cells|attempts|^hits$|^minOnTicks$|^minOffTicks$|^fuse(?:Min|Max)?$|^chainFuse$|^burnMin$|^burnMax$|^rows$|^maxLife$)/i;
 
@@ -101,6 +101,10 @@ export function validateRuleset(input: unknown): Ruleset {
   require(r.weapons.table.railgun.minRange < r.weapons.table.railgun.range, "weapons.table.railgun.minRange", "must be below range");
   require(r.weapons.table.sniper.minRange < r.weapons.table.sniper.range, "weapons.table.sniper.minRange", "must be below range");
   require(r.weapons.table.crossbow.pinReach <= 4, "weapons.table.crossbow.pinReach", "expected 0 to 4 meters");
+  const lightning = r.weapons.table.lightning;
+  require(lightning.boltMinRange < lightning.range, "weapons.table.lightning.boltMinRange", "must be below range");
+  require(lightning.groundWidth <= 12 && lightning.groundDrop <= 8, "weapons.table.lightning", "groundWidth expected 0 to 12 meters, groundDrop 0 to 8");
+  require(r.tactics.weapons.reach.lightning.slash <= lightning.reach + lightning.radius + 0.5, "tactics.weapons.reach.lightning.slash", "must be within the slash's reach and radius (plus 0.5 m)");
   require(r.weapons.accuracy.coverMul <= 1, "weapons.accuracy.coverMul", "expected 0 to 1");
   require(r.tactics.stances.map.viewStep >= 1 && Number.isInteger(r.tactics.stances.map.viewStep), "tactics.stances.map.viewStep", "expected a whole number of at least 1");
   require(r.tactics.stances.cover.peekFor < r.tactics.stances.cover.peekEvery, "tactics.stances.cover.peekFor", "must be shorter than peekEvery");

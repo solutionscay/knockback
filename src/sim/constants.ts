@@ -162,6 +162,24 @@ export const WEAPONS = {
     ammo: 6, cooldown: 72, range: 28, damage: 6, knockback: 10, lift: 0.32,
     pinReach: 1.1, pinTicks: 40, propDamage: 14, terrainDamage: 16,
   },
+  /**
+   * Lightning sword (#72): a sword with bolts. Fire slashes when the first thing on the aim line is closer than
+   * boltMinRange or no bolt is left; otherwise it casts a bolt (ammo = bolts per pickup; the sword stays when they
+   * are gone). The slash is a melee ball like the bat's (reach, radius, damage, knockback, lift, propImpulse,
+   * terrainRadius, terrainDamage; cooldown). A bolt is hitscan, straight, out to range: it hits the first fighter,
+   * prop or surface (bolt* values), then the floor there (the fighter's feet, or the surface hit, up to groundDrop
+   * below) goes live: groundWidth meters wide, following steps up to groundStep, for groundTicks. Everyone standing
+   * on it (feet within feetReach), the owner too, takes pulseDamage every pulseTicks (credited to the bolt's owner),
+   * and is stunned for stunTicks, at most once every stunGap ticks.
+   */
+  lightning: {
+    ammo: 3, cooldown: 34, reach: 0.85, radius: 0.8, damage: 7.5, knockback: 10.5, lift: 0.6,
+    propImpulse: 6, terrainRadius: 1, terrainDamage: 55,
+    range: 12, boltMinRange: 2.4, boltCooldown: 70, boltDamage: 5, boltKnockback: 4, boltLift: 0.3,
+    boltPropDamage: 14, boltTerrainDamage: 12,
+    groundWidth: 3, groundDrop: 2.5, groundStep: 0.55, groundTicks: 180, feetReach: 0.4,
+    pulseTicks: 20, pulseDamage: 1.5, stunTicks: 16, stunGap: 50,
+  },
   /** Hook: yanks a fighter (or a prop) toward the shooter. */
   grapple: {
     cooldown: 110,

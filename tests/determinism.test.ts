@@ -21,10 +21,10 @@ const UPDATE: PlanUpdate = { tick: 300, fighter: 1, strategy: { target: "stronge
 
 const GOLDEN_MATCH_SEED = 7;
 const GOLDEN = {
-  fight: "9dbdc72c",
-  fightWithUpdate: "c5e9f5f4",
-  closeQuarters: "1b3771ba",
-  match: ["c61da02f", "1f0450e7", "d623f183"],
+  fight: "9306426f",
+  fightWithUpdate: "300002f2",
+  closeQuarters: "dbc2f8ec",
+  match: ["5a6ef0c2", "a72da788", "c24de10c"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

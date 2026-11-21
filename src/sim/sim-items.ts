@@ -3,7 +3,7 @@ import { G, groups } from "./constants";
 import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
 import { ordinaryWeapons, stockSpreadArmory } from "./spread-armory";
 import type { Sim } from "./sim";
-import { isPickupWeapon, usesAmmo, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
+import { hasAmmo, isPickupWeapon, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
 
@@ -183,7 +183,7 @@ export function dropWeapons(sim: Sim, f: Fighter, x: number, y: number) {
     if (w === "fist") continue;
     const e = sim.spawnItem(w, x + side * 0.3, y + 0.6, side * 2.2, 4);
     e.owner = f.id;
-    if (usesAmmo(w)) {
+    if (hasAmmo(w)) {
       e.ammo = f.ammo[w];
       f.ammo[w] = 0;
     }
@@ -253,13 +253,13 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
         const p = sim.pos(f);
         const d = sim.spawnItem(old, p.x - f.facing * 0.4, p.y + 0.4, -f.facing * 2.5, 3.5);
         d.owner = f.id;
-        if (usesAmmo(old)) {
+        if (hasAmmo(old)) {
           d.ammo = f.ammo[old];
           f.ammo[old] = 0;
         }
       }
       f.weapons[other] = it;
-      if (usesAmmo(it)) f.ammo[it] = ammo ?? sim.ruleset.weapons.table[it].ammo;
+      if (hasAmmo(it)) f.ammo[it] = ammo ?? sim.ruleset.weapons.table[it].ammo;
       f.railCharge = 0;
       f.scope = 0;
       if (it === "flamethrower") f.fuel = sim.ruleset.weapons.table.flamethrower.fuel; // a full tank

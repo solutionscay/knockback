@@ -54,8 +54,8 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     slot: 0,
     swap: 0,
     // nobody fires on the first frame
-    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0 },
-    ammo: { mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0 },
+    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
+    ammo: { mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
     railCharge: 0,
     scope: 0,
     pinned: 0,
@@ -76,6 +76,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     burnBy: -1,
     burnCause: "",
     fuel: 0,
+    shockCd: 0,
     outsideZone: false,
     outsideTicks: 0,
     power: { shield: 0, shieldHits: 0, speed: 0, heavy: 0, damage: 0, jump: 0, jetpack: 0 },

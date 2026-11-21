@@ -165,6 +165,7 @@ const WEAPON_WORD: Record<string, string> = {
   grenade: "grenades",
   grapple: "the hook",
   flamethrower: "the flamethrower",
+  lightning: "the lightning sword",
   fire: "fire",
   fist: "fists",
   barrel: "barrels",

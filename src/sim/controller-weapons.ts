@@ -13,12 +13,41 @@ export type WeaponChoice = { weapon: Weapon; shot?: Shot };
 const MELEE: readonly Weapon[] = ["fist", "bat", "hammer"];
 /** A weapon that fights from range (#69): its stand-off is this far or more (rocket, railgun, rifle, sniper, crossbow). */
 export const RANGED_STANDOFF = 10;
-const FIGHTER_ORDER: readonly Weapon[] = ["hammer", "bat", "flamethrower", "shotgun", "railgun", "sniper", "rocket", "crossbow", "rifle", "grenade", "mine", "grapple", "fist"];
-const BREACH_ORDER: readonly Weapon[] = ["shotgun", "rocket", "grenade", "bat", "fist", "hammer", "mine"];
+const FIGHTER_ORDER: readonly Weapon[] = ["hammer", "bat", "flamethrower", "lightning", "shotgun", "railgun", "sniper", "rocket", "crossbow", "rifle", "grenade", "mine", "grapple", "fist"];
+const BREACH_ORDER: readonly Weapon[] = ["shotgun", "rocket", "grenade", "bat", "lightning", "fist", "hammer", "mine"];
 
-export function inWeaponBand(weapon: Weapon, distance: number, ruleset: Ruleset, dy = 0) {
+export type Reach = { min: number; max: number; maxDy: number; standOff: number };
+
+/**
+ * A weapon's reach for this fighter. The lightning sword (#72) has two: with bolts left it fights out to the bolt's
+ * max and stands off at its standOff; with none it is a sword (slash, slashDy, slashStandOff).
+ */
+export function weaponReach(ruleset: Ruleset, me: Fighter, weapon: Weapon): Reach {
+  const reach = ruleset.tactics.weapons.reach;
+  if (weapon !== "lightning") return reach[weapon];
+  const l = reach.lightning;
+  return me.ammo.lightning > 0 ? { min: 0, max: l.max, maxDy: 0, standOff: l.standOff } : { min: 0, max: l.slash, maxDy: l.slashDy, standOff: l.slashStandOff };
+}
+
+/** In the slash's reach (#72): close, and level enough for the blade. */
+function inSlash(ruleset: Ruleset, distance: number, dy: number) {
+  const l = ruleset.tactics.weapons.reach.lightning;
+  return distance <= l.slash && Math.abs(dy) <= l.slashDy;
+}
+
+/** Can this weapon hit at this distance? The lightning sword: the slash up close, bolts from min to max (#72). */
+export function inWeaponBand(me: Fighter, weapon: Weapon, distance: number, ruleset: Ruleset, dy = 0) {
+  if (weapon === "lightning") {
+    const l = ruleset.tactics.weapons.reach.lightning;
+    return inSlash(ruleset, distance, dy) || (me.ammo.lightning > 0 && distance >= l.min && distance <= l.max);
+  }
   const spec = ruleset.tactics.weapons.reach[weapon];
   return distance >= spec.min && distance <= spec.max && (!spec.maxDy || Math.abs(dy) <= spec.maxDy);
+}
+
+/** Fights up close only: fists, bat, hammer, and the lightning sword with no bolt left. */
+function melee(me: Fighter, weapon: Weapon) {
+  return MELEE.includes(weapon) || (weapon === "lightning" && me.ammo.lightning <= 0);
 }
 
 function usable(sim: Sim, f: Fighter, weapon: Weapon) {
@@ -79,17 +108,17 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   const origin = { x: position.x, y: position.y + config.aimHeight };
   const direct = aimVector(dx0, dy0 - config.aimHeight);
   const carried = me.weapons.filter(w => w !== "fist" && usable(sim, me, w));
-  const ranged = carried.some(w => !MELEE.includes(w));
+  const ranged = carried.some(w => !melee(me, w));
   // a weapon that fights from range is kept in hand up close while the zone leaves room to back off to its range
   // (#69): no fists then
   const room = 2 * sim.zoneHalfAhead(0);
-  const longReach = carried.some(w => config.reach[w].standOff >= RANGED_STANDOFF && room >= config.reach[w].standOff);
-  const canHold = (w: Weapon) => (w === "fist" ? !longReach : carried.includes(w)) && (!ranged || !MELEE.includes(w) || inWeaponBand(w, dist, ruleset, dy0));
+  const longReach = carried.some(w => weaponReach(ruleset, me, w).standOff >= RANGED_STANDOFF && room >= weaponReach(ruleset, me, w).standOff);
+  const canHold = (w: Weapon) => (w === "fist" ? !longReach : carried.includes(w)) && (!ranged || !melee(me, w) || inWeaponBand(me, w, dist, ruleset, dy0));
   const ready = (w: Weapon) => me.cooldown[w] <= (w === sim.weapon(me) ? 0 : ruleset.combat.swapTicks) + config.readyMarginTicks;
   const normal = FIGHTER_ORDER.filter(canHold);
   const preference = [preferred, ...(ledge ? ["grapple" as const] : [])].filter((w): w is Weapon => w !== undefined && normal.includes(w));
   const attack = [...new Set([...preference, ...normal])];
-  const hasBand = (w: Weapon) => inWeaponBand(w, dist, ruleset, dy0) && distanceSafe(sim, w, dist) && (w !== "hammer" || me.grounded);
+  const hasBand = (w: Weapon) => inWeaponBand(me, w, dist, ruleset, dy0) && distanceSafe(sim, w, dist) && (w !== "hammer" || me.grounded);
   const ray = target.sight;
   const obstruction = !los && ray && ray.entity?.kind !== "fighter" ? ray : null;
   const fighterShot = (w: Weapon): Shot | undefined => {
@@ -97,6 +126,8 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
     if (w === "railgun") return railCanReach(sim, position, target) ? { aim: direct } : undefined;
     // precision weapons (#38) are hitscan: they need a clear line
     if (isPrecision(w)) return los ? { aim: direct } : undefined;
+    // the lightning sword (#72): the slash like a melee weapon; a bolt is hitscan, so it needs a clear line
+    if (w === "lightning") return inSlash(ruleset, dist, dy0) ? (los || !obstruction ? { aim: direct } : undefined) : los ? { aim: direct } : undefined;
     if (!los && w !== "grenade" && w !== "rocket" && (!MELEE.includes(w) || obstruction)) return;
     if (w === "rocket" || w === "grenade" || w === "mine") {
       const aim = arcTo(sim, me, w, origin, target, !los);
@@ -115,7 +146,9 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   const wallShot = (hit: NonNullable<RayHit>, aim: Point): WeaponChoice | undefined => {
     if (!breakable(sim, origin, aim, hit)) return;
     for (const w of BREACH_ORDER) {
-      if (!canHold(w) || !ready(w) || !inWeaponBand(w, hit.dist, ruleset, aim.y * hit.dist) || !distanceSafe(sim, w, hit.dist) || (w === "hammer" && !me.grounded)) continue;
+      if (!canHold(w) || !ready(w) || !inWeaponBand(me, w, hit.dist, ruleset, aim.y * hit.dist) || !distanceSafe(sim, w, hit.dist) || (w === "hammer" && !me.grounded)) continue;
+      // the sword cuts a wall; a bolt would only waste a charge on it (#72)
+      if (w === "lightning" && !inSlash(ruleset, hit.dist, aim.y * hit.dist)) continue;
       if (w === "grenade" || w === "mine") {
         const speed = ruleset.weapons.table[w].speed;
         const gravity = w === "mine" ? ruleset.weapons.table.mine.gravity : ruleset.combat.gravity;
@@ -145,7 +178,7 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   const cooling = attack.find(w => fighterShot(w));
   if (cooling) return { weapon: cooling };
   return { weapon: normal.reduce((best, w) =>
-    config.reach[w].max > config.reach[best].max ? w : best, "fist" as Weapon) };
+    weaponReach(ruleset, me, w).max > weaponReach(ruleset, me, best).max ? w : best, "fist" as Weapon) };
 }
 
 /**
@@ -172,7 +205,7 @@ export function playCombatChoice(sim: Sim, me: Fighter, input: Input, choice: We
     input.jump = false;
     input.thrust = false;
   }
-  if (allowWallAdvance && shot.wall && MELEE.includes(weapon)) {
+  if (allowWallAdvance && shot.wall && (MELEE.includes(weapon) || weapon === "lightning")) {
     input.jump = false;
     input.move = Math.sign(shot.aim.x) * sim.ruleset.tactics.weapons.wallAdvance;
   }
