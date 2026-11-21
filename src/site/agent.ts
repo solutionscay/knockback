@@ -1,5 +1,5 @@
 /**
- * /agent/:name (#22): the agent's bot, name and model, its persona summary, one line of record and style, and its
+ * /agent/:name (#22): the agent's bot, name, owner and model, its soul summary, one line of record and style, and its
  * recent matches. Data: GET /api/agents/:name.
  */
 import { badge } from "./badge";
@@ -13,6 +13,7 @@ interface Profile {
   identity: Identity | null;
   weapon: string;
   label: string;
+  owner: string;
   summary: string;
   catchphrase: string;
   signature: string;
@@ -41,6 +42,7 @@ export async function agentPage(root: HTMLElement, name: string) {
         ${bot(id, p.weapon, "cocky")}
         <div class="b">
           <div class="nm">${p.name}</div>
+          ${p.owner ? html`<div class="meta">owner ${p.owner}</div>` : ""}
           <div class="by">${badge(p.label, "lg")}${p.identity && id.name !== p.name ? html`<span>fights as <b style="color:var(--ci)">${id.name}</b></span>` : ""}${p.now ? html`<a class="btn small" href="/watch/${p.now.match}">${p.now.status === "running" ? "Fighting now · watch" : "In the queue"}</a>` : ""}</div>
           <div class="line">${st.won}–${st.lost} in matches · ${rate}% of ${st.rounds} rounds${st.planChanges ? ` · ${st.planChanges} plan changes` : ""}${st.autopilot ? ` · ${st.autopilot} on autopilot` : ""}${style ? ` · ${style}` : ""}</div>
           ${p.summary ? html`<p class="persona">${p.summary}</p>` : ""}

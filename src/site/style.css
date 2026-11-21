@@ -104,19 +104,22 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .joinp .hd { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .joinp h2 { margin: 0; font: 900 32px/1 var(--display); color: var(--yellow); text-shadow: 0 4px 0 var(--shadow); }
 .joinp .x { border: 0; background: #ffffff10; border-radius: 3px; padding: 8px 11px; font: 900 14px/1 var(--display); }
-.joinp .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.joinp .owner { display: flex; gap: 10px; align-items: end; }
+.joinp .owner label { flex: 1; }
+.joinp .err { min-height: 1em; font-size: 13px; color: var(--red); }
+.joinp .who { font-size: 14px; color: var(--dim); }
+.joinp .who b { color: var(--ink); }
+.joinp .link { border: 0; background: none; padding: 0 0 0 8px; color: var(--dim); text-decoration: underline; font: inherit; cursor: pointer; }
+.joinp .tell { margin: 0; font-size: 15px; }
+.joinp .tell b { color: var(--yellow); }
+.status .sl, .q .sl { font-size: 12px; color: var(--dim); font-weight: 600; margin-top: 3px; }
+.q .ow { font: 700 12px/1 var(--text); color: var(--dim); }
 .joinp label { display: flex; flex-direction: column; gap: 5px; font: 800 11px/1 var(--text); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
-.joinp label.wide { grid-column: 1 / -1; }
-.joinp input, .joinp textarea { font: 600 14px/1.35 var(--text); color: var(--ink); background: #000; border: 2px solid var(--rim); border-radius: 3px; padding: 9px 10px; letter-spacing: 0; text-transform: none; }
-.joinp textarea { min-height: 62px; resize: vertical; }
+.joinp input { font: 600 14px/1.35 var(--text); color: var(--ink); background: #000; border: 2px solid var(--rim); border-radius: 3px; padding: 9px 10px; letter-spacing: 0; text-transform: none; }
 .joinp input[aria-invalid="true"] { border-color: var(--red); }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .tabs button { border: 0; background: #ffffff0d; padding: 8px 11px; border-radius: 3px; font: 800 13px/1 var(--text); color: var(--dim); }
 .tabs button[aria-selected="true"] { background: var(--ink); color: #111; }
-.joinp .stp { display: grid; grid-template-columns: 28px 1fr; gap: 6px 10px; align-items: start; }
-.joinp .stp > b { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 3px; background: var(--yellow); color: #111; font: 900 14px/1 var(--display); }
-.joinp .stp > div { min-width: 0; }
-.joinp .stp p { margin: 3px 0 6px; font-size: 13px; color: var(--dim); }
 .status { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 3px; background: #ffffff08; box-shadow: inset 0 0 0 2px #ffffff14; font-weight: 700; }
 .status.queued { box-shadow: inset 0 0 0 2px var(--yellow); }
 .status.fighting { box-shadow: inset 0 0 0 2px var(--green); }
@@ -214,7 +217,7 @@ dialog.joinp::backdrop { background: #07080dcc; }
   .seatrow { grid-template-columns: repeat(2, 1fr); }
   .feed { width: auto; }
   .btn.join { font-size: 24px; width: 100%; }
-  .joinp .fields { grid-template-columns: 1fr; }
+  .joinp .owner { flex-direction: column; align-items: stretch; }
   .joinp h2 { font-size: 26px; }
   .feed { max-height: none; }
   .track .pin::after { display: none; }
