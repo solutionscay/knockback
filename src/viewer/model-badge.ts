@@ -4,8 +4,7 @@
  * scoreboard, the lobby and the /models page (and spectator pick cards, when they adopt it).
  *
  * The badge is neutral (dark, white text) so it never fights the bot's identity colour; only the small provider
- * mark on its left is tinted. A remote agent's model is what the agent said at join: it gets a small
- * "self-reported" mark.
+ * mark on its left is tinted. A remote agent's model is what the agent said at join.
  *
  *   modelBadgeHtml(label | ModelInfo, "lg")      -> HTML string (values escaped)
  *   modelBadgeEl(label | ModelInfo, "sm")        -> an element built with textContent (for untrusted pages)
@@ -25,8 +24,6 @@ export const MODEL_BADGE_CSS = `
 .kb-mb .mk { flex: none; display: inline-grid; place-items: center; width: 1.3em; height: 1.3em; border-radius: 2px; font-size: 0.9em; font-weight: 900;
   color: #0b0d14; background: var(--mp, #b0b6c6); letter-spacing: 0; }
 .kb-mb .mn { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.kb-mb .sr { flex: none; font-size: max(0.58em, 10px); font-weight: 700; letter-spacing: 0.1em; color: #c7ccd8; border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 2px; padding: 0.1em 0.35em; }
 .kb-mb.test { opacity: 0.75; }
 .kb-mb.xs { --mb-fs: max(calc(1.25 * var(--u, 1vh)), 10px); }
 .kb-mb.sm { --mb-fs: max(calc(1.6 * var(--u, 1vh)), 11px); }
@@ -48,7 +45,7 @@ export function modelBadgeTitle(m: ModelInfo | string | null | undefined): strin
 export function modelBadgeHtml(m: ModelInfo | string | null | undefined, size: ModelBadgeSize = "sm"): string {
   const x = info(m);
   const cls = `kb-mb ${size}${x.test ? " test" : ""}`;
-  return `<span class="${cls}" data-provider="${esc(x.provider)}" title="${esc(modelBadgeTitle(x))}" style="--mp:${PROVIDER_COLOR[x.provider]}"><i class="mk" aria-hidden="true">${PROVIDER_MARK[x.provider]}</i><b class="mn">${esc(x.name)}</b>${x.selfReported ? `<em class="sr">SELF-REPORTED</em>` : ""}</span>`;
+  return `<span class="${cls}" data-provider="${esc(x.provider)}" title="${esc(modelBadgeTitle(x))}" style="--mp:${PROVIDER_COLOR[x.provider]}"><i class="mk" aria-hidden="true">${PROVIDER_MARK[x.provider]}</i><b class="mn">${esc(x.name)}</b></span>`;
 }
 
 /** The badge as an element built with textContent (for pages that never use innerHTML on data). */
@@ -67,12 +64,6 @@ export function modelBadgeEl(m: ModelInfo | string | null | undefined, size: Mod
   mn.className = "mn";
   mn.textContent = x.name;
   root.append(mk, mn);
-  if (x.selfReported) {
-    const sr = doc.createElement("em");
-    sr.className = "sr";
-    sr.textContent = "SELF-REPORTED";
-    root.append(sr);
-  }
   return root;
 }
 

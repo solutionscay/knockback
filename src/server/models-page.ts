@@ -37,7 +37,6 @@ function modelBadge(m, size) {
   b.style.setProperty("--mp", PCOLOR[p]);
   b.title = (m ? m.name : "?") + (m && m.selfReported ? " (self-reported by the agent)" : "") + (m && m.agent ? " · agent " + m.agent : "");
   b.append(mk("i", PMARK[p], "mk"), mk("b", m ? m.name : "?", "mn"));
-  if (m && m.selfReported) b.append(mk("em", "SELF-REPORTED", "sr"));
   return b;
 }
 const pc = (x) => x === null || x === undefined ? "–" : Math.round(x * 100) + "%";
