@@ -2,7 +2,7 @@
  * Video mode (?capture&video): what the video pipeline (bun run teaser, docs/video.md) needs from the viewer.
  * - the camera stays on View all: no zoom on the talking bot or the winner, no K.O. slow motion (game.videoMode)
  * - a clean screen: no camera bar, no buttons, no SKIP / SPACE hints (body.video)
- * - one caption box, set per frame by the pipeline (start and end captions)
+ * - one caption box, set per frame by the pipeline (start and end captions); it wraps in a narrow (portrait) frame
  * - a frame-accurate timeline: the beat at every frame and the sim tick during fights, so the pipeline can plan
  *   its cuts from one quick scan
  */
@@ -11,12 +11,13 @@ const CSS = `
 body.video #cam, body.video #controls, body.video #dialogue .skip, body.video #dialogue .hint { display: none !important; }
 #video-caption { position: absolute; left: 50%; transform: translateX(-50%); z-index: 20; display: none; text-align: center;
   background: rgba(8, 10, 20, 0.86); border-radius: 2.2vh; padding: 1.4vh 3.6vh; color: #fff; font-weight: 800;
-  font-family: "Helvetica Neue", Arial, system-ui, sans-serif; white-space: nowrap; }
+  font-family: "Helvetica Neue", Arial, system-ui, sans-serif; width: max-content; max-width: 86vw; text-wrap: balance; }
 #video-caption.show { display: block; }
-#video-caption.start { top: 9vh; font-size: 4.6vh; }
+#video-caption.start { top: 9vh; font-size: min(4.6vh, 6.4vw); }
+@media (orientation: portrait) { #video-caption.start { top: 30vh; } }
 #video-caption.end { bottom: 7vh; }
-#video-caption.end b { display: block; color: #ffd23f; font-size: 6.4vh; letter-spacing: 0.02em; }
-#video-caption.end span { display: block; color: #dce2f0; font-size: 3.4vh; margin-top: 0.4vh; }
+#video-caption.end b { display: block; color: #ffd23f; font-size: min(6.4vh, 11vw); letter-spacing: 0.02em; }
+#video-caption.end span { display: block; color: #dce2f0; font-size: min(3.4vh, 5.6vw); margin-top: 0.4vh; }
 #video-tag { position: absolute; right: 2vh; top: 8.5vh; z-index: 20; display: none; padding: 0.5vh 1.4vh; border-radius: 99px;
   background: rgba(8, 10, 20, 0.8); border: 0.25vh solid #ffd23f; color: #ffd23f; font: 800 2.6vh "Helvetica Neue", Arial, sans-serif; }
 #video-tag.show { display: block; }

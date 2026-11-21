@@ -9,7 +9,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { captureFrames, launch, scanTimeline, serveViewer } from "./teaser/capture";
+import { captureFrames, launch, planCaption, scanTimeline, serveViewer } from "./teaser/capture";
 import { cuesOnOutput, encodeAll, stills, writeAudio, writeReadme } from "./teaser/media";
 import { OptionError, parseTeaserArgs } from "./teaser/options";
 import { cleanup, deliver, teaserPaths } from "./teaser/paths";
@@ -60,7 +60,8 @@ try {
   const h = opts.sizes[0]!;
   const size = { w: Math.round((h * 16) / 9), h };
   let last = 0;
-  const cap = await captureFrames(browser, server.url, plan, size, opts.workers, paths.frames, (n) => {
+  const startCaption = planCaption(got.rec.labels ?? []);
+  const cap = await captureFrames(browser, server.url, plan, size, opts.workers, paths.frames, startCaption, (n) => {
     if (n - last >= 600 || n === plan.frames.length) {
       last = n;
       process.stdout.write(`\r  capture: ${n}/${plan.frames.length} frames`);
@@ -80,7 +81,7 @@ try {
 
   const made = await stills(files[0]!.file, plan, paths.staging);
   timing["video total (excluding AI matches)"] = (performance.now() - tVideo) / 1000;
-  writeReadme(paths.staging, { rec: got.rec, from: got.from, plan, files, stills: made, counts: facts.counts, candidates: got.candidates, timing, audio });
+  writeReadme(paths.staging, { rec: got.rec, from: got.from, plan, files, stills: made, counts: facts.counts, candidates: got.candidates, timing, audio, startCaption });
   writeFileSync(join(paths.staging, "timing.json"), JSON.stringify(timing, null, 1));
   phase("stills and README");
   const delivered = deliver(paths);

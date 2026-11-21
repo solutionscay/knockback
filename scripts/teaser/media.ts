@@ -27,13 +27,18 @@ export function writeAudio(file: string, plan: Plan, cues: LoggedCue[]) {
   return { played: mix.played, dropped: mix.dropped, peakDb: 20 * Math.log10(mix.peak || 1e-9) };
 }
 
-async function ffmpeg(args: string[]) {
+export async function ffmpeg(args: string[]) {
   const p = Bun.spawn(["ffmpeg", "-y", "-loglevel", "error", ...args], { stdout: "ignore", stderr: "pipe" });
   const code = await p.exited;
   if (code !== 0) throw new Error(`ffmpeg failed: ${(await new Response(p.stderr).text()).slice(-800)}`);
 }
 
 export const MAX_720_BYTES = 29.5e6;
+
+/** The video bitrate (kbit/s) that keeps a `length`-second file with 160 kbit/s AAC under maxBytes. */
+export function fitKbps(length: number, maxBytes: number): number {
+  return Math.floor(((maxBytes * 0.97 * 8) / length - 160e3) / 1000);
+}
 
 /**
  * Encode the frames + audio at each height (in parallel). The capture is at the largest height; smaller ones
@@ -50,7 +55,7 @@ export async function encodeAll(framesDir: string, audio: string, fps: number, l
   const files = await Promise.all(sizes.map((h) => enc(h, ["-crf", h >= 1080 ? "21" : "23"])));
   const i720 = sizes.indexOf(720);
   if (i720 >= 0 && statSync(files[i720]!).size > MAX_720_BYTES) {
-    const kbps = Math.floor(((MAX_720_BYTES * 0.97 * 8) / length - 160e3) / 1000);
+    const kbps = fitKbps(length, MAX_720_BYTES);
     files[i720] = await enc(720, ["-b:v", `${kbps}k`, "-maxrate", `${Math.round(kbps * 1.4)}k`, "-bufsize", `${kbps * 2}k`]);
   }
   return files.map((f) => ({ file: f, bytes: statSync(f).size }));
@@ -116,6 +121,7 @@ export interface ReadmeInput {
   candidates?: { file: string; score: number; seconds: number }[];
   timing: Record<string, number>;
   audio: { played: number; dropped: number; peakDb: number };
+  startCaption: string | null;
 }
 
 export function writeReadme(dir: string, x: ReadmeInput) {
@@ -151,7 +157,7 @@ export function writeReadme(dir: string, x: ReadmeInput) {
     "|---|---|",
     ...sceneList(x.plan, s.names),
     "",
-    `Captions: "Claude, Codex and Grok plan the fight" over the round 1 cards; "KNOCKBACK · AI agents plan. Physics decides." over the last 3 s.`,
+    `Captions: ${x.startCaption ? `"${x.startCaption}" over the round 1 cards; ` : ""}"KNOCKBACK · AI agents plan. Physics decides." over the last 3 s.`,
     "",
     "## The match in numbers",
     "",

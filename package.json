@@ -12,6 +12,7 @@
     "match-server": "bun scripts/match-server.ts",
     "ai-eval": "bun scripts/ai-eval.ts",
     "teaser": "bun scripts/teaser.ts",
+    "montage": "bun scripts/montage.ts",
     "models": "bun scripts/models.ts",
     "db:reset": "bun scripts/db-reset.ts",
     "keys": "bun scripts/keys.ts"

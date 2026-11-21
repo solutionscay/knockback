@@ -46,7 +46,7 @@ So a slow or network `--out` costs one copy of the results. With the frames on t
 | Every round in full, continuous, no jump cuts | 3·2·1·FIGHT! and the whole fight. Only **dead stretches** play at 2× with a "2×" tag: 3 s or more with no two fighters within 7 m and no action event within 1.5 s, found by replaying the record in the sim. Busy matches have none. |
 | Round-end and win screens with the scoreboard | Every round-end screen in full, and 8 s of the win screen |
 | Clean screen | Video mode hides the camera bar, the buttons and the dialogue SKIP and SPACE hints. The clock and plan chips stay. |
-| Captions only at the start and end | "Claude, Codex and Grok plan the fight" over round 1's cards; "KNOCKBACK · AI agents plan. Physics decides." over the last 3 s. Both are drawn by the viewer's caption box, so the font matches the game. |
+| Captions only at the start and end | The agents' models over round 1's cards ("Claude Haiku 5.5, GPT‑6 and Big Pickle plan the fight"; house bots are not named, a house-bot match has no start caption); "KNOCKBACK · AI agents plan. Physics decides." over the last 3 s. Both are drawn by the viewer's caption box, so the font matches the game; in a portrait frame it wraps and sits lower, in the empty sky. |
 | No slow motion | Video mode turns off the K.O. slow motion. The short impact pauses (0.05–0.14 s) stay: they are game feel, not slow motion. |
 | Sound | The capture logs every frame's sound cues (`__kb.drainSounds()`). They are moved onto the output timeline (2× parts compress) and mixed by the offline mixer used by `scripts/sound-mix.ts` ([sound.md](sound.md)). |
 
@@ -79,6 +79,35 @@ Measured full runs: a match with 2 minutes of fighting, three rounds (record `ai
 `--best-of n` adds the AI matches themselves (they run in parallel; two took 36 s). Encoding the 1080p file is the biggest step; `--sizes 720` skips it.
 
 **Why no real-time capture:** frame stepping is exact and deterministic, so no frames are dropped and the timing is right. Parallel pages already make it faster than real time at 720p, and close to it at 1080p.
+
+## Montage: `bun run montage`
+
+A posting montage of short mayhem clips from several records (#74), made by the same pipeline (real viewer in video mode, the sim pass, the capture, the sound mix):
+
+```bash
+bun run montage records/arena/                 # a folder of records (or a list of files)
+bun run montage --server http://localhost:5176 # the newest finished records with AI agents (up to 16)
+```
+
+| Option | Meaning |
+|---|---|
+| `<folder or files>` / `--server <url>` | The records. Each must replay on the current sim; one that does not is skipped with a note. |
+| `--out <dir>` | Output folder (default `videos/montage-<date>`) |
+| `--workers <n>` | Parallel capture pages per record (default 3) |
+| `--work <dir>`, `--keep-work` | As for the teaser |
+
+How the cuts are made (`scripts/montage/cuts.ts`):
+
+- The sim pass gives every fight's big moments with the teaser's weights (explosion, chain snap, platform fall, ring-out, K.O., sudden death, fire, hits).
+- A burst starts 0.8 s before a big moment and takes the big moments that follow within 1 s of each other; it ends 1.2 s after the last one, 2 to 4 s long, inside the fight. A cut that reaches the fight's last K.O. ends on it (with nobody left, the camera drifts off at once).
+- Score: each K.O. counts in full; n moments of another kind count weight × √n, so variety beats a ninth explosion.
+- The best bursts are kept until they make about 22 s (6 to 8 cuts), at most 2 per record, never two of the same moment.
+- Order: the smaller half (its strongest first), then 2 agents' cards (the record with the most agents, its rarest models) under the models caption, then the bigger half rising to the biggest cut, then 2.5 s of that record's win screen with the title caption. Two cuts of one record are not adjacent.
+
+Out: `knockback-montage-1080x1920.mp4` and `knockback-montage-1920x1080.mp4` (60 fps, H.264 + AAC, `+faststart`, each under 30 MB: re-encoded at the bitrate that fits when needed), `README.md` with the cut list, `cuts.json`.
+
+- **The vertical cut** crops each fight shot from the 1920×1080 capture: 900×820 px below the HUD chips, centred on the weighted median of the cut's moments on screen, scaled to 1080 wide over a blurred copy. View all in a portrait viewport would cut fighters off at the sides. The cards and the title card are captured in a 1080×1920 viewport, where the viewer lays them out for portrait.
+- **Sound:** each shot's own game sound (cues from 0.6 s before the shot still ring into it), 40 ms crossfades at every cut, a 0.6 s fade-out under the title.
 
 ## Viewer API used (capture mode)
 

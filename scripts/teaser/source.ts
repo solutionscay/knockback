@@ -1,7 +1,7 @@
 /**
  * Where the match comes from (bun run teaser): a record file, a house-bot match by seed, the best of n real AI
  * matches, or the newest finished match of a running match server. Also the sim pass over a record: dead
- * stretches per round (for the 2x parts) and an action score (for --best-of).
+ * stretches per round (for the 2x parts), the big moments (for bun run montage) and an action score (for --best-of).
  */
 import { mkdirSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -12,9 +12,26 @@ import type { Source } from "./options";
 /** Sim events that count as action (dead stretches, the score). */
 const ACTION = new Set(["fire", "pellet", "swing", "grapple", "hit", "ko", "explosion", "carve", "break", "shatter", "detach", "impact", "suddenDeath", "lit", "zap", "shieldPop", "chainBreak", "platformFall", "ignite", "burn"]);
 
+/** How much each big moment counts (the --best-of score and the montage cuts): the big moments count more than the steady ones. */
+export const MAYHEM: Record<string, number> = { explosion: 1, chainBreak: 1.5, platformFall: 4, "ko.ringout": 6, "ko.hp": 5, suddenDeath: 6, ignite: 0.3, hit: 0.1 };
+
+/** One weighted moment of a fight: where (world meters) and when (sim tick). KOs carry who went out and who did it. */
+export interface Moment {
+  tick: number;
+  kind: string;
+  weight: number;
+  x: number;
+  fighter?: number;
+  by?: number;
+}
+
 export interface MatchFacts {
   /** dead stretches per fight, in sim ticks */
   dead: [number, number][][];
+  /** the weighted moments of each fight (kinds in MAYHEM), in tick order */
+  moments: Moment[][];
+  /** the last sim tick of each fight */
+  endTicks: number[];
   /** fight length per round, seconds */
   fightSeconds: number[];
   /** event counts over the match */
@@ -30,14 +47,22 @@ export async function matchFacts(rec: MatchRecord): Promise<MatchFacts> {
   const dead: [number, number][][] = [];
   const fightSeconds: number[] = [];
   const counts: Record<string, number> = {};
+  const moments: Moment[][] = [];
+  const endTicks: number[] = [];
   for (let r = 0; r < rec.rounds.length; r++) {
     m.prepareRound();
     const sim = m.fight!.sim;
     const acts: number[] = [];
+    const ms: Moment[] = [];
     m.onEvent = (e) => {
       const k = e.type === "ko" ? `ko.${e.cause}` : e.type;
       counts[k] = (counts[k] ?? 0) + 1;
       if (ACTION.has(e.type)) acts.push(e.tick);
+      const weight = MAYHEM[k];
+      if (weight !== undefined) {
+        const x = "x" in e ? e.x : NaN;
+        ms.push({ tick: e.tick, kind: k, weight, x, ...(e.type === "ko" ? { fighter: e.fighter, by: e.by } : {}) });
+      }
     };
     const near: boolean[] = [];
     while (!m.step()) {
@@ -47,14 +72,14 @@ export async function matchFacts(rec: MatchRecord): Promise<MatchFacts> {
       near[sim.tick] = close;
     }
     fightSeconds.push(sim.tick / 60);
+    endTicks.push(sim.tick);
+    moments.push(ms);
     dead.push(deadStretches(sim.tick, acts, near));
     m.finishRound();
   }
   const secs = fightSeconds.reduce((a, b) => a + b, 0) || 1;
-  // weights: the big moments count more than the steady ones
-  const w = (k: string, x: number) => (counts[k] ?? 0) * x;
-  const score = (w("explosion", 1) + w("chainBreak", 1.5) + w("platformFall", 4) + w("ko.ringout", 6) + w("ko.hp", 5) + w("suddenDeath", 6) + w("ignite", 0.3) + w("hit", 0.1)) / secs;
-  return { dead, fightSeconds, counts, score };
+  const score = Object.entries(MAYHEM).reduce((a, [k, w]) => a + (counts[k] ?? 0) * w, 0) / secs;
+  return { dead, moments, endTicks, fightSeconds, counts, score };
 }
 
 export interface Got {

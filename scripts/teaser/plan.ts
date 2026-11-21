@@ -74,6 +74,11 @@ export function typedFrame(from: number, to: number): number {
   return from + Math.ceil((0.2 + Math.min(1.6, dur * 0.5)) * STEP_HZ);
 }
 
+/** The part of a card beat [from, to] that is shown: from CARD_LEAD_S before its line is fully typed to its end, at most CARD_MAX_S. */
+export function cardWindow(from: number, to: number): { from: number; to: number } {
+  return { from: Math.max(from, typedFrame(from, to) - Math.round(CARD_LEAD_S * STEP_HZ), to - Math.round(CARD_MAX_S * STEP_HZ) + 1), to };
+}
+
 /**
  * Plan the video. deadTicks[r] = the dead stretches of fight r+1 as [fromTick, toTick] (sim ticks).
  */
@@ -96,8 +101,7 @@ export function planVideo(t: Timeline, deadTicks: [number, number][][], fps: 30 
       case "dialogue": {
         if (!lastWasCard) roundOfCards++;
         lastWasCard = true;
-        const start = Math.max(b.from, typedFrame(b.from, b.to) - Math.round(CARD_LEAD_S * STEP_HZ), b.to - Math.round(CARD_MAX_S * STEP_HZ) + 1);
-        add(start, b.to, `trash-talk card (round ${roundOfCards})`);
+        add(cardWindow(b.from, b.to).from, b.to, `trash-talk card (round ${roundOfCards})`);
         break;
       }
       case "countdown":

@@ -8,9 +8,21 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import index from "../../index.html";
 import type { LoggedCue } from "../../src/viewer/audio/engine";
+import { modelOf } from "../../src/stats/models";
 import { chunks, type Plan, type Timeline } from "./plan";
 
-export const START_CAPTION = "Claude, Codex and Grok plan the fight";
+/**
+ * The start caption over the cards: the agents' models, as their badges name them ("Claude Haiku 5.5, GPT-6 and
+ * Big Pickle plan the fight"). House bots are not named; with no agent there is no caption (null).
+ */
+export function planCaption(labels: readonly (string | undefined)[]): string | null {
+  const word = (w: string) => (/\d/.test(w) || ["GPT", "CLI", "AI", "XAI"].includes(w) ? w : w.charAt(0) + w.slice(1).toLowerCase());
+  const names = [...new Set(labels.map((l) => modelOf(l ?? null)).filter((m) => m.provider !== "house").map((m) => m.name.replace(/\s*\(.*\)\s*$/, "").split(/\s+/).map(word).join(" ").replace(/-/g, "\u2011")))]; // a model name never breaks at its hyphen
+  if (!names.length) return null;
+  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${list} plan${names.length === 1 ? "s" : ""} the fight`;
+}
+
 export const END_TITLE = "KNOCKBACK";
 export const END_TEXT = "AI agents plan. Physics decides.";
 
@@ -47,7 +59,7 @@ async function openPage(browser: Browser, base: string, w: number, h: number): P
 
 type Kb = {
   advance(dt: number, frames?: number, render?: boolean): void;
-  state(): { finished: boolean; beat: string };
+  state(): { finished: boolean; beat: string; view: View | null };
   timeline(): Timeline;
   drainSounds(): LoggedCue[];
   caption(c: { kind: "start" | "end"; title?: string; text: string } | null): void;
@@ -74,20 +86,32 @@ export async function scanTimeline(browser: Browser, base: string): Promise<Time
   return t;
 }
 
+/** The camera of a drawn frame (world meters, px per meter): screen x = W / 2 + (x - cx - shx) * s. */
+export interface View {
+  cx: number;
+  cy: number;
+  s: number;
+  shx: number;
+  shy: number;
+}
+
 export interface CaptureResult {
   /** sound cues with the source frame they happened in */
   cues: (LoggedCue & { frame: number })[];
+  /** the camera of every saved frame, by source frame */
+  views: Map<number, View>;
   frames: number;
 }
 
 /**
  * Capture the plan's frames with `workers` pages in parallel. JPEGs go to framesDir as %06d.jpg (output index).
- * onProgress gets the number of frames saved so far.
+ * `startCaption` is the text of the plan's "start" caption (null: none). onProgress gets the number of frames saved so far.
  */
-export async function captureFrames(browser: Browser, base: string, plan: Plan, size: { w: number; h: number }, workers: number, framesDir: string, onProgress?: (n: number) => void): Promise<CaptureResult> {
+export async function captureFrames(browser: Browser, base: string, plan: Plan, size: { w: number; h: number }, workers: number, framesDir: string, startCaption: string | null, onProgress?: (n: number) => void): Promise<CaptureResult> {
   mkdirSync(framesDir, { recursive: true });
   const parts = chunks(plan.frames, workers);
   let saved = 0;
+  const views = new Map<number, View>();
   const results = await Promise.all(
     parts.map(async (part, pi) => {
       const page = await openPage(browser, base, size.w, size.h);
@@ -113,7 +137,7 @@ export async function captureFrames(browser: Browser, base: string, plan: Plan, 
       while (frame < last) {
         frame++;
         const f = want.get(frame);
-        const capNow: string | null = f ? f.caption : caption;
+        const capNow: string | null = f ? (f.caption === "start" && !startCaption ? null : f.caption) : caption;
         const tagNow: boolean = f ? f.tag : tag;
         const got = await page.evaluate(
           ([draw, cap, cKind, tg, tChange]) => {
@@ -121,13 +145,14 @@ export async function captureFrames(browser: Browser, base: string, plan: Plan, 
             if (cKind) kb.caption(cap === "start" ? { kind: "start", text: cKind[0] } : cap === "end" ? { kind: "end", title: cKind[1], text: cKind[2] } : null);
             if (tChange) kb.tag(tg);
             kb.advance(1 / 60, 1, draw);
-            return kb.drainSounds();
+            return { cues: kb.drainSounds(), view: draw ? kb.state().view : null };
           },
-          [!!f, capNow, capNow !== caption ? [START_CAPTION, END_TITLE, END_TEXT] : null, tagNow, tagNow !== tag] as const,
+          [!!f, capNow, capNow !== caption ? [startCaption ?? "", END_TITLE, END_TEXT] : null, tagNow, tagNow !== tag] as const,
         );
         caption = capNow;
         tag = tagNow;
-        for (const c of got) cues.push({ ...c, frame });
+        for (const c of got.cues) cues.push({ ...c, frame });
+        if (got.view) views.set(frame, got.view);
         if (f) {
           const r = (await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 90, optimizeForSpeed: true })) as { data: string };
           writeFileSync(join(framesDir, `${String(f.out).padStart(6, "0")}.jpg`), Buffer.from(r.data, "base64"));
@@ -138,5 +163,5 @@ export async function captureFrames(browser: Browser, base: string, plan: Plan, 
       return cues;
     }),
   );
-  return { cues: results.flat(), frames: saved };
+  return { cues: results.flat(), views, frames: saved };
 }
