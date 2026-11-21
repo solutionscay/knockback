@@ -112,7 +112,7 @@ function looseWeapons(sim: Sim): number {
   for (const e of sim.entities.values()) if (e.kind === "item" && !e.dead && isPickupWeapon(e.itemType)) n++;
   return n;
 }
-function dropX(sim: Sim): number {
+function dropX(sim: Sim, rng: Rng = sim.rng): number {
   const z = sim.zone;
   const lo = Math.max(sim.level.minX + 3, z.center - z.half + 1.5);
   const hi = Math.min(sim.level.maxX - 3, z.center + z.half - 1.5);
@@ -126,16 +126,25 @@ function dropX(sim: Sim): number {
     if (points.length) {
       const nearest = (x: number) => obstacles.reduce((d, other) => Math.min(d, Math.abs(x - other)), Infinity);
       const clear = points.filter(x => nearest(x) >= avoid);
-      if (clear.length) return sim.rng.pick(clear);
+      if (clear.length) return rng.pick(clear);
       // The closing zone may leave no clear landing. Prefer the least crowded column.
       return points.reduce((best, x) => nearest(x) > nearest(best) ? x : best);
     }
   }
   // land on something: pick among nav surfaces inside the zone
   const surf = sim.nav.surfaces.filter((s) => s.x1 > lo + 0.5 && s.x0 < hi - 0.5 && s.x1 - s.x0 > 1.5);
-  if (surf.length === 0) return sim.rng.range(lo, hi);
-  const s = sim.rng.pick(surf);
-  return sim.rng.range(Math.max(lo, s.x0 + 0.5), Math.min(hi, s.x1 - 0.5));
+  if (surf.length === 0) return rng.range(lo, hi);
+  const s = rng.pick(surf);
+  return rng.range(Math.max(lo, s.x0 + 0.5), Math.min(hi, s.x1 - 0.5));
+}
+
+/**
+ * Start weapons that fall from the sky early in the round (#16), at clear points away from fighters and items.
+ * They draw from their own stream of the round seed, so the rest of the round's chances stay as they were.
+ */
+export function skyDrop(sim: Sim, rng: Rng) {
+  const weapons = ordinaryWeapons(sim);
+  for (let n = 0; n < sim.ruleset.pickups.armory.spread.skyDrops; n++) sim.spawnItem(rng.pick(weapons), dropX(sim, rng), sim.ruleset.pickups.supply.itemHeight);
 }
 
 export function supplyDrop(sim: Sim, n: number) {

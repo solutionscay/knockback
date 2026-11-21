@@ -1,11 +1,11 @@
-import { arenaQuarter, quarterCenter } from "./level-spawns";
+import { quarterCenter } from "./level-spawns";
 import { isPickupWeapon, type Weapon } from "./sim-types";
 import type { Sim } from "./sim";
 import type { SpawnPoint } from "./level-spawns";
 
 type PickupWeapon = Exclude<Weapon, "fist">;
 
-/** Ordinary crates and drops use the same weapon pool as the quarter caches. */
+/** Ordinary crates and drops use the same weapon pool as the start caches. */
 export function ordinaryWeapons(sim: Sim): readonly PickupWeapon[] {
   const enabled = sim.ruleset.weapons.enabled.filter(isPickupWeapon);
   const spread = sim.ruleset.pickups.armory.spread;
@@ -14,30 +14,45 @@ export function ordinaryWeapons(sim: Sim): readonly PickupWeapon[] {
   return eligible.length ? eligible : enabled;
 }
 
+/**
+ * Contested start (#16): no weapon belongs to one spawn. Ordinary caches lie between neighbouring spawns, on low
+ * ground every fighter can reach and come back from; the power weapons go high or exposed; more weapons fall from
+ * the sky early in the round (sim-items skyDrop).
+ */
 export function stockSpreadArmory(sim: Sim, spawns: readonly SpawnPoint[]) {
   const { minX, width } = sim.level;
   const armory = sim.ruleset.pickups.armory;
   const { spread } = armory;
   const z = sim.zone;
+  const nav = sim.nav;
   const lo = Math.max(minX + 1, z.center - z.half + 1);
   const hi = Math.min(sim.level.maxX - 1, z.center + z.half - 1);
-  const quarter = (x: number) => arenaQuarter(minX, width, x);
   const distance = (x: number, y: number, p: SpawnPoint) => (x - p.x) ** 2 + (y - p.y) ** 2;
-  const floor = sim.nav.surfaceAt(spawns[0]!.x, spawns[0]!.y + 0.05);
-  const reachable = new Set<number>();
-  if (floor) {
-    const queue = [floor.id];
-    reachable.add(floor.id);
-    for (const from of queue) for (const { to } of sim.nav.out[from]!) {
-      if (reachable.has(to)) continue;
+  // Surfaces every fighter can reach from its spawn and come back from.
+  const back: number[][] = nav.surfaces.map(() => []);
+  for (const links of nav.out) for (const l of links) back[l.to]!.push(l.from);
+  const walk = (start: number, next: (id: number) => Iterable<number>) => {
+    const seen = new Set([start]);
+    const queue = [start];
+    for (const from of queue) for (const to of next(from)) {
+      if (seen.has(to)) continue;
+      seen.add(to);
       queue.push(to);
-      reachable.add(to);
     }
-  }
+    return seen;
+  };
+  const routes = spawns.flatMap(sp => {
+    const s = nav.surfaceAt(sp.x, sp.y + 0.05);
+    return s ? [walk(s.id, id => nav.out[id]!.map(l => l.to)), walk(s.id, id => back[id]!)] : [];
+  });
+  const reachable = (surface: number) => routes.length > 0 && routes.every(set => set.has(surface));
   // Reserve safe landing points with clear space for the pickup collider.
-  const candidates = sim.nav.points.filter(p => p.x >= lo && p.x <= hi && reachable.has(p.surface)
-    && !sim.nav.surfaces[p.surface]!.fragile
+  const candidates = nav.points.filter(p => p.x >= lo && p.x <= hi && reachable(p.surface)
+    && !nav.surfaces[p.surface]!.fragile
     && !sim.grid.solidAt(p.x, p.y + sim.ruleset.pickups.item.size));
+  // How high a point is above the lowest walkable ground at its x.
+  const ground = (x: number) => Math.min(...nav.surfaces.filter(s => !s.fragile && s.x0 <= x && s.x1 >= x).map(s => s.y));
+  const low = (p: SpawnPoint) => p.y - ground(p.x) <= spread.cacheMaxRise;
   const placed: SpawnPoint[] = sim.items().map(e => e.body.translation());
   const blockedByProp = (p: SpawnPoint) => sim.level.props.some(prop => {
     const [hw, hh] = sim.ruleset.arena.propHalf[prop.kind];
@@ -77,25 +92,17 @@ export function stockSpreadArmory(sim: Sim, spawns: readonly SpawnPoint[]) {
   }
   const bag = sim.rng.shuffle(sim.ruleset.weapons.enabled.filter(isPickupWeapon).filter(w => !rare.includes(w)));
   let i = 0;
-  const cache = (p: SpawnPoint | null) => {
-    if (p && bag.length) put(bag[i++ % bag.length]!, p);
-  };
-  for (const sp of spawns.slice().sort((a, b) => a.x - b.x)) {
-    const side = sp.x < 0 ? -1 : 1;
-    const q = quarter(sp.x);
-    const aim = sp.x + side * armory.spawnOffset;
-    for (let n = 0; n < armory.nearSpawn; n++) {
-      const inQuarter = (p: SpawnPoint) => quarter(p.x) === q;
-      const score = (p: SpawnPoint) => Math.abs(p.x - aim) + Math.abs(p.y - sp.y - spread.starterRise) * 1.5;
-      cache(choose(p => inQuarter(p) && away(p, spread.minSpawnDistance), score)
-        ?? choose(inQuarter, p => score(p) - closestSpawn2(p)));
-    }
-  }
-  for (let q = 0; q < 4; q++) {
-    const aim = quarterCenter(minX, width, q);
-    for (let n = 0; n < spread.zoneCaches; n++) {
-      cache(choose(p => quarter(p.x) === q && away(p, spread.minSpawnDistance),
-        p => Math.abs(p.x - aim) - p.y * 0.5));
+  // Between neighbouring spawns: midway, as near equally far from both as the ground allows.
+  const byX = spawns.slice().sort((a, b) => a.x - b.x);
+  for (let k = 0; k + 1 < byX.length && bag.length; k++) {
+    const a = byX[k]!;
+    const b = byX[k + 1]!;
+    const mid = (a.x + b.x) / 2;
+    const between = (p: SpawnPoint) => p.x > a.x && p.x < b.x;
+    const score = (p: SpawnPoint) => Math.abs(p.x - mid) + Math.abs(Math.sqrt(distance(p.x, p.y, a)) - Math.sqrt(distance(p.x, p.y, b)));
+    for (let n = 0; n < spread.betweenCaches; n++) {
+      const p = choose(p => between(p) && low(p), score) ?? choose(between, score);
+      if (p) put(bag[i++ % bag.length]!, p);
     }
   }
   if (sim.ruleset.pickups.enabled.includes("jetpack")) {

@@ -2,7 +2,8 @@
  * Contract: fire (#33). Fire spreads through planks by seeded chance, eats the chain of a burning anchor (#34), burns
  * loose pieces down, and sets fighters who touch it alight, credited to whoever lit it. All of it is deterministic.
  *
- * The scene is built by hand (no level generator), so it moves only when fire, blasts or chains change.
+ * The scene is built by hand (no level generator), so it moves only when fire, blasts or chains change, or when
+ * Classic's start pickups do (the scene runs Classic, so its armory and sky drops land in it).
  */
 import { beforeAll, describe, expect, test } from "bun:test";
 import { CELL, CLASSIC, F_ANCHOR, Grid, initPhysics, Mat, NO_INPUT, Sim, type LevelDef, type SimEvent } from "../src/sim";
@@ -115,10 +116,10 @@ describe("fire", () => {
     expect(again.stats).toEqual(sim.stats);
     const { firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited } = sim.stats;
     expect({ hash: sim.hash(), firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited }).toEqual({
-      hash: "42bcddaa",
+      hash: "c0b59792",
       firesStarted: 10,
-      cellsIgnited: 29,
-      cellsBurnedDown: 8,
+      cellsIgnited: 31,
+      cellsBurnedDown: 10,
       cellsBurnedOut: 14,
       propsIgnited: 1,
       propsBurnedOff: 1,

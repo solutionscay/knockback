@@ -23,7 +23,8 @@ const { size: _crateSize, ...crate } = C.CRATE;
 export const CLOSE_ARMORY = {
   ...C.ARMORY,
   spread: {
-    enabled: false, zoneCaches: 1, minSpawnDistance: 9, starterRise: 2.5, preferLocalTicks: 7 * C.TICK_RATE, otherQuarterCost: 26,
+    enabled: false, betweenCaches: 2, cacheMaxRise: 2, skyDrops: 8, skyDropTicks: C.TICK_RATE / 2,
+    minSpawnDistance: 9, preferLocalTicks: 7 * C.TICK_RATE, otherQuarterCost: 26,
     powerWeapons: ["railgun", "sniper"] as readonly Exclude<Weapon, "fist">[], powerMinDistance: 10, powerMinHeight: 4,
   },
 };
@@ -96,7 +97,7 @@ export const RULESET_DEFAULTS = {
   },
   pickups: {
     enabled: POWER_LIST as readonly (typeof POWER_LIST)[number][],
-    item: C.ITEM, power: C.POWER, armory: { ...CLOSE_ARMORY, spawnOffset: 11, spread: { ...CLOSE_ARMORY.spread, enabled: true } },
+    item: C.ITEM, power: C.POWER, armory: { ...CLOSE_ARMORY, spread: { ...CLOSE_ARMORY.spread, enabled: true } },
     supply: { ...C.SUPPLY, firstTick: 8 * C.TICK_RATE, itemHeight: 16, propEvery: 2, tntChance: 0.3, propHeight: 15, extraBarrelHeight: 16.4, barrelOffset: 0.75, avoidDistance: 7 },
     weights: { health: 3, shield: 2.5, speed: 2, heavy: 1.5, damage: 2, jump: 2, jetpack: 2 },
   },
@@ -105,7 +106,7 @@ export const RULESET_DEFAULTS = {
     propHalf: PROP_HALF, chain: C.CHAIN,
     props: { barrel: C.BARREL, block, crate, crush: C.CRUSH, gas: C.GAS, glass: C.GLASS, pad: C.PAD, steel: C.STEEL, tnt: C.TNT, weight: C.WEIGHT },
     terrain: { hitPoints: MAT_HP.map(n => Number.isFinite(n) ? n : 0), density: MAT_DENSITY, crumbleDps: C.CRUMBLE_DPS, debris: C.DEBRIS },
-    navigation: { headroomCells: 4, jumpMargin: 0.55, maxGap: 4.6, dropFall: 3 },
+    navigation: { headroomCells: 4, jumpMargin: 0.55, maxGap: 3.5, dropFall: 3 },
   },
   zone: { boundary: { ...C.ZONE, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: { ...C.STALEMATE, graceTicks: 20 * C.TICK_RATE } },
   fire: { ...C.FIRE, materials: [Mat.Wood, Mat.Crumble] as readonly Mat[], props: ["crate", "barrel", "tnt", "gas"] as readonly string[] },

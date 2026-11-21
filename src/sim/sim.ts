@@ -18,7 +18,7 @@ import { Rng } from "./rng";
 import { explode } from "./sim-blast";
 import { damageFighter, kbMult, knockOut, removeFighterBody } from "./sim-damage";
 import { EntityStore } from "./sim-entities";
-import { applyItem, checkPickups, items, randomPower, setPrefs, spawnItem, stockArmory, supplyDrop, tickPowers, wantsWeapon } from "./sim-items";
+import { applyItem, checkPickups, items, randomPower, setPrefs, spawnItem, skyDrop, stockArmory, supplyDrop, tickPowers, wantsWeapon } from "./sim-items";
 import { addFighter, applyInput, checkGrounded } from "./sim-movement";
 import { addProp, dangers, updateObjects } from "./sim-objects";
 import { crumbleUnder, flushTerrain } from "./sim-terrain";
@@ -54,6 +54,8 @@ export class Sim {
   navVersion = 0;
   private lastNavTick = -999;
   readonly rng: Rng;
+  /** the sky drops' own stream of the round seed (#16) */
+  private readonly skyRng: Rng;
   readonly world: RAPIER.World;
   readonly terrain: Terrain;
   tick = 0;
@@ -118,6 +120,7 @@ export class Sim {
     this.level = level ?? generateLevel(seed, undefined, ruleset);
     this.grid = this.level.grid.clone();
     this.rng = new Rng(seed);
+    this.skyRng = new Rng((seed ^ 0x2545f491) >>> 0);
     this.world = new RAPIER.World({ x: 0, y: -this.ruleset.combat.gravity });
     this.world.timestep = DT;
     this.entityStore = new EntityStore(this.world);
@@ -247,6 +250,8 @@ export class Sim {
       z.half = zoneHalfAt(tick, z.startHalf, this.ruleset);
       this.zoneBehavior.checkStalemate(this, tick);
     }
+    const opening = this.ruleset.pickups.armory.spread;
+    if (!this.roundOver && opening.enabled && opening.skyDrops > 0 && tick === opening.skyDropTicks) skyDrop(this, this.skyRng);
     if (!this.roundOver && tick >= this.ruleset.pickups.supply.firstTick && (tick - this.ruleset.pickups.supply.firstTick) % this.ruleset.pickups.supply.interval === 0) supplyDrop(this, this.supplyCount++);
 
     for (const f of this.fighters) {
@@ -254,6 +259,11 @@ export class Sim {
       tickPowers(this, f);
       applyInput(this, f, inputs[f.id] ?? NO_INPUT);
       if (!this.roundOver) zonePush(this, f);
+      else {
+        // the walls stopped: nobody is outside any more (a winner caught outside at the decision included)
+        f.outsideZone = false;
+        f.outsideTicks = 0;
+      }
     }
     this.softCeiling();
     updateRockets(this);
@@ -420,6 +430,7 @@ export class Sim {
       num(ch.piece);
     }
     for (const s of this.rng.state()) num(s);
+    for (const s of this.skyRng.state()) num(s);
     return h.toString(16).padStart(8, "0");
   }
 }
