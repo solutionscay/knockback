@@ -1,7 +1,8 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { DT, G, groups } from "./constants";
+import { DT, G, groups, SPEED_ACCEL_MUL } from "./constants";
 import type { Sim } from "./sim";
 import { ALL_WEAPONS, type Entity, type Fighter, type Input } from "./sim-types";
+import type { Ruleset } from "./ruleset";
 import { type Look } from "./identity";
 import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
@@ -96,6 +97,19 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
   sim.fighters.push(f);
   sim.entityStore.register(e);
 }
+/**
+ * A fighter's top walk speed now (#79): its build's speed with the Speed power-up (capped by `builds.caps.walkSpeed`),
+ * then the Heavy power-up and the jetpack.
+ */
+export function walkSpeedNow(ruleset: Ruleset, f: Fighter, thrust = false): number {
+  const P = ruleset.pickups.power;
+  let speed = f.stats.walkSpeed;
+  if (f.power.speed > 0) speed = Math.min(speed * P.speed.mul, ruleset.combat.fighter.walkSpeed * ruleset.builds.caps.walkSpeed);
+  if (f.power.heavy > 0) speed *= P.heavy.speedMul;
+  if (thrust) speed *= P.jetpack.speedMul;
+  return speed;
+}
+
 export function checkGrounded(sim: Sim, f: Fighter): boolean {
   const p = f.entity.body.translation();
   const reach = sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.12;
@@ -132,22 +146,22 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     body.setLinvel({ x: vx, y: vy }, true);
     return;
   }
-  let speed = sim.ruleset.combat.fighter.walkSpeed;
-  if (f.power.speed > 0) speed *= sim.ruleset.pickups.power.speed.mul;
-  if (f.power.heavy > 0) speed *= sim.ruleset.pickups.power.heavy.speedMul;
-  const thrust = inp.thrust && f.power.jetpack > 0;
-  if (thrust) speed *= sim.ruleset.pickups.power.jetpack.speedMul;
+  const thrust = !!inp.thrust && f.power.jetpack > 0;
+  const speed = walkSpeedNow(sim.ruleset, f, thrust);
   const target = clamp(inp.move, -1, 1) * speed;
-  const accel = (f.grounded ? sim.ruleset.combat.fighter.groundAccel : sim.ruleset.combat.fighter.airAccel) * DT * (f.power.speed > 0 ? 1.3 : 1);
+  let accel = (f.grounded ? f.stats.groundAccel : f.stats.airAccel) * DT * (f.power.speed > 0 ? SPEED_ACCEL_MUL : 1);
+  // #79: build speed and the Speed power-up stack within builds.caps.groundAccel
+  if (f.power.speed > 0 && f.grounded) accel = Math.min(accel, sim.ruleset.combat.fighter.groundAccel * DT * sim.ruleset.builds.caps.groundAccel);
   vx += clamp(target - vx, -accel, accel);
   if (inp.jump && f.jumpCd === 0) {
     if (f.grounded) {
-      vy = sim.ruleset.combat.fighter.jumpSpeed;
+      vy = f.stats.jumpSpeed;
       f.jumpCd = 14;
       f.grounded = false;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: false });
     } else if (f.power.jump > 0 && !f.airJumped) {
-      vy = sim.ruleset.combat.fighter.jumpSpeed * 0.95;
+      // the Jump power-up's air jump: a little under the fighter's own jump, within builds.caps.airJump (#79)
+      vy = Math.min(f.stats.jumpSpeed * 0.95, sim.ruleset.combat.fighter.jumpSpeed * sim.ruleset.builds.caps.airJump);
       f.airJumped = true;
       f.jumpCd = 10;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: true });

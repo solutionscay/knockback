@@ -6,6 +6,8 @@ import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
 import { RANGED_STANDOFF, weaponReach } from "./controller-weapons";
 import { onLiveGround } from "./sim-lightning";
+import { walkSpeedNow } from "./sim-movement";
+import { SPEED_ACCEL_MUL } from "./constants";
 import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } from "./tactical";
 
 /** Still, not firing, with a live target this long: the goal is not working (#69). */
@@ -478,7 +480,7 @@ export class ControllerNavigation {
               const ahead = (mp.x - link.takeoffX) * dir;
               moveTarget = ahead > 0.4 ? link.takeoffX - dir * 1.2 : ahead > -2.5 ? link.landX : link.takeoffX;
             }
-            if (Math.abs(mp.x - link.takeoffX) < 0.4 && (!runUp(nav, link) || mv.x * Math.sign(link.landX - link.takeoffX) > sim.ruleset.combat.fighter.walkSpeed * 0.7)) {
+            if (Math.abs(mp.x - link.takeoffX) < 0.4 && (!runUp(nav, link) || mv.x * Math.sign(link.landX - link.takeoffX) > me.stats.walkSpeed * 0.7)) {
               input.jump = true;
               this.activeLink = link;
               this.linkSince = sim.tick;
@@ -506,7 +508,7 @@ export class ControllerNavigation {
     // standing on something that falls (a broken-off chunk, a dropped platform) over nothing: jump off it (#69)
     else if (mv.y < -2 && nav.fallBelow(sim.grid, mp.x, sim.feetY(me)) === Infinity) {
       input.jump = true;
-      moveTarget = this.landing(sim, me, mp, { x: mv.x, y: sim.ruleset.combat.fighter.jumpSpeed }, moveTarget, input);
+      moveTarget = this.landing(sim, me, mp, { x: mv.x, y: me.stats.jumpSpeed }, moveTarget, input);
     }
     // wedged between two corners (not grounded, not moving): push the other way a moment to come free (#69)
     this.wedged = !me.grounded && me.stun === 0 && Math.abs(mv.x) < 0.2 && Math.abs(mv.y) < 0.3 ? this.wedged + 1 : 0;
@@ -579,7 +581,7 @@ export class ControllerNavigation {
     const link = this.edgeLink ?? this.activeLink;
     if (link && link.from === s.id && Math.abs(link.takeoffX - edge) < 1.2 && Math.sign(link.landX - link.takeoffX) === dir) return;
     const v = Math.max(0, mv.x * dir);
-    const room = (edge - mp.x) * dir - v * v / (2 * sim.ruleset.combat.fighter.groundAccel);
+    const room = (edge - mp.x) * dir - v * v / (2 * me.stats.groundAccel);
     if (room > 0.35) return;
     if (sim.nav.fallBelow(sim.grid, edge + dir * 0.6, s.y) !== Infinity) return;
     input.move = 0;
@@ -590,9 +592,9 @@ export class ControllerNavigation {
    * time its feet come down to that surface, from its velocity, air control and gravity.
    */
   private landingSpans(sim: Sim, me: Fighter, mp: { x: number }, mv: { x: number; y: number }) {
-    const F = sim.ruleset.combat.fighter, g = sim.ruleset.combat.gravity;
-    const vmax = F.walkSpeed * (me.power.speed > 0 ? sim.ruleset.pickups.power.speed.mul : 1) * (me.power.heavy > 0 ? sim.ruleset.pickups.power.heavy.speedMul : 1);
-    const acc = F.airAccel * (me.power.speed > 0 ? 1.3 : 1);
+    const g = sim.ruleset.combat.gravity;
+    const vmax = walkSpeedNow(sim.ruleset, me);
+    const acc = me.stats.airAccel * (me.power.speed > 0 ? SPEED_ACCEL_MUL : 1);
     const feet = sim.feetY(me);
     // distance covered in t seconds when steering hard toward `to` (+1 / -1)
     const travel = (to: number, t: number) => {

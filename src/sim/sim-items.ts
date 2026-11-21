@@ -171,11 +171,15 @@ export function tickPowers(sim: Sim, f: Fighter) {
   if (p.damage > 0 && --p.damage === 0) end("damage");
   if (p.jump > 0 && --p.jump === 0) end("jump");
   if (p.heavy > 0 && --p.heavy === 0) {
-    f.entity.collider.setDensity(sim.ruleset.combat.density);
+    f.entity.collider.setDensity(f.stats.density);
     end("heavy");
   }
   if (f.padCd > 0) f.padCd--;
   if (f.crushCd > 0) f.crushCd--;
+}
+/** Body density under the Heavy power-up (#79): the build's density times densityMul, within builds.caps.density. */
+export function heavyDensity(ruleset: Ruleset, f: Fighter): number {
+  return Math.min(f.stats.density * ruleset.pickups.power.heavy.densityMul, ruleset.combat.density * ruleset.builds.caps.density);
 }
 export function dropWeapons(sim: Sim, f: Fighter, x: number, y: number) {
   let side = -1;
@@ -221,7 +225,7 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
   const on = (p: PowerUp) => sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power: p, on: true });
   switch (it) {
     case "health":
-      f.hp = Math.min(sim.ruleset.combat.fighter.maxHp, f.hp + sim.ruleset.pickups.item.healAmount);
+      f.hp = Math.min(f.maxHp, f.hp + sim.ruleset.pickups.item.healAmount);
       return;
     case "shield":
       f.power.shield = sim.ruleset.pickups.power.shield.ticks;
@@ -232,7 +236,7 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
       return on("speed");
     case "heavy":
       f.power.heavy = sim.ruleset.pickups.power.heavy.ticks;
-      f.entity.collider.setDensity(sim.ruleset.combat.density * sim.ruleset.pickups.power.heavy.densityMul);
+      f.entity.collider.setDensity(heavyDensity(sim.ruleset, f));
       return on("heavy");
     case "damage":
       f.power.damage = sim.ruleset.pickups.power.damage.ticks;

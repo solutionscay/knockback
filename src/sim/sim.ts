@@ -17,7 +17,7 @@ import { strategyBuild, type Build } from "./build";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { Rng } from "./rng";
 import { explode } from "./sim-blast";
-import { damageFighter, kbMult, knockOut, removeFighterBody } from "./sim-damage";
+import { damageFighter, knockOut, removeFighterBody } from "./sim-damage";
 import { EntityStore } from "./sim-entities";
 import { applyItem, checkPickups, items, randomPower, setPrefs, spawnItem, skyDrop, stockArmory, supplyDrop, tickPowers, wantsWeapon } from "./sim-items";
 import { addFighter, applyInput, checkGrounded } from "./sim-movement";
@@ -183,10 +183,6 @@ export class Sim {
 
   damageFighter(f: Fighter, dmg: number, source: number, kbx: number, kby: number, cause: string, hx: number, hy: number) {
     damageFighter(this, f, dmg, source, kbx, kby, cause, hx, hy);
-  }
-
-  kbMult(hp: number): number {
-    return kbMult(hp, this.ruleset);
   }
 
   dangers(): { x: number; y: number; r: number }[] {

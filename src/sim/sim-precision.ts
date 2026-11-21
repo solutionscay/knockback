@@ -20,7 +20,7 @@ export function spreadFor(sim: Sim, f: Fighter, weapon: PrecisionWeapon): number
   else if (!f.grounded) s += a.air;
   else {
     const speed = Math.abs(sim.vel(f).x);
-    if (speed > acc.stillSpeed) s += a.move * Math.min(1.5, speed / sim.ruleset.combat.fighter.walkSpeed);
+    if (speed > acc.stillSpeed) s += a.move * Math.min(1.5, speed / f.stats.walkSpeed);
   }
   if (inCover(sim, f)) s *= acc.coverMul;
   return s;

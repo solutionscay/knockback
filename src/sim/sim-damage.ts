@@ -1,12 +1,14 @@
 import { G, groups } from "./constants";
-import { CLASSIC, type Ruleset } from "./ruleset";
+import { type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
 import { type Fighter } from "./sim-types";
 import { clamp, length2D } from "./dmath";
 import { dropWeapons } from "./sim-items";
 
-export function kbMult(hp: number, ruleset: Ruleset = CLASSIC): number {
-  return 1 + (clamp(ruleset.combat.fighter.maxHp - hp, 0, ruleset.combat.fighter.maxHp) / ruleset.combat.fighter.maxHp) * ruleset.combat.fighter.kbGrowth;
+/** Knockback grows with the missing HP, as a share of the fighter's own max HP (#79). */
+export function kbMult(f: Pick<Fighter, "hp" | "maxHp">, ruleset: Ruleset): number {
+  const hp = Math.max(0, f.hp);
+  return 1 + (clamp(f.maxHp - hp, 0, f.maxHp) / f.maxHp) * ruleset.combat.fighter.kbGrowth;
 }
 
 export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number, kbx: number, kby: number, cause: string, hx: number, hy: number) {
@@ -14,10 +16,16 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
   const openingGrace = sim.ruleset.zone.suddenDeath.graceTicks > 0;
   if (!openingGrace && source >= 0 && source !== f.id && dmg > 0) sim.lastClashTick = sim.tick;
   const src = source >= 0 && source !== f.id ? sim.fighters[source]! : null;
-  if (src && src.power.damage > 0) {
-    dmg *= sim.ruleset.pickups.power.damage.mul;
-    kbx *= sim.ruleset.pickups.power.damage.kbMul;
-    kby *= sim.ruleset.pickups.power.damage.kbMul;
+  if (src) {
+    // #79: the attacker's power, with the Damage power-up within builds.caps
+    let dm = src.stats.power, km = src.stats.power;
+    if (src.power.damage > 0) {
+      dm = Math.min(dm * sim.ruleset.pickups.power.damage.mul, sim.ruleset.builds.caps.damage);
+      km = Math.min(km * sim.ruleset.pickups.power.damage.kbMul, sim.ruleset.builds.caps.knockbackDealt);
+    }
+    dmg *= dm;
+    kbx *= km;
+    kby *= km;
   }
   let shielded = false;
   if (f.power.shield > 0 && cause !== "impact") {
@@ -34,10 +42,12 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
       }
     }
   }
-  if (f.power.heavy > 0) {
-    kbx *= sim.ruleset.pickups.power.heavy.kbMul;
-    kby *= sim.ruleset.pickups.power.heavy.kbMul;
-  }
+  // #79: the fighter's weight, with the Heavy power-up, never below builds.caps.knockbackTaken
+  let taken = f.stats.knockback;
+  if (f.power.heavy > 0) taken *= sim.ruleset.pickups.power.heavy.kbMul;
+  taken = Math.max(taken, sim.ruleset.builds.caps.knockbackTaken);
+  kbx *= taken;
+  kby *= taken;
   if (openingGrace && src && dmg > 0) sim.lastClashTick = sim.tick;
   f.hp -= dmg;
   f.damageTaken += dmg;
@@ -55,7 +65,7 @@ export function damageFighter(sim: Sim, f: Fighter, dmg: number, source: number,
   let kb = 0;
   if (kbx !== 0 || kby !== 0) {
     f.pinned = 0; // a knock frees a fighter pinned by a bolt (#38)
-    const m = sim.kbMult(Math.max(0, f.hp));
+    const m = kbMult(f, sim.ruleset);
     const body = f.entity.body;
     const v = body.linvel();
     const stack = f.kbTick === sim.tick;

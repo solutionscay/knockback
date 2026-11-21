@@ -298,6 +298,9 @@ export const CRATE = { size: 0.8, hp: 14, density: 0.6, dropChance: 0.9 };
 export const ITEM = { size: 0.5, pickupRange: 1.1, healAmount: 35, reachBelow: 0.6 };
 
 /** Power-up durations (ticks) and strengths. */
+/** The Speed power-up's acceleration multiplier (ground and air). */
+export const SPEED_ACCEL_MUL = 1.3;
+
 export const POWER = {
   shield: { ticks: 7 * 60, hits: 3, damageMul: 0.15, kbMul: 0.25 },
   speed: { ticks: 8 * 60, mul: 1.45 },

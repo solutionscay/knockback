@@ -63,9 +63,9 @@ export class RuleEngine {
       case "holds":
         return this.some(cand().filter((f) => r.item === "jetpack" ? f.power.jetpack > 0 : f.weapons.includes(r.item as Weapon)));
       case "my_health_below":
-        return { on: me.hp < r.value! * (sim.ruleset.combat.fighter.maxHp / 100), who: [] };
+        return { on: me.hp < r.value! * (me.maxHp / 100), who: [] };
       case "health_below":
-        return this.some(cand().filter((f) => f.hp < r.value! * (sim.ruleset.combat.fighter.maxHp / 100)));
+        return this.some(cand().filter((f) => f.hp < r.value! * (f.maxHp / 100)));
       case "near_ledge":
         return this.some(cand().filter((f) => nearLedge(sim, f)));
       case "near_barrel": {

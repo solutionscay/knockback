@@ -392,7 +392,7 @@ export class FighterViews {
           const r = 20 * ui;
           bars.circle(ex, ey, r).fill({ color: 0x07080d, alpha: 0.75 }).stroke({ width: 3 * ui, color: f.color });
           bars.poly([ex + ca * r * 1.6, ey + sa * r * 1.6, ex + ca * r * 0.9 - sa * r * 0.6, ey + sa * r * 0.9 + ca * r * 0.6, ex + ca * r * 0.9 + sa * r * 0.6, ey + sa * r * 0.9 - ca * r * 0.6]).fill(f.color);
-          bars.rect(ex - r * 0.7, ey + r * 0.15, (r * 1.4 * f.hp) / sim.ruleset.combat.fighter.maxHp, r * 0.3).fill(f.color);
+          bars.rect(ex - r * 0.7, ey + r * 0.15, (r * 1.4 * f.hp) / f.maxHp, r * 0.3).fill(f.color);
           bars.circle(ex, ey - r * 0.25, r * 0.32).fill(f.color);
         }
       }
@@ -407,7 +407,7 @@ export class FighterViews {
         const bh = 12 * ui;
         const bx = sx - bw / 2;
         const by = top - bh;
-        const low = f.hp < 30;
+        const low = f.hp < 0.3 * f.maxHp;
         bars.roundRect(bx - 3 * ui, by - 3 * ui, bw + 6 * ui, bh + 6 * ui, 5 * ui).fill({ color: 0x07080d, alpha: 0.8 });
         if (camera.camMode.kind === "follow" && camera.camMode.id === f.id && !camera.focus && this.celebrateId < 0) {
           // followed: a bobbing marker above the bar
@@ -416,9 +416,9 @@ export class FighterViews {
           bars.poly([mx - 14 * ui, my - 16 * ui, mx + 14 * ui, my - 16 * ui, mx, my]).fill(f.color).stroke({ width: 3 * ui, color: 0x07080d });
           bars.roundRect(bx - 6 * ui, by - 6 * ui, bw + 12 * ui, bh + 12 * ui, 7 * ui).stroke({ width: 2.5 * ui, color: f.color });
         }
-        bars.rect(bx, by, (bw * Math.max(0, v.ghostHp)) / sim.ruleset.combat.fighter.maxHp, bh).fill({ color: 0xffffff, alpha: 0.85 });
-        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / sim.ruleset.combat.fighter.maxHp, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
-        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / sim.ruleset.combat.fighter.maxHp, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
+        bars.rect(bx, by, (bw * Math.max(0, v.ghostHp)) / f.maxHp, bh).fill({ color: 0xffffff, alpha: 0.85 });
+        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
+        bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
         for (let i = 1; i < 4; i++) bars.rect(bx + (bw * i) / 4 - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
         if (f.power.jetpack > 0 || f.jetting) {
           const fuel = f.power.jetpack / sim.ruleset.pickups.power.jetpack.fuelTicks;
