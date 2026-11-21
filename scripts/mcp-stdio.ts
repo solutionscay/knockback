@@ -2,13 +2,14 @@
  * stdio wrapper for the Knockback MCP server (#21): for MCP clients that only
  * start local stdio servers. It connects to a match server's /mcp over
  * Streamable HTTP and passes tools/list and tools/call through, so the agent
- * sees the same six tools (and the same session: one wrapper process = one
- * MCP session = one seat).
+ * sees the same tools (and the same session: one wrapper process = one
+ * MCP session = one seat). The owner key from the JOIN panel goes upstream as
+ * Authorization: Bearer <key>.
  *
- *   bun scripts/mcp-stdio.ts --server https://YOUR-SERVER/mcp
- *   bun scripts/mcp-stdio.ts                                   # KB_SERVER, else http://localhost:5176
+ *   bun scripts/mcp-stdio.ts --server https://YOUR-SERVER/mcp --key kbk_...
+ *   bun scripts/mcp-stdio.ts                                   # KB_SERVER (else http://localhost:5176), KB_KEY
  *
- * In a client's config: command "bun", args ["<repo>/scripts/mcp-stdio.ts", "--server", "<url>"].
+ * In a client's config: command "bun", args ["<repo>/scripts/mcp-stdio.ts", "--server", "<url>", "--key", "<key>"].
  *
  * --session-file <path> keeps the MCP session id in that file: a wrapper (and
  * the agent behind it) that is restarted with the same file reattaches to the
@@ -28,6 +29,13 @@ const at = argv.indexOf("--server");
 const base = (at >= 0 ? argv[at + 1] : process.env.KB_SERVER) ?? "http://localhost:5176";
 const url = new URL(base.replace(/\/$/, "").replace(/\/mcp$/, "") + "/mcp");
 const log = (s: string) => process.stderr.write(`[knockback-mcp] ${s}\n`);
+const ki = argv.indexOf("--key");
+const key = (ki >= 0 ? argv[ki + 1] : process.env.KB_KEY) ?? "";
+if (!key) {
+  log("an owner key is needed: --key kbk_... or KB_KEY (from the JOIN panel)");
+  process.exit(1);
+}
+const requestInit = { headers: { authorization: `Bearer ${key}` } };
 
 const sf = argv.indexOf("--session-file");
 const sessionFile = sf >= 0 ? argv[sf + 1] : undefined;
@@ -38,7 +46,7 @@ let transport: StreamableHTTPClientTransport;
 let instructions: string | undefined;
 if (saved.sessionId && saved.url === url.href) {
   // reattach: the SDK client skips initialize when the transport already has a session id
-  transport = new StreamableHTTPClientTransport(url, { sessionId: saved.sessionId });
+  transport = new StreamableHTTPClientTransport(url, { sessionId: saved.sessionId, requestInit });
   await upstream.connect(transport);
   try {
     await upstream.listTools();
@@ -52,7 +60,7 @@ if (saved.sessionId && saved.url === url.href) {
   }
 }
 if (!instructions && !saved.sessionId) {
-  transport = new StreamableHTTPClientTransport(url);
+  transport = new StreamableHTTPClientTransport(url, { requestInit });
   await upstream.connect(transport);
   instructions = upstream.getInstructions();
 }
