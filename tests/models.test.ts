@@ -268,7 +268,7 @@ describe("match server: self-reported models and GET /api/models", () => {
     const page = await s.handle(new Request("http://kb.test/models"), "1.1.1.1");
     expect(page!.status).toBe(200);
     const html = await page!.text();
-    expect(html).toContain("WHICH MODEL IS BEST");
+    expect(html).toContain("<h1>MODELS</h1>");
     expect(html).toContain("/api/models");
     expect(html).toContain(".kb-mb");
     const lobby = await (await s.handle(new Request("http://kb.test/lobby"), "1.1.1.1"))!.text();

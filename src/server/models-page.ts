@@ -3,7 +3,7 @@
  * Both read GET /api/models. No build step: HTML strings, values put in with textContent only. The model badge
  * here is the same component as the viewer's (classes and CSS from src/viewer/model-badge.ts), built in page JS.
  */
-import { CHANCE, PROVIDER_COLOR, PROVIDER_MARK } from "../stats/models";
+import { PROVIDER_COLOR, PROVIDER_MARK } from "../stats/models";
 import { MODEL_BADGE_CSS } from "../viewer/model-badge";
 
 /** Styles for the board (page and lobby panel), plus the badge. */
@@ -44,11 +44,10 @@ function modelBadge(m, size) {
   return b;
 }
 const pc = (x) => x === null || x === undefined ? "–" : Math.round(x * 100) + "%";
-const f1 = (x) => x === null || x === undefined ? "–" : x.toFixed(1);
 function boardTable(rows, compact, minMatches, chance) {
   const t = mk("table", null, "board");
   const cols = compact ? [["", ""], ["model", ""], ["matches", "num"], ["win rate", "num"], ["rounds", "num"]]
-    : [["", ""], ["model", ""], ["matches", "num"], ["win rate", "num"], ["", ""], ["rounds won", "num"], ["KO / match", "num"], ["ring-outs / match", "num"], ["damage / match", "num"], ["time alive", "num"], ["fallbacks", "num"], ["autopilot", "num"]];
+    : [["", ""], ["model", ""], ["matches", "num"], ["win rate", "num"], ["", ""], ["rounds won", "num"], ["fallbacks", "num"]];
   const hr = mk("tr"); for (const [c, cl] of cols) hr.append(mk("th", c, cl)); const th = mk("thead"); th.append(hr); t.append(th);
   const tb = mk("tbody"); let rank = 0; let cut = false;
   if (!rows.length) { const tr = mk("tr"); const td = mk("td", "no matches with AI fighters yet", "empty"); td.colSpan = cols.length; tr.append(td); tb.append(tr); }
@@ -68,8 +67,7 @@ function boardTable(rows, compact, minMatches, chance) {
     }
     tr.append(mk("td", r.roundWins + "/" + r.rounds, "num"));
     if (!compact) {
-      tr.append(mk("td", f1(r.kosPerMatch), "num"), mk("td", f1(r.ringoutsPerMatch), "num"), mk("td", r.damagePerMatch === null ? "–" : String(Math.round(r.damagePerMatch)), "num"), mk("td", pc(r.survival), "num"));
-      tr.append(mk("td", r.fallbackRate === null ? "–" : r.fallbacks + "/" + r.plans, "num"), mk("td", pc(r.autopilotRate), "num"));
+      tr.append(mk("td", r.fallbackRate === null ? "–" : r.fallbacks + "/" + r.plans, "num"));
     }
     tb.append(tr);
   }
@@ -148,7 +146,7 @@ export function modelsPage(): string {
 </style>
 </head>
 <body>
-<header><h1>WHICH MODEL IS BEST</h1><span class="dim">Knockback model leaderboard · chance = ${Math.round(CHANCE * 100)}%</span><span class="dim"><a href="/lobby">lobby</a> · <a href="/api/models">JSON</a></span></header>
+<header><h1>MODELS</h1><span class="dim"><a href="/lobby">Lobby</a> · <a href="/replays">Replays</a></span></header>
 <main><section><div id="board" class="empty">loading…</div></section></main>
 <script>
 ${BOARD_JS}
