@@ -16,8 +16,9 @@ import type { Identity } from "../sim/identity";
 
 export async function replayPage(root: HTMLElement, id: string) {
   mount(root, html`<div class="wrap"><div class="meta">Loading replay ${id}…</div></div>`);
-  const [list, info] = await Promise.all([getJson<{ replays: ReplayInfo[] }>("/api/replays?limit=100"), getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`)]);
-  const rp = list.ok ? list.data.replays.find((r) => r.match === id) : undefined;
+  // one match by id, however old (#22: every finished match is replayable)
+  const [one, info] = await Promise.all([getJson<{ replay: ReplayInfo }>(`/api/replays/${encodeURIComponent(id)}`), getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`)]);
+  const rp = one.ok ? one.data.replay : undefined;
   if (!info.ok && !rp) return mount(root, html`<div class="wrap"><div class="pagehead"><div class="meta">Replay</div><h1>No match ${id}</h1></div><a class="btn" href="/replays">All replays</a></div>`);
   const record = rp?.record ?? (info.ok ? info.data.record : null);
   if (!record) return mount(root, html`<div class="wrap"><div class="pagehead"><div class="meta">Replay</div><h1>Not finished yet</h1></div><a class="btn" href="/watch/${id}">Watch it live</a></div>`);

@@ -86,7 +86,7 @@ export { modelOf };
 
 const newest = (a: { createdAt: string }, b: { createdAt: string }) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0);
 
-/** The match on the lobby stage: the newest running one; else none (the page shows the last replay). */
+/** The match on the lobby stage: the newest running one; else none (the page shows the waiting state, #22). */
 export function liveMatch(ms: MatchInfo[]): MatchInfo | null {
   return ms.filter((m) => m.status === "running").sort(newest)[0] ?? null;
 }
@@ -102,17 +102,52 @@ export function upNext(ms: MatchInfo[]): MatchInfo | null {
 
 export interface QueueEntry {
   agent: string;
-  match: string;
-  seat: number;
+  /** the open match it sits in; null while it waits in the matchmaker's queue */
+  match: string | null;
+  seat: number | null;
   startsInSec: number | null;
 }
 
-/** Agents seated in open matches, by when their match starts. */
-export function queue(ms: MatchInfo[]): QueueEntry[] {
-  return ms
+/** GET /api/queue (#22): the matchmaker's queue. */
+export interface QueueInfo {
+  waiting: { position: number; agent: string; waitingSec: number }[];
+  /** agents still needed for a full match of outside agents */
+  needed: number;
+  /** seconds until the oldest agent's match starts with AI seats; null with nobody waiting */
+  fillsInSec: number | null;
+  /** a match is running: the queue waits for it */
+  blocked: boolean;
+  fillAfterSec: number;
+  roster?: string[];
+}
+
+/** The queue as checked data (pure: tested). */
+export function queueInfo(raw: unknown): QueueInfo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.waiting)) return null;
+  const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+  return {
+    waiting: o.waiting.slice(0, 50).map((w, i) => {
+      const x = (w ?? {}) as Record<string, unknown>;
+      return { position: num(x.position, i + 1), agent: String(x.agent ?? "?").slice(0, 24), waitingSec: num(x.waitingSec, 0) };
+    }),
+    needed: num(o.needed, 4),
+    fillsInSec: typeof o.fillsInSec === "number" ? o.fillsInSec : null,
+    blocked: o.blocked === true,
+    fillAfterSec: num(o.fillAfterSec, 60),
+    ...(Array.isArray(o.roster) ? { roster: o.roster.map(String).slice(0, 8) } : {}),
+  };
+}
+
+/** Who is waiting: the matchmaker's queue (the oldest four start first), then agents seated in open matches. */
+export function queue(ms: MatchInfo[], q: QueueInfo | null = null): QueueEntry[] {
+  const queued = (q?.waiting ?? []).map((w) => ({ agent: w.agent, match: null, seat: null, startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null }));
+  const seated = ms
     .filter((m) => m.status === "open")
     .flatMap((m) => m.seats.filter((s) => s.agent).map((s) => ({ agent: s.agent!, match: m.id, seat: s.seat, startsInSec: m.startsInSec ?? null })))
     .sort((a, b) => (a.startsInSec ?? 1e9) - (b.startsInSec ?? 1e9));
+  return [...queued, ...seated];
 }
 
 export interface JoinStatus {
@@ -124,17 +159,19 @@ export interface JoinStatus {
 }
 
 /** Where an agent named `name` is now (#42: "your agent is in the queue"). Case-insensitive; the newest match wins. */
-export function joinStatus(ms: MatchInfo[], name: string, since = ""): JoinStatus {
+export function joinStatus(ms: MatchInfo[], name: string, since = "", q: QueueInfo | null = null): JoinStatus {
   const want = name.trim().toLowerCase();
   if (!want) return { state: "waiting" };
+  // in the matchmaker's queue (#22): no match yet
+  const w = q?.waiting.find((x) => x.agent.toLowerCase() === want);
+  if (w) return { state: "queued", startsInSec: w.position <= 4 && !q!.blocked ? q!.fillsInSec : null, position: w.position };
   const has = (m: MatchInfo) => m.seats.some((s) => s.agent?.toLowerCase() === want);
   // a seat in an open or running match always counts; a finished match only when it is newer than `since`
   // (the same name may have played before the panel was opened)
   const mine = ms.filter((m) => has(m) && (m.status === "open" || m.status === "running")).sort(newest)[0] ?? ms.filter((m) => has(m) && m.createdAt >= since).sort(newest)[0];
   if (!mine) return { state: "waiting" };
   if (mine.status === "open") {
-    const q = queue(ms);
-    const position = q.findIndex((e) => e.match === mine.id && e.agent.toLowerCase() === want) + 1;
+    const position = queue(ms, q).findIndex((e) => e.match === mine.id && e.agent.toLowerCase() === want) + 1;
     return { state: "queued", match: mine.id, startsInSec: mine.startsInSec ?? null, position: position || undefined };
   }
   if (mine.status === "running") return { state: "fighting", match: mine.id };
@@ -239,14 +276,13 @@ export function joinSnippet(tab: JoinTab, mcp: string, f: JoinFields): { setup: 
       return {
         setup: JSON.stringify({ mcpServers: { knockback: { type: "http", url: mcp } } }, null, 2),
         prompt,
-        run: `# no MCP? plain HTTP: GET ${mcp.replace(/\/mcp$/, "/api")} lists the endpoints\n# POST /api/matches/:id/join { name, persona } -> seat token, then /turn and /plan`,
+        run: `# no MCP? plain HTTP: GET ${mcp.replace(/\/mcp$/, "/api")} lists the endpoints\n# POST /api/queue { name, persona } -> ticket; GET /api/queue/<ticket>?wait=25 -> seat token, then /turn and /plan`,
       };
   }
 }
 
-/** The MCP URL: GET /api/join's when it says one (always-on lobby work, not merged yet), else this server's /mcp. */
+/** The MCP URL: GET /api/join's `mcp` (the server's public URL, #22), else this server's /mcp. */
 export function mcpUrlFrom(join: unknown, origin: string): string {
-  // TODO(always-on lobby): GET /api/join is not on main yet; its shape is not documented. Read the likely fields.
   const j = (join && typeof join === "object" ? join : {}) as Record<string, unknown>;
   for (const k of ["mcp", "mcpUrl", "url"]) {
     const v = j[k];

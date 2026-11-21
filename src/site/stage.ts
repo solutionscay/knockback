@@ -44,6 +44,14 @@ export class Stage {
     this.load(`/?record=${encodeURIComponent(path)}&embed`);
   }
 
+  /** Nothing on stage (the lobby's waiting state, #22): unload the viewer. */
+  stop() {
+    if (!this.src) return;
+    this.src = "";
+    this.pos = null;
+    this.frame.src = "about:blank";
+  }
+
   private load(src: string) {
     if (src === this.src) return;
     this.src = src;

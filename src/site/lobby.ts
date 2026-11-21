@@ -1,12 +1,14 @@
 /**
- * Lobby home (/lobby, #22): the live fight on stage (the real viewer, View all), Up next with its countdown,
- * the queue, the model leaderboard, recent results, and the big JOIN button with "Bring your agent".
+ * Lobby home (/lobby, #22): the live fight on stage (the real viewer, View all); when nothing is live, the stage
+ * says the lobby is waiting for agents (who is queued, how many seats are needed, JOIN) with the latest replays
+ * as cards to open (nothing plays by itself). Up next (the matchmaker's next match), the queue, the model
+ * leaderboard, recent results, and the big JOIN button with "Bring your agent".
  * Pick the winner (#35): the open match's pick card (else the live one, else the last finished one).
- * Data: GET /api/matches (every 3 s, with the pick card), /api/replays (every 20 s), /api/models when the model spotlight is merged.
+ * Data: GET /api/matches and /api/queue (every 3 s, with the pick card), /api/replays (every 20 s), /api/models.
  */
 import { badge } from "./badge";
 import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
-import { ago, boardFromModels, boardFromReplays, cap, clock, feedEntries, joinSnippet, liveMatch, queue, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type ReplayInfo, scoreline } from "./data";
+import { ago, boardFromModels, boardFromReplays, cap, clock, feedEntries, joinSnippet, liveMatch, modelOf, queue, queueInfo, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type QueueInfo, type ReplayInfo, scoreline } from "./data";
 import { $, every, getJson, html, mount, raw } from "./dom";
 import { openJoin } from "./join";
 import { PicksCard } from "./picks";
@@ -53,6 +55,7 @@ export function lobbyPage(root: HTMLElement) {
   let lineup: LiveLineup | null = null;
   let entries: FeedEntry[] = [];
   let matches: MatchInfo[] = [];
+  let lobbyQueue: QueueInfo | null = null;
   let replays: ReplayInfo[] = [];
   let shown: { kind: "live" | "replay"; id: string } | null = null;
 
@@ -88,7 +91,7 @@ export function lobbyPage(root: HTMLElement) {
     const m = matches.find((x) => x.id === shown?.id);
     const s = seen();
     const theme = lineup?.theme ?? replays.find((r) => r.match === shown?.id)?.theme ?? "";
-    $("#l-meta")!.textContent = !shown ? "No fight on right now" : live ? (stage.pos?.done ? "Live · final" : `Live · round ${s.round} of 3`) : `Last fight · replay · ${ago(m?.createdAt ?? replays[0]?.createdAt ?? "")}`;
+    $("#l-meta")!.textContent = !shown ? "Lobby · waiting for agents" : live ? (stage.pos?.done ? "Live · final" : `Live · round ${s.round} of 3`) : `Last fight · replay · ${ago(m?.createdAt ?? replays[0]?.createdAt ?? "")}`;
     mount($("#l-title"), shown ? html`<span class="arena">${cap(theme || "Arena")}</span> brawl` : html`Knockback`);
     const w = $<HTMLAnchorElement>("#l-watch")!;
     w.hidden = !shown;
@@ -124,31 +127,69 @@ export function lobbyPage(root: HTMLElement) {
         entries = [];
         stage.live(live.id);
       }
-    } else if (replays[0] && !replays[0].old && (shown?.kind !== "replay" || shown.id !== replays[0].match) && shown?.kind !== "live") {
-      shown = { kind: "replay", id: replays[0].match };
-      const r = replays[0];
-      lineup = { match: r.match, theme: r.theme, names: r.names, labels: r.labels, identities: r.identities.map((x, i) => cleanIdentity(x, i)) };
-      entries = [];
-      stage.record(r.record);
     } else if (shown?.kind === "live" && !live && stage.pos?.done) {
+      // the live match's win screen has played: back to the waiting lobby (no replay plays by itself)
       shown = null;
+      lineup = null;
+      stage.stop();
     }
     const none = $("#l-none")!;
     none.hidden = !!shown;
-    if (!shown) {
-      const n = upNext(matches);
-      mount(none, html`<div class="disp punch">No fight on right now</div><div class="dim">${n?.startsInSec !== undefined ? html`Next match fills in <b>${clock(n.startsInSec)}</b>. ` : ""}Bring your agent and start one.</div><div><button class="btn" type="button" data-join>Join</button></div>`);
-    }
+    $("#l-stage")!.classList.toggle("idle", !shown);
+    if (!shown) renderIdle(none);
     renderStage();
+  }
+
+  /** The stage while nothing is live: the lobby waits for agents; the latest replays to open (#22). */
+  function renderIdle(none: HTMLElement) {
+    const q = lobbyQueue;
+    const n = q?.waiting.length ?? 0;
+    const head = n
+      ? html`<div class="disp punch">${n} agent${n === 1 ? "" : "s"} waiting</div>
+          <div class="dim">${q!.blocked ? "A match is finishing first." : q!.needed > 0 && q!.fillsInSec !== null ? html`<b>${q!.needed}</b> more for a full match, or the fight starts in <b>${clock(q!.fillsInSec)}</b> with AI fighters in the empty seats.` : "The match is starting."}</div>`
+      : html`<div class="disp punch">Waiting for agents</div>
+          <div class="dim">Nobody in the queue. A match starts when <b>4 agents</b> join, or ${q ? (q.fillAfterSec < 90 ? `${q.fillAfterSec} s` : clock(q.fillAfterSec)) : "a minute"} after the first one, with AI fighters in the empty seats.</div>`;
+    const recent = replays.slice(0, 4);
+    mount(
+      none,
+      html`<div class="idlehead">${head}<div class="qdots" aria-label="${n} of 4 seats taken">${[0, 1, 2, 3].map((i) => html`<span class="${i < n ? "on" : ""}">${i < n ? q!.waiting[i]!.agent : "?"}</span>`)}</div>
+        <div><button class="btn" type="button" data-join>Join</button></div></div>
+        ${
+          recent.length
+            ? html`<div class="idlerec"><div class="meta">Latest fights · pick one to replay</div><div class="cards">${recent.map((r) => {
+                const w = r.winner >= 0 ? r.winner : 0;
+                const id = cleanIdentity(r.identities[w], w);
+                return html`<a class="mini" href="/replay/${r.match}" style="${colorVars(id.color)}">${bot(id, r.weapons[w], "win", true)}<span class="mt"><b class="wn">${r.names[w]} wins</b><small>${scoreline(r.wins)} · ${cap(r.theme)} · ${ago(r.createdAt)}${r.old ? " · older engine" : ""}</small><span class="mb">${[...new Map(r.labels.map((l) => [modelOf(l).key, l])).values()].slice(0, 3).map((l) => badge(l))}</span></span></a>`;
+              })}</div><a class="all" href="/replays">All replays</a></div>`
+            : ""
+        }`,
+    );
   }
 
   function renderNext() {
     const n = upNext(matches);
     const body = $("#n-body")!;
     if (!n) {
-      $("#n-sub")!.textContent = "";
-      body.className = "empty";
-      body.textContent = "No match waiting. The first agent to join opens one.";
+      const q = lobbyQueue;
+      const w = q?.waiting.slice(0, 4) ?? [];
+      if (!w.length) {
+        $("#n-sub")!.textContent = "";
+        body.className = "empty";
+        body.textContent = "Nobody waiting. The first agent to join starts the next match.";
+        return;
+      }
+      body.className = "";
+      $("#n-sub")!.textContent = q!.blocked ? "after the current fight" : "until the bell";
+      mount(
+        body,
+        html`<div class="row"><div class="count" id="n-count" data-left="${q!.fillsInSec ?? ""}">${q!.fillsInSec !== null && !q!.blocked ? clock(q!.fillsInSec) : "–:––"}</div><span class="dim">${w.length} of 4 agents · ${q!.needed ? `AI fighters fill ${q!.needed} seat${q!.needed === 1 ? "" : "s"}` : "full"}</span></div>
+          <div class="seats">${[0, 1, 2, 3].map((i) =>
+            w[i]
+              ? html`<a href="/agent/${encodeURIComponent(w[i]!.agent)}" style="${colorVars(null)}">${bot({ ...HOUSE_LOOK, name: w[i]!.agent, color: 0xd8dce6 }, "fist", "cocky")}<span>${w[i]!.agent}</span></a>`
+              : html`<div><div class="open" title="open seat">?</div><span class="dim">open</span></div>`,
+          )}</div>
+          <button class="btn" type="button" data-join style="width:100%;margin-top:10px">Take a seat</button>`,
+      );
       return;
     }
     body.className = "";
@@ -175,7 +216,7 @@ export function lobbyPage(root: HTMLElement) {
   }
 
   function renderQueue() {
-    const q = queue(matches);
+    const q = queue(matches, lobbyQueue);
     $("#q-sub")!.textContent = q.length ? `${q.length} waiting` : "";
     const body = $("#q-body")!;
     if (!q.length) {
@@ -185,10 +226,11 @@ export function lobbyPage(root: HTMLElement) {
     }
     body.className = "";
     const n = upNext(matches);
+    const lq = lobbyQueue;
     mount(
       body,
-      html`<ul class="q">${q.map((e) => html`<li><div><a class="n" href="/agent/${encodeURIComponent(e.agent)}">${e.agent}</a></div><div class="w">${e.startsInSec !== null ? `starts ${clock(e.startsInSec)}` : ""}</div></li>`)}</ul>
-        ${n?.startsInSec !== undefined ? html`<div class="fill">House bots fill empty seats in <b>${clock(n.startsInSec)}</b>.</div>` : ""}`,
+      html`<ul class="q">${q.map((e) => html`<li><div><a class="n" href="/agent/${encodeURIComponent(e.agent)}">${e.agent}</a></div><div class="w">${e.startsInSec !== null ? `starts ${clock(e.startsInSec)}` : lq?.blocked && !e.match ? "after this fight" : ""}</div></li>`)}</ul>
+        ${n?.startsInSec !== undefined ? html`<div class="fill">House bots fill empty seats in <b>${clock(n.startsInSec)}</b>.</div>` : lq && lq.waiting.length && lq.needed && lq.fillsInSec !== null && !lq.blocked ? html`<div class="fill">AI fighters fill the empty seats in <b>${clock(lq.fillsInSec)}</b>.</div>` : ""}`,
     );
   }
 
@@ -239,6 +281,8 @@ export function lobbyPage(root: HTMLElement) {
       return;
     }
     matches = r.data.matches;
+    const q = await getJson<unknown>("/api/queue");
+    lobbyQueue = q.ok ? queueInfo(q.data) : null;
     pickStage();
     renderNext();
     renderPicks();
@@ -251,6 +295,9 @@ export function lobbyPage(root: HTMLElement) {
     if (c && n?.startsInSec !== undefined) {
       n.startsInSec = Math.max(0, n.startsInSec - 1);
       c.textContent = clock(n.startsInSec);
+    } else if (c && !n && lobbyQueue?.fillsInSec != null && !lobbyQueue.blocked) {
+      lobbyQueue.fillsInSec = Math.max(0, lobbyQueue.fillsInSec - 1);
+      c.textContent = clock(lobbyQueue.fillsInSec);
     }
   }, 1000);
   every(20_000, async () => {

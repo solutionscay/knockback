@@ -76,6 +76,25 @@ a { color: inherit; }
 .stage .seeking { position: absolute; inset: 0; display: grid; place-items: center; background: #0e101799; font: 900 22px/1 var(--display); letter-spacing: 0.08em; pointer-events: none; }
 .stage .none { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 14px; padding: 20px; }
 .stage .none .disp { font-size: 30px; }
+/* the waiting lobby (#22): nothing plays; who is queued, the seats, JOIN, and the latest fights to open */
+.stage.idle iframe { display: none; }
+.stage.idle { aspect-ratio: auto; min-height: 460px; display: grid; }
+.stage.idle .none { position: relative; inset: auto; padding: 28px 20px; }
+.stage.idle { background: radial-gradient(90% 70% at 50% 30%, #262c46 0%, #0f1424 70%); }
+.stage .none .idlehead { display: grid; gap: 12px; justify-items: center; }
+.stage .none .idlehead .dim { max-width: 560px; }
+.qdots { display: flex; gap: 8px; justify-content: center; }
+.qdots span { min-width: 74px; max-width: 120px; padding: 7px 8px; border: 2px dashed #ffffff30; border-radius: 3px; font: 900 12px/1 var(--display); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qdots span.on { border: 2px solid var(--yellow); color: var(--ink); background: #ffd23f14; }
+.idlerec { margin-top: 18px; display: grid; gap: 8px; justify-items: center; }
+.idlerec .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 8px; }
+.idlerec .mini { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; text-align: left; padding: 8px 10px; background: var(--slab); border-radius: 3px; border-bottom: 3px solid var(--c); text-decoration: none; }
+.idlerec .mini svg { width: 44px; height: 40px; }
+.idlerec .mini .mt { min-width: 0; }
+.idlerec .mini .wn { display: block; font: 900 14px/1.1 var(--display); color: var(--ci, var(--c)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idlerec .mini .mt > small { display: block; margin-top: 3px; font-size: 11px; color: var(--dim); }
+.idlerec .mini .mb { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.idlerec .all { font: 800 12px/1 var(--text); color: var(--dim); }
 
 .lineup { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
 .lu { display: flex; gap: 8px; align-items: center; background: var(--slab); border-radius: 3px; padding: 6px 10px 6px 4px; border-bottom: 4px solid var(--c); min-width: 0; text-decoration: none; }
@@ -295,6 +314,8 @@ dialog.joinp::backdrop { background: #07080dcc; }
 
 /* ---------------------------------------------------------------- phone */
 @media (max-width: 760px) {
+  .idlerec .cards { grid-template-columns: 1fr; }
+  .qdots span { min-width: 0; flex: 1; }
   .top { padding: 10px 14px; gap: 10px; }
   .nav { display: none; }
   .logo { font-size: 20px; }

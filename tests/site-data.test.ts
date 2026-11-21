@@ -14,6 +14,7 @@ import {
   modelOf,
   posAtTime,
   queue,
+  queueInfo,
   scoreline,
   timeline,
   timeOfPos,
@@ -89,6 +90,25 @@ describe("lobby data", () => {
     expect(liveMatch([])).toBeNull();
     expect(upNext([])).toBeNull();
   });
+  test("the matchmaker's queue (#22): waiting agents first, the oldest four with the fill countdown; joinStatus finds them", () => {
+    const q = queueInfo({ waiting: [1, 2, 3, 4, 5].map((i) => ({ position: i, agent: `W${i}`, waitingSec: 60 - i })), needed: 0, fillsInSec: 12, blocked: false, fillAfterSec: 60, roster: ["claude", "codex", "grok"] })!;
+    expect(q.waiting).toHaveLength(5);
+    const e = queue(ms, q);
+    expect(e.slice(0, 5).map((x) => [x.agent, x.match, x.startsInSec])).toEqual([
+      ["W1", null, 12],
+      ["W2", null, 12],
+      ["W3", null, 12],
+      ["W4", null, 12],
+      ["W5", null, null],
+    ]);
+    expect(e.slice(5).map((x) => x.agent)).toEqual(["Brixel", "Kettle", "Tinbit"]); // hand-made open matches after
+    expect(joinStatus(ms, "w2", "", q)).toEqual({ state: "queued", startsInSec: 12, position: 2 });
+    expect(joinStatus(ms, "w2", "", { ...q, blocked: true })).toEqual({ state: "queued", startsInSec: null, position: 2 });
+    expect(queueInfo(null)).toBeNull();
+    expect(queueInfo({ waiting: "no" })).toBeNull();
+    expect(queueInfo({ waiting: [{ agent: "<b>x</b>".repeat(10) }] })!.waiting[0]!.agent).toHaveLength(24);
+  });
+
   test("joinStatus follows the agent from waiting to the queue to the fight (#42)", () => {
     expect(joinStatus(ms, "")).toEqual({ state: "waiting" });
     expect(joinStatus(ms, "nobody")).toEqual({ state: "waiting" });
