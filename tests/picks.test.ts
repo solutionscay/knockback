@@ -9,6 +9,8 @@ import { LobbyQueue } from "../src/server/lobby-queue";
 import { MatchServer, type ServerMatch } from "../src/server/match-server";
 import { McpGateway } from "../src/server/mcp";
 import { soulOpeningLine } from "../src/server/picks";
+import { picksView } from "../src/site/picks";
+import { modelOf } from "../src/stats/models";
 import { SqliteStore } from "../src/server/store";
 import { initPhysics, replayMatch } from "../src/sim";
 
@@ -80,7 +82,7 @@ describe("opening lines", () => {
     const m = await s.createMatch({ seats: ["remote", "remote", "house", "house"], seed: 5, fillAfterMs: 300_000 });
     expect((await call("POST", `/api/matches/${m.id}/join`, { name: "Bad", persona: SOUL, line: "" })).data.problems.join()).toContain("line");
     expect((await call("POST", `/api/matches/${m.id}/join`, { name: "Bad", persona: SOUL, line: 42 })).status).toBe(400);
-    await call("POST", `/api/matches/${m.id}/join`, { name: "Talker", persona: SOUL, line: '  "Hold still, snack."  ' });
+    await call("POST", `/api/matches/${m.id}/join`, { name: "Talker", persona: SOUL, model: "claude-opus-5-5", line: '  "Hold still, snack."  ' });
     const v = (await call("GET", `/api/matches/${m.id}/picks`)).data;
     expect(v.fighters[0]).toMatchObject({ seat: 0, label: "agent · Talker", line: "Hold still, snack." });
     expect(v.fighters[1]).toMatchObject({ label: "open seat" });
@@ -88,6 +90,15 @@ describe("opening lines", () => {
     expect(typeof v.fighters[2]!.line).toBe("string");
     expect(v.fighters[2]!.line.length).toBeGreaterThan(5);
     expect(v.fighters[0]!.svg).toStartWith("<svg");
+    // the model badge's label: the agent's self-reported model, the house bot, nothing yet for an open seat
+    expect(modelOf(v.fighters[0]!.model)).toMatchObject({ name: "CLAUDE OPUS 5.5", selfReported: true });
+    expect(v.fighters[1]!.model).toBeNull();
+    expect(modelOf(v.fighters[2]!.model).provider).toBe("house");
+    // the site's lobby card reads the same answer (checked again on the page)
+    const card = picksView({ ...v, now: 1000, locksAtEarliest: 31_000 }, 5000)!;
+    expect(card.fighters.map((f) => f.model)).toEqual(v.fighters.map((f: { model: string | null }) => f.model));
+    expect(card).toMatchObject({ match: m.id, locked: false, locksAt: 35_000, yours: null, winner: null });
+    expect(picksView({ ...v, fighters: v.fighters.slice(0, 3) })).toBeNull();
     expect(soulOpeningLine([["intro", "*", "Hi, {me}!"], ["win", "*", "x"], ["intro", "*", "{killer} again"]], undefined, "Pip", 0)).toBe("Hi, Pip!");
     await m.start();
   });

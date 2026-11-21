@@ -1,14 +1,15 @@
 /**
  * Lobby home (/lobby, #22): the live fight on stage (the real viewer, View all), Up next with its countdown,
  * the queue, the model leaderboard, recent results, and the big JOIN button with "Bring your agent".
- * Data: GET /api/matches (every 3 s), /api/replays (every 20 s), /api/models when the model spotlight is merged.
+ * Pick the winner (#35): the open match's pick card (else the live one, else the last finished one).
+ * Data: GET /api/matches (every 3 s, with the pick card), /api/replays (every 20 s), /api/models when the model spotlight is merged.
  */
 import { badge } from "./badge";
 import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
 import { ago, boardFromModels, boardFromReplays, cap, clock, feedEntries, joinSnippet, liveMatch, queue, reachedPos, upNext, type BoardRow, type FeedEntry, type MatchInfo, type ReplayInfo, scoreline } from "./data";
 import { $, every, getJson, html, mount, raw } from "./dom";
 import { openJoin } from "./join";
-import { picksSlot } from "./picks";
+import { PicksCard } from "./picks";
 import { Stage } from "./stage";
 import type { Identity } from "../sim/identity";
 
@@ -40,6 +41,7 @@ export function lobbyPage(root: HTMLElement) {
       </div>
       <aside class="rail">
         <section class="card next"><h2>Up next <small id="n-sub"></small></h2><div id="n-body" class="empty">Loading…</div></section>
+        <section class="card picks" id="p-card" hidden></section>
         <section class="card"><h2>In the queue <small id="q-sub"></small></h2><div id="q-body" class="empty">Loading…</div></section>
         <section class="card"><h2>Model leaderboard <a href="/models" id="b-more" hidden>All</a></h2><div id="b-body" class="empty">Loading…</div></section>
         <section class="card"><h2>Recent results <a href="/replays">All replays</a></h2><div id="r-body" class="empty">Loading…</div></section>
@@ -161,10 +163,15 @@ export function lobbyPage(root: HTMLElement) {
               ? html`<div><div class="open" title="open seat">?</div><span class="dim">open</span></div>`
               : html`<div>${bot(HOUSE_LOOK, "fist", "fight")}<span class="dim">house bot</span></div>`,
         )}</div>
-        <div class="slot-picks" data-slot="picks" data-match="${n.id}"></div>
         <button class="btn" type="button" data-join style="width:100%;margin-top:10px">Take a seat</button>`,
     );
-    void picksSlot($(".slot-picks", body)!, n.id, null);
+  }
+
+  // picks (#35): the next match while it fills, else the live one (open until round 1), else the last one shown
+  const picks = new PicksCard($("#p-card")!);
+  function renderPicks() {
+    const target = upNext(matches)?.id ?? liveMatch(matches)?.id ?? shown?.id ?? null;
+    void picks.show(target);
   }
 
   function renderQueue() {
@@ -234,6 +241,7 @@ export function lobbyPage(root: HTMLElement) {
     matches = r.data.matches;
     pickStage();
     renderNext();
+    renderPicks();
     renderQueue();
   });
   // the countdown ticks between polls
