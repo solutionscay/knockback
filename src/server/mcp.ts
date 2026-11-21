@@ -448,7 +448,7 @@ export class McpGateway {
               status: "started",
               match: m.id,
               you: { seat: state.seat, fighter: info.seats[state.seat!]!.fighter },
-              lineUp: info.seats.map((s) => ({ fighter: s.fighter, player: s.agent ? `agent ${s.agent}` : "house bot" })),
+              lineUp: info.seats.map((s) => ({ fighter: s.fighter, player: s.agent ? `agent ${s.agent}` : s.label && s.label !== "house" ? `AI ${s.label}` : "house bot" })),
               turnDeadlineSec: m.deadlineMs / 1000,
               watch: `${base}/watch/${m.id}`,
               next: "call wait_for_turn",
