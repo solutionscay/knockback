@@ -11,7 +11,6 @@
 import { linkSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { modelBadgeTitle } from "../src/viewer/model-badge";
 import { modelOf } from "../src/stats/models";
 import { wavBytes } from "../src/viewer/audio/offline";
 import type { MatchRecord } from "../src/sim/match";
@@ -246,7 +245,7 @@ const rows = seq.map((s, i) => {
   }
   if (s.part.kind === "card") {
     const seat = s.part.seat;
-    return `| ${i + 1} | ${t} | ${file} | 1 | before the fight | Card: ${names[seat]} (${modelBadgeTitle(r.rec.labels?.[seat])}): "${(r.rec.rounds[0]?.lines[seat] ?? "").replace(/\|/g, "/")}" and its plan chips${caption ? `; caption "${caption}"` : ""} |`;
+    return `| ${i + 1} | ${t} | ${file} | 1 | before the fight | Card: ${names[seat]} (${modelOf(r.rec.labels?.[seat]).name}): "${(r.rec.rounds[0]?.lines[seat] ?? "").replace(/\|/g, "/")}" and its plan chips${caption ? `; caption "${caption}"` : ""} |`;
   }
   return `| ${i + 1} | ${t} | ${file} | ${r.rec.rounds.length} | win screen | Title card: "${END_TITLE} · ${END_TEXT}" |`;
 });
