@@ -11,6 +11,7 @@ import { POWER_COLOR, WEAPON_ACCENT } from "./palette";
 import { pixiPen } from "./pixiPen";
 import { drawWeapon } from "./props";
 import type { XformAt } from "./scene";
+import { buildGlow, HP_TICK, hpBarWidth } from "./build-view";
 
 interface FighterView {
   f: Fighter;
@@ -38,6 +39,8 @@ interface FighterView {
   flash: Graphics;
   aura: Graphics;
   over: Graphics;
+  /** the build's body cue (#81): halos behind the bot, drawn once (the build is fixed for the round) */
+  glow: Container;
   gunKind: string;
   swingT: number;
   swapT: number;
@@ -91,9 +94,23 @@ export class FighterViews {
     const over = new Graphics();
     drawSilhouette(pixiPen(flash), f.look);
     flash.alpha = 0;
-    root.addChild(aura, feet, body, face, arm, gun, flash, over);
+    // the build's body cue (#81): one halo the shape of the bot per raised attribute, the first innermost; view only
+    const glow = new Container();
+    buildGlow(f.build).forEach((g, i) => {
+      // a soft edge: a wide faint layer, then a tighter stronger one; a second attribute sits outside the first
+      for (const [k, a] of [[1.5, 0.45], [1.28, 1]] as const) {
+        const halo = new Graphics();
+        drawSilhouette(pixiPen(halo), f.look);
+        halo.tint = g.color;
+        halo.alpha = g.alpha * a;
+        halo.scale.set(k + 0.22 * i);
+        halo.position.set(0, 0.06);
+        glow.addChildAt(halo, glow.children.length - 2 * i); // the second attribute's layers go behind the first's
+      }
+    });
+    root.addChild(glow, aura, feet, body, face, arm, gun, flash, over);
     this.layer.addChild(root);
-    return { f, root, body, bodyKey: "", face, faceKey: "", mood: "", arm, feet, feetKey: "", soles: null, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
+    return { f, root, body, bodyKey: "", face, faceKey: "", mood: "", arm, feet, feetKey: "", soles: null, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, glow, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
   }
 
   private drawGun(v: FighterView, kind: string) {
@@ -126,6 +143,8 @@ export class FighterViews {
       if (v.f.id === except) v.root.visible = false;
       saved.push([v.feet, v.feet.visible]);
       v.feet.visible = false;
+      saved.push([v.glow, v.glow.visible]);
+      v.glow.visible = false; // the halo is not the body
     }
     return () => {
       for (const [c, vis] of saved) c.visible = vis;
@@ -403,7 +422,8 @@ export class FighterViews {
         const sx = W / 2 + (p.x + (off?.dx ?? 0) - cx - shx) * s;
         const sy = H / 2 - (p.y + (off?.dy ?? 0) - cy - shy) * s;
         const top = sy - (sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.45) * s;
-        const bw = 92 * ui;
+        // the bar's length shows max HP (#81): a tank's bar is longer, a glass cannon's shorter
+        const bw = hpBarWidth(f.maxHp, sim.ruleset.combat.fighter.maxHp, 92 * ui);
         const bh = 12 * ui;
         const bx = sx - bw / 2;
         const by = top - bh;
@@ -419,7 +439,7 @@ export class FighterViews {
         bars.rect(bx, by, (bw * Math.max(0, v.ghostHp)) / f.maxHp, bh).fill({ color: 0xffffff, alpha: 0.85 });
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
-        for (let i = 1; i < 4; i++) bars.rect(bx + (bw * i) / 4 - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
+        for (let hp = HP_TICK; hp < f.maxHp; hp += HP_TICK) bars.rect(bx + (bw * hp) / f.maxHp - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
         if (f.power.jetpack > 0 || f.jetting) {
           const fuel = f.power.jetpack / sim.ruleset.pickups.power.jetpack.fuelTicks;
           const fy = by + bh + 4 * ui;

@@ -65,6 +65,8 @@ A fighter's strategy for a round can carry a build (#79, #83): three attribute l
 
 Each table has five entries, levels -2 to +2. Level 0 of every table must be the base (hpBonus 0, multipliers 1), each level up must give at least as much of its attribute (at most as much knockback taken), and no cap may bind a neutral fighter; the validator refuses anything else. The Classic values were tuned with house-bot batches (`scripts/builds-batch.ts`, #82) so that a point of health, weight or power is worth the same. To turn builds off, set every entry to its level-0 value.
 
+**How viewers show a build (#81).** A build is named by the attributes it raises (`BUILD_SHAPES` in `src/sim/build.ts`, the same names the agents' examples use): BALANCED (neutral), TANK (health), ANCHOR (weight), GLASS CANNON (power), FORTRESS (health and weight), SCRAPPER (health and power), WRECKER (weight and power). These seven cover all 19 legal builds. The dialogue card shows the name and the levels (`TANK HP +2 · WGT 0 · PWR −2`; neutral is only `BALANCED`). The HUD chip shows the name. A health bar's length follows the fighter's max HP, with a tick every 25 HP. The body cue is a soft halo the shape of the bot, one per raised attribute, in that attribute's color (health green, weight violet, power orange: the same colors as the chip's levels). It is drawn only; the hitbox does not change. The viewer keeps a build from a record or the live stream only if it is legal (`src/viewer/sanitize.ts`).
+
 ## Launch height
 
 Classic keeps launched fighters near the fight, so View all can follow it (#41). Heights are measured from the highest walkable surface when the round starts.

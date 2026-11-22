@@ -15,6 +15,7 @@ import { basename, join, resolve } from "node:path";
 import { modelOf } from "../src/stats/models";
 import { wavBytes } from "../src/viewer/audio/offline";
 import type { MatchRecord } from "../src/sim/match";
+import { buildChipText, buildProblem, type Build } from "../src/sim/build";
 import { crossfade, END_FADE_S, SR, segmentSound, XF_S, type Stereo } from "./montage/audio";
 import { bursts, cropLeft, cutFrames, describe, montageOrder, pickCuts, type Burst } from "./montage/cuts";
 import { MONTAGE_USAGE, parseMontageArgs, type MontageOptions } from "./montage/options";
@@ -261,7 +262,10 @@ const rows = seq.map((s, i) => {
   }
   if (s.part.kind === "card") {
     const seat = s.part.seat;
-    return `| ${i + 1} | ${t} | ${file} | 1 | before the fight | Card: ${names[seat]} (${modelOf(r.rec.labels?.[seat]).name}): "${(r.rec.rounds[0]?.lines[seat] ?? "").replace(/\|/g, "/")}" and its plan chips${caption ? `; caption "${caption}"` : ""} |`;
+    // the card's build chip (#81); a record with an illegal build is refused by the viewer before this
+    const build = r.rec.rounds[0]?.strategies[seat]?.build;
+    const chip = build !== undefined && buildProblem(build) === null ? buildChipText(build as Build) : "BALANCED";
+    return `| ${i + 1} | ${t} | ${file} | 1 | before the fight | Card: ${names[seat]} (${modelOf(r.rec.labels?.[seat]).name}): "${(r.rec.rounds[0]?.lines[seat] ?? "").replace(/\|/g, "/")}", build ${chip}, and its plan chips${caption ? `; caption "${caption}"` : ""} |`;
   }
   return `| ${i + 1} | ${t} | ${file} | ${r.rec.rounds.length} | win screen | Title card: "${END_TITLE} · ${END_TEXT}" |`;
 });

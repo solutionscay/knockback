@@ -1165,8 +1165,8 @@ body.capture #controls {
 }
 #lineup.fight .chip .nm {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas: "b b" "f p";
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-areas: "b b b" "f k p";
   column-gap: calc(0.7 * var(--u));
   row-gap: calc(0.3 * var(--u));
   min-width: 0;
@@ -1814,4 +1814,49 @@ body.embed:has(#celebrate.show) #lineup {
     margin-top: 6px;
     gap: 4px;
   }
+}
+
+/* ---------------------------------------------------------- builds (#81): the card chip, the HUD tag (build-view.ts) */
+#lineup .chip .bld {
+  font-style: normal;
+  font-weight: 800;
+  font-size: max(calc(1.3 * var(--u)), 11px);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--a, #c9ccd6);
+}
+#lineup.fight .chip .bld {
+  grid-area: k;
+  align-self: center;
+}
+/* phones (portrait): the build gets a row of its own under the name. The chips sit under the round clock here, so
+   the landscape cap that keeps them clear of it does not apply: each takes its half of the width */
+@media (max-aspect-ratio: 1/1) {
+  #lineup.fight .chip {
+    max-width: none;
+  }
+  #lineup.fight .chip .nm {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "b b" "f f" "k p";
+  }
+}
+#dialogue .plan b.bld {
+  display: inline-flex;
+  align-items: baseline;
+  gap: calc(0.7 * var(--u));
+  border-color: rgba(255, 255, 255, 0.28);
+  white-space: nowrap;
+}
+#dialogue .plan b.bld em {
+  font-style: normal;
+  font-weight: 900;
+}
+#dialogue .plan b.bld span {
+  color: var(--a);
+  letter-spacing: 0.04em;
+}
+#dialogue .plan b.bld i {
+  font-style: normal;
+  opacity: 0.45;
 }

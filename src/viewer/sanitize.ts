@@ -215,8 +215,9 @@ export function sanitizeRecord(rec: unknown): MatchRecord | null {
       const ds = [0, 1, 2, 3].map((i) => sanitizeDecision({ line: rd.lines?.[i], strategy: rd.strategies?.[i] }, i));
       const meta = Array.isArray(rd.meta) ? rd.meta.slice(0, 4).map((m) => ({ provider: String(m?.provider ?? "?").slice(0, 40), ms: Number(m?.ms) || 0, outcome: ["ok", "fallback-timeout", "fallback-invalid", "fallback-error", "house"].includes(m?.outcome) ? m.outcome : "house", ...(typeof m?.aiLine === "string" ? { aiLine: m.aiLine.slice(0, 200) } : {}), ...(typeof m?.why === "string" ? { why: m.why.slice(0, 100) } : {}), ...(Array.isArray(m?.factWarnings) ? { factWarnings: m.factWarnings.slice(0, 4).map((w: unknown) => String(w).slice(0, 200)) } : {}), ...(m?.hedged === true ? { hedged: true } : {}), ...(Array.isArray(m?.ruleProblems) ? { ruleProblems: m.ruleProblems.slice(0, 8).map((w: unknown) => String(w).slice(0, 200)) } : {}) })) : undefined;
       const planUpdates = sanitizePlanUpdates((rd as { planUpdates?: unknown }).planUpdates);
-      // the sim replays planUpdates; the fight's own copy of them is not trusted (and not needed)
-      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, updates: [] } : rd.fight;
+      // the sim replays planUpdates; the fight's own copy of them is not trusted (and not needed). Its copy of the
+      // strategies (builds included, #81) is the sanitized one: nothing unchecked stays in a sanitized record
+      const fight = rd.fight && typeof rd.fight === "object" ? { ...rd.fight, strategies: ds.map((d) => d.strategy), updates: [] } : rd.fight;
       return { ...rd, fight, strategies: ds.map((d) => d.strategy), lines: ds.map((d) => d.line), ...(meta ? { meta } : {}), ...(planUpdates.length ? { planUpdates } : { planUpdates: undefined }) };
     }),
   };

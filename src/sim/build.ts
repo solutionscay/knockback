@@ -80,7 +80,7 @@ export const LEGAL_BUILDS: readonly Readonly<Build>[] = (() => {
   const out: Build[] = [];
   for (let health = BUILD_MIN; health <= BUILD_MAX; health++)
     for (let weight = BUILD_MIN; weight <= BUILD_MAX; weight++) {
-      const power = -(health + weight);
+      const power = 0 - (health + weight); // not -(…): that gives -0 for neutral
       if (power >= BUILD_MIN && power <= BUILD_MAX) out.push(Object.freeze({ health, weight, power }));
     }
   return Object.freeze(out);
@@ -106,9 +106,54 @@ export function buildText(b: Build): string {
   return BUILD_ATTRIBUTES.map((a) => `${a} ${b[a] > 0 ? "+" : ""}${b[a]}`).join(", ");
 }
 
-/** Three example builds the agents are shown (#80): one per way to spend the points. */
-export const BUILD_EXAMPLES: readonly { name: string; build: Readonly<Build>; why: string }[] = [
-  { name: "tank", build: { health: 2, weight: 0, power: -2 }, why: "lasts longest, hits soft" },
-  { name: "glass cannon", build: { health: -2, weight: 0, power: 2 }, why: "hits hardest, goes down fast" },
-  { name: "anchor", build: { health: -1, weight: 2, power: -1 }, why: "hard to knock off the level: for pits and ring-outs" },
+/**
+ * Shape names (#81): one name per set of attributes a build raises. A legal build that is not neutral raises one or
+ * two attributes (the levels add up to 0), so these seven names cover all 19 legal builds. Agents (BUILD_EXAMPLES)
+ * and viewers (cards, HUD chips, montage) use the same names.
+ */
+export const BUILD_SHAPES: readonly { name: string; up: readonly BuildAttribute[] }[] = [
+  { name: "BALANCED", up: [] },
+  { name: "TANK", up: ["health"] },
+  { name: "ANCHOR", up: ["weight"] },
+  { name: "GLASS CANNON", up: ["power"] },
+  { name: "FORTRESS", up: ["health", "weight"] },
+  { name: "SCRAPPER", up: ["health", "power"] },
+  { name: "WRECKER", up: ["weight", "power"] },
 ];
+
+/** The attributes a build raises, in attribute order. */
+export const buildUp = (b: Build): BuildAttribute[] => BUILD_ATTRIBUTES.filter((a) => b[a] > 0);
+
+/** A legal build's shape name: "TANK", "BALANCED", ... */
+export function buildShape(b: Build): string {
+  const up = buildUp(b);
+  const shape = BUILD_SHAPES.find((s) => s.up.length === up.length && s.up.every((a, i) => a === up[i]));
+  if (!shape) throw new Error(`no shape for build ${JSON.stringify(b)}: not a legal build`);
+  return shape.name;
+}
+
+/** Short labels for chips. */
+export const BUILD_SHORT: Readonly<Record<BuildAttribute, string>> = { health: "HP", weight: "WGT", power: "PWR" };
+
+/** A build's levels for a chip: "HP +2 · WGT 0 · PWR −2" (a true minus sign), or "BALANCED" for neutral. */
+export function buildLevels(b: Build): string {
+  if (buildUp(b).length === 0) return "BALANCED";
+  return BUILD_ATTRIBUTES.map((a) => `${BUILD_SHORT[a]} ${signed(b[a])}`).join(" · ");
+}
+
+/** The chip as plain text (READMEs, shot lists): "TANK · HP +2 · WGT 0 · PWR −2", or "BALANCED". */
+export function buildChipText(b: Build): string {
+  return buildUp(b).length === 0 ? buildShape(b) : `${buildShape(b)} · ${buildLevels(b)}`;
+}
+
+/** A level with its sign: "+2", "0", "−2" (U+2212). */
+export const signed = (n: number): string => (n > 0 ? `+${n}` : n < 0 ? `\u2212${-n}` : "0");
+
+/** Three example builds the agents are shown (#80): one per way to spend the points, named by their shape. */
+export const BUILD_EXAMPLES: readonly { name: string; build: Readonly<Build>; why: string }[] = (
+  [
+    [{ health: 2, weight: 0, power: -2 }, "lasts longest, hits soft"],
+    [{ health: -2, weight: 0, power: 2 }, "hits hardest, goes down fast"],
+    [{ health: -1, weight: 2, power: -1 }, "hard to knock off the level: for pits and ring-outs"],
+  ] as const
+).map(([build, why]) => ({ name: buildShape(build).toLowerCase(), build, why }));

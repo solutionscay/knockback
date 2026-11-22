@@ -11,6 +11,8 @@ import type { Decision } from "../sim/voice";
 import { bestRule, type KoEvent, type RuleFiring } from "./callouts";
 import { hex, portraitSvg } from "./portrait";
 import { modelBadgeHtml } from "./model-badge";
+import { buildChipHtml } from "./build-view";
+import { strategyBuild } from "../sim/build";
 import type { CamMode } from "./scene-camera";
 
 const TALLY_KEY = "knockback.tally.v1";
@@ -151,7 +153,7 @@ export function dialogueHtml(match: Match, decision: Decision, label: string | n
           <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${badge}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}${suitTag}</div>
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}
           <div class="line"><span class="typed"></span><span class="caret"></span></div>
-          <div class="plan"><span class="k">${head}</span><b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
+          <div class="plan"><span class="k">${head}</span>${buildChipHtml(strategyBuild(s.build))}<b>${esc(STANCE[s.stance] ?? String(s.stance))}</b><b>${esc(`WANTS ${s.weapons.join(" > ")}`.toUpperCase())}</b><b>${tgt}</b><b>${rt}</b></div>
           ${nextRules}${counts}${why}
         </div>
         <button type="button" class="skip" title="Skip the dialogue">SKIP ▸▸</button>
