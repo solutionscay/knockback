@@ -6,6 +6,7 @@ weapons: sniper, rifle, rocket
 stance: overwatch
 target: strongest
 retaliate: turn
+build: health -1, weight -1, power +2
 catchphrase: Geometry, darling.
 ---
 

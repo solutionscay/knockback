@@ -6,6 +6,7 @@ weapons: bat, grapple, shotgun
 stance: rush
 target: strongest
 retaliate: attacker
+build: health -2, weight +1, power +1
 catchphrase: Batter up.
 ---
 

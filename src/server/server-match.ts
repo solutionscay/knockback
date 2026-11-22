@@ -9,6 +9,9 @@ import { MatchRunner, type ControlEvent, type RunnerEvent, type StoredRound } fr
 import { settleSuitUp, type SuitUpAnswer, type SuitUpResult } from "../ai/suitup";
 import { assignIdentities, type Identity, type IdentityWish } from "../sim/identity";
 import { entranceLine, type Entrance } from "../sim/entrance";
+import { buildReport } from "../ai/prompt";
+import { buildsOn, NEUTRAL_BUILD } from "../sim/build";
+import { placing } from "../sim/roundstats";
 import { parseSoul, type Soul } from "../sim/soul";
 import { exampleSouls } from "../sim/souls";
 import { modelOf, remoteLabel, seatEntries } from "../stats/models";
@@ -89,6 +92,9 @@ export class ServerMatch {
   crown: { seat: number; streak: number } | null = null;
   private settle!: () => void;
   private waiters = new Set<() => void>();
+
+  /** the Arena round played just before this one (#80: its builds go into this round's turns); null: none known */
+  previous: ServerMatch | null = null;
 
   constructor(
     readonly id: string,
@@ -591,6 +597,7 @@ export class ServerMatch {
         prompt: t.prompt,
         ...this.entranceFor(seat),
         ...this.newcomersFor(seat),
+        ...this.lastBuildsFor(seat),
         schema: planSchema(this.selection.ruleset),
         submit: `POST /api/arena/plan with {"round":${this.arenaRound}, ...plan} or {"round":${this.arenaRound},"answer":"<model reply with the JSON>"}`,
       };
@@ -615,6 +622,25 @@ export class ServerMatch {
     const newcomers = es.map((e) => ({ seat: e.seat, fighter: names[e.seat]!, agent: this.agents[e.seat]?.name ?? null, ...(e.evicted ? { kickedOut: e.evicted.name } : {}), line: e.line }));
     const said = newcomers.map((n) => `${n.fighter}${n.agent ? ` (agent ${n.agent})` : ""} just took seat ${n.seat}${n.kickedOut ? ` and kicked out the house bot ${n.kickedOut}` : ""}`);
     return { newcomers, newcomerNote: `New in the Arena this round: ${said.join("; ")}.` };
+  }
+
+  /**
+   * Last Arena round's builds (#80), for a seat's turn: each fighter's build and, when this seat's agent played that
+   * round, how its build did. `lastBuildsNote` is the same for the briefing. Every Arena round is a match of its own,
+   * so the round prompt has no last round: this is where the agent reads it.
+   */
+  private lastBuildsFor(seat: number) {
+    const prev = this.previous;
+    const p = prev?.runner;
+    const rec = p?.match.record.rounds[0], facts = p?.match.facts[0];
+    if (!prev || !p || !rec || !facts || !buildsOn(p.match.ruleset)) return {};
+    const builds = rec.strategies.map((s) => s.build ?? NEUTRAL_BUILD);
+    const token = this.agents[seat]?.tokenHash;
+    const was = token ? prev.agents.findIndex((a) => a?.tokenHash === token) : -1;
+    return {
+      lastBuilds: { round: prev.arenaRound, fighters: p.names.map((name, i) => ({ name, build: builds[i]!, you: i === was })) },
+      lastBuildsNote: `Round ${prev.arenaRound}: ${buildReport(builds, facts, was, p.names).join(" ")}`,
+    };
   }
 
   /** The round's result for one seat: winner, the seat's place (1-4), links. */
@@ -729,16 +755,3 @@ export function enteringSeats(names: readonly (string | null)[], before: { kinds
 /** A soul id from an agent name. */
 export const soulIdOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
 
-/**
- * The seats of a played round from first to last place (#64): the winner first, then the fighters still standing at
- * the bell by health left, then the knocked-out ones, the last to go first. Rotation sends the last one to the back
- * of the queue.
- */
-export function placing(f: { winner: number; fighters: { hpEnd: number }[]; stats: { kos: { victim: number; tick?: number }[] } }): number[] {
-  const seats = f.fighters.map((_, i) => i);
-  const koAt = new Map<number, number>();
-  f.stats.kos.forEach((k, i) => koAt.set(k.victim, k.tick ?? i));
-  const standing = seats.filter((s) => s !== f.winner && !koAt.has(s)).sort((a, b) => f.fighters[b]!.hpEnd - f.fighters[a]!.hpEnd || a - b);
-  const out = seats.filter((s) => s !== f.winner && koAt.has(s)).sort((a, b) => koAt.get(b)! - koAt.get(a)! || a - b);
-  return [f.winner, ...standing, ...out];
-}

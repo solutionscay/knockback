@@ -10,6 +10,7 @@
  * block of `key: value` lines between `---` fences, a free-text body, and an
  * optional `## Lines` section of `- context [states]: text` entries.
  */
+import { BUILD_ATTRIBUTES, buildProblem, NEUTRAL_BUILD, type Build } from "./build";
 import { MORALE_STATES, type MoraleState } from "./morale";
 import { RULE_RETALIATE, RULE_STANCES } from "./rules";
 import { isPickupWeapon, TARGET_PREFERENCES, WEAPON_LIST, type Retaliate, type Stance, type TargetPref, type Weapon } from "./sim-types";
@@ -30,6 +31,8 @@ export interface Soul {
   stance: Stance;
   target: TargetPref;
   retaliate: Retaliate;
+  /** the build the house bot plays with this soul (#80); agents choose their own build every round */
+  build: Build;
   catchphrase: string;
   /** the free text: attitude and how it talks (what AI fighters read) */
   body: string;
@@ -143,6 +146,21 @@ export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulP
     weapons = ["shotgun", "rocket"];
     warnings.push("no weapon preferences: defaulting to shotgun, rocket");
   }
+  let build: Build = { ...NEUTRAL_BUILD };
+  if (front.build) {
+    const b: Record<string, number> = { ...NEUTRAL_BUILD };
+    let ok = true;
+    for (const part of list(front.build)) {
+      const m = /^([a-z]+)\s+([+-]?\d+)$/.exec(part.toLowerCase());
+      if (!m || !(BUILD_ATTRIBUTES as readonly string[]).includes(m[1]!)) {
+        errors.push(`build: "${part}" is not "health|weight|power LEVEL"`);
+        ok = false;
+      } else b[m[1]!] = Number(m[2]);
+    }
+    const problem = ok ? buildProblem(b) : null;
+    if (problem) errors.push(`build: ${problem}`);
+    else if (ok) build = b as unknown as Build;
+  }
   const soul: Soul = {
     id: id.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 24) || `soul${seat + 1}`,
     temperament: pick("temperament", TEMPERAMENTS, "confident", guess.temperament),
@@ -152,6 +170,7 @@ export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulP
     stance: pick("stance", RULE_STANCES, "rush", guess.stance),
     target: pick("target", TARGET_PREFERENCES, "nearest", guess.target),
     retaliate: pick("retaliate", RULE_RETALIATE, "turn", guess.retaliate),
+    build,
     catchphrase: (front.catchphrase ?? "").slice(0, 80),
     body,
     lines,
@@ -161,5 +180,5 @@ export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulP
 
 /** Soul as compact data for records (a replay needs no files). */
 export function soulRecord(s: Soul): Soul {
-  return { ...s, values: s.values.slice(), weapons: s.weapons.slice(), lines: s.lines.map((l) => [l[0], l[1] === "*" ? "*" : l[1].slice(), l[2]] as LineTemplate) };
+  return { ...s, values: s.values.slice(), weapons: s.weapons.slice(), build: { ...s.build }, lines: s.lines.map((l) => [l[0], l[1] === "*" ? "*" : l[1].slice(), l[2]] as LineTemplate) };
 }

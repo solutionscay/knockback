@@ -10,6 +10,7 @@
  * its voice), chosen by what actually happened and never repeated within a
  * session; strategy from the soul's fields, bent by morale and last round.
  */
+import { buildsOn, NEUTRAL_BUILD } from "./build";
 import type { Morale, MoraleState, RoundFacts } from "./morale";
 import { allowedWeapon, CLASSIC, type Ruleset } from "./ruleset";
 import type { Rng } from "./rng";
@@ -306,7 +307,9 @@ export function houseStrategy(ctx: DecideContext): Strategy {
   weapons = weapons.filter(w => allowedWeapon(ruleset, w));
   if (!weapons.length) weapons = [ruleset.weapons.enabled[0]!];
   const rules = ctx.houseRules === false ? [] : houseRulesFor(soul).filter(r => availableRule(r, ruleset));
-  return { target, grudge, stance, weapons, retaliate, ...(rules.length ? { rules } : {}), line: "" };
+  // the soul's build (#80); with builds off in the ruleset, neutral
+  const build = buildsOn(ruleset) ? { ...soul.build } : { ...NEUTRAL_BUILD };
+  return { target, grudge, stance, weapons, retaliate, ...(rules.length ? { rules } : {}), build, line: "" };
 }
 
 /**
@@ -332,4 +335,13 @@ export const houseBrain: Brain = (ctx) => {
   const { line, id } = pickLine(ctx, strategy);
   ctx.session.used.add(id);
   return { line, strategy: { ...strategy, line }, lineId: id };
+};
+
+/**
+ * The house autopilot (#80): plays an agent's seat when the agent misses its turn. The house bot's plan and line,
+ * with a neutral build: the agent's body is never chosen for it.
+ */
+export const autopilotBrain: Brain = (ctx) => {
+  const d = houseBrain(ctx);
+  return { ...d, strategy: { ...d.strategy, build: { ...NEUTRAL_BUILD } } };
 };

@@ -14,6 +14,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { buildProblem, buildText, strategyBuild, type Build } from "../sim/build";
 import type { Identity } from "../sim/identity";
 import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
@@ -53,7 +54,8 @@ export interface ReplaySummary {
 export interface RoundSummary {
   winner: number;
   lines: string[];
-  plans: { stance: string; target: string; weapons: string[] }[];
+  /** each seat's plan; build null when the record has none it can trust (#80) */
+  plans: { stance: string; target: string; weapons: string[]; build: Build | null }[];
   /** mid-round plan changes per seat */
   planChanges: number[];
 }
@@ -85,7 +87,7 @@ export function summarizeReplay(raw: unknown, match: string, record: string, cre
       lines: SEATS.map((i) => str(lines[i])),
       plans: SEATS.map((i) => {
         const s = (strategies[i] ?? {}) as Record<string, unknown>;
-        return { stance: str(s.stance, 20), target: str(s.target, 20), weapons: Array.isArray(s.weapons) ? s.weapons.slice(0, 4).map((w) => str(w, 20)) : [] };
+        return { stance: str(s.stance, 20), target: str(s.target, 20), weapons: Array.isArray(s.weapons) ? s.weapons.slice(0, 4).map((w) => str(w, 20)) : [], build: s.build !== undefined && buildProblem(s.build) === null ? strategyBuild(s.build as Build) : null };
       }),
       planChanges: SEATS.map((i) => updates.filter((u) => (u as { fighter?: unknown })?.fighter === i).length),
     };
@@ -185,6 +187,8 @@ export interface AgentMatch {
   /** the other three: name and look */
   rivals: { name: string; identity: Identity | null }[];
   autopilot: boolean;
+  /** the build the agent played in each round of the match, in words (#80); empty while it runs */
+  builds: string[];
 }
 
 export interface AgentProfile {
@@ -200,8 +204,8 @@ export interface AgentProfile {
   /** the agent's most recent line in a fight */
   signature: string;
   stats: { matches: number; won: number; lost: number; rounds: number; roundsWon: number; planChanges: number; autopilot: number };
-  /** most frequent stance, target and first weapon over its plans */
-  style: { stance: string | null; target: string | null; weapon: string | null };
+  /** most frequent stance, target, first weapon and build over its plans */
+  style: { stance: string | null; target: string | null; weapon: string | null; build: string | null };
   matches: AgentMatch[];
   now: { match: string; status: string } | null;
 }
@@ -249,6 +253,7 @@ export function buildProfile(
   const stances: string[] = [];
   const targets: string[] = [];
   const weapons: string[] = [];
+  const builds: string[] = [];
   const stats = { matches: 0, won: 0, lost: 0, rounds: 0, roundsWon: 0, planChanges: 0, autopilot: 0 };
   let identity: Identity | null = null;
   let weapon: Weapon = "fist";
@@ -277,6 +282,7 @@ export function buildProfile(
           stances.push(pl.stance);
           targets.push(pl.target);
           if (pl.weapons[0]) weapons.push(pl.weapons[0]);
+          if (pl.build) builds.push(buildText(pl.build));
         }
       }
       // the newest line: seats come newest first, rounds oldest first
@@ -296,6 +302,7 @@ export function buildProfile(
         record: rp.record,
         rivals: SEATS.filter((j) => j !== i).map((j) => ({ name: rp.names[j] ?? "?", identity: rp.identities[j] ?? null })),
         autopilot: ap,
+        builds: rp.rounds.map((rd) => (rd.plans[i]?.build ? buildText(rd.plans[i]!.build!) : "")).filter(Boolean),
       });
     } else {
       if (!identity && s.live?.identities) identity = s.live.identities[s.seat] ?? null;
@@ -311,12 +318,13 @@ export function buildProfile(
         record: null,
         rivals: s.live?.identities ? SEATS.filter((j) => j !== s.seat).map((j) => ({ name: s.live!.names?.[j] ?? "?", identity: s.live!.identities![j] ?? null })) : [],
         autopilot: s.leftRound !== null,
+        builds: [],
       });
     }
   }
   const soul = seats[0]?.soul ?? "";
   const { summary, catchphrase } = soul ? soulSummary(soul) : { summary: "", catchphrase: "" };
-  return { name, owner: seats[0]?.owner ?? "", identity, weapon, label, summary, catchphrase, signature: signature || catchphrase, stats, style: { stance: mode(stances), target: mode(targets), weapon: mode(weapons) }, matches, now };
+  return { name, owner: seats[0]?.owner ?? "", identity, weapon, label, summary, catchphrase, signature: signature || catchphrase, stats, style: { stance: mode(stances), target: mode(targets), weapon: mode(weapons), build: mode(builds) }, matches, now };
 }
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;

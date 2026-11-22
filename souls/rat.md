@@ -6,6 +6,7 @@ weapons: grenade, rocket, shotgun
 stance: cover
 target: nearest
 retaliate: turn
+build: health +2, weight -1, power -1
 catchphrase: Sorry! Sorry. Not sorry.
 ---
 

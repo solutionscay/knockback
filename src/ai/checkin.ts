@@ -11,6 +11,7 @@ import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
  * parser (a partial plan merged onto the current one) and the apply tick.
  * The loop that asks lives in MatchRunner (runner.ts).
  */
+import { buildsOn, buildText, type Build } from "../sim/build";
 import { FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import { planKey, type Fight } from "../sim/fight";
 import type { Strategy } from "../sim/sim-types";
@@ -126,6 +127,8 @@ export interface CheckinStatus {
     jetpackFuel: number | null;
     flamethrowerFuel: number | null;
     plan: { target: string; stance: string; weapons: string[]; retaliate: string; rules: string[] };
+    /** this round's build (#80): fixed for the round */
+    build: Build;
     activeRules: string[];
     chasing: string | null;
     chasedBy: string[];
@@ -141,6 +144,8 @@ export interface CheckinStatus {
     knockouts: number;
     burning: boolean;
     jetpack: boolean;
+    /** the rival's build this round (#80): every plan is in once the round runs */
+    build: Build;
   }[];
   last10s: { took: { from: string; damage: number; hits: number; weapon: string }[]; dealt: { to: string; damage: number; hits: number }[] };
   nearest: { item: string; distance: number; direction: string }[];
@@ -229,6 +234,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
       jetpackFuel: pw.jetpack > 0 ? r1((pw.jetpack / TICK_RATE) * 10) / 10 : null,
       flamethrowerFuel: f.weapons.includes("flamethrower") ? f.fuel : null,
       plan: planOf(ctl.strategy, names),
+      build: { ...f.build },
       activeRules: ctl.rules.rules.filter((_, i) => ctl.rules.state[i]!.active).map((r) => r.label),
       chasing: targetOf(me),
       chasedBy: sim.fighters.filter((x) => x.id !== me && x.alive && fight.controllers[x.id]!.targetId === me).map((x) => names[x.id]!),
@@ -248,6 +254,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
           knockouts: x.kos,
           burning: x.alive && x.burning > 0,
           jetpack: x.alive && x.power.jetpack > 0,
+          build: { ...x.build },
         };
       }),
     last10s: {
@@ -266,10 +273,11 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
  */
 export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinConfig = CHECKIN, ruleset: Ruleset = CLASSIC): string {
   const y = st.you;
+  const builds = buildsOn(ruleset);
   // the soul's first sentence (not its Markdown headings): enough to stay in character
   const persona = soul ? (soul.body.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#")).join(" ").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s/)[0] ?? "").slice(0, 140) : "";
   const rivals = st.rivals
-    .map((r) => (r.out ? `${r.name} OUT` : `${r.name} ${r.health}hp ${r.weapons.join("+") || "fists"} ${r.distance}m ${r.direction}${r.targeting ? ` ->${r.targeting === y.name ? "YOU" : r.targeting}` : ""}${r.knockouts ? ` ${r.knockouts}KO` : ""}${r.burning ? " burning" : ""}${r.jetpack ? " jetpack" : ""}`))
+    .map((r) => (r.out ? `${r.name} OUT` : `${r.name} ${r.health}hp ${r.weapons.join("+") || "fists"} ${r.distance}m ${r.direction}${r.targeting ? ` ->${r.targeting === y.name ? "YOU" : r.targeting}` : ""}${r.knockouts ? ` ${r.knockouts}KO` : ""}${r.burning ? " burning" : ""}${r.jetpack ? " jetpack" : ""}${builds ? ` (build ${buildText(r.build)})` : ""}`))
     .join("; ");
   const took = st.last10s.took.map((t) => `${t.from} ${t.damage} (${t.hits} hits, ${t.weapon})`).join(", ") || "nothing";
   const dealt = st.last10s.dealt.map((d) => `${d.to} ${d.damage}`).join(", ") || "nothing";
@@ -278,7 +286,7 @@ export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinC
   const plan = `target ${y.plan.target}, ${y.plan.stance}, wants ${y.plan.weapons.join(">")}, retaliate ${y.plan.retaliate}${y.plan.rules.length ? `, rules: ${y.plan.rules.join("; ")}` : ""}${y.activeRules.length ? ` (active now: ${y.activeRules.join("; ")})` : ""}`;
   return [
     `Knockback check-in, round ${st.round}, ${st.second}s in (${st.secondsLeft}s left, zone ${st.zoneWidth}m wide). You are ${y.name}. ${persona}`,
-    `YOU: ${me}. Chasing ${y.chasing ?? "nobody"}; chased by ${y.chasedBy.join(", ") || "nobody"}.`,
+    `YOU: ${me}${builds ? `, build ${buildText(y.build)}` : ""}. Chasing ${y.chasing ?? "nobody"}; chased by ${y.chasedBy.join(", ") || "nobody"}.`,
     `PLAN: ${plan}.`,
     `RIVALS: ${rivals}.`,
     `LAST 10s: took ${took}; dealt ${dealt}.`,
@@ -311,6 +319,8 @@ export function parseCheckin(text: string, me: number, names: string[], current:
   const line = lineRaw ? (lineRaw.length > cfg.maxLine ? lineRaw.slice(0, cfg.maxLine - 1).replace(/\s+\S*$/, "") + "…" : lineRaw) : undefined;
   const why = cleanWhy(o.why ?? o.reason) ?? undefined;
   const extra = { ...(line ? { line } : {}), ...(why ? { why } : {}) };
+  // the build is the body for the whole round (#80)
+  if (o.build !== undefined) return { kind: "invalid", problems: ["build: your build is fixed for the round; a check-in cannot change it (leave build out)"] };
   const given = PLAN_FIELDS.filter((k) => o[k] !== undefined);
   if (o.keep === true && !given.length) return { kind: "keep", ...extra };
   if (!given.length) return o.keep === undefined && !line ? { kind: "invalid", problems: ["neither keep nor plan fields"] } : { kind: "keep", ...extra };
@@ -325,7 +335,7 @@ export function parseCheckin(text: string, me: number, names: string[], current:
   };
   const v = validatePlan(merged, me, names, ruleset);
   if (!v.strategy) return { kind: "invalid", problems: v.problems };
-  const s: Strategy = { ...v.strategy, line: current.line ?? "" };
+  const s: Strategy = { ...v.strategy, build: { ...(current.build ?? v.strategy.build!) }, line: current.line ?? "" };
   let ruleProblems: string[] | undefined;
   if (o.rules !== undefined) {
     const pr = parseRules(o.rules, me, names, ruleset);

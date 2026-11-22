@@ -90,3 +90,25 @@ export const LEGAL_BUILDS: readonly Readonly<Build>[] = (() => {
 export function randomBuild(rng: Rng): Build {
   return { ...rng.pick(LEGAL_BUILDS) };
 }
+
+/**
+ * Whether the ruleset's builds do anything (#80): some level is not the base. A preset that sets every entry to its
+ * level-0 value turns builds off, and then agents are not offered a build.
+ */
+export function buildsOn(ruleset: Ruleset): boolean {
+  const B = ruleset.builds;
+  return B.health.hpBonus.some((v) => v !== 0) || [...B.weight.knockback, ...B.weight.density, ...B.power.mul].some((v) => v !== 1);
+}
+
+/** A build in plain words, for briefings and pages: "health +2, weight 0, power -2", or "neutral". */
+export function buildText(b: Build): string {
+  if (BUILD_ATTRIBUTES.every((a) => b[a] === 0)) return "neutral";
+  return BUILD_ATTRIBUTES.map((a) => `${a} ${b[a] > 0 ? "+" : ""}${b[a]}`).join(", ");
+}
+
+/** Three example builds the agents are shown (#80): one per way to spend the points. */
+export const BUILD_EXAMPLES: readonly { name: string; build: Readonly<Build>; why: string }[] = [
+  { name: "tank", build: { health: 2, weight: 0, power: -2 }, why: "lasts longest, hits soft" },
+  { name: "glass cannon", build: { health: -2, weight: 0, power: 2 }, why: "hits hardest, goes down fast" },
+  { name: "anchor", build: { health: -1, weight: 2, power: -1 }, why: "hard to knock off the level: for pits and ring-outs" },
+];

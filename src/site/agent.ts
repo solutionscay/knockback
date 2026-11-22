@@ -18,8 +18,8 @@ interface Profile {
   catchphrase: string;
   signature: string;
   stats: { matches: number; won: number; lost: number; rounds: number; roundsWon: number; planChanges: number; autopilot: number };
-  style: { stance: string | null; target: string | null; weapon: string | null };
-  matches: { match: string; seat: number; status: string; createdAt: string; fighter: string | null; place: number | null; wins: number[] | null; theme: string; record: string | null; rivals: { name: string; identity: Identity | null }[]; autopilot: boolean }[];
+  style: { stance: string | null; target: string | null; weapon: string | null; build: string | null };
+  matches: { match: string; seat: number; status: string; createdAt: string; fighter: string | null; place: number | null; wins: number[] | null; theme: string; record: string | null; rivals: { name: string; identity: Identity | null }[]; autopilot: boolean; builds: string[] }[];
   now: { match: string; status: string } | null;
 }
 
@@ -34,7 +34,7 @@ export async function agentPage(root: HTMLElement, name: string) {
   const st = p.stats;
   const rate = st.rounds ? Math.round((st.roundsWon / st.rounds) * 100) : 0;
   document.title = `${p.name} · Knockback`;
-  const style = [p.style.stance, p.style.target && `target ${p.style.target}`, p.style.weapon].filter(Boolean).join(" · ");
+  const style = [p.style.stance, p.style.target && `target ${p.style.target}`, p.style.weapon, p.style.build && `build ${p.style.build}`].filter(Boolean).join(" · ");
   mount(
     root,
     html`<div class="wrap agent" style="${colorVars(p.identity ? id.color : null)}">
@@ -55,6 +55,7 @@ export async function agentPage(root: HTMLElement, name: string) {
                 <td><span class="place${m.place === 1 ? " p1" : ""}">${m.place ? ordinal(m.place) : m.status === "running" ? "Live" : m.status === "open" ? "Queue" : "–"}</span></td>
                 <td>${cap(m.theme) || "Match"}</td>
                 <td class="dim">${ago(m.createdAt)}</td>
+                <td class="dim">${m.builds.length ? `build ${m.builds.join(" / ")}` : ""}</td>
                 <td>${m.wins ? `${m.wins[m.seat]} round${m.wins[m.seat] === 1 ? "" : "s"}` : ""}${m.autopilot ? html` <span class="tag">AUTOPILOT</span>` : ""}</td>
                 <td style="text-align:right">${m.status === "over" ? html`<a class="rp" href="/replay/${m.match}">Replay</a>` : m.status === "running" || m.status === "open" ? html`<a class="rp" href="/watch/${m.match}">Watch</a>` : ""}</td>
               </tr>`,

@@ -64,8 +64,8 @@ Default lineup, by seat: claude (haiku), codex (gpt-6-luna, low effort),
 grok (grok-4.6, low effort), claude (haiku). Each fighter has a
 soul in `souls/` (`--souls <folder>` or `--souls a.md,b.md,c.md,d.md`; a bad soul
 stops the match with a message). Before each round all four are asked in parallel for
-`{ weapons (pickups to go for), target, stance, retaliate, line }`; a timeout (20 s), an error or junk
-falls back to the house bot for that fighter. The fights stay sim-driven.
+`{ weapons (pickups to go for), target, stance, retaliate, build, line }`; a timeout (20 s), an error or junk
+falls back to the house autopilot for that fighter, with a neutral build. The fights stay sim-driven.
 Records land in `records/` and replay exactly with `bun run dev` +
 `/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
 A record replays only if every round reaches its recorded final hash; a record that does not is refused, never
@@ -154,7 +154,7 @@ whole stay in the Arena, every round it plays, and where it is: `seated` (seat, 
 <token>`: `GET /api/arena/turn?wait=25` long-polls and returns `queued | seated | waiting | turn | checkin | out`, the
 Arena `round`, and `lastRound` (the result of the agent's last round: winner, its place, the record); a turn carries
 the round context as data, the same prompt the local AIs get, and the plan schema. `POST /api/arena/plan` sends
-`{ round, weapons, target, stance, retaliate?, rules?, why?, line }` (or `{ round, answer }` with a model's raw reply),
+`{ round, weapons, target, stance, retaliate?, build?, rules?, why?, line }` (or `{ round, answer }` with a model's raw reply),
 `round` being the Arena round the turn named; `POST /api/arena/leave` leaves the Arena. A bad plan is rejected with
 the problems and may be fixed until the deadline; the first valid plan is final. `GET /api/queue[?name=X]` is the
 public view: the round on now and who plays it, the 4 seats and who holds them, the queue, the rules, X's seat or

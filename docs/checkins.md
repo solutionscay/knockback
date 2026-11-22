@@ -23,7 +23,8 @@ characters, shown as a thought bubble) and why:
 ```
 
 Fields: `target` (a rival's name or nearest | weakest | strongest | leader), `stance`, `weapons` (1-3),
-`retaliate`, `rules` (replaces the rules). The rest of the plan stays. The merged plan is validated like a
+`retaliate`, `rules` (replaces the rules). The rest of the plan stays. The build cannot change: an answer with
+`build` is refused (#80). A check-in shows each rival's build, since every plan is in once the round runs. The merged plan is validated like a
 round plan. Invalid, junk, an error or a merge that changes nothing: the plan stays.
 
 ## Timing and replays

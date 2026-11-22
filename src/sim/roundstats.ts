@@ -235,3 +235,17 @@ export function summarize(st: RoundStats, me: number, names: string[]): string {
   if (st.pickups[me]!.length) parts.push(`You picked up ${st.pickups[me]!.join(", ")}.`);
   return parts.join(" ") || "A quiet round for you.";
 }
+
+/**
+ * The seats of a played round from first to last place (#64): the winner first, then the fighters still standing at
+ * the bell by health left, then the knocked-out ones, the last to go first. Rotation sends the last one to the back
+ * of the queue.
+ */
+export function placing(f: { winner: number; fighters: { hpEnd: number }[]; stats: { kos: { victim: number; tick?: number }[] } }): number[] {
+  const seats = f.fighters.map((_, i) => i);
+  const koAt = new Map<number, number>();
+  f.stats.kos.forEach((k, i) => koAt.set(k.victim, k.tick ?? i));
+  const standing = seats.filter((s) => s !== f.winner && !koAt.has(s)).sort((a, b) => f.fighters[b]!.hpEnd - f.fighters[a]!.hpEnd || a - b);
+  const out = seats.filter((s) => s !== f.winner && koAt.has(s)).sort((a, b) => koAt.get(b)! - koAt.get(a)! || a - b);
+  return [f.winner, ...standing, ...out];
+}

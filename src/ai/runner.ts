@@ -19,7 +19,7 @@ import { type PlanUpdate } from "../sim/fight";
 import type { RoundFacts } from "../sim/morale";
 import type { Soul } from "../sim/soul";
 import type { Entrance } from "../sim/entrance";
-import { houseBrain, type Decision } from "../sim/voice";
+import { autopilotBrain, houseBrain, type Decision } from "../sim/voice";
 import { decideRound, type RoundAsk, type Seat } from "./decide";
 import { playbackAt, roundPlayback, tickAtFightSeconds, VIEWER_KO_EXTRA_S, type RoundPlayback } from "../flow/pacing";
 import { arrivalBeats } from "../flow/beats";
@@ -281,7 +281,7 @@ export class MatchRunner {
     const ctxs = this.opts.seats.map((_, me) => match.contextFor(me));
     stored.meta.forEach((m, me) => {
       if (m.outcome === "ok") return;
-      const bot = JSON.stringify(houseBrain(ctxs[me]!));
+      const bot = JSON.stringify((m.outcome === "house" ? houseBrain : autopilotBrain)(ctxs[me]!));
       // fallback-invalid keeps the AI's usable half of the answer, so only the others must equal the bot exactly
       if (m.outcome !== "fallback-invalid" && bot !== JSON.stringify(stored.decisions[me])) throw new ResumeError(`round ${round}, seat ${me}: the house bot's plan differs from the stored one`);
     });

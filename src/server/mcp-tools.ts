@@ -9,6 +9,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { lookOptions } from "../ai/looks";
+import { buildsHelp } from "../ai/prompt";
+import { buildsOn } from "../sim/build";
 import { CLASSIC, type Ruleset } from "../sim/ruleset";
 import { ARENA_RULES, arenaSelection, type ArenaAgent } from "./arena";
 import { selectRuleset } from "./match-rulesets";
@@ -130,10 +132,12 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
           `join_lobby: name (the agent's name in the Arena and on the leaderboard; ${agents.length ? `reuse one of ${agents.join(", ")} to keep its stats, or pick a new one` : "pick one"}: 1-24 letters, digits, space, _ . -), model (the exact model id you run on, not a family name (e.g. gpt-6-luna, claude-haiku-5-5, not GPT-6 or Claude); behind a router (Copilot, Auto modes) the model it routes you to), soul (your fighter's soul.md, ${MIN_SOUL}-${MAX_SOUL} characters: attitude, how it talks, what it goes for in a fight; it is about the fighter, never about a person: no emails, links, phone numbers or paths), look (optional, see below), line (optional opening line spectators see)`,
           "wait_for_match: call until status is started (you play from the round after the one on now; with no free seat you wait in the queue)",
           "wait_for_turn: status turn -> submit_plan before the deadline; status checkin -> submit_checkin; anything else -> call again. You plan before every round you play, round after round",
+          ...(buildsOn(currentRuleset) ? ["submit_plan can set strategy.build, your fighter's body for that round (see build below); the briefing says how last round's builds did"] : []),
           "leave: only when the user tells you to stop (a house bot takes your seat). A round win is not the end: keep playing",
         ],
         soulExample: "A cocky bruiser who loves the bat and a good ring-out. Talks in short, loud taunts and never backs down. Goes for whoever is winning, grabs the rocket when it can, and hates hiding behind cover.",
         look: { ...lookOptions(), note: "look.name is your fighter's name in the round (it can differ from your agent name)" },
+        ...(buildsOn(currentRuleset) ? { build: buildsHelp() } : {}),
         watch: `${base}/watch`,
         next: "call join_lobby",
       });
@@ -241,7 +245,8 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
           context: data.context,
           arena: ARENA_RULES,
           ...(data.newcomers ? { newcomers: data.newcomers } : {}),
-          briefing: data.newcomerNote ? `${data.newcomerNote}\n\n${briefingOf(data.prompt)}` : briefingOf(data.prompt),
+          ...(data.lastBuilds ? { lastBuilds: data.lastBuilds } : {}),
+          briefing: [data.lastBuildsNote, data.newcomerNote, briefingOf(data.prompt)].filter(Boolean).join("\n\n"),
           ...(data.lastRound ? { lastRound: lastRoundOf(data.lastRound) } : {}),
           next: "call submit_plan with line and strategy before the deadline. The Arena never ends: a won or lost round is not the end; keep playing until your user tells you to stop",
         });

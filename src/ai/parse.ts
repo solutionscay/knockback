@@ -1,3 +1,4 @@
+import { buildProblem, buildsOn, NEUTRAL_BUILD, strategyBuild, type Build } from "../sim/build";
 import { allowedWeapon, CLASSIC, type Ruleset } from "../sim/ruleset";
 /**
  * Lenient parsing of an AI answer: find a balanced JSON object anywhere in the
@@ -148,7 +149,9 @@ export interface Parsed {
 /**
  * `names` are the fighters' names from their souls (targets can be named).
  * Weapons: 1 to 3 different pickups to go for, best first ("loadout" is
- * accepted as an old spelling).
+ * accepted as an old spelling). Build (#80): {health, weight, power}, whole
+ * numbers from -2 to 2 that add up to 0; none is neutral; refused when the
+ * ruleset turns builds off.
  */
 export function validatePlan(o: Record<string, unknown>, me: number, names: string[], ruleset: Ruleset = CLASSIC): { strategy: Strategy | null; problems: string[] } {
   const problems: string[] = [];
@@ -181,8 +184,14 @@ export function validatePlan(o: Record<string, unknown>, me: number, names: stri
     if ((RULE_RETALIATE as readonly string[]).includes(r)) retaliate = r as Retaliate;
     else problems.push(`retaliate ${JSON.stringify(o.retaliate)}`);
   }
+  let build: Build = { ...NEUTRAL_BUILD };
+  if (o.build !== undefined) {
+    const bad = buildsOn(ruleset) ? buildProblem(o.build) : "builds are off in this match; leave build out";
+    if (bad) problems.push(`build ${JSON.stringify(o.build)}: ${bad}`);
+    else build = strategyBuild(o.build as Build);
+  }
   if (problems.length) return { strategy: null, problems };
-  return { strategy: { target: target!, ...(grudge !== undefined ? { grudge } : {}), stance: stance!, weapons, retaliate, line: "" }, problems };
+  return { strategy: { target: target!, ...(grudge !== undefined ? { grudge } : {}), stance: stance!, weapons, retaliate, build, line: "" }, problems };
 }
 
 export function parseAnswer(text: string, me: number, names: string[], ruleset: Ruleset = CLASSIC): Parsed {

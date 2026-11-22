@@ -1,14 +1,14 @@
 /**
- * Ask all four fighters for { weapons, target, stance, retaliate, line } in
+ * Ask all four fighters for { weapons, target, stance, retaliate, build, line } in
  * parallel, each with a deadline. A timeout, an error or junk falls back to
- * the house bot for that fighter (and is logged in the decision meta).
+ * the house autopilot for that fighter, with a neutral build (and is logged in the decision meta).
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { DecisionMeta, Match } from "../sim/match";
 import { parseSoul, type Soul } from "../sim/soul";
 import { EXAMPLE_SOUL_ORDER } from "../sim/souls";
-import { houseBrain, type Decision } from "../sim/voice";
+import { autopilotBrain, houseBrain, type Decision } from "../sim/voice";
 import type { CheckinAsk } from "./checkin";
 import { checkFactsFromStats, checkLine } from "./factcheck";
 import { parseAnswer } from "./parse";
@@ -141,7 +141,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs?: numb
         meta.push({ provider: label, ms: r.ms, outcome: "ok", ...extra });
         return;
       }
-      const bot = houseBrain(ctxs[me]!);
+      const bot = autopilotBrain(ctxs[me]!);
       const line = p.line ?? bot.line;
       decisions.push({ line, strategy: { ...(p.strategy ?? bot.strategy), line } });
       meta.push({
@@ -154,7 +154,7 @@ export async function decideRound(match: Match, seats: Seat[], deadlineMs?: numb
       });
       return;
     }
-    const bot = houseBrain(ctxs[me]!);
+    const bot = autopilotBrain(ctxs[me]!);
     decisions.push(bot);
     meta.push({ provider: label, ms: r.ms, outcome: r.outcome, detail: r.detail, ...(r.hedged ? { hedged: true } : {}) });
   });

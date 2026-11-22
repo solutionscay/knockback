@@ -2,7 +2,8 @@
  * Contract 3b: the MCP tool surface an agent reads before it plays. The server lists the eight tools by name, and
  * the plan schemas come from the constants the plan parser checks, so an agent that follows the schema sends a plan
  * the server accepts. The schemas follow the ruleset of the Arena's rounds (#64): with another default preset,
- * join_lobby narrows the weapons, and leaving goes back to Classic.
+ * join_lobby narrows the weapons, and leaving goes back to Classic. The build (#80) has the build rules' ranges and no
+ * other attribute; a check-in has no build; a preset with builds off has no build field.
  *
  * Everything runs in-process. No round is played (joining only claims a seat), so no match or timer runs.
  */
@@ -14,6 +15,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MatchServer } from "../src/server/match-server";
 import { McpGateway } from "../src/server/mcp";
+import { BUILD_ATTRIBUTES, BUILD_MAX, BUILD_MIN } from "../src/sim/build";
 import { CLASSIC } from "../src/sim/ruleset";
 import { RULE_STANCES } from "../src/sim/rules";
 import { MAX_RULES, RULE_DO, RULE_WHEN } from "../src/sim/sim-types";
@@ -65,13 +67,24 @@ describe("MCP tools", () => {
     expect(strategy.properties.rules.items.properties.when.enum).toEqual([...RULE_WHEN]);
     expect(strategy.properties.rules.items.properties.do.enum).toEqual([...RULE_DO]);
     expect(planShape(t)).toEqual({ weapons: [...CLASSIC.weapons.enabled], checkinWeapons: [...CLASSIC.weapons.enabled] });
+    // the build (#80): optional, exactly health, weight and power, each a whole number in the build rules' range
+    const build = strategy.properties.build;
+    expect(strategy.required).not.toContain("build");
+    expect(Object.keys(build.properties)).toEqual([...BUILD_ATTRIBUTES]);
+    expect(build.additionalProperties).toBe(false);
+    for (const a of BUILD_ATTRIBUTES) expect(build.properties[a]).toMatchObject({ type: "integer", minimum: BUILD_MIN, maximum: BUILD_MAX });
+    expect(t.submit_checkin.inputSchema.properties.build).toBeUndefined();
+    expect(t.submit_plan.description).toContain("build (optional): your fighter's body for the round");
+    expect(client.getInstructions()).toContain("build for the round: health, weight and power, each -2 to 2, adding up to 0");
     // `round` names an Arena round: any round number, not one of a match's rounds
     expect(t.submit_plan.inputSchema.properties.round.maximum ?? Infinity).toBeGreaterThan(1e6);
     await client.close();
   });
 
   test("the schemas follow the Arena's ruleset, and go back to Classic on leave", async () => {
-    await api.store.putRulesetPreset("Bats", { weapons: { enabled: ["bat", "rocket"] }, round: { maxRounds: 5 } });
+    // Bats also turns builds off: every build table at its level-0 value
+    const off = { health: { hpBonus: [0, 0, 0, 0, 0] }, weight: { knockback: [1, 1, 1, 1, 1], density: [1, 1, 1, 1, 1] }, power: { mul: [1, 1, 1, 1, 1] } };
+    await api.store.putRulesetPreset("Bats", { weapons: { enabled: ["bat", "rocket"] }, round: { maxRounds: 5 }, builds: off });
     await api.store.setDefaultRulesetPreset("Bats");
     const client = await connect("Bo");
     const call = async (name: string, args: Record<string, unknown> = {}) => JSON.parse(((await client.callTool({ name, arguments: args })) as { content: { text: string }[] }).content[0]!.text);
@@ -79,8 +92,11 @@ describe("MCP tools", () => {
     const narrowed = planShape(await tools(client));
     expect(narrowed).toEqual({ weapons: ["rocket", "bat"], checkinWeapons: ["rocket", "bat"] });
     expect((await tools(client)).submit_plan.description).not.toContain("grapple");
+    expect((await tools(client)).submit_plan.inputSchema.properties.strategy.properties.build).toBeUndefined();
+    expect((await tools(client)).submit_plan.description).not.toContain("build");
     expect(await call("leave")).toMatchObject({ left: true, agent: "Basher" });
     expect(planShape(await tools(client))).toEqual({ weapons: [...CLASSIC.weapons.enabled], checkinWeapons: [...CLASSIC.weapons.enabled] });
+    expect((await tools(client)).submit_plan.inputSchema.properties.strategy.properties.build).toBeDefined();
     await client.close();
   });
 });

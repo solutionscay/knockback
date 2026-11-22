@@ -6,6 +6,7 @@ weapons: grapple, bat, shotgun
 stance: flank
 target: weakest
 retaliate: turn
+build: health -1, weight 0, power +1
 catchphrase: Thanks for softening them up.
 ---
 

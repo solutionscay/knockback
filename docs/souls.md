@@ -1,6 +1,6 @@
 # Souls: how a fighter thinks and talks
 
-Knockback has no character classes. All four fighters have the same body, speed, health and aim, and start every round with only their **fists**. Weapons (rocket, shotgun, bat, grenade, grappling hook, flamethrower) and power-ups are picked up in the arena.
+Knockback has no character classes. All four fighters move and aim alike and start every round with only their **fists**. Their bodies differ only by their **build** (health, weight and power, each -2 to +2, adding up to 0; see docs/rulesets.md): an agent picks one in every round's plan, and a house bot plays its soul's build. Weapons (rocket, shotgun, bat, grenade, grappling hook, flamethrower) and power-ups are picked up in the arena.
 
 A fighter's personality comes from its **soul file**: attitude, how it talks and what it values in a fight. Swap a soul and the fighter plays and talks differently. A soul has **no name and no look**: before each match every fighter gets a generated identity (name, head shape, eye style, mark and color) from the match seed. See "Identities" below.
 
@@ -9,7 +9,7 @@ A fighter's personality comes from its **soul file**: attitude, how it talks and
 - **Records** store the souls and the identities that played, so a replay needs no soul files.
 - **Agents** (MCP or HTTP) write their own **soul.md** when they join: plain text about the fighter (attitude, voice, what it goes for), never about a person. The server caps it at 2000 characters and removes emails, URLs, domains, phone numbers, file paths and long digit runs, and tells the agent what it removed. The agent's soul is used where a house soul is: prompt flavor, the opening line and the cards; its first sentence is the agent's line in the queue.
 
-Four example souls ship in `souls/`: `brawler.md`, `sniper.md`, `rat.md` and `vulture.md`. The file name is the soul's key (for `--lineup sniper=codex` and logs). It is never shown in the game.
+Four example souls ship in `souls/`: `brawler.md`, `sniper.md`, `rat.md` and `vulture.md`. Their builds fit how they fight: the brawler is heavy and hits hard but is fragile (health -2, weight +1, power +1), the sniper is a light glass cannon that keeps its distance (health -1, weight -1, power +2), the rat lasts long and hits soft (health +2, weight -1, power -1), and the vulture trades a little health for the finishing blow (health -1, weight 0, power +1). The file name is the soul's key (for `--lineup sniper=codex` and logs). It is never shown in the game.
 
 ## Format
 
@@ -28,6 +28,7 @@ weapons: bat, grapple, shotgun
 stance: rush
 target: strongest
 retaliate: attacker
+build: health -2, weight +1, power +1
 catchphrase: Batter up.
 ---
 
@@ -53,6 +54,7 @@ Use the catchphrase sparingly: at most once a match.
 | `stance` | `rush`, `distance`, `cover`, `item` | the house bot's stance |
 | `target` | `nearest`, `weakest`, `strongest`, `leader` | the house bot's target preference |
 | `retaliate` | `attacker`, `turn`, `ignore` | what the house bot does when hit from behind by someone it is not chasing |
+| `build` | `health N, weight N, power N`: each a whole number from -2 to 2, adding up to 0 (a missing attribute is 0) | the house bot's build every round (#80); missing: neutral. The house autopilot that plays a missed turn for an agent always plays neutral |
 | `catchphrase` | free text, up to 80 characters | shown to the AI (to use sparingly); the house bot's last-resort line |
 
 A bad value (an unknown stance or weapon) is an **error**, and `bun run ai-match` refuses to start with a message naming the file and the key. A missing key is filled in instead: from keywords in `values` and the body, otherwise from a default. The four soul files must have different names.

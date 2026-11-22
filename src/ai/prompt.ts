@@ -2,19 +2,55 @@ import { TICK_RATE } from "../sim/constants";
 import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 /**
  * The prompt an AI fighter gets before each round: its soul (who it is, how
- * it talks, what it values), the rules in plain words (everyone starts equal
- * with fists; weapons are picked up), the level, everyone's standing, what
+ * it talks, what it values), the rules in plain words (everyone starts with
+ * fists; weapons are picked up; builds, #80), the level, everyone's standing, what
  * happened last round from its point of view, the last lines everyone said,
  * its own earlier lines (so it doesn't repeat itself) and the choices.
  */
 import type { LevelDef } from "../sim/levelgen";
 import type { Match } from "../sim/match";
-import type { HitStat, RoundStats } from "../sim/roundstats";
+import { BUILD_EXAMPLES, BUILD_MAX, BUILD_MIN, buildsOn, buildText, NEUTRAL_BUILD, type Build } from "../sim/build";
+import type { RoundFacts } from "../sim/morale";
+import { placing, type HitStat, type RoundStats } from "../sim/roundstats";
 import type { Strategy, Weapon } from "../sim/sim-types";
 import type { Soul } from "../sim/soul";
 import type { DecideContext } from "../sim/voice";
 import { RULE_STANCES } from "../sim/rules";
 import { levelTactics, longGunsLastRound, tacticsLines } from "./tactics";
+
+/** The three example builds as JSON with what they are for (#80). */
+export const buildExamples = () => BUILD_EXAMPLES.map((e) => `${e.name} ${JSON.stringify(e.build)} (${e.why})`).join("; ");
+
+/**
+ * Builds in a few plain lines (#80): what the attributes do, the budget, the trade-offs and three examples. The one
+ * text get_started, the plan help, the HTTP schema and the round briefing give.
+ */
+export function buildsHelp(): string {
+  return [
+    `BUILD: your fighter's body for the round. health, weight and power, each a whole number from ${BUILD_MIN} to ${BUILD_MAX}, adding up to 0: each point up is paid by a point down. No build = all 0.`,
+    `health: more max HP. weight: knocked back less (fewer ring-outs) and a heavier body. power: more damage and knockback dealt.`,
+    `The build is fixed for the round (a check-in cannot change it). Rivals' builds stay hidden until every plan is in.`,
+    `Examples: ${buildExamples()}.`,
+  ].join(" ");
+}
+
+/**
+ * Last round's builds and how this fighter's did (#80): its place, the damage and hits it took, how it went out.
+ * `me` -1: a fighter that did not play that round gets the builds only.
+ */
+export function buildReport(builds: readonly Build[], facts: RoundFacts, me: number, names: readonly string[]): string[] {
+  const all = names.map((n, i) => `${n}${i === me ? " (you)" : ""} ${buildText(builds[i] ?? NEUTRAL_BUILD)}`).join("; ");
+  if (me < 0) return [`BUILDS LAST ROUND: ${all}.`];
+  const f = facts.fighters[me]!;
+  const st = facts.stats;
+  const hits = [0, 1, 2, 3].reduce((a, s) => a + (s === me ? 0 : (st.damage[s]?.[me]?.hits ?? 0)), 0);
+  const place = placing(facts).indexOf(me) + 1;
+  const out = f.koBy ? `${f.koBy.cause === "ringout" ? "rung out" : "knocked out"}${f.koBy.by >= 0 && f.koBy.by !== me ? ` by ${names[f.koBy.by]}` : ""}` : "still standing at the end";
+  return [
+    `BUILDS LAST ROUND: ${all}.`,
+    `YOUR BUILD (${buildText(builds[me] ?? NEUTRAL_BUILD)}): place ${place} of ${names.length}; you took ${Math.round(f.damageTaken)} damage in ${hits} hits and were ${out}; you dealt ${Math.round(f.damageDealt)} damage and ${f.kosDealt.length} knockout${f.kosDealt.length === 1 ? "" : "s"}.`,
+  ];
+}
 
 /** What each stance does, in a few words (#38 adds overwatch, flank and hold). */
 export const STANCE_HELP: Record<(typeof RULE_STANCES)[number], string> = {
@@ -267,7 +303,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
   out.push(soulText(soul, ruleset).trim());
   out.push(
     `RULES: best of ${maxRounds} rounds; first to ${winsToTake} round wins takes the match, and if nobody has ${winsToTake} after round ${maxRounds} the round-${maxRounds} winner takes it. Each round is one continuous fight: last fighter standing wins (or most health after ${fightTicks / TICK_RATE} s). You get knocked out by losing all health or by flying off the level (ring-out); knockback grows as health drops. A safe zone shrinks and pushes everyone together. ` +
-      `All four fighters are physically identical and start every round with only their fists (weak). Weapons are pickups (arena, crates, supply drops); you carry 2, a new pickup replaces the one not in your hand, and knocked-out fighters drop theirs. You only choose a plan; the game moves, picks up, aims and shoots for you.`,
+      `${buildsOn(ruleset) ? "All four fighters move alike; each one's build sets its health, weight and power. All" : "All four fighters are physically identical and"} start every round with only their fists (weak). Weapons are pickups (arena, crates, supply drops); you carry 2, a new pickup replaces the one not in your hand, and knocked-out fighters drop theirs. You only choose a plan; the game moves, picks up, aims and shoots for you.`,
   );
   out.push(`LEVEL: ${levelLine(x.level)}`);
   out.push(tacticsLines(levelTactics(x.level, ruleset), last ? longGunsLastRound(last.stats, names, ruleset) : null));
@@ -291,6 +327,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
     const plan = x.lastPlans?.[me];
     if (plan) lines.push(`YOUR LAST PLAN AND HOW IT WENT: ${lastPlanLines(plan, st, me, names).join(" ")} ${ruleResultLine(plan.rules, st.rules?.[me])}`);
     if (x.lastRuleProblems?.length) lines.push(`RULES REJECTED LAST ROUND: ${x.lastRuleProblems.join("; ")}.`);
+    if (x.lastPlans && buildsOn(ruleset)) lines.push(...buildReport(x.lastPlans.map((p) => p.build ?? NEUTRAL_BUILD), last, me, names));
     lines.push(`KNOCKOUTS: ${st.kos.map((k) => `${names[k.victim]} ${k.cause === "ringout" ? "rung out" : "knocked out"}${k.by >= 0 && k.by !== k.victim ? ` by ${names[k.by]} (${wname(k.weapon)})` : ` (${wname(k.weapon)})`}`).join("; ") || "none"}.`);
     const took = [0, 1, 2, 3]
       .filter((a) => a !== me && st.damage[a]![me]!.damage >= 1)
@@ -320,10 +357,12 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       `why = explain your plan in game terms (under 100 characters). ` +
       `line = one in-character reaction (under 90 characters).`,
   );
+  if (buildsOn(ruleset)) out.push(buildsHelp());
   const rex = ruleExamplesFor(x.seed ?? 0, ctx.round, me, ruleset);
   out.push(rulesSection(rex.slice(0, 2), ruleset));
   if (last) out.push(`EXAMPLES of changing a plan: ${examplesFor(x.seed ?? 0, ctx.round, me).filter(e => ruleset.weapons.enabled.includes("rocket") || !e.includes("rocket")).join(" ")}`);
-  out.push(`Reply ONLY with JSON: {"weapons":[1 to 3 weapons],"target":"<name or preference>","stance":"<stance>","retaliate":"<attacker|turn|ignore>","rules":[0 to 4 rules, e.g. ${rex[2]}],"why":"<reason>","line":"<what you say>"}`);
+  const build = buildsOn(ruleset) ? `"build":{"health":<n>,"weight":<n>,"power":<n>},` : "";
+  out.push(`Reply ONLY with JSON: {"weapons":[1 to 3 weapons],"target":"<name or preference>","stance":"<stance>","retaliate":"<attacker|turn|ignore>",${build}"rules":[0 to 4 rules, e.g. ${rex[2]}],"why":"<reason>","line":"<what you say>"}`);
   return out.join("\n\n");
 }
 

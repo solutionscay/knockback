@@ -5,10 +5,10 @@
  * against the best neutral-adjacent build; the neutral build; the seat spread, the round length and the #69
  * scorecard (behavior.ts scoreRound).
  *
- *   bun scripts/builds-batch.ts [N=400] [firstSeed=1] [--builds random:SEED] [--close]
+ *   bun scripts/builds-batch.ts [N=400] [firstSeed=1] [--builds neutral|souls|random:SEED] [--close]
  *       [--ruleset overrides.json] [--workers W (default: cores - 2)] [--json out.json]
  *
- * Without --builds every fighter is neutral (the reference for round length and the scorecard).
+ * --builds as in batch-options.ts (default neutral: the reference for round length and the scorecard).
  * --workers splits the seeds over W processes (seed k goes to process k mod W). The report is the same for any W.
  *
  * Statistics:
@@ -24,7 +24,7 @@
  */
 import { BUILD_ATTRIBUTES, BUILD_MAX, BUILD_MIN, LEGAL_BUILDS, type Build } from "../src/sim/build";
 import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, validateRuleset } from "../src/sim";
-import { buildsSeed, mergeOverrides, sampleQuantile, withRandomBuilds } from "./batch-options";
+import { buildsLabel, buildsOption, mergeOverrides, sampleQuantile, withBuilds } from "./batch-options";
 import { fisherGreater, holm, leastSquares, wilson } from "./batch-stats";
 import { newScorecard, report, scoreRound, type Scorecard } from "./behavior";
 
@@ -37,7 +37,7 @@ const opt = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1
 const valued = new Set(["--builds", "--ruleset", "--workers", "--json", "--shard"]);
 const pos = argv.filter((a, i) => !a.startsWith("--") && !valued.has(argv[i - 1] ?? ""));
 const N = Number(pos[0] ?? 400), first = Number(pos[1] ?? 1);
-const buildSeed = buildsSeed(argv);
+const builds = buildsOption(argv);
 const close = argv.includes("--close");
 const rulesetFile = opt("--ruleset");
 const buildKey = (b: Build) => BUILD_ATTRIBUTES.map((a) => b[a]).join(",");
@@ -53,7 +53,7 @@ async function runShard(shard: number, of: number): Promise<Shard> {
     const seed = first + k;
     const rot = (seed - 1) % 4;
     const order = [0, 1, 2, 3].map((i) => (i + rot) % 4);
-    const m = new Match(seed, { souls: order.map((i) => souls[i]!), ruleset, brains: buildSeed === null ? undefined : withRandomBuilds(order.map(() => houseBrain), buildSeed, seed) });
+    const m = new Match(seed, { souls: order.map((i) => souls[i]!), ruleset, brains: withBuilds(order.map(() => houseBrain), builds, seed) });
     while (!m.over) {
       m.prepareRound();
       const falls = out.card.falls.length;
@@ -130,13 +130,13 @@ const ci = (w: number, n: number) => {
 };
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const out: string[] = [];
-out.push(`# Builds batch (#82): ${N} matches, seeds ${first}..${first + N - 1}, ${close ? "Close Quarters" : "Classic"}${rulesetFile ? `, ruleset ${rulesetFile}` : ""}, ${buildSeed === null ? "neutral builds" : `random builds (seed ${buildSeed})`}`);
+out.push(`# Builds batch (#82): ${N} matches, seeds ${first}..${first + N - 1}, ${close ? "Close Quarters" : "Classic"}${rulesetFile ? `, ruleset ${rulesetFile}` : ""}, ${buildsLabel(builds)}`);
 out.push("");
 out.push(`${R} rounds, ${rows.length} fighter-rounds, ${W} workers, ${secs.toFixed(0)} s`);
 out.push("");
 
 let buildsJson: Record<string, unknown> = {};
-if (buildSeed !== null) {
+if (builds.kind === "random") {
   // per attribute level
   type Agg = { n: number; w: number; kos: number; ko: number; ringout: number; fall: number; damage: number };
   const agg = (rs: Row[]): Agg => ({ n: rs.length, w: sum(rs.map((r) => r.won)), kos: sum(rs.map((r) => r.kos)), ko: sum(rs.map((r) => r.ko)), ringout: sum(rs.map((r) => r.ringout)), fall: sum(rs.map((r) => r.fall)), damage: sum(rs.map((r) => r.damage)) });
@@ -243,7 +243,7 @@ console.log(out.join("\n"));
 const jsonOut = opt("--json");
 if (jsonOut)
   await Bun.write(jsonOut, JSON.stringify({
-    matches: N, firstSeed: first, buildSeed, close, ruleset: rulesetFile ?? null, workers: W, seconds: secs, rounds: R, fighterRounds: rows.length,
+    matches: N, firstSeed: first, builds, close, ruleset: rulesetFile ?? null, workers: W, seconds: secs, rounds: R, fighterRounds: rows.length,
     ...buildsJson,
     seatWins, seatBand: band, seatMaxDeviation: seatDev, roundSeconds: { median: sampleQuantile(roundSeconds, 0.5), mean: sum(roundSeconds) / R, all: roundSeconds },
     scorecard: scoreSummary(card),

@@ -12,7 +12,8 @@ import { CLASSIC, enabledItems, type Ruleset } from "../sim/ruleset";
 import { CHECKIN, parseCheckin, type CheckinStatus } from "../ai/checkin";
 import { remoteLabel } from "../stats/models";
 import { parseAnswer, MAX_LINE, MAX_WHY } from "../ai/parse";
-import { lastPlanLines, ruleResultLine, whatHappenedLines, weaponHelp, enabledRuleExamples, STANCE_HELP } from "../ai/prompt";
+import { buildReport, buildsHelp, lastPlanLines, ruleResultLine, whatHappenedLines, weaponHelp, enabledRuleExamples, STANCE_HELP } from "../ai/prompt";
+import { BUILD_EXAMPLES, BUILD_MAX, BUILD_MIN, buildsOn, NEUTRAL_BUILD } from "../sim/build";
 import { levelTactics, longGunsLastRound } from "../ai/tactics";
 import type { Provider } from "../ai/providers";
 import type { Match } from "../sim/match";
@@ -24,7 +25,7 @@ import { MAX_RULES, RULE_DO, RULE_WHEN } from "../sim/sim-types";
 export const TARGET_CHOICES = ["nearest", "weakest", "strongest", "leader"] as const;
 
 /** The plan fields an agent may send (the rest of a request body is rejected). */
-export const PLAN_KEYS = ["round", "weapons", "target", "stance", "retaliate", "rules", "why", "line", "answer"] as const;
+export const PLAN_KEYS = ["round", "weapons", "target", "stance", "retaliate", "build", "rules", "why", "line", "answer"] as const;
 export const MAX_ANSWER = 8_000;
 /** invalid plans an agent may send in one round before it is cut off (the house bot plays at the deadline) */
 export const MAX_ATTEMPTS = 10;
@@ -36,6 +37,7 @@ export function planSchema(ruleset: Ruleset = CLASSIC) {
     target: { type: "string", values: ["<a rival's name>", ...TARGET_CHOICES] },
     stance: { type: "string", values: RULE_STANCES, help: STANCE_HELP },
     retaliate: { type: "string, optional (default turn)", values: RULE_RETALIATE },
+    ...(buildsOn(ruleset) ? { build: { type: `object {health, weight, power}, optional (default all 0): whole numbers from ${BUILD_MIN} to ${BUILD_MAX} that add up to 0`, help: buildsHelp(), examples: BUILD_EXAMPLES } } : {}),
     rules: {
       type: `array of 0-${MAX_RULES} rules, optional, first = highest priority`,
       when: RULE_WHEN,
@@ -95,6 +97,9 @@ export function turnContext(match: Match, me: number) {
           yourPlan: previous?.strategies[me] ?? null,
           howYourPlanWent: previous ? [...lastPlanLines(previous.strategies[me]!, last.stats, me, names), ruleResultLine(previous.strategies[me]!.rules, last.stats.rules?.[me])] : [],
           rulesRejected: previous?.meta?.[me]?.ruleProblems ?? [],
+          // each fighter's build last round and how yours did (#80)
+          builds: previous ? names.map((name, i) => ({ name, build: previous.strategies[i]!.build ?? NEUTRAL_BUILD })) : [],
+          howYourBuildWent: previous && buildsOn(match.ruleset) ? buildReport(previous.strategies.map((s) => s.build ?? NEUTRAL_BUILD), last, me, names)[1]! : null,
           knockouts: last.stats.kos.map((k) => ({ victim: names[k.victim]!, by: k.by >= 0 && k.by !== k.victim ? names[k.by]! : null, weapon: k.weapon, cause: k.cause, atSeconds: k.tick !== undefined ? Math.round(k.tick / 60) : null })),
           damageTaken: names
             .map((from, a) => ({ from, damage: Math.round(last.stats.damage[a]![me]!.damage), hits: last.stats.damage[a]![me]!.hits, fromBehind: last.stats.damage[a]![me]!.fromBehind }))
@@ -178,6 +183,7 @@ export function checkPlanShape(body: Record<string, unknown>): string[] {
   if (!Array.isArray(body.weapons) || body.weapons.length > 3 || !body.weapons.every((w) => isStr(w, 24))) p.push("weapons: an array of 1-3 weapon names");
   for (const k of ["target", "stance"] as const) if (!isStr(body[k], 24)) p.push(`${k}: a string is required`);
   if (body.retaliate !== undefined && !isStr(body.retaliate, 24)) p.push("retaliate: a string");
+  if (body.build !== undefined && (!body.build || typeof body.build !== "object" || Array.isArray(body.build) || Object.keys(body.build).length > 6)) p.push("build: an object {health, weight, power}");
   if (body.why !== undefined && !isStr(body.why, 400)) p.push("why: a string of at most 400 characters");
   if (!isStr(body.line, 400) || !(body.line as string).trim()) p.push("line: a non-empty string is required");
   if (body.rules !== undefined) {
@@ -390,6 +396,7 @@ export class RemoteSeat {
       target: s.target === "grudge" && s.grudge !== undefined ? match.names[s.grudge]! : s.target,
       stance: s.stance,
       retaliate: s.retaliate ?? "turn",
+      build: s.build!,
       rules: (s.rules ?? []).map((r) => ({ ...r, ...(r.who !== undefined ? { who: name(r.who) } : {}) })),
       ...(p.why ? { why: p.why } : {}),
       line: p.line!,

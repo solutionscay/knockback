@@ -9,7 +9,7 @@ import { generateIdentities, sanitizeIdentity, type Identity } from "../sim/iden
 import type { LineTemplate, Soul } from "../sim/soul";
 import type { Decision } from "../sim/voice";
 import { ENTRANCE_LINE_MAX, type Entrance } from "../sim/entrance";
-import { buildProblem, strategyBuild, type Build } from "../sim/build";
+import { buildProblem, NEUTRAL_BUILD, strategyBuild, type Build } from "../sim/build";
 
 const SAFE_TARGETS = [...TARGET_PREFERENCES, "grudge"];
 const SAFE_TEMPER = ["cocky", "confident", "calm", "nervous"];
@@ -87,6 +87,7 @@ export function sanitizeSoul(v: unknown, seat: number): Soul {
     stance: oneOf(o.stance, RULE_STANCES, "rush"),
     target: oneOf(o.target, TARGET_PREFERENCES, "nearest"),
     retaliate: oneOf(o.retaliate, RULE_RETALIATE, "turn"),
+    build: o.build !== undefined && buildProblem(o.build) === null ? strategyBuild(o.build as Build) : { ...NEUTRAL_BUILD },
     catchphrase: str(o.catchphrase, 80),
     body: str(o.body, 4000),
     lines,

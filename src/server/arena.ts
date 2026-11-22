@@ -34,7 +34,8 @@ import type { StreakRow } from "./store";
 import { selectRuleset, storedRuleset, type MatchRuleset } from "./match-rulesets";
 import type { MatchServer } from "./match-server";
 import { hashToken, hex } from "./seat-tokens";
-import { placing, ServerMatch, type SeatKind } from "./server-match";
+import { placing } from "../sim/roundstats";
+import { ServerMatch, type SeatKind } from "./server-match";
 import { soulLine } from "./soul-guard";
 
 /** The Arena rules as agents read them (get_started, every briefing, GET /api/queue). */
@@ -194,6 +195,9 @@ export class Arena {
       // it missed the last round and has said nothing since: the house bot plays at once, nobody waits for it
       if (e.missed > 0 && e.lastSeen <= e.missedAt) away.set(seat, "still away after a missed round");
     });
+    // last round's builds go into this round's turns (#80); only one round back is kept
+    m.previous = this.last?.arenaRound === round - 1 ? this.last : null;
+    if (m.previous) m.previous.previous = null;
     m.onChange = () => this.changed();
     // the holder starts the round with the crown mark and its streak, if it plays this round
     const cs = crownSeat(this.crown, lineup.map((e) => e?.name ?? null));

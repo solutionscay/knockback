@@ -2,7 +2,7 @@
  * Contract 3: the MCP flow an agent told "play Knockback" goes through in the Arena (#64): with its owner key it
  * calls get_started, join_lobby (it claims a house bot's seat), wait_for_match, then wait_for_turn / submit_plan
  * round after round, reads its rounds' results and reports, and leaves. A bad plan comes back as an error that says
- * what to fix. Without the key in the Authorization header there is no session; a closed session leaves the Arena.
+ * what to fix. Its build (#80) is played, the record replays it, and the next briefing reports it. Without the key in the Authorization header there is no session; a closed session leaves the Arena.
  *
  * Everything runs in-process: the MCP client's fetch goes straight into the gateway, rounds run at fast pace (the
  * test drives the Arena's rounds), house bots hold the other seats. Turn deadlines are far away, so no result
@@ -16,7 +16,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MatchServer } from "../src/server/match-server";
 import { McpGateway } from "../src/server/mcp";
-import { initPhysics, replayMatch, type MatchRecord } from "../src/sim";
+import { CLASSIC, initPhysics, replayMatch, type MatchRecord } from "../src/sim";
 
 const outDir = mkdtempSync(join(tmpdir(), "kb-mcp-"));
 const api = new MatchServer({ outDir, pace: "fast", arena: { deadlineMs: 600_000 } });
@@ -81,6 +81,7 @@ describe("MCP flow", () => {
     expect(start.isError).toBe(false);
     expect(start.data).toMatchObject({ owner: "Ada", next: "call join_lobby" });
     expect(start.data.arena.rules.join(" ")).toContain("2 rounds in a row");
+    expect(start.data.build).toContain('tank {"health":2,"weight":0,"power":-2}');
 
     const joined = await a.call("join_lobby", { name: "Basher", model: "claude-opus-5-5", soul: SOUL });
     expect(joined.isError).toBe(false);
@@ -100,27 +101,37 @@ describe("MCP flow", () => {
 
     const fixes: string[][] = [];
     const planned: number[] = [];
+    const BUILDS = [{ health: 2, weight: -1, power: -1 }, { health: -1, weight: 0, power: 1 }];
+    const briefings: string[] = [];
     while (planned.length < 2) {
       const t = await a.call("wait_for_turn");
       expect(t.isError).toBe(false);
       if (t.data.status !== "turn") continue;
       expect(t.data.targets).not.toContain(me);
       expect(t.data.arena.length).toBeGreaterThan(0); // the briefing carries the Arena rules
-      // one bad plan per round: itself as the target, the same weapon twice
-      const bad = await a.call("submit_plan", { line: "Wrong on purpose.", strategy: { ...PLAN, target: me, weapons: ["bat", "bat"] } });
+      briefings.push(t.data.briefing);
+      // one bad plan per round: itself as the target, the same weapon twice, a build that does not add up to 0
+      const bad = await a.call("submit_plan", { line: "Wrong on purpose.", strategy: { ...PLAN, target: me, weapons: ["bat", "bat"], build: { health: 1, weight: 1, power: 0 } } });
       expect(bad.isError).toBe(true);
       expect(bad.data.rejected).toBe(true);
       fixes.push(bad.data.fix);
-      const ok = await a.call("submit_plan", { line: `Round ${t.data.round}, here I come.`, strategy: { ...PLAN, target: t.data.targets[0] } });
+      const build = BUILDS[planned.length]!;
+      const ok = await a.call("submit_plan", { line: `Round ${t.data.round}, here I come.`, strategy: { ...PLAN, target: t.data.targets[0], build } });
       expect(ok.isError).toBe(false);
-      expect(ok.data).toMatchObject({ accepted: true, round: t.data.round, plan: { stance: "rush", weapons: ["rocket", "bat"] } });
+      expect(ok.data).toMatchObject({ accepted: true, round: t.data.round, plan: { stance: "rush", weapons: ["rocket", "bat"], build } });
       planned.push(t.data.round);
     }
     expect(planned).toEqual([1, 2]);
     for (const fix of fixes) {
       expect(fix.find((f) => f.startsWith("target"))).toContain("never your own name");
       expect(fix.find((f) => f.startsWith("weapons"))).toContain("different");
+      expect(fix.find((f) => f.startsWith("build"))).toContain("the levels add up to +2; they must add up to 0");
     }
+    // the briefing explains builds; round 2's briefing reports round 1's builds and how Basher's did
+    expect(briefings[0]).toContain("BUILD: your fighter's body for the round.");
+    expect(briefings[0]).not.toContain("BUILDS LAST ROUND");
+    expect(briefings[1]).toStartWith("Round 1: BUILDS LAST ROUND: ");
+    expect(briefings[1]).toContain("YOUR BUILD (health +2, weight -1, power -1): place ");
 
     // round 2's result comes with the next answer; its record replays to the same fight
     let t = await a.call("wait_for_turn");
@@ -131,7 +142,11 @@ describe("MCP flow", () => {
     const path = new URL(t.data.lastRound.replay).searchParams.get("record")!.replace(/^\/records\//, "");
     const rec = JSON.parse(readFileSync(join(outDir, path), "utf8")) as MatchRecord;
     expect(rec.rounds).toHaveLength(1);
+    expect(rec.rounds[0]!.strategies[0]!.build).toEqual(BUILDS[1]);
     const replay = replayMatch(rec);
+    expect(replay.record.rounds[0]!.fight.finalHash).toBe(rec.rounds[0]!.fight.finalHash);
+    // played: Basher's body in the replayed fight is its build's (health -1: 8 HP under the base)
+    expect(replay.fight!.sim.fighters[0]!.maxHp).toBe(CLASSIC.combat.fighter.maxHp + CLASSIC.builds.health.hpBonus[1]!);
     expect(replay.names[replay.winner]).toBe(report.data.winner);
 
     stop = true;

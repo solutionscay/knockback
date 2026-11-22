@@ -5,7 +5,7 @@
  * The golden hashes below move only when the sim changes on purpose. Then update them in the same commit, and say why.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { CLOSE_QUARTERS, Fight, FightDivergedError, initPhysics, Match, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
+import { CLOSE_QUARTERS, Fight, FightDivergedError, houseBrain, initPhysics, Match, replayFight, replayMatch, ReplayDivergedError, type FightRecord, type MatchRecord, type PlanUpdate, type Strategy } from "../src/sim";
 
 beforeAll(async () => {
   await initPhysics();
@@ -24,7 +24,10 @@ const GOLDEN = {
   fight: "1501ad3c",
   fightWithUpdate: "2e154352",
   closeQuarters: "f5861c02",
-  match: ["92cee62e", "19c8084a", "e3fa8442"],
+  // house bots play their souls' builds (#80)
+  match: ["b398e5bd", "225186f8", "088c030d"],
+  /** the same match with every house bot on a neutral build: the old game (#79) */
+  neutralMatch: ["92cee62e", "19c8084a", "e3fa8442"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {
@@ -60,6 +63,14 @@ describe("determinism", () => {
     const f = new Fight(1001, PLANS.map((s) => ({ ...s, build: neutral })));
     f.playToEnd();
     expect(f.record.finalHash).toBe(GOLDEN.fight);
+    // and house bots on neutral builds play the old house-bot match
+    const neutralHouse = [0, 1, 2, 3].map(() => (ctx: Parameters<typeof houseBrain>[0]) => {
+      const d = houseBrain(ctx);
+      return { ...d, strategy: { ...d.strategy, build: neutral } };
+    });
+    const m = new Match(GOLDEN_MATCH_SEED, { brains: neutralHouse });
+    m.playToEnd();
+    expect(m.record.rounds.map((r) => r.fight.finalHash)).toEqual(GOLDEN.neutralMatch);
   });
 
   test("a fight record replays to its recorded hash and checkpoints", () => {
