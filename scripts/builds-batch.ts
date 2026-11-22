@@ -252,6 +252,6 @@ if (jsonOut)
   await Bun.write(jsonOut, JSON.stringify({
     matches: N, firstSeed: first, buildSeed, close, ruleset: rulesetFile ?? null, workers: W, seconds: secs, rounds: R, fighterRounds: rows.length,
     ...buildsJson,
-    seatWins, seatBand: band, seatMaxDeviation: seatDev, roundSeconds: { median: sampleQuantile(roundSeconds, 0.5), mean: sum(roundSeconds) / R },
+    seatWins, seatBand: band, seatMaxDeviation: seatDev, roundSeconds: { median: sampleQuantile(roundSeconds, 0.5), mean: sum(roundSeconds) / R, all: roundSeconds },
     scorecard: scoreSummary(card),
   }, null, 2));

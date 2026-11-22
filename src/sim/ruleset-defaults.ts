@@ -114,7 +114,7 @@ const BUILDS = {
   health: { hpBonus: [-16, -8, 0, 8, 16] },
   speed: { mul: [1, 1.08, 1.16] },
   jump: { mul: [1, 1.06, 1.12] },
-  weight: { knockback: [1.6, 1.3, 1, 0.75, 0.5], density: [0.8, 0.9, 1, 1.12, 1.25] },
+  weight: { knockback: [1.45, 1.2, 1, 0.7, 0.5], density: [0.8, 0.9, 1, 1.12, 1.25] },
   power: { mul: [0.84, 0.92, 1, 1.08, 1.16] },
   caps: { walkSpeed: 1.6, groundAccel: 1.43, airJump: 1, knockbackTaken: 0.4, density: 3.5, damage: 2.2, knockbackDealt: 1.4 },
 };
