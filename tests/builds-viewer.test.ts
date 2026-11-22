@@ -6,7 +6,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { houseBrain, initPhysics, Match } from "../src/sim";
 import { BUILD_ATTRIBUTES, BUILD_EXAMPLES, BUILD_SHAPES, BUILD_SHORT, buildChipText, buildLevels, buildShape, buildUp, LEGAL_BUILDS, NEUTRAL_BUILD, type Build } from "../src/sim/build";
-import { BUILD_COLOR, buildGlow, hpBarWidth } from "../src/viewer/build-view";
+import { BUILD_COLOR, buildGlow, hpBarWidth, hpTickStep } from "../src/viewer/build-view";
 import { dialogueHtml } from "../src/viewer/game-hud";
 import { GamePlans } from "../src/viewer/game-plans";
 import { sanitizeDecision, sanitizePlanUpdates, sanitizeRecord, sanitizeSoul } from "../src/viewer/sanitize";
@@ -113,6 +113,17 @@ describe("health bars", () => {
     expect(scrapper!).toBeGreaterThan(neutral!);
     expect(neutral!).toBeGreaterThan(glass!);
     for (const f of m.fight!.sim.fighters) expect(hpBarWidth(f.maxHp, base, 92) / 92).toBeCloseTo(f.maxHp / base, 9);
+  });
+});
+
+describe("health bars from untrusted rulesets", () => {
+  test("a record's huge or tiny max HP cannot make a bar endless or its ticks countless", () => {
+    for (const maxHp of [1, 1e6, 1e12]) {
+      const w = hpBarWidth(maxHp, 100, 92);
+      expect(w).toBeGreaterThanOrEqual(46);
+      expect(w).toBeLessThanOrEqual(184);
+      expect(Math.floor(maxHp / hpTickStep(maxHp))).toBeLessThanOrEqual(8);
+    }
   });
 });
 

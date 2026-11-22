@@ -28,11 +28,15 @@ export function buildTop(b: Build): BuildAttribute | null {
   return buildUp(b).reduce<BuildAttribute | null>((best, a) => (best === null || b[a] > b[best] ? a : best), null);
 }
 
-/** A health bar's length: base length for the ruleset's base max HP, in proportion to the fighter's max HP. */
-export const hpBarWidth = (maxHp: number, baseMaxHp: number, baseWidth: number): number => (baseWidth * maxHp) / baseMaxHp;
+/**
+ * A health bar's length: base length for the ruleset's base max HP, in proportion to the fighter's max HP. Records
+ * are untrusted and the ruleset has no upper bound on max HP, so the length stays within half to twice the base.
+ */
+export const hpBarWidth = (maxHp: number, baseMaxHp: number, baseWidth: number): number => baseWidth * Math.min(2, Math.max(0.5, maxHp / baseMaxHp));
 
-/** HP between the bar's tick marks: a tick every 25 HP, so a bigger bar has more of them. */
+/** HP between the bar's tick marks: a tick every 25 HP, so a bigger bar has more of them; at most 8 ticks a bar. */
 export const HP_TICK = 25;
+export const hpTickStep = (maxHp: number): number => Math.max(HP_TICK, maxHp / 8);
 
 /**
  * The body cue: a halo the shape of the bot behind its body, one layer per raised attribute (inner first), stronger

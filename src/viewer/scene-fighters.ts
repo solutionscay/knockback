@@ -11,7 +11,7 @@ import { POWER_COLOR, WEAPON_ACCENT } from "./palette";
 import { pixiPen } from "./pixiPen";
 import { drawWeapon } from "./props";
 import type { XformAt } from "./scene";
-import { buildGlow, HP_TICK, hpBarWidth } from "./build-view";
+import { buildGlow, hpBarWidth, hpTickStep } from "./build-view";
 
 interface FighterView {
   f: Fighter;
@@ -439,7 +439,7 @@ export class FighterViews {
         bars.rect(bx, by, (bw * Math.max(0, v.ghostHp)) / f.maxHp, bh).fill({ color: 0xffffff, alpha: 0.85 });
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
-        for (let hp = HP_TICK; hp < f.maxHp; hp += HP_TICK) bars.rect(bx + (bw * hp) / f.maxHp - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
+        for (let hp = hpTickStep(f.maxHp); hp < f.maxHp; hp += hpTickStep(f.maxHp)) bars.rect(bx + (bw * hp) / f.maxHp - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
         if (f.power.jetpack > 0 || f.jetting) {
           const fuel = f.power.jetpack / sim.ruleset.pickups.power.jetpack.fuelTicks;
           const fy = by + bh + 4 * ui;
