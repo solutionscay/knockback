@@ -29,11 +29,10 @@ import { matchFacts, type MatchFacts } from "./teaser/source";
 const FPS = 60;
 const TITLE_S = 2.5;
 const MAX_BYTES = 29.5e6;
-/** the landscape capture; the vertical cut crops it around the action (below the HUD chips) and scales it to 1080 wide */
+/** the landscape capture; the vertical cut is a 9:16 window of it around the action (below the HUD chips), scaled to fill 1080x1920 */
 const L = { w: 1920, h: 1080 };
 const V = { w: 1080, h: 1920 };
-const CROP = { top: 96, w: 900, h: 820 };
-const FG = { w: V.w, h: Math.round((CROP.h * V.w) / CROP.w) };
+const CROP = { top: 96, h: L.h - 96, w: Math.round(((L.h - 96) * V.w) / V.h) };
 
 type Rec = MatchRecord & { labels?: string[] };
 
@@ -212,10 +211,9 @@ for (const s of seq) {
   for (let k = 0; k < n; k++) linkSync(join(paths.frames, `l${s.rec}`, name6(s.lAt + k)), join(outL, name6(at + k)));
   if (s.part.kind === "cut") {
     const x = s.cropX!;
-    const bx = Math.min(L.w - 608, Math.max(0, x + CROP.w / 2 - 304));
     await ffmpeg([
       "-framerate", String(FPS), "-start_number", String(s.lAt), "-i", join(paths.frames, `l${s.rec}`, "%06d.jpg"), "-frames:v", String(n),
-      "-filter_complex", `[0:v]split[a][b];[a]crop=${CROP.w}:${CROP.h}:${x}:${CROP.top},scale=${FG.w}:${FG.h}:flags=lanczos[fg];[b]crop=608:1080:${bx}:0,scale=${V.w}:${V.h},gblur=sigma=28,eq=brightness=-0.14:saturation=0.75[bg];[bg][fg]overlay=0:${Math.round((V.h - FG.h) / 2)}`,
+      "-filter_complex", `[0:v]crop=${CROP.w}:${CROP.h}:${x}:${CROP.top},scale=${V.w}:${V.h}:flags=lanczos`,
       "-q:v", "2", "-start_number", String(at), join(outV, "%06d.jpg"),
     ]);
   } else for (let k = 0; k < n; k++) linkSync(join(paths.frames, `p${s.rec}`, name6(s.pAt + k)), join(outV, name6(at + k)));
@@ -289,7 +287,7 @@ writeFileSync(
     "|---|---|---|---|---|---|",
     ...rows,
     "",
-    `The vertical cut crops each fight shot (${CROP.w} px of the 1920 px frame, below the HUD chips, scaled to 1080 wide) around the action, over a blurred copy; the cards and the title card are captured in a portrait frame. Sound: each shot's own game sound, ${Math.round(XF_S * 1000)} ms crossfades at the cuts, a ${END_FADE_S} s fade-out under the title. Peak ${(20 * Math.log10(peak || 1e-9)).toFixed(1)} dBFS.`,
+    `The vertical cut crops each fight shot (${CROP.w} px of the 1920 px frame, below the HUD chips) around the action, scaled to fill the frame; the cards and the title card are captured in a portrait frame. Sound: each shot's own game sound, ${Math.round(XF_S * 1000)} ms crossfades at the cuts, a ${END_FADE_S} s fade-out under the title. Peak ${(20 * Math.log10(peak || 1e-9)).toFixed(1)} dBFS.`,
     "",
     "## Records",
     "",
