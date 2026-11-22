@@ -10,7 +10,7 @@
  * seeded random legal build each round (#79; default: all neutral).
  */
 import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, validateRuleset, WEAPON_LIST, type Weapon } from "../src/sim";
-import { buildsSeed, comparisonBatchOptions, sampleQuantile, withRandomBuilds } from "./batch-options";
+import { buildsSeed, comparisonBatchOptions, mergeOverrides, sampleQuantile, withRandomBuilds } from "./batch-options";
 
 /** A rival this close at a fighter's first weapon pickup makes that pickup contested (meters, roundstats NEAR_M). */
 const CONTEST_RANGE = 7;
@@ -28,14 +28,8 @@ const buildSeed = buildsSeed(argv);
 const { count: N, first, houseRules } = comparisonBatchOptions(argv.filter((a, i) => !valueFlags.has(a) && !valueFlags.has(argv[i - 1]!)));
 const rulesetFile = flag("--ruleset");
 const jsonOut = flag("--json");
-const merge = (base: unknown, over: unknown): unknown => {
-  if (typeof base !== "object" || base === null || Array.isArray(base) || typeof over !== "object" || over === null || Array.isArray(over)) return over === undefined ? base : over;
-  const b = base as Record<string, unknown>;
-  const o = over as Record<string, unknown>;
-  return Object.fromEntries([...new Set([...Object.keys(b), ...Object.keys(o)])].map((k) => [k, merge(b[k], o[k])]));
-};
 const base = argv.includes("--close") ? CLOSE_QUARTERS : CLASSIC;
-const ruleset = rulesetFile ? validateRuleset(merge(base, await Bun.file(rulesetFile).json())) : base;
+const ruleset = rulesetFile ? validateRuleset(mergeOverrides(base, await Bun.file(rulesetFile).json())) : base;
 const souls = exampleSouls();
 const seatRounds = [0, 0, 0, 0];
 const seatMatches = [0, 0, 0, 0];

@@ -12,6 +12,14 @@ export function comparisonBatchOptions(argv: string[]) {
   return { count: Number(pos[0] ?? 200), first: Number(pos[1] ?? 1), houseRules: houseRulesEnabled(argv) };
 }
 
+/** A partial ruleset (JSON overrides) laid over a full one: objects merge key by key, anything else replaces. */
+export function mergeOverrides(base: unknown, over: unknown): unknown {
+  if (typeof base !== "object" || base === null || Array.isArray(base) || typeof over !== "object" || over === null || Array.isArray(over)) return over === undefined ? base : over;
+  const b = base as Record<string, unknown>;
+  const o = over as Record<string, unknown>;
+  return Object.fromEntries([...new Set([...Object.keys(b), ...Object.keys(o)])].map((k) => [k, mergeOverrides(b[k], o[k])]));
+}
+
 /** Bucket by index in the sorted sample, clamped to the last value. */
 export function sampleQuantile(values: number[], fraction: number): number {
   const sorted = values.slice().sort((x, y) => x - y);
