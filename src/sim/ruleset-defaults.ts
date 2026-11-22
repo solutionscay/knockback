@@ -109,11 +109,13 @@ const STANCES = {
  *   damage / knockbackDealt   highest (power with the Damage power-up)
  */
 const BUILDS = {
-  health: { hpBonus: [-30, -15, 0, 15, 30] },
+  // tuned with house-bot batches (#82): health, weight and power are worth the same per point. Speed and jump are
+  // worth about nothing to the house bot at any value tried (up to x1.5 and x1.3), so values alone cannot price them
+  health: { hpBonus: [-16, -8, 0, 8, 16] },
   speed: { mul: [1, 1.08, 1.16] },
   jump: { mul: [1, 1.06, 1.12] },
-  weight: { knockback: [1.3, 1.15, 1, 0.87, 0.75], density: [0.8, 0.9, 1, 1.12, 1.25] },
-  power: { mul: [0.8, 0.9, 1, 1.1, 1.2] },
+  weight: { knockback: [1.6, 1.3, 1, 0.75, 0.5], density: [0.8, 0.9, 1, 1.12, 1.25] },
+  power: { mul: [0.84, 0.92, 1, 1.08, 1.16] },
   caps: { walkSpeed: 1.6, groundAccel: 1.43, airJump: 1, knockbackTaken: 0.4, density: 3.5, damage: 2.2, knockbackDealt: 1.4 },
 };
 

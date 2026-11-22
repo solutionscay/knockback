@@ -152,16 +152,16 @@ describe("builds", () => {
     }
     // and by the table: the direction and size of each change
     const tank = measure(build({ health: 2, power: -2 }));
-    expect(tank.maxHp).toBe(F.maxHp + 30);
-    expect(tank.dealtDamage).toBeCloseTo(neutral.dealtDamage! * 0.8, 9);
-    expect(measure(build({ speed: 2, health: -2 })).topSpeed).toBeCloseTo(F.walkSpeed * 1.16, 5);
+    expect(tank.maxHp).toBe(F.maxHp + B.health.hpBonus[4]!);
+    expect(tank.dealtDamage).toBeCloseTo(neutral.dealtDamage! * B.power.mul[0]!, 9);
+    expect(measure(build({ speed: 2, health: -2 })).topSpeed).toBeCloseTo(F.walkSpeed * B.speed.mul[2]!, 5);
     expect(neutral.topSpeed).toBeCloseTo(F.walkSpeed, 5);
     // jump height grows with the square of the jump speed (the 30 Hz step loses a little of both alike)
-    expect(measure(build({ jump: 2, weight: -2 })).apex / neutral.apex!).toBeCloseTo(1.12 * 1.12, 1);
+    expect(measure(build({ jump: 2, weight: -2 })).apex / neutral.apex!).toBeCloseTo(B.jump.mul[2]! * B.jump.mul[2]!, 1);
     const heavy = measure(build({ weight: 2, health: -1, power: -1 }));
-    expect(heavy.mass / neutral.mass!).toBeCloseTo(1.25, 6);
+    expect(heavy.mass / neutral.mass!).toBeCloseTo(B.weight.density[4]!, 6);
     expect(heavy.launch).toBeLessThan(neutral.launch!);
-    expect(measure(build({ power: 2, weight: -1, health: -1 })).dealtDamage).toBeCloseTo(neutral.dealtDamage! * 1.2, 9);
+    expect(measure(build({ power: 2, weight: -1, health: -1 })).dealtDamage).toBeCloseTo(neutral.dealtDamage! * B.power.mul[4]!, 9);
   });
 
   test("the stats table: one attribute's level moves only its own stats", () => {
@@ -181,6 +181,7 @@ describe("builds", () => {
     // knockback grows with the missing share of the fighter's own max: 65 of 130 is half missing, 65 of 100 is 35%
     expect(kbMult({ hp: 65, maxHp: 130 }, CLASSIC)).toBeCloseTo(1 + 0.5 * F.kbGrowth, 12);
     expect(kbMult({ hp: 65, maxHp: 100 }, CLASSIC)).toBeCloseTo(1 + 0.35 * F.kbGrowth, 12);
+    const HI = F.maxHp + B.health.hpBonus[4]!, LO = F.maxHp + B.health.hpBonus[0]!;
     // and damageFighter launches by it: the same hit at the same HP launches the tank harder than a neutral body
     {
       const a = sandbox(build({ health: 2, power: -2 }));
@@ -188,18 +189,21 @@ describe("builds", () => {
       a.me.hp = n.me.hp = 65;
       a.sim.damageFighter(a.me, 0.001, a.other.id, 0, 6, "bat", 0, 0);
       n.sim.damageFighter(n.me, 0.001, n.other.id, 0, 6, "bat", 0, 0);
-      expect(a.sim.vel(a.me).y / n.sim.vel(n.me).y).toBeCloseTo(kbMult({ hp: 65, maxHp: 130 }, CLASSIC) / kbMult({ hp: 65, maxHp: 100 }, CLASSIC), 3);
+      expect(a.sim.vel(a.me).y / n.sim.vel(n.me).y).toBeCloseTo(kbMult({ hp: 65, maxHp: HI }, CLASSIC) / kbMult({ hp: 65, maxHp: F.maxHp }, CLASSIC), 3);
     }
     // a health pickup heals up to the fighter's own max
     const { sim, me, other } = sandbox(build({ health: 2, power: -2 }), build({ health: -2, power: 2 }));
-    me.hp = 120;
+    me.hp = HI - 10;
     sim.applyItem(me, "health");
-    expect(me.hp).toBe(130);
-    other.hp = 60;
+    expect(me.hp).toBe(HI);
+    other.hp = LO - 10;
     sim.applyItem(other, "health");
-    expect(other.hp).toBe(70);
-    // my_health_below and health_below: percent of the fighter's own max (tank at 60 of 130 is below 50%; a 70 HP body
-    // at 40 is not)
+    expect(other.hp).toBe(LO);
+    // my_health_below and health_below: percent of the fighter's own max. Between half the base max and half the
+    // tank's, the tank is below 50% and a base body is not; between half the low max and half the base, the low body is
+    // not below 50% and a base body is
+    const tankHp = Math.floor(HI / 2) - 1, lowHp = Math.ceil(LO / 2) + 1;
+    expect(tankHp >= F.maxHp / 2 && lowHp < F.maxHp / 2).toBe(true);
     const plans: Strategy[] = [0, 1, 2, 3].map(() => ({ target: "nearest", stance: "hold", weapons: ["bat"], line: "" }));
     plans[0] = { ...plans[0]!, build: build({ health: 2, power: -2 }), rules: [{ when: "my_health_below", value: 50, do: "seek", doItem: "health", label: "" }] };
     plans[1] = { ...plans[1]!, build: build({ health: -2, power: 2 }), rules: [{ when: "my_health_below", value: 50, do: "seek", doItem: "health", label: "" }] };
@@ -207,8 +211,8 @@ describe("builds", () => {
     plans[3] = { ...plans[3]!, rules: [{ when: "health_below", who: 1, value: 50, do: "target", label: "" }] };
     const f = new Fight(1, plans, { level: level(), ruleset: QUIET });
     const s = f.sim;
-    s.fighters[0]!.hp = 60;
-    s.fighters[1]!.hp = 40;
+    s.fighters[0]!.hp = tankHp;
+    s.fighters[1]!.hp = lowHp;
     f.controllers.forEach((c, i) => c.rules.evaluate(s, c, s.fighters[i]!));
     expect(f.controllers.map((c) => c.rules.state[0]!.active)).toEqual([true, false, true, false]);
   });
@@ -225,9 +229,9 @@ describe("builds", () => {
       return sim.vel(me).x;
     };
     expect(topSpeed(build({ speed: 2, health: -2 }))).toBeCloseTo(F.walkSpeed * caps.walkSpeed, 5);
-    expect(1.16 * P.speed.mul).toBeGreaterThan(caps.walkSpeed);
+    expect(B.speed.mul[2]! * P.speed.mul).toBeGreaterThan(caps.walkSpeed);
     expect(topSpeed(NEUTRAL_BUILD)).toBeCloseTo(F.walkSpeed * P.speed.mul, 5);
-    expect(topSpeed(build({ speed: 1, health: -1 }))).toBeCloseTo(F.walkSpeed * 1.08 * P.speed.mul, 5);
+    expect(topSpeed(build({ speed: 1, health: -1 }))).toBeCloseTo(F.walkSpeed * B.speed.mul[1]! * P.speed.mul, 5);
     // ground acceleration: the speed one input adds from standing, within caps.groundAccel
     const firstStep = (b: Build) => {
       const { sim, me } = sandbox(b);
@@ -237,7 +241,7 @@ describe("builds", () => {
       return sim.vel(me).x;
     };
     expect(firstStep(build({ speed: 2, health: -2 }))).toBeCloseTo(F.groundAccel / 60 * caps.groundAccel, 5);
-    expect(1.16 * 1.3).toBeGreaterThan(caps.groundAccel);
+    expect(B.speed.mul[2]! * 1.3).toBeGreaterThan(caps.groundAccel);
     expect(firstStep(NEUTRAL_BUILD)).toBeCloseTo(F.groundAccel / 60 * 1.3, 5);
 
     // Heavy: knockback taken never below caps.knockbackTaken, density never above caps.density
@@ -255,7 +259,7 @@ describe("builds", () => {
     const kb = kbMult({ hp: 100, maxHp: 100 }, CLASSIC) * 6;
     const tank = heavyHit(build({ weight: 2, power: -2 }));
     expect(tank.launch).toBeCloseTo(kb * caps.knockbackTaken, 3);
-    expect(0.75 * P.heavy.kbMul).toBeLessThan(caps.knockbackTaken);
+    expect(B.weight.knockback[4]! * P.heavy.kbMul).toBeLessThan(caps.knockbackTaken);
     expect(tank.density).toBeCloseTo(caps.density, 6);
     const plain = heavyHit(NEUTRAL_BUILD);
     expect(plain.launch).toBeCloseTo(kb * P.heavy.kbMul, 3);
@@ -274,7 +278,7 @@ describe("builds", () => {
       return sim.vel(me).y;
     };
     expect(airJump(build({ jump: 2, weight: -2 }))).toBeCloseTo(F.jumpSpeed * caps.airJump, 5);
-    expect(1.12 * 0.95).toBeGreaterThan(caps.airJump);
+    expect(B.jump.mul[2]! * 0.95).toBeGreaterThan(caps.airJump);
     expect(airJump(NEUTRAL_BUILD)).toBeCloseTo(F.jumpSpeed * 0.95, 5);
 
     // Damage: power x the power-up, within caps.damage and caps.knockbackDealt
@@ -286,7 +290,7 @@ describe("builds", () => {
     };
     const strong = dealt(build({ power: 2, health: -2 }));
     expect(strong.damage).toBeCloseTo(10 * caps.damage, 9);
-    expect(1.2 * P.damage.mul).toBeGreaterThan(caps.damage);
+    expect(B.power.mul[4]! * P.damage.mul).toBeGreaterThan(caps.damage);
     const normal = dealt(NEUTRAL_BUILD);
     expect(normal.damage).toBeCloseTo(10 * P.damage.mul, 9);
     // the knockback is applied at the target's HP after the hit: compare each against its own kbMult
@@ -384,13 +388,17 @@ describe("builds", () => {
     for (const at of BUILD_ATTRIBUTES) expect(new Set(a.map((b) => b[at])).size).toBe(at === "speed" || at === "jump" ? 3 : 5);
   });
 
-  test("the ruleset keeps neutral the old game: level 0 is the base and no cap binds a neutral build", () => {
+  test("the ruleset keeps neutral the old game (level 0 is the base, no cap binds a neutral build) and levels in order", () => {
     expect(() => validateRuleset({ builds: { speed: { mul: [1.05, 1.1, 1.2] } } })).toThrow(/level 0 must be the base/);
     expect(() => validateRuleset({ builds: { health: { hpBonus: [-30, -15, 5, 15, 30] } } })).toThrow(/level 0 must be the base/);
     expect(() => validateRuleset({ builds: { caps: { walkSpeed: 1.2 } } })).toThrow(/builds.caps/);
     expect(() => validateRuleset({ builds: { caps: { knockbackTaken: 0.6 } } })).toThrow(/builds.caps/);
     expect(() => validateRuleset({ builds: { caps: { damage: 1.5 } } })).toThrow(/builds.caps/);
     expect(() => validateRuleset({ builds: { health: { hpBonus: [-100, -15, 0, 15, 30] } } })).toThrow(/positive max HP/);
+    // a level up is never less of its attribute
+    expect(() => validateRuleset({ builds: { power: { mul: [0.9, 0.8, 1, 1.1, 1.2] } } })).toThrow(/level up/);
+    expect(() => validateRuleset({ builds: { weight: { knockback: [1.3, 1.15, 1, 1.1, 0.75] } } })).toThrow(/level up/);
+    expect(() => validateRuleset({ builds: { jump: { mul: [1, 1.1, 1.05] } } })).toThrow(/level up/);
     // a preset can tune the values (and turn builds off by setting every level to the base)
     const off = validateRuleset({ builds: { health: { hpBonus: [0, 0, 0, 0, 0] }, speed: { mul: [1, 1, 1] }, jump: { mul: [1, 1, 1] }, weight: { knockback: [1, 1, 1, 1, 1], density: [1, 1, 1, 1, 1] }, power: { mul: [1, 1, 1, 1, 1] } } });
     expect(fighterStats(off, build({ speed: 2, jump: 2, health: -2, power: -2 }))).toEqual(fighterStats(off, NEUTRAL_BUILD));

@@ -138,6 +138,9 @@ export function validateRuleset(input: unknown): Ruleset {
   require(B.health.hpBonus[2] === 0 && B.speed.mul[0] === 1 && B.jump.mul[0] === 1 && B.weight.knockback[2] === 1 && B.weight.density[2] === 1 && B.power.mul[2] === 1, "builds", "level 0 must be the base: hpBonus 0, every multiplier 1");
   require(r.combat.fighter.maxHp + Math.min(...B.health.hpBonus) > 0, "builds.health.hpBonus", "every level must leave a positive max HP");
   require([...B.speed.mul, ...B.jump.mul, ...B.weight.knockback, ...B.weight.density, ...B.power.mul].every((m) => m > 0), "builds", "multipliers must be positive");
+  // a level up is never less of its attribute (#82): more HP, speed, jump, mass and power, less knockback taken
+  const rising = (t: readonly number[]) => t.every((v, i) => i === 0 || v >= t[i - 1]!);
+  require(rising(B.health.hpBonus) && rising(B.speed.mul) && rising(B.jump.mul) && rising(B.weight.density) && rising(B.power.mul) && rising(B.weight.knockback.map((k) => -k)), "builds", "each level up must give at least as much of its attribute (knockback taken: at most as much)");
   // the caps limit a build stacked with a power-up; none may bind a neutral build (neutral is the old game)
   require(B.caps.walkSpeed >= P.speed.mul && B.caps.groundAccel >= 1.3 && B.caps.airJump >= 0.95, "builds.caps", "walkSpeed must be at least the Speed power-up's mul, groundAccel at least 1.3, airJump at least 0.95");
   require(B.caps.knockbackTaken > 0 && B.caps.knockbackTaken <= P.heavy.kbMul && B.caps.density >= P.heavy.densityMul, "builds.caps", "knockbackTaken must be positive and at most the Heavy power-up's kbMul, density at least its densityMul");
