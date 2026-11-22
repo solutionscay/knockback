@@ -187,7 +187,7 @@ export class Controller {
         score = dist;
     }
     // a rival with no route to it comes after the ones we can get to (#69: no waiting at a ledge)
-    const plan = me.surface >= 0 && foes.length > 1 ? sim.navFor(me).fighterPlan(sim.grid, me.surface, p.x) : null;
+    const plan = me.surface >= 0 && foes.length > 1 ? sim.nav.fighterPlan(sim.grid, me.surface, p.x) : null;
     const noRoute = (o: Fighter) => !!plan && o.surface >= 0 && plan.cost[o.surface] === Infinity;
     const scored = (o: Fighter) => score(o) + (skip(o) && foes.length > 1 ? 60 : 0) + (noRoute(o) ? 30 : 0) + (avoided.includes(o.id) && foes.length > 1 ? 1000 : 0);
     let best = foes[0]!;
@@ -205,7 +205,7 @@ export class Controller {
   /** Is the target standing near a ledge that a yank toward me would pull them off? */
   private onLedge(sim: Sim, target: Fighter, mx: number, my: number): boolean {
     if (!target.grounded || target.surface < 0) return false;
-    const s: Surface | undefined = sim.navFor(target).surfaces[target.surface];
+    const s: Surface | undefined = sim.nav.surfaces[target.surface];
     if (!s) return false;
     const tp = sim.pos(target);
     if (s.dropLeft && tp.x - s.x0 < 3 && mx < tp.x) return true;
@@ -297,7 +297,7 @@ export class Controller {
       // no idle gaps (#69): a target we can neither reach nor shoot is left for one we can
       const target = this.targetId >= 0 ? sim.fighters[this.targetId]! : null;
       if (this.navigation.watchIdle(sim, me, input, target) && target && sim.alive().length > 2 && me.surface >= 0 && target.surface >= 0 &&
-        sim.navFor(me).fighterPlan(sim.grid, me.surface, sim.pos(me).x).cost[target.surface] === Infinity) {
+        sim.nav.fighterPlan(sim.grid, me.surface, sim.pos(me).x).cost[target.surface] === Infinity) {
         this.unreachable.set(target.id, sim.tick + sim.ruleset.tactics.patience.skipTicks);
         this.nextRetarget = 0;
       }
@@ -385,7 +385,7 @@ export class Controller {
     this.noLos = los ? 0 : this.noLos + 1;
     // a target with no path and no line of sight for long: pick someone else for a while
     const tSurf = target.surface;
-    const reachable = surf && tSurf >= 0 ? sim.navFor(me).fighterPlan(sim.grid, me.surface, mp.x).cost[tSurf] !== Infinity : true;
+    const reachable = surf && tSurf >= 0 ? sim.nav.fighterPlan(sim.grid, me.surface, mp.x).cost[tSurf] !== Infinity : true;
     // no route and nothing to hit it with from here (#69: a target in sight across a gap counts too)
     this.noReach = !reachable && !choice?.shot && !(los && !choice) ? this.noReach + 1 : 0;
     if (this.noReach > sim.ruleset.tactics.patience.unreachTicks && sim.alive().length > 2) {

@@ -1,7 +1,6 @@
 /**
  * Tactical map (#38): cover spots, high ground and sightlines, computed by the sim from the level grid and its
- * nav graph's points. Points and surfaces are the same in every mobility profile's graph (#79), so one map serves
- * every fighter; whether a fighter can get to a spot is its own graph's plan (sim.navFor), checked by the caller. The Sim rebuilds it with the nav graph whenever terrain breaks, so it always matches the level as it is
+ * nav graph's points; whether a fighter can get to a spot is its plan's business, checked by the caller. The Sim rebuilds it with the nav graph whenever terrain breaks, so it always matches the level as it is
  * now. Static parts read the grid only (props move, so they are left to the runtime checks below, which ray-cast
  * through the physics world and see crates, steel and fighters too). Pure arithmetic: deterministic.
  */
@@ -170,8 +169,8 @@ const COVER_PROPS = new Set(["block", "crate", "steel"]);
 
 /**
  * Cover spots now: the tactical map's (terrain walls) plus a spot on each side of every block, crate and steel box
- * standing on a surface (props move and break, so these are found fresh). Deterministic: entity order. Surfaces are
- * the same in every mobility profile (#79): the caller checks reachability with the fighter's own plan.
+ * standing on a surface (props move and break, so these are found fresh). Deterministic: entity order. The caller
+ * checks reachability with the fighter's plan.
  */
 export function coverSpots(sim: Sim): CoverSpot[] {
   const out = sim.tactical.cover.slice();

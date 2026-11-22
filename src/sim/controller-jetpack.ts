@@ -16,7 +16,7 @@ export class JetpackPilot {
   steer(sim: Sim, me: Fighter, target: Fighter, p: Point, v: Point, input: Input, rush: boolean, requested: boolean): boolean {
     if (me.stun > 0) return false;
     if (this.flight && (sim.tick > this.flight.until ||
-        sim.navFor(me).surfaceAt(this.flight.x, this.flight.y, 0.1)?.y !== this.flight.y ||
+        sim.nav.surfaceAt(this.flight.x, this.flight.y, 0.1)?.y !== this.flight.y ||
         (me.grounded && Math.abs(sim.feetY(me) - this.flight.y) < 0.3))) this.flight = null;
     if (this.flight) {
       if (this.fly(sim, me, p, v, input, this.flight)) return true;
@@ -27,7 +27,7 @@ export class JetpackPilot {
     const t = sim.pos(target);
     const half = sim.zoneHalfAhead(60);
     const outside = sim.zoneEnabled && Math.abs(p.x - sim.zone.center) > half - 0.5;
-    const falling = !me.grounded && v.y < -1 && sim.navFor(me).fallBelow(sim.grid, p.x, sim.feetY(me)) > 5;
+    const falling = !me.grounded && v.y < -1 && sim.nav.fallBelow(sim.grid, p.x, sim.feetY(me)) > 5;
     const inward = Math.sign(sim.zone.center - p.x);
     if (this.burst && (sim.tick >= this.burst.until || (!this.burst.rescue && (outside || falling)))) {
       this.nextBurst = sim.tick + 22;
@@ -45,10 +45,10 @@ export class JetpackPilot {
       return this.boost(input);
     }
 
-    const upper = sim.navFor(me).surfaces[target.surface];
+    const upper = sim.nav.surfaces[target.surface];
     const rise = upper ? upper.y - sim.feetY(me) : 0;
     if (upper && target.grounded && rise > 2.5 && !outside && Math.abs(t.x - p.x) < 11) {
-      const cost = sim.navFor(me).fighterPlan(sim.grid, me.surface, p.x).cost[upper.id] ?? Infinity;
+      const cost = sim.nav.fighterPlan(sim.grid, me.surface, p.x).cost[upper.id] ?? Infinity;
       if (requested || cost > 15) {
         this.flight = this.route(sim, me, p, upper);
         if (this.flight) return this.fly(sim, me, p, v, input, this.flight);

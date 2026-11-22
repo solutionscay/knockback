@@ -19,10 +19,10 @@
  *    significant when the adjusted p is under 0.05.
  *  - A level's win rate also carries the points its build paid or got elsewhere (the levels add up to 0), so a fit
  *    of each level's own effect is singular: only trades are measurable. "Point value" fits the win (0/1) linearly
- *    on the five levels; a point moved from attribute B to attribute A changes the win rate by value(A) - value(B).
+ *    on the three levels; a point moved from attribute B to attribute A changes the win rate by value(A) - value(B).
  *    The values are shown against the average attribute (they add up to 0), with 95% intervals.
  */
-import { BUILD_ATTRIBUTES, BUILD_LEVELS, LEGAL_BUILDS, type Build, type BuildAttribute } from "../src/sim/build";
+import { BUILD_ATTRIBUTES, BUILD_MAX, BUILD_MIN, LEGAL_BUILDS, type Build } from "../src/sim/build";
 import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, validateRuleset } from "../src/sim";
 import { buildsSeed, mergeOverrides, sampleQuantile, withRandomBuilds } from "./batch-options";
 import { fisherGreater, holm, leastSquares, wilson } from "./batch-stats";
@@ -140,10 +140,7 @@ if (buildSeed !== null) {
   // per attribute level
   type Agg = { n: number; w: number; kos: number; ko: number; ringout: number; fall: number; damage: number };
   const agg = (rs: Row[]): Agg => ({ n: rs.length, w: sum(rs.map((r) => r.won)), kos: sum(rs.map((r) => r.kos)), ko: sum(rs.map((r) => r.ko)), ringout: sum(rs.map((r) => r.ringout)), fall: sum(rs.map((r) => r.fall)), damage: sum(rs.map((r) => r.damage)) });
-  const levels = (a: BuildAttribute) => {
-    const [lo, hi] = BUILD_LEVELS[a];
-    return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
-  };
+  const levels = Array.from({ length: BUILD_MAX - BUILD_MIN + 1 }, (_, i) => BUILD_MIN + i);
   const levelJson: Record<string, Record<string, Agg & { lo: number; hi: number; outside: boolean }>> = {};
   let outsideCount = 0;
   out.push("## Per attribute level");
@@ -154,7 +151,7 @@ if (buildSeed !== null) {
   out.push("|---|---|---|---|---|---|---|---|---|---|");
   for (const a of BUILD_ATTRIBUTES) {
     levelJson[a] = {};
-    for (const l of levels(a)) {
+    for (const l of levels) {
       const g = agg(rows.filter((r) => LEGAL_BUILDS[r.build]![a] === l));
       const [lo, hi] = wilson(g.w, g.n);
       const outside = hi < 0.2 || lo > 0.3;
@@ -168,7 +165,7 @@ if (buildSeed !== null) {
   out.push(`Levels outside noise: ${outsideCount}.`);
   out.push("");
 
-  // point value: win ~ c + sum over the first four attributes of g_a * level (the fifth is minus their sum)
+  // point value: win ~ c + sum over the first two attributes of g_a * level (the third is minus their sum)
   const free = BUILD_ATTRIBUTES.slice(0, -1);
   const pv = leastSquares(rows.map((r) => [1, ...free.map((a) => LEGAL_BUILDS[r.build]![a])]), rows.map((r) => r.won));
   const g = [...free.map((_, i) => pv.b[i + 1]!), 0];
@@ -203,7 +200,7 @@ if (buildSeed !== null) {
     const t = test.get(x.i);
     return `| ${show(x.b)}${isNeutral(x.b) ? " (neutral)" : ""}${x.i === best.i ? " (best adjacent)" : ""} | ${x.n} | ${ci(x.w, x.n)} | ${x.n ? `${rank(x.i)} of ${ranked.length}` : "not played"} | ${t ? t.best.toFixed(3) : "-"} | ${t ? t.pool.toFixed(3) : "-"} |`;
   };
-  const head = ["| Build (H S J W P) | Fighter-rounds | Win rate (95%) | Rank | Holm p vs best adjacent | Holm p vs adjacent pool |", "|---|---|---|---|---|---|"];
+  const head = ["| Build (H W P) | Fighter-rounds | Win rate (95%) | Rank | Holm p vs best adjacent | Holm p vs adjacent pool |", "|---|---|---|---|---|---|"];
   out.push("## Builds");
   out.push("");
   out.push(`${ranked.length} of ${LEGAL_BUILDS.length} legal builds played. Neutral-adjacent: one level +1 and one -1 (${adjacent.length} builds, pooled win rate ${ci(pool.w, pool.n)}); the best of them: ${show(best.b)} at ${ci(best.w, best.n)}. A build "wins significantly more" when its Holm-adjusted one-sided Fisher p is under 0.05 (${others.length} comparisons).`);
@@ -212,13 +209,9 @@ if (buildSeed !== null) {
   const sigPool = others.filter((x) => test.get(x.i)!.pool < 0.05);
   out.push(`Builds that win significantly more than the best neutral-adjacent build: ${sigBest.length ? sigBest.map((x) => show(x.b)).join("; ") : "none"}. Than the adjacent pool: ${sigPool.length ? sigPool.map((x) => show(x.b)).join("; ") : "none"}.`);
   out.push("");
-  out.push("### The 10 most-played builds");
+  out.push("### Every build by win rate");
   out.push("");
-  out.push(...head, ...byBuild.slice().sort((p, q) => q.n - p.n || p.i - q.i).slice(0, 10).map(buildRow));
-  out.push("");
-  out.push("### The 10 best and 10 worst by win rate");
-  out.push("");
-  out.push(...head, ...ranked.slice(0, 10).map(buildRow), "| … | | | | | |", ...ranked.slice(-10).map(buildRow));
+  out.push(...head, ...ranked.map(buildRow));
   out.push("");
   const neutral = byBuild.find((x) => isNeutral(x.b))!;
   out.push("### Neutral and the neutral-adjacent builds");

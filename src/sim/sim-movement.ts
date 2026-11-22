@@ -97,14 +97,11 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
   sim.fighters.push(f);
   sim.entityStore.register(e);
 }
-/**
- * A fighter's top walk speed now (#79): its build's speed with the Speed power-up (capped by `builds.caps.walkSpeed`),
- * then the Heavy power-up and the jetpack.
- */
+/** A fighter's top walk speed now: the base walk speed with the Speed and Heavy power-ups and the jetpack. */
 export function walkSpeedNow(ruleset: Ruleset, f: Fighter, thrust = false): number {
   const P = ruleset.pickups.power;
-  let speed = f.stats.walkSpeed;
-  if (f.power.speed > 0) speed = Math.min(speed * P.speed.mul, ruleset.combat.fighter.walkSpeed * ruleset.builds.caps.walkSpeed);
+  let speed = ruleset.combat.fighter.walkSpeed;
+  if (f.power.speed > 0) speed *= P.speed.mul;
   if (f.power.heavy > 0) speed *= P.heavy.speedMul;
   if (thrust) speed *= P.jetpack.speedMul;
   return speed;
@@ -149,19 +146,18 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   const thrust = !!inp.thrust && f.power.jetpack > 0;
   const speed = walkSpeedNow(sim.ruleset, f, thrust);
   const target = clamp(inp.move, -1, 1) * speed;
-  let accel = (f.grounded ? f.stats.groundAccel : f.stats.airAccel) * DT * (f.power.speed > 0 ? SPEED_ACCEL_MUL : 1);
-  // #79: build speed and the Speed power-up stack within builds.caps.groundAccel
-  if (f.power.speed > 0 && f.grounded) accel = Math.min(accel, sim.ruleset.combat.fighter.groundAccel * DT * sim.ruleset.builds.caps.groundAccel);
+  const F = sim.ruleset.combat.fighter;
+  const accel = (f.grounded ? F.groundAccel : F.airAccel) * DT * (f.power.speed > 0 ? SPEED_ACCEL_MUL : 1);
   vx += clamp(target - vx, -accel, accel);
   if (inp.jump && f.jumpCd === 0) {
     if (f.grounded) {
-      vy = Math.min(f.stats.jumpSpeed, inp.jumpSpeed ?? Infinity);
+      vy = F.jumpSpeed;
       f.jumpCd = 14;
       f.grounded = false;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: false });
     } else if (f.power.jump > 0 && !f.airJumped) {
-      // the Jump power-up's air jump: a little under the fighter's own jump, within builds.caps.airJump (#79)
-      vy = Math.min(f.stats.jumpSpeed * 0.95, sim.ruleset.combat.fighter.jumpSpeed * sim.ruleset.builds.caps.airJump);
+      // the Jump power-up's air jump: a little under a ground jump
+      vy = F.jumpSpeed * 0.95;
       f.airJumped = true;
       f.jumpCd = 10;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: true });

@@ -3,11 +3,9 @@
  * (tops of solid cells with headroom) and jump/drop/walk links between them.
  * Rebuilt as explosions carve the level.
  *
- * A graph is made for one mobility profile (#79): the walk speed, jump speed and air control its jump links and arcs
- * are worked out with. Graphs of the same grid share their surfaces and points (same ids, same objects); only the
- * links differ. Level generation and validation use the base profile (the ruleset's `combat.fighter`).
+ * Jump links and arcs are worked out with the ruleset's own fighter values (`combat.fighter`): every fighter has the
+ * same mobility (builds do not change it, #83), so one graph serves every fighter, level generation and validation.
  */
-import type { Mobility } from "./build";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { CELL, F_BRIDGE, Mat, type Grid } from "./grid";
 
@@ -54,25 +52,19 @@ function bodyBox(ruleset: Ruleset) {
   return { r: F.radius - 0.08, top: 2 * (F.halfHeight + F.radius) - 0.1 };
 }
 
-/** The base mobility profile: the ruleset's own fighter values (a neutral build). */
-export function baseMobility(ruleset: Ruleset): Mobility {
-  const F = ruleset.combat.fighter;
-  return { walkSpeed: F.walkSpeed, jumpSpeed: F.jumpSpeed, airAccel: F.airAccel };
-}
-
 export class NavGraph {
   surfaces: Surface[] = [];
   links: Link[] = [];
   out: Link[][] = [];
   points: NavPoint[] = [];
-  /** flight per link, worked out the first time a fighter's plan needs it */
-  private readonly flights = new Map<Link, Mobility | null>();
+  /** whether a fighter can fly each link (arcClear), worked out the first time a fighter's plan needs it */
+  private readonly flyable = new Map<Link, boolean>();
 
-  private constructor(readonly ruleset: Ruleset, readonly mobility: Mobility) {}
+  private constructor(readonly ruleset: Ruleset) {}
 
-  static fromGrid(grid: Grid, minRun = 2, ruleset: Ruleset = CLASSIC, mobility: Mobility = baseMobility(ruleset)): NavGraph {
+  static fromGrid(grid: Grid, minRun = 2, ruleset: Ruleset = CLASSIC): NavGraph {
     const { headroomCells, dropFall } = ruleset.arena.navigation;
-    const nav = new NavGraph(ruleset, mobility);
+    const nav = new NavGraph(ruleset);
     const { cols, rows } = grid;
     for (let cy = 0; cy < rows; cy++) {
       let run = -1;
@@ -124,15 +116,6 @@ export class NavGraph {
     return nav;
   }
 
-  /** The same surfaces and points (shared, same ids) with the links of another mobility profile (#79). */
-  withMobility(mobility: Mobility): NavGraph {
-    const nav = new NavGraph(this.ruleset, mobility);
-    nav.surfaces = this.surfaces;
-    nav.points = this.points;
-    nav.linkUp();
-    return nav;
-  }
-
   private linkUp() {
     this.buildLinks();
     this.out = this.surfaces.map(() => []);
@@ -155,7 +138,7 @@ export class NavGraph {
   private buildLinks() {
     const { jumpMargin, maxGap } = this.ruleset.arena.navigation;
     const { gravity } = this.ruleset.combat;
-    const { jumpSpeed } = this.mobility;
+    const { jumpSpeed } = this.ruleset.combat.fighter;
     const maxJumpUp = (jumpSpeed * jumpSpeed) / (2 * gravity) - jumpMargin;
     const S = this.surfaces;
     for (const a of S) {
@@ -190,38 +173,19 @@ export class NavGraph {
     }
   }
 
-  /** The plan fighters follow (#69): only the jumps and drops a body of this graph's mobility can make (`flight`). */
+  /** The plan fighters follow (#69): only the jumps and drops a fighter can make (`canFly`). */
   fighterPlan(grid: Grid, start: number, x: number) {
-    return this.plan(start, x, (l) => this.flight(grid, l) !== null);
+    return this.plan(start, x, (l) => this.canFly(grid, l));
   }
 
-  /**
-   * How a body of this graph's mobility flies link `l` (#84), or null when it cannot: at its own walk and jump speed
-   * when that arc clears, else at the strongest weaker profile of the ruleset's build tables whose arc clears (most
-   * jump first, then most speed). A stronger body can always run slower and jump lower (a capped run and a short hop,
-   * see Input.jumpSpeed), so a profile makes every jump and drop that a weaker profile makes. The controller flies the
-   * link at the mobility given here.
-   */
-  flight(grid: Grid, l: Link): Mobility | null {
-    let m = this.flights.get(l);
-    if (m === undefined) {
-      m = l.kind === "walk" ? this.mobility : (this.weaker().find((w) => this.arcClear(grid, l, w)) ?? null);
-      this.flights.set(l, m);
+  /** Can a fighter fly link `l` (arcClear), cached per link: the plan asks for the same links many times. */
+  canFly(grid: Grid, l: Link): boolean {
+    let ok = this.flyable.get(l);
+    if (ok === undefined) {
+      ok = this.arcClear(grid, l);
+      this.flyable.set(l, ok);
     }
-    return m;
-  }
-
-  /** This graph's mobility, then each weaker profile of the build tables, strongest jump first, then speed (#84). */
-  private weaker(): Mobility[] {
-    const F = this.ruleset.combat.fighter, B = this.ruleset.builds, M = this.mobility;
-    const out: Mobility[] = [M];
-    for (const jm of [...B.jump.mul].sort((a, b) => b - a))
-      for (const sm of [...B.speed.mul].sort((a, b) => b - a)) {
-        const w = { walkSpeed: F.walkSpeed * sm, jumpSpeed: F.jumpSpeed * jm, airAccel: M.airAccel };
-        if (w.walkSpeed > M.walkSpeed || w.jumpSpeed > M.jumpSpeed || (w.walkSpeed === M.walkSpeed && w.jumpSpeed === M.jumpSpeed)) continue;
-        out.push(w);
-      }
-    return out;
+    return ok;
   }
 
   /**
@@ -273,20 +237,20 @@ export class NavGraph {
     // in time to stop beside the edge
     if (near === front ? feet < o.under : feet + head < o.under) return goal;
     const closing = Math.max(0, vx * dir);
-    return (dir > 0 ? grid.wx(near) : grid.wx(near + 1)) - dir * (r + 0.02 + (closing * closing) / (2 * this.mobility.airAccel));
+    return (dir > 0 ? grid.wx(near) : grid.wx(near + 1)) - dir * (r + 0.02 + (closing * closing) / (2 * F.airAccel));
   }
 
   /**
    * Can a fighter make this jump or drop (#69)? Flies the controller's own arc (a run-up across a gap, a standing jump
    * up beside a platform overhead, or walking off for a drop; then `flightAim` with the controller's air control;
    * gravity) and moves the body through the grid: a ceiling stops the rise where the head meets it, a wall stops the
-   * run (the body slides along both), and a landing out of reach makes the arc fail. Walks always pass. Flown at
-   * mobility `M` (#79; `flight` picks it, #84).
+   * run (the body slides along both), and a landing out of reach makes the arc fail. Walks always pass. Flown at the
+   * ruleset's fighter walk speed, jump speed and air control.
    */
-  arcClear(grid: Grid, l: Link, M: Mobility = this.mobility): boolean {
+  arcClear(grid: Grid, l: Link): boolean {
     if (l.kind === "walk") return true;
     const from = this.surfaces[l.from]!, to = this.surfaces[l.to]!;
-    const { gravity } = this.ruleset.combat;
+    const { gravity, fighter: M } = this.ruleset.combat;
     const dt = 1 / 30;
     const dir = Math.sign(l.landX - l.takeoffX) || 1;
     const { r, top } = bodyBox(this.ruleset);

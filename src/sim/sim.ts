@@ -13,7 +13,7 @@ import { Mat, type Grid } from "./grid";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { type PropKind } from "./level-config";
 import { NavGraph } from "./nav";
-import { mobilityKey, NEUTRAL_BUILD, strategyBuild, type Build } from "./build";
+import { strategyBuild, type Build } from "./build";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import { Rng } from "./rng";
 import { explode } from "./sim-blast";
@@ -48,13 +48,8 @@ const SHOT_FILTER = groups(ALL, G.TERRAIN | G.FIGHTER | G.PROP);
 export class Sim {
   readonly level: LevelDef;
   readonly grid: Grid;
-  /**
-   * The base profile's graph (a neutral build): the level's surfaces and points, for what is not a fighter's movement
-   * (item and spawn placement, which surface a fighter stands on). A fighter moves by its own graph: navFor (#79).
-   */
+  /** The level's navigation graph: every fighter has the same mobility, so one graph serves them all. */
   nav: NavGraph;
-  /** one graph per mobility profile in the round (#79), by mobilityKey; the base profile's is `nav` itself */
-  private navs = new Map<string, NavGraph>();
   /** Cover spots, high ground and sightlines (#38): rebuilt with the nav graph when terrain breaks. */
   tactical: TacticalMap;
   /** Highest walkable surface at the start of the round (#41: soft ceiling and jetpack ceiling are measured from it). */
@@ -139,7 +134,6 @@ export class Sim {
     this.chains = buildChains(this);
     for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
-    this.navs.set(mobilityKey(NEUTRAL_BUILD), this.nav);
     this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.topY = this.nav.surfaces.reduce((top, s) => Math.max(top, s.y), 0);
     this.navVersion = this.terrain.version;
@@ -349,25 +343,8 @@ export class Sim {
     }
   }
 
-  /**
-   * A fighter's own navigation graph (#79): the links and jump arcs of its mobility profile (build speed and jump).
-   * Every controller and tactical query for a fighter's movement uses this one. A profile's graph is made the first
-   * time a fighter of that profile needs it after each rebuild, so only graphs in use are built. Its links come from
-   * the base graph's surfaces alone (never the grid), so when it is made does not change it: deterministic.
-   */
-  navFor(f: Fighter): NavGraph {
-    const key = mobilityKey(f.build);
-    let nav = this.navs.get(key);
-    if (!nav) {
-      nav = this.nav.withMobility({ walkSpeed: f.stats.walkSpeed, jumpSpeed: f.stats.jumpSpeed, airAccel: f.stats.airAccel });
-      this.navs.set(key, nav);
-    }
-    return nav;
-  }
-
   private rebuildNav() {
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
-    this.navs = new Map([[mobilityKey(NEUTRAL_BUILD), this.nav]]);
     this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.navVersion = this.terrain.version;
     this.lastNavTick = this.tick;

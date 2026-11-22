@@ -115,11 +115,6 @@ export interface Strategy {
 export interface Input {
   move: number; // -1..1
   jump: boolean;
-  /**
-   * Take-off speed for this jump, at most the fighter's own (#84): a short hop, so a stronger body can fly the arc of a
-   * weaker one (NavGraph.flight). Unset: a full jump. Air jumps ignore it.
-   */
-  jumpSpeed?: number;
   /** Burn one tick of jetpack fuel while steering with move. */
   thrust?: boolean;
   aimX: number;

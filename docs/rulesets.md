@@ -23,7 +23,7 @@ This example removes railgun pickups and doubles the probability of fire spreadi
 | `arena` | Size, generation, themes and their prop and material mixtures, spawn constraints, walls, terrain, prop dimensions, chain tuning and navigation. |
 | `zone` | Safe-zone width, shrink schedule, pressure, and sudden-death rules. |
 | `fire` | Burn times, fuel materials and props, spread, ignition and damage. |
-| `builds` | What each fighter-build attribute level does (#79): max HP, speed, jump, weight and power tables, and the caps when a build stacks with a power-up. |
+| `builds` | What each fighter-build attribute level does (#79): max HP, weight and power tables, and the caps when a build stacks with a power-up. |
 | `morale` | State thresholds, gains and losses, anger, score limits, and aim effects. |
 | `round` | Round limit, wins required, fight timeout and time past the last knockout. |
 | `tactics` | Controller aim, patience, pickup and wall pursuit tuning, retaliation and plan-rule evaluation. |
@@ -56,16 +56,14 @@ Close Quarters keeps its original opening timer and weapon selection through its
 
 ## Fighter builds
 
-A fighter's strategy for a round can carry a build (#79): five attribute levels, `health`, `speed`, `jump`, `weight` and `power`, that add up to 0. `speed` and `jump` run from 0 to +2 (never below the base, so every generated level stays reachable); the others run from -2 to +2. No build means neutral, all 0, and a neutral fighter plays the `combat.fighter` values exactly. The build is fixed for the round; a mid-round plan update does not change it.
+A fighter's strategy for a round can carry a build (#79, #83): three attribute levels, `health`, `weight` and `power`, each from -2 to +2, that add up to 0. No build means neutral, all 0, and a neutral fighter plays the `combat.fighter` values exactly. The build is fixed for the round; a mid-round plan update does not change it. Speed and jump are not part of a build (#82 found that a point in them buys the house bot nothing): every fighter moves at the `combat.fighter` values, and all fighters share one navigation graph.
 
-- `builds.health.hpBonus` is added to `combat.fighter.maxHp` (levels -2 to +2). Health bars, healing, knockback growth and the health rules use the fighter's own max HP.
-- `builds.speed.mul` scales walk speed and ground acceleration (levels 0 to +2).
-- `builds.jump.mul` scales jump speed (levels 0 to +2); jump height grows with its square.
-- `builds.weight.knockback` scales knockback taken, `builds.weight.density` the body's density (levels -2 to +2).
-- `builds.power.mul` scales damage and knockback dealt (levels -2 to +2).
-- `builds.caps` limit a build stacked with a power-up, as multiples of the base values: the highest walk speed and ground acceleration with Speed, the highest Jump air jump, the lowest knockback taken and highest density with Heavy, the highest damage and knockback dealt with Damage.
+- `builds.health.hpBonus` is added to `combat.fighter.maxHp`. Health bars, healing, knockback growth and the health rules use the fighter's own max HP.
+- `builds.weight.knockback` scales knockback taken, `builds.weight.density` the body's density.
+- `builds.power.mul` scales damage and knockback dealt.
+- `builds.caps` limit a build stacked with a power-up, as multiples of the base values: the lowest knockback taken and highest density with Heavy, the highest damage and knockback dealt with Damage.
 
-Level 0 of every table must be the base (hpBonus 0, multipliers 1), each level up must give at least as much of its attribute (at most as much knockback taken), and no cap may bind a neutral fighter; the validator refuses anything else. The Classic values were tuned with house-bot batches (`scripts/builds-batch.ts`, #82) so that a point of health, weight or power is worth the same. To turn builds off, set every entry to its level-0 value. Each fighter plans its routes on a navigation graph for its own (speed, jump) profile; level generation and validation use the base profile. A profile flies each jump or drop at its own walk and jump speed when that arc clears, else at the strongest weaker (speed, jump) pair of these tables whose arc clears: a capped run and a short hop (#84). So more speed or jump never loses a route that less reaches.
+Each table has five entries, levels -2 to +2. Level 0 of every table must be the base (hpBonus 0, multipliers 1), each level up must give at least as much of its attribute (at most as much knockback taken), and no cap may bind a neutral fighter; the validator refuses anything else. The Classic values were tuned with house-bot batches (`scripts/builds-batch.ts`, #82) so that a point of health, weight or power is worth the same. To turn builds off, set every entry to its level-0 value.
 
 ## Launch height
 
