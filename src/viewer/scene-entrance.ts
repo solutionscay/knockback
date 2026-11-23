@@ -1,7 +1,7 @@
 /**
  * The entrance (#66), view only: an agent's fighter drops in at its seat, shouts its entrance line and kicks out the
  * house bot that held the seat; the bot flies off with a twinkle. The sim is frozen at tick 0 meanwhile (the round
- * starts with the agent's fighter in its seat): this draws the house bot as a figure of its own and moves the agent's
+ * starts with the agent's fighter in its seat): this draws the house bot as a plush figure of its own and moves the agent's
  * fighter away from its sim position until it stands in its seat again.
  *
  * Everything follows the beat's own clock (`u`, seconds into the beat), so a capture that steps frames sees the same
@@ -10,11 +10,11 @@
 import { Container, Graphics } from "pixi.js";
 import type { Identity } from "../sim/identity";
 import type { Sim } from "../sim/sim";
-import { drawArm, drawBody, drawFeet, drawVisor, faceFor, FEET_Y, WEAPON_SCALE, type FaceMood } from "./bot";
+import { drawVisor, faceFor, FEET_Y, type FaceMood } from "./bot";
 import type { Fx } from "./fx";
 import { hash } from "./hash";
 import { pixiPen } from "./pixiPen";
-import { drawWeapon } from "./props";
+import { loadPlushSheets, PlushBot, plushNeeds } from "./plush-bot";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import { groundTop, type FighterViews } from "./scene-fighters";
 
@@ -56,16 +56,15 @@ interface Plan {
 export class EntranceView {
   readonly layer = new Container();
   private readonly bot = new Container();
-  private readonly botBody = new Graphics();
+  /** the house bot: a plush brawler (BALANCED) in its own color and mark; its LED face on the rendered visor */
+  private pl: PlushBot | null = null;
   private readonly botFace = new Graphics();
-  private readonly botArm = new Graphics();
-  private readonly botFist = new Graphics();
+  private lastU = 0;
   private plan: Plan | null = null;
   private faceKey = "";
   private twinkled = false;
 
   constructor() {
-    this.bot.addChild(this.botBody, this.botFace, this.botArm, this.botFist);
     this.layer.addChild(this.bot);
     this.bot.visible = false;
   }
@@ -113,17 +112,18 @@ export class EntranceView {
     this.plan = { seat, evicted, px: p.x, py: p.y, lx, ly, bx: p.x, by, dir, stomp };
     this.twinkled = false;
     this.faceKey = "";
-    this.botBody.clear();
-    this.botArm.clear();
-    this.botFist.clear();
+    this.bot.removeChildren();
+    this.pl = null;
+    this.lastU = 0;
     if (evicted) {
-      const pen = pixiPen(this.botBody);
-      drawBody(pen, evicted, { t: 0, air: false, feet: false });
-      drawFeet(pen, evicted, {});
-      drawWeapon(this.botFist, "fist", evicted.color);
-      this.botFist.scale.set(WEAPON_SCALE);
-      this.botFist.position.set(0, -0.05);
-      drawArm(pixiPen(this.botArm), evicted, 0, -0.05, 0);
+      const minor = evicted.minor ?? "none";
+      void loadPlushSheets(plushNeeds("balanced", evicted.mark, minor));
+      const pl = new PlushBot(evicted.color, evicted.mark, "balanced", minor);
+      const outline = pl.makeSil();
+      outline.tint = 0x07080d;
+      outline.alpha = 0.8;
+      this.bot.addChild(outline, pl.back.c, pl.body.c, pl.feet, pl.minor.c, this.botFace, pl.mark.c, pl.fist.c);
+      this.pl = pl;
     }
     this.bot.visible = !!evicted;
     fighters.offsets.set(seat, { dx: lx - p.x, dy: DROP_FROM + ly - p.y });
@@ -214,12 +214,18 @@ export class EntranceView {
     this.bot.position.set(bx, -by);
     this.bot.rotation = rot;
     this.bot.scale.set(facing, 1);
+    // the plush body: standing, then launched (tumbling in the air) once kicked; the LED face on its visor
+    const flying = u >= kickAt;
+    const fm = this.pl?.update({ dt: Math.max(0, u - this.lastU), alive: true, air: flying, stunned: flying, vx: 0, vy: 0, weapon: "fist", aim: 0, swingT: 0, recoil: 0, hitT: 0, celebrate: false, facing });
+    this.lastU = u;
+    this.botFace.visible = !!fm;
+    if (fm) this.botFace.setFromMatrix(fm);
     const face = faceFor(botMood, time, hash(pl.evicted.name), pl.evicted.eyes, { lookY: botMood === "stun" ? -1 : 0, lookX: 0, koT: u - kickAt });
     const key = JSON.stringify(face);
     if (key !== this.faceKey) {
       this.faceKey = key;
       this.botFace.clear();
-      drawVisor(pixiPen(this.botFace), pl.evicted, face, "full");
+      drawVisor(pixiPen(this.botFace), pl.evicted, face, "full", false); // the dots only: the visor glass is rendered
     }
   }
 }

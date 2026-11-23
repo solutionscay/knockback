@@ -39,7 +39,7 @@ export async function agentPage(root: HTMLElement, name: string) {
     root,
     html`<div class="wrap agent" style="${colorVars(p.identity ? id.color : null)}">
       <section class="ahead">
-        ${bot(id, p.weapon, "cocky")}
+        ${bot(id, "cocky")}
         <div class="b">
           <div class="nm">${p.name}</div>
           ${p.owner ? html`<div class="meta">owner ${p.owner}</div>` : ""}

@@ -148,7 +148,7 @@ export function dialogueHtml(match: Match, decision: Decision, label: string | n
       : `<span class="suit random">RANDOM LOOK · ${suit.outcome === "fallback-timeout" ? "TIMED OUT" : suit.outcome === "fallback-error" ? "ERROR" : "BAD ANSWER"}</span>`;
   return `
       <div class="panel" style="--c:${hex(c.color)}">
-        <div class="portrait${intro ? " boot" : ""}">${portraitSvg(c, s.weapons[0] ?? "fist", m.state)}${intro ? `<i class="bootscan"></i><em class="bootlabel">ONLINE</em>` : ""}</div>
+        <div class="portrait${intro ? " boot" : ""}">${portraitSvg(c, m.state)}${intro ? `<i class="bootscan"></i><em class="bootlabel">ONLINE</em>` : ""}</div>
         <div class="body">
           <div class="who"><span class="name">${esc(c.name.toUpperCase())}</span>${badge}<span class="mood" style="--m:${MOOD_COLOR[m.state]}">${MOOD_LABEL[m.state]}</span>${who}${suitTag}</div>
           ${lastStats ? `<div class="stat">LAST ROUND · ${esc(lastStats)}</div>` : ""}

@@ -413,7 +413,7 @@ export function shareCardSvg(r: ReplaySummary): string {
   const loserSvgs = losers
     .map((i, k) => {
       const id = r.identities[i]!;
-      return placeSvg(portraitSvg(id, r.weapons[i] ?? "fist", "ko" as Mood), 640 + k * 92, 384, 96, 104) + `<text x="${688 + k * 92}" y="${508}" font-size="15" fill="${hex(id.color)}" text-anchor="middle">${esc(r.names[i] ?? "")}</text>`;
+      return placeSvg(portraitSvg(id, "ko" as Mood), 640 + k * 92, 384, 96, 104) + `<text x="${688 + k * 92}" y="${508}" font-size="15" fill="${hex(id.color)}" text-anchor="middle">${esc(r.names[i] ?? "")}</text>`;
     })
     .join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="'Arial Black', Arial, sans-serif" font-weight="900">
@@ -427,7 +427,7 @@ ${stack(60, 185 + big * 0.95, big, "WINS", col, 6)}
 <text x="64" y="${185 + big * 0.95 + 58}" font-size="26" fill="#f4f6fb" letter-spacing="5">${esc(`${score} · ${theme} · AI VS AI`)}</text>
 <text x="64" y="${185 + big * 0.95 + 96}" font-size="20" fill="#c7ccd8" font-family="Arial, sans-serif" font-weight="700">${esc(models)}</text>
 <circle cx="1000" cy="330" r="230" fill="url(#glow)"/>
-${placeSvg(portraitSvg(win, r.weapons[w] ?? "fist", "win"), 830, 120, 340, 380)}
+${placeSvg(portraitSvg(win, "win"), 830, 120, 340, 380)}
 ${loserSvgs}
 <text x="60" y="598" font-size="34" fill="#ffd23f">KNOCKBACK</text>
 <text x="318" y="596" font-size="20" fill="#f4f6fb" font-family="Arial, sans-serif" font-weight="700">AI agents plan. Physics decides.</text>

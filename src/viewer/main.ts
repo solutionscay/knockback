@@ -1,3 +1,4 @@
+import { initPlushArt, plushSettle } from "./plush-bot";
 import { PickPanel } from "./picks";
 import { Application } from "pixi.js";
 import { initPhysics } from "../sim/sim";
@@ -16,6 +17,11 @@ declare global {
       ready: boolean;
       /** step the game; render = false skips drawing (fast-forward) */
       advance: (dt: number, frames?: number, render?: boolean) => void;
+      /**
+       * wait for the art still loading (the plush sheets a round needs), then redraw the frame;
+       * true if it had to wait. Capture scripts call it before taking a frame. Nothing to wait for: resolves at once.
+       */
+      settle: () => Promise<boolean>;
       /** video mode: every beat change and the sim tick at every frame since load */
       timeline: () => Timeline;
       /** video mode: the caption box (null hides it) */
@@ -54,6 +60,7 @@ await app.init({
   preference: "webgl",
 });
 document.getElementById("app")!.appendChild(app.canvas);
+await initPlushArt(); // the fighters' sprite format (the sheets load per round)
 if (capture) document.body.classList.add("capture");
 // Site pages (#22) show the viewer in an iframe with ?embed: no seed line or match buttons, playback reported to the page
 const embedded = params.has("embed") && !capture;
@@ -224,6 +231,12 @@ if (capture) {
         if (game.flow && game.shown) timeline.record(game.flow.beat as { kind: string; value?: number; fighter?: number }, game.flow.index, game.match.round, game.shown.sim.tick);
       }
       if (render) app.renderer.render(app.stage);
+    },
+    async settle() {
+      if (!(await plushSettle())) return false;
+      game.update(0); // place the sprites that just arrived (no time passes)
+      app.renderer.render(app.stage);
+      return true;
     },
     timeline: () => timeline,
     caption: (c) => setVideoCaption(c),

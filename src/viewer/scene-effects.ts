@@ -145,11 +145,13 @@ export class SceneEffects {
       case "fire": {
         const v = fighters.get(e.fighter);
         v.recoil = e.weapon === "shotgun" ? 0.35 : 0.25;
-        const mx = e.x + e.dx * 1.0;
-        const my = e.y + e.dy * 1.0;
+        // the plush bot's rendered muzzle, when it holds a rendered weapon
+        const mz = fighters.muzzle(e.fighter);
+        const mx = mz ? mz.x : e.x + e.dx * 1.0;
+        const my = mz ? mz.y : e.y + e.dy * 1.0;
         if (e.weapon === "flamethrower") {
           v.recoil = 0.06;
-          this.fx.flameJet(e.x + e.dx * 0.9, e.y + e.dy * 0.9, e.dx, e.dy, 7);
+          this.fx.flameJet(mz ? mz.x : e.x + e.dx * 0.9, mz ? mz.y : e.y + e.dy * 0.9, e.dx, e.dy, 7); // from the plush nozzle
         } else if (e.weapon !== "grenade" && e.weapon !== "mine" && e.weapon !== "railgun" && e.weapon !== "hammer" && e.weapon !== "lightning") {
           this.fx.add({ x: mx, y: my, kind: "flash", life: 0.07, size: 0.35, size1: 0.55, color: 0xffe9a0 });
           this.fx.sparks(mx, my, e.dx, e.dy, 0xffd27a, e.weapon === "shotgun" ? 8 : 4);
@@ -162,12 +164,14 @@ export class SceneEffects {
       case "mineArm":
         this.fx.add({ x: e.x, y: e.y, kind: "ring", life: 0.28, size: 0.24, size1: 0.9, color: WEAPON_ACCENT.mine, alpha: 0.9, aux: 0.09 });
         break;
-      case "rail":
-        projectiles.rails.push({ x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, life: 0.25 });
+      case "rail": {
+        const rm = fighters.muzzle(e.fighter); // the rail leaves the plush muzzle
+        projectiles.rails.push({ x0: rm ? rm.x : e.x0, y0: rm ? rm.y : e.y0, x1: e.x1, y1: e.y1, life: 0.25 });
         this.fx.sparks(e.x1, e.y1, 0, 0, WEAPON_ACCENT.railgun, 12);
         this.float("RAIL SHOT!", e.x0, e.y0 + 0.9, WEAPON_ACCENT.railgun, 0.72);
         camera.addShake(0.22);
         break;
+      }
       case "shockwave":
         fighters.get(e.fighter).swingT = 0.2;
         projectiles.waves.push({ paths: e.paths, life: 0.36 });
@@ -177,7 +181,8 @@ export class SceneEffects {
         break;
       case "shot": {
         // precision shots (#38)
-        projectiles.shots.push({ x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, weapon: e.weapon, life: e.weapon === "sniper" ? 0.3 : 0.12 });
+        const sm = fighters.muzzle(e.fighter); // the tracer leaves the plush muzzle
+        projectiles.shots.push({ x0: sm ? sm.x : e.x0, y0: sm ? sm.y : e.y0, x1: e.x1, y1: e.y1, weapon: e.weapon, life: e.weapon === "sniper" ? 0.3 : 0.12 });
         const len = Math.hypot(e.x1 - e.x0, e.y1 - e.y0) || 1;
         const dx = (e.x1 - e.x0) / len, dy = (e.y1 - e.y0) / len;
         if (e.hit !== "none") this.fx.sparks(e.x1, e.y1, -dx, -dy, WEAPON_ACCENT[e.weapon], e.weapon === "sniper" ? 12 : 4);
@@ -188,15 +193,17 @@ export class SceneEffects {
         }
         break;
       }
-      case "bolt":
+      case "bolt": {
         // a lightning bolt (#72)
         fighters.get(e.fighter).recoil = 0.2;
-        projectiles.lightning.push({ x0: e.x0, y0: e.y0, x1: e.x1, y1: e.y1, life: 0.22 });
+        const bm = fighters.muzzle(e.fighter); // the bolt leaves the plush sword's tip
+        projectiles.lightning.push({ x0: bm ? bm.x : e.x0, y0: bm ? bm.y : e.y0, x1: e.x1, y1: e.y1, life: 0.22 });
         this.fx.add({ x: e.x1, y: e.y1, kind: "flash", life: 0.1, size: 0.5, size1: 1.1, color: 0xe9e2ff });
         if (e.hit !== "none") this.fx.sparks(e.x1, e.y1, 0, 1, WEAPON_ACCENT.lightning, 14);
         if (e.hit === "fighter") this.float("ZAP!", e.x1, e.y1 + 1.2, WEAPON_ACCENT.lightning, 0.7);
         camera.addShake(0.2);
         break;
+      }
       case "shock":
         // live ground shocks a fighter (#72)
         this.fx.sparks(e.x, e.y - 0.6, 0, 1, WEAPON_ACCENT.lightning, e.stun ? 10 : 4);
@@ -207,7 +214,8 @@ export class SceneEffects {
         this.fx.add({ x: e.x, y: e.y, kind: "ring", life: 0.3, size: 0.3, size1: 1.1, color: WEAPON_ACCENT.crossbow, alpha: 0.9, aux: 0.1 });
         break;
       case "pellet": {
-        projectiles.tracer(e.x0, e.y0, e.x1, e.y1);
+        const pm = fighters.muzzle(e.fighter); // pellets leave the plush muzzle
+        projectiles.tracer(pm ? pm.x : e.x0, pm ? pm.y : e.y0, e.x1, e.y1);
         if (e.hit) this.fx.sparks(e.x1, e.y1, -(e.x1 - e.x0) * 0.1, -(e.y1 - e.y0) * 0.1, 0xffe0a0, 3);
         break;
       }
