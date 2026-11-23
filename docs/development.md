@@ -12,6 +12,11 @@ four example souls are the brawler, the sniper, the rat and the vulture. Souls h
 gives each fighter a **generated identity** (name, head shape, eyes, mark, color) from the match seed. Format:
 [souls.md](souls.md).
 
+The stage (#100): 3-4 rows of soft ground (the theme's dirt, concrete or brick) over a hard frame of rock or steel,
+hanging platforms that are mostly jump-through (jump up through, hold down to drop), and at most one gap near the
+middle, always with a jump-through catwalk over it. Fighters wall-jump out of holes and dig through soft ground with
+digging punches. Ring-outs come from the gap, the level's edges and the zone.
+
 The fighters are plush bots rendered in Blender (#85, sprite sheets per build in `src/viewer/art/plush`, drawn by
 `src/viewer/plush-bot.ts`). Their LED visor faces are drawn in code (`src/viewer/bot.ts`) and show morale (cocky,
 confident, rattled, furious, desperate) and events (hit, stunned, knocked out, win); the same drawing makes the
@@ -76,7 +81,7 @@ directories.
   longer replays at startup is set aside for a fresh one.
 - `stuck` - bots go somewhere (#88): Arena-style house-bot rounds stay under 1.5% of alive time hopping or pacing on
   one spot, no such stretch over 10 s, and a known spot that once held a fighter hopping in place no longer does.
-- `site-join` - the JOIN snippets carry the key only in a header or an environment variable; the JOIN status says
+- `site-join` - the Connect page's MCP snippets carry the key only in a header or an environment variable; the join status says
   where the owner's agent is in the Arena.
 
 Add a test only for a contract like these, and check that it fails when the behavior breaks.

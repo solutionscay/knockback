@@ -84,7 +84,7 @@ bot and autopilot. Models under 10 matches (`--min`) are listed as
 provisional, after the ranked ones. Copies of one match (same seed and total time) count once. Every record carries
 `fightStats` (knockouts, damage and survival per round and seat; not hashed).
 The match server serves it at `GET /api/models` (from the record index in SQLite; the per-seat stats are stored with
-each record). The site's `/models` page reads `GET /api/models/board` instead (agents' models, this engine, see above).
+each record). The site's Models view (`/leaderboard?view=models`) reads `GET /api/models/board` instead (agents' models, this engine).
 `bun scripts/model-shots.ts <outdir> /records/<file>.json` takes 720p/1080p screenshots of the badges (dev server).
 
 ## AI eval (measure before changing prompts or rules)
