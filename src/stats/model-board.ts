@@ -1,12 +1,11 @@
 /**
- * The /models page board (#96): per model, what its agents did in the Arena's rounds on this engine. Pure (no DOM, no
+ * The leaderboard's Models view (#96, #106): per model, what its agents did in the Arena's rounds on this engine. Pure (no DOM, no
  * Bun): the server hands it one entry per round; the page shows it.
  *
  * - Model rows: the models agents said they run (remote seats, self-reported), from public rounds only (warm-ups and
  *   featured rounds; #67). Per model: rounds, wins, win rate, K/D, damage per round, favourite weapon and build, the
  *   best crown streak of its agents, the agents that use it, and the recent form (newest first).
- * - The house bot: one baseline row from the house seats of the same public rounds. With no public round yet it comes
- *   from the house bots' own rounds (bot-only: aggregates only, never a replay link).
+ * - House bots are not a model: their seats are never counted (#106).
  * - Connected: models agents joined with that have no round on this engine yet (the empty state lists them).
  *
  * Every Arena record is one round, so "rounds" here are records.
@@ -47,8 +46,8 @@ export interface BoardAgent {
 }
 
 export interface FormEntry {
-  /** the match id; null for a bot-only round (never linked) */
-  match: string | null;
+  /** the match id (its replay) */
+  match: string;
   won: boolean;
 }
 
@@ -57,7 +56,6 @@ export interface ModelBoardRow {
   name: string;
   provider: ModelProvider;
   selfReported: boolean;
-  house: boolean;
   rounds: number;
   wins: number;
   /** 0..1 */
@@ -70,7 +68,7 @@ export interface ModelBoardRow {
   weapon: string | null;
   build: string | null;
   bestStreak: number;
-  /** the agents that played it, most rounds first (none for the house bot) */
+  /** the agents that played it, most rounds first */
   agents: BoardAgent[];
   /** newest first, at most FORM */
   form: FormEntry[];
@@ -89,10 +87,6 @@ export interface ModelBoard {
   /** public rounds on this engine with at least one agent */
   rounds: number;
   rows: ModelBoardRow[];
-  /** the house-bot baseline; null when no round at all */
-  house: ModelBoardRow | null;
-  /** where the baseline comes from: rounds with agents, or the house bots' own rounds */
-  houseFrom: "agents" | "house-only" | null;
   connected: ConnectedModel[];
 }
 
@@ -115,7 +109,6 @@ interface Acc {
   name: string;
   provider: ModelProvider;
   selfReported: boolean;
-  house: boolean;
   rounds: number;
   wins: number;
   kos: number;
@@ -135,7 +128,6 @@ function rowOf(a: Acc, streaks: Map<string, number>): ModelBoardRow {
     name: a.name,
     provider: a.provider,
     selfReported: a.selfReported,
-    house: a.house,
     rounds: a.rounds,
     wins: a.wins,
     winRate: a.rounds ? a.wins / a.rounds : 0,
@@ -152,14 +144,14 @@ function rowOf(a: Acc, streaks: Map<string, number>): ModelBoardRow {
   };
 }
 
-/** Add one round's seats of one kind (agents or house bots) to the accumulators. */
-function add(by: Map<string, Acc>, r: BoardRound, pick: (key: string) => boolean, linked: boolean) {
+/** Add one round's model seats (never house bots) to the accumulators. */
+function add(by: Map<string, Acc>, r: BoardRound) {
   r.seats.forEach((s, i) => {
     const m = modelOf(s.label);
-    if (m.test || !pick(m.key)) return;
+    if (m.test || m.key === "house") return;
     let a = by.get(m.key);
     if (!a) {
-      a = { key: m.key, name: m.name, provider: m.provider, selfReported: m.selfReported, house: m.key === "house", rounds: 0, wins: 0, kos: 0, deaths: 0, damage: 0, weapons: [], builds: [], agents: new Map(), form: [], lastAt: r.createdAt };
+      a = { key: m.key, name: m.name, provider: m.provider, selfReported: m.selfReported, rounds: 0, wins: 0, kos: 0, deaths: 0, damage: 0, weapons: [], builds: [], agents: new Map(), form: [], lastAt: r.createdAt };
       by.set(m.key, a);
     }
     const won = r.winner === i;
@@ -171,7 +163,7 @@ function add(by: Map<string, Acc>, r: BoardRound, pick: (key: string) => boolean
     a.weapons.push(s.weapon);
     a.builds.push(s.build);
     if (r.createdAt > a.lastAt) a.lastAt = r.createdAt;
-    if (a.form.length < FORM) a.form.push({ match: linked ? r.match : null, won });
+    if (a.form.length < FORM) a.form.push({ match: r.match, won });
     if (m.agent) {
       const k = m.agent.toLowerCase();
       const g = a.agents.get(k) ?? { name: m.agent, identity: s.identity, rounds: 0 };
@@ -182,27 +174,16 @@ function add(by: Map<string, Acc>, r: BoardRound, pick: (key: string) => boolean
 }
 
 /**
- * The board from rounds newest first (public ones, and the house bots' own ones for the baseline), the agents'
+ * The board from public rounds newest first, the agents'
  * best crown streaks, and the agents that joined (their newest model and look; `live` while in the Arena).
  */
-export function modelBoard(publicRounds: readonly BoardRound[], houseRounds: readonly BoardRound[], streaks: readonly { name: string; best: number }[], joined: readonly { name: string; model: string; look: unknown; live: boolean }[]): ModelBoard {
+export function modelBoard(publicRounds: readonly BoardRound[], streaks: readonly { name: string; best: number }[], joined: readonly { name: string; model: string; look: unknown; live: boolean }[]): ModelBoard {
   const best = new Map<string, number>();
   for (const s of streaks) best.set(s.name.toLowerCase(), Math.max(best.get(s.name.toLowerCase()) ?? 0, s.best));
   const withAgents = publicRounds.filter((r) => r.tier !== "bot-only" && r.seats.some((s) => modelOf(s.label).agent));
   const models = new Map<string, Acc>();
-  for (const r of withAgents) add(models, r, (k) => k !== "house", true);
-  const house = new Map<string, Acc>();
-  let houseFrom: ModelBoard["houseFrom"] = null;
-  if (withAgents.length) {
-    for (const r of withAgents) add(house, r, (k) => k === "house", true);
-    if (house.size) houseFrom = "agents";
-  }
-  if (!house.size) {
-    for (const r of houseRounds) if (r.tier === "bot-only") add(house, r, (k) => k === "house", false);
-    if (house.size) houseFrom = "house-only";
-  }
+  for (const r of withAgents) add(models, r);
   const rows = [...models.values()].map((a) => rowOf(a, best)).sort((a, b) => b.rounds - a.rounds || b.winRate - a.winRate || a.name.localeCompare(b.name));
-  const h = house.get("house");
   // connected: every model an agent joined with that has no round here yet, its agents grouped under it
   const played = new Set(rows.map((r) => r.key));
   const conn = new Map<string, ConnectedModel>();
@@ -216,5 +197,5 @@ export function modelBoard(publicRounds: readonly BoardRound[], houseRounds: rea
     conn.set(m.key, c);
   }
   const connected = [...conn.values()].sort((a, b) => Number(b.agents.some((x) => x.live)) - Number(a.agents.some((x) => x.live)) || b.agents.length - a.agents.length || a.name.localeCompare(b.name));
-  return { rounds: withAgents.length, rows, house: h ? rowOf(h, best) : null, houseFrom, connected };
+  return { rounds: withAgents.length, rows, connected };
 }

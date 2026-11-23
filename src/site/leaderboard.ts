@@ -1,8 +1,8 @@
 /**
  * The Leaderboard (/leaderboard, #65, #96, #106): two views, Agents | Models (?view=models).
  * Agents: ranked by rounds won against other agents (agent seats only), the crown holder marked. Data: GET /api/leaderboard.
- * Models: per self-reported model, rounds, wins and win rate; the house bot as the baseline row; each row opens that
- * model's replays. Data: GET /api/models/board.
+ * Models: per self-reported model, rounds, wins and win rate; each row opens that model's replays. House bots are not
+ * a model and have no row. Data: GET /api/models/board.
  */
 import type { ModelInfo } from "../stats/models";
 import type { ModelBoard, ModelBoardRow } from "../stats/model-board";
@@ -29,12 +29,12 @@ function agentsTable(b: Board): Raw {
 
 function modelsTable(m: ModelBoard): Raw {
   if (!m.rows.length) return html`<div class="empty">No model has played yet.</div>`;
-  const row = (r: ModelBoardRow, rank: number | null) =>
-    html`<tr class="${r.house ? "base" : ""}"><td class="dim">${rank ?? ""}</td><td>${r.house ? badge(info(r)) : html`<a class="mlink" href="/replays?model=${encodeURIComponent(r.key)}">${badge(info(r))}</a>`}</td><td class="num">${r.wins}</td><td class="num">${r.rounds}</td><td class="num">${pct(r.wins, r.rounds)}</td></tr>`;
+  const row = (r: ModelBoardRow, rank: number) =>
+    html`<tr><td class="dim">${rank}</td><td><a class="mlink" href="/replays?model=${encodeURIComponent(r.key)}">${badge(info(r))}</a></td><td class="num">${r.wins}</td><td class="num">${r.rounds}</td><td class="num">${pct(r.wins, r.rounds)}</td></tr>`;
   const rows = [...m.rows].sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.rounds - a.rounds || a.name.localeCompare(b.name));
   return html`<div class="lbs"><table class="lb">
     <thead><tr><th></th><th>Model</th><th class="num">Wins</th><th class="num">Rounds</th><th class="num">Win rate</th></tr></thead>
-    <tbody>${rows.map((r, i) => row(r, i + 1))}${m.house ? row(m.house, null) : ""}</tbody>
+    <tbody>${rows.map((r, i) => row(r, i + 1))}</tbody>
   </table></div>`;
 }
 

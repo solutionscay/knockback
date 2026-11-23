@@ -1,6 +1,6 @@
 /**
  * The /models page (#96): the board built from rounds (pure), its sort, its route, and GET /api/models/board on an
- * in-process Arena: empty (house bots only: the baseline from their own rounds, the agents that joined), then with
+ * in-process Arena: empty (house bots only: no rows, the agents that joined), then with
  * agent rounds; rounds of an older engine never count (#88).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -25,7 +25,7 @@ describe("the models board (pure)", () => {
     rd("m2", 2, 2, [seat("remote/Ann@Claude Opus 5.5", { damage: 30, weapon: "rocket", build: "heavy" }), seat("house"), seat("house", { kos: 1, damage: 50, died: false, weapon: "gun" }), seat("house")]),
     rd("m1", 1, 1, [seat("remote/Cy@claude-opus-5-5", { kos: 1, damage: 20, weapon: "bat" }), seat("house", { kos: 1, died: false }), seat("house"), seat("stub/x")]),
   ];
-  const b = modelBoard(rounds, [], [{ name: "ann", best: 3 }], [
+  const b = modelBoard(rounds, [{ name: "ann", best: 3 }], [
     { name: "Ann", model: "claude-opus-5-5", look: null, live: true },
     { name: "Dee", model: "gemini-3-pro", look: null, live: false },
     { name: "Eve", model: "gemini 3 pro", look: null, live: true },
@@ -56,10 +56,10 @@ describe("the models board (pure)", () => {
     expect(c.lastAt).toBe(rounds[0]!.createdAt);
   });
 
-  test("the house bot is a baseline row from the same rounds, never ranked", () => {
-    expect(b.rows.some((r) => r.house)).toBe(false);
-    expect(b.houseFrom).toBe("agents");
-    expect([b.house!.rounds, b.house!.wins, b.house!.kos, b.house!.deaths]).toEqual([7, 2, 2, 5]);
+  test("house bots are not a model: no row, no baseline (#106)", () => {
+    expect(b.rows.some((r) => r.key === "house")).toBe(false);
+    expect(b).not.toHaveProperty("house");
+    expect(b).not.toHaveProperty("houseFrom");
   });
 
   test("connected: models that joined without a round here, their agents grouped", () => {
@@ -74,15 +74,13 @@ describe("the models board (pure)", () => {
     ]);
   });
 
-  test("no agent round: no rows; the baseline from the house bots' own rounds, never linked", () => {
+  test("no agent round: no rows, only the models that joined; house-bot rounds never count", () => {
     const houseOnly = [rd("h1", 1, 2, [seat("house"), seat("house"), seat("house", { kos: 3, died: false }), seat("house")], "bot-only")];
-    const e = modelBoard([], houseOnly, [], [{ name: "Ann", model: "claude-opus-5-5", look: null, live: false }]);
+    const e = modelBoard(houseOnly, [], [{ name: "Ann", model: "claude-opus-5-5", look: null, live: false }]);
     expect(e.rows).toEqual([]);
-    expect(e.houseFrom).toBe("house-only");
-    expect([e.house!.rounds, e.house!.wins, e.house!.kd]).toEqual([4, 1, 1]);
-    expect(e.house!.form.every((f) => f.match === null)).toBe(true);
+    expect(e.rounds).toBe(0);
     expect(e.connected.map((c) => c.key)).toEqual(["self:claude-opus-5-5"]);
-    expect(modelBoard([], [], [], [])).toEqual({ rounds: 0, rows: [], house: null, houseFrom: null, connected: [] });
+    expect(modelBoard([], [], [])).toEqual({ rounds: 0, rows: [], connected: [] });
   });
 });
 
@@ -138,8 +136,6 @@ describe("GET /api/models/board", () => {
     let b = await board();
     expect(b.rounds).toBe(0);
     expect(b.rows).toEqual([]);
-    expect(b.houseFrom).toBe("house-only");
-    expect(b.house!.rounds).toBe(4);
     expect(b.connected.map((c) => [c.key, c.agents.map((a) => [a.name, a.live])])).toEqual([["self:claude-opus-5-5", [["Ann", true]]]]);
 
     const warm = await round(api, [ann]);
@@ -147,14 +143,12 @@ describe("GET /api/models/board", () => {
     expect(b.rounds).toBe(1);
     expect(b.rows.map((r) => [r.key, r.rounds, r.agents.map((a) => a.name), r.form[0]!.match])).toEqual([["self:claude-opus-5-5", 1, ["Ann"], warm.id]]);
     expect(b.rows[0]!.weapon).toBe("rocket");
-    expect(b.houseFrom).toBe("agents");
-    expect(b.house!.rounds).toBe(3);
     expect(b.connected).toEqual([]);
 
-    // that round is now from an older engine: not counted, and the baseline goes back to the house bots' own rounds
+    // that round is now from an older engine: not counted
     (api.store as SqliteStore).db.query("UPDATE matches SET engine = ? WHERE id = ?").run("e-0ld0ld00", warm.id);
     b = await board();
-    expect([b.rounds, b.rows.length, b.houseFrom]).toEqual([0, 0, "house-only"]);
+    expect([b.rounds, b.rows.length]).toEqual([0, 0]);
     expect(b.connected.map((c) => c.key)).toEqual(["self:claude-opus-5-5"]);
   });
 });

@@ -9,8 +9,8 @@
  *   GET /api/leaderboard            the Arena board (#65): rounds per agent and per owner (agent seats only), against
  *                                   agents and against house bots only, best crown streaks; the crown now
  *   GET /api/models/board           the leaderboard's Models view (#96, #106): per model (agents' self-reported models), rounds, wins, K/D,
- *                                   damage, favourite weapon and build, best streak, agents, recent form; the house-bot
- *                                   baseline; models that joined but have no round on this engine yet
+ *                                   damage, favourite weapon and build, best streak, agents, recent form (house bots are not a
+ *                                   model: no row); models that joined but have no round on this engine yet
  *   GET /share/:matchId.svg         the 1200x630 share card of a finished match
  *
  * Record files never change once written, so their summaries are cached by path.
@@ -132,9 +132,9 @@ export class RecordCache {
     readonly max = 500,
   ) {}
 
-  /** the record JSON at /records/<file>.json (or, for the house-bot baseline only, internal/<file>.json), or null */
+  /** the record JSON at /records/<file>.json, or null */
   raw(path: string): Promise<unknown | null> {
-    const name = /^\/records\/([\w-][\w.-]*\.json)$/.exec(path)?.[1] ?? /^(internal\/[\w-][\w.-]*\.json)$/.exec(path)?.[1];
+    const name = /^\/records\/([\w-][\w.-]*\.json)$/.exec(path)?.[1];
     if (!name) return Promise.resolve(null);
     let p = this.cache.get(name);
     if (!p) {
@@ -393,9 +393,8 @@ export async function leaderboardOf(server: MatchServer) {
 
 // ------------------------------------------------------------------ models (#96)
 
-/** how many of the newest public rounds the models board reads (and of the house bots' own rounds for the baseline) */
+/** how many of the newest public rounds the models board reads */
 const BOARD_ROUNDS = 400;
-const BOARD_HOUSE_ROUNDS = 120;
 
 /** One record as a board round: the summary's line-up and plans, the index's fight stats (pure: tested). */
 export function boardRound(sum: ReplaySummary, stats: string, tier: BoardRound["tier"] = sum.tier): BoardRound {
@@ -436,26 +435,24 @@ const boards = new WeakMap<MatchServer, { at: number; board: ModelBoard }>();
 export async function modelsBoardOf(server: MatchServer, fresh = false): Promise<ModelBoard & { note: string }> {
   let c = boards.get(server);
   if (fresh || !c || Date.now() - c.at >= 20_000) {
-    const read = async (rows: RecordRow[], tier?: "bot-only") =>
+    const read = async (rows: RecordRow[]) =>
       (
         await Promise.all(
           rows.map(async (row) => {
             if (row.engine !== server.store.engine) return null;
-            // a bot-only summary is read for its aggregates only: summarizeReplay's tier is a label here
-            const sum = summarizeReplay(await cacheOf(server).raw(row.path), row.matchId, row.path, row.createdAt, row.tier === "bot-only" ? "warm-up" : row.tier);
-            return sum ? boardRound(sum, row.stats, tier ?? sum.tier) : null;
+            if (row.tier === "bot-only") return null;
+            const sum = summarizeReplay(await cacheOf(server).raw(row.path), row.matchId, row.path, row.createdAt, row.tier);
+            return sum ? boardRound(sum, row.stats) : null;
           }),
         )
       ).filter((x): x is BoardRound => x !== null);
     const [pub, streaks, latest] = await Promise.all([server.store.listRecords(BOARD_ROUNDS).then((r) => read(r)), server.store.listStreaks(), server.store.latestSeats()]);
-    // the house bots' own rounds only matter while no agent has played on this engine
-    const houseOnly = pub.length ? [] : await read((await server.store.houseRecords(BOARD_HOUSE_ROUNDS)).filter((r) => r.tier === "bot-only"), "bot-only");
     const live = [...server.arena.seats.filter((e) => e !== null), ...server.arena.queue];
     const joined = [
       ...live.map((e) => ({ name: e.name, model: e.model, look: e.look, live: true })),
       ...latest.map((s) => ({ name: s.name, model: s.model, look: s.look, live: false })),
     ];
-    c = { at: Date.now(), board: modelBoard(pub, houseOnly, streaks, joined) };
+    c = { at: Date.now(), board: modelBoard(pub, streaks, joined) };
     boards.set(server, c);
   }
   return {

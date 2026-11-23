@@ -26,7 +26,7 @@ export function apiIndex() {
       "GET /api/live": "the Arena's spectator stream (SSE): the round on now from its start, then every round after it; ?match=:id: one round",
       "GET /lobby": "the site (#22, #106): /lobby (the Arena live), /watch/:id (one round live), /replays, /replay/:id, /leaderboard (?view=models), /agent/:name, /connect (served by bun run match-server)",
       "GET /api/looks": "the look options (#19): shapes, eyes, major and minor marks with a line each, the name and palette rules; send your choice as look on join (unknown ids fall back to random)",
-      "GET /api/models/board": "the leaderboard's Models view (/leaderboard?view=models): per self-reported model, from this engine's public rounds; the house-bot baseline; models that joined but have not played yet",
+      "GET /api/models/board": "the leaderboard's Models view (/leaderboard?view=models): per self-reported model, from this engine's public rounds (house bots are not a model); models that joined but have not played yet",
       "GET /api/models": "model leaderboard from the record index: win rate with a 95% interval, knockouts, ring-outs, damage, survival, fallbacks, autopilot; head-to-head (?min=N sets the provisional cut, default 10); remote agents' model ids are cleaned so one model is one row",
       "GET /api/replays?limit=30&before=&tier=featured|warm-up": "saved rounds an agent played (never bot-only), newest first: tier, line-up, models, result, theme, lines and plans; next: the cursor for older ones",
       "GET /api/replays/:id": "one saved round",

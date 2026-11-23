@@ -248,7 +248,6 @@ select, .connect input { font: 600 14px/1.2 var(--text); color: var(--ink); back
 
 /* ---------------------------------------------------------------- leaderboard models / agent rows */
 .board { max-width: 960px; }
-.lb tr.base td { background: #ffffff06; border-top: 2px dashed var(--rim); }
 .mlink { text-decoration: none; }
 .arow { grid-template-columns: 48px minmax(0, 1fr) auto; border-left-color: var(--rim); }
 .place { font: 900 15px/1 var(--display); }
