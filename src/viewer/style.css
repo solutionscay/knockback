@@ -1026,6 +1026,35 @@ body.capture #controls {
 #lineup .chip .plan .out {
   opacity: 0.6;
 }
+/* ammo (#95): the weapon in hand and its rounds left, on the badge row (right); red when low, dim bare-handed */
+#lineup .chip .slot {
+  display: none;
+  font-style: normal;
+  font-size: max(calc(1.45 * var(--u)), 11px);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+#lineup.fight .chip .slot {
+  display: block;
+  grid-area: a;
+  justify-self: end;
+  align-self: center;
+}
+#lineup .chip .slot .ammo {
+  color: #ffd84a;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+#lineup .chip .slot .ammo b {
+  font-size: 1.15em;
+}
+#lineup .chip .slot .ammo.low {
+  color: #ff5a4a;
+}
+#lineup .chip .slot .ammo.none {
+  color: #9aa4bd;
+  font-weight: 600;
+}
 /* autopilot (#22): the agent dropped, the house bot drives */
 #lineup .chip .plan .autopilot,
 #celebrate .autopilot {
@@ -1186,7 +1215,7 @@ body.capture #controls {
 #lineup.fight .chip .nm {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
-  grid-template-areas: "b b b" "f k p";
+  grid-template-areas: "b b a" "f k p";
   column-gap: calc(0.7 * var(--u));
   row-gap: calc(0.3 * var(--u));
   min-width: 0;
@@ -1858,7 +1887,7 @@ body.embed:has(#celebrate.show) #lineup {
   }
   #lineup.fight .chip .nm {
     grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "b b" "f f" "k p";
+    grid-template-areas: "b a" "f f" "k p";
   }
 }
 #dialogue .plan b.bld {

@@ -1,12 +1,25 @@
 import type { Fight } from "../sim/fight";
 import type { Match } from "../sim/match";
-import type { SimEvent, Strategy } from "../sim/sim-types";
+import type { Fighter, SimEvent, Strategy } from "../sim/sim-types";
 import type { Decision } from "../sim/voice";
 import { CALLOUT, CalloutManager, planChangeText, ruleTagText, targetText, type KoEvent, type RuleFiring } from "./callouts";
 import { esc } from "./game-hud";
 import { hex, portraitSvg } from "./portrait";
 import { modelBadgeHtml } from "./model-badge";
 import { buildTagHtml } from "./build-view";
+
+/** Short weapon names for the chip (the plan's spellings: hook, flamer, sword). */
+const SHORT_NAME: Partial<Record<string, string>> = { grapple: "hook", flamethrower: "flamer", lightning: "sword" };
+
+/** The carried weapon and its ammo on a HUD chip (#95): "rocket 5/8", red when low; "fists" bare-handed. */
+export function ammoHtml(shown: Fight, f: Fighter): string {
+  const w = f.weapons[1];
+  if (w === "fist") return `<span class="ammo none">fists</span>`;
+  const full = shown.sim.ruleset.weapons.table[w].ammo;
+  const left = Math.max(0, f.ammo[w]);
+  const low = left / Math.max(1, full) <= shown.sim.ruleset.tactics.pickup.lowAmmoShare;
+  return `<span class="ammo${low ? " low" : ""}">${esc(SHORT_NAME[w] ?? w)} <b>${left}</b>/${full}</span>`;
+}
 
 export class GamePlans {
   /** plan thoughts and rule tags over the fight (#10, #11); ?thoughts=off hides them */
@@ -59,7 +72,7 @@ export class GamePlans {
     }
   }
 
-  /** One line under each HUD chip: target, stance, first weapon; ⚑ marks a rule override (#10, #11). */
+  /** One line under each HUD chip: target, stance; ⚑ marks a rule override (#10, #11). The weapon and its ammo (#95) get a line of their own. */
   private planLine(i: number, match: Match, shown: Fight, decisions: Decision[]): string {
     const f = shown.sim.fighters[i]!;
     if (!f.alive) return `<span class="out">OUT</span>`;
@@ -71,24 +84,27 @@ export class GamePlans {
     const names = match.names;
     const tgt = tr ? `<b class="rule">⚑ ${tr.kind === "avoid" ? "avoid " : "→ "}${esc(names[tr.subject] ?? "?")}</b>` : `<b>→ ${esc(targetText(base, names))}</b>`;
     const stance = rs ? `<span class="rule">⚑ ${esc(rs)}</span>` : esc(base.stance);
-    const w = base.weapons[0] === "grapple" ? "hook" : (base.weapons[0] ?? "fists");
-    return `${tgt}<i>·</i>${stance}<i>·</i>${esc(w)}`;
+    return `${tgt}<i>·</i>${stance}`;
   }
 
   renderChips(lineup: HTMLElement, match: Match, shown: Fight, decisions: Decision[]) {
     for (let i = 0; i < 4; i++) {
+      const f = shown.sim.fighters[i]!;
+      const ammo = f.alive ? ammoHtml(shown, f) : "";
       const html = this.planLine(i, match, shown, decisions);
-      if (this.planKeys[i] === html) continue;
-      this.planKeys[i] = html;
+      if (this.planKeys[i] === html + ammo) continue;
+      this.planKeys[i] = html + ammo;
       const el = lineup.querySelector<HTMLElement>(`[data-id="${i}"] .plan`);
       if (el) el.innerHTML = html;
+      const slot = lineup.querySelector<HTMLElement>(`[data-id="${i}"] .slot`);
+      if (slot) slot.innerHTML = ammo;
     }
   }
 
   /** `labels`: who plays each seat, shown as a model badge on the chip; the tag next to it names the fighter's build (#81) */
   startLineup(lineup: HTMLElement, shown: Fight, decisions: Decision[], labels: (string | null)[] = []) {
     lineup.innerHTML = shown.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.look, "fight", "tiny")}<span class="nm"><span class="fn">${esc(f.name)}</span>${modelBadgeHtml(labels[f.id] ?? null, "sm")}${buildTagHtml(f.build)}<em class="plan"></em></span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.look, "fight", "tiny")}<span class="nm"><span class="fn">${esc(f.name)}</span>${modelBadgeHtml(labels[f.id] ?? null, "sm")}${buildTagHtml(f.build)}<em class="plan"></em><em class="slot"></em></span></div>`)
       .join("");
     lineup.className = "show";
   }

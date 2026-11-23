@@ -422,23 +422,48 @@ export class FighterViews {
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh).fill(low && Math.floor(time * 6) % 2 === 0 ? 0xffffff : f.color);
         bars.rect(bx, by, (bw * Math.max(0, f.hp)) / f.maxHp, bh * 0.35).fill({ color: 0xffffff, alpha: 0.25 });
         for (let hp = hpTickStep(f.maxHp); hp < f.maxHp; hp += hpTickStep(f.maxHp)) bars.rect(bx + (bw * hp) / f.maxHp - 0.5 * ui, by, 1 * ui, bh).fill({ color: 0x07080d, alpha: 0.5 });
+        let below = by + bh + 4 * ui;
         if (f.power.jetpack > 0 || f.jetting) {
           const fuel = f.power.jetpack / sim.ruleset.pickups.power.jetpack.fuelTicks;
-          const fy = by + bh + 4 * ui;
+          const fy = below;
           bars.roundRect(bx - 2 * ui, fy - 1 * ui, bw + 4 * ui, 6 * ui, 2 * ui).fill(0x07080d);
           bars.rect(bx, fy, bw, 4 * ui).fill(0x183a3b);
           if (fuel > 0) bars.rect(bx, fy, bw * fuel, 4 * ui).fill(f.jetting ? 0xffae4f : POWER_COLOR.jetpack!);
+          below += 7 * ui;
+        }
+        // ammo (#95): the carried weapon's rounds as pips (a bar past 16), red when low; nothing bare-handed
+        const held = f.weapons[1];
+        if (held !== "fist") {
+          const full = sim.ruleset.weapons.table[held].ammo;
+          const left = Math.max(0, f.ammo[held]);
+          const low = left / Math.max(1, full) <= sim.ruleset.tactics.pickup.lowAmmoShare;
+          const on = low ? AMMO_LOW : AMMO_ON;
+          bars.roundRect(bx - 2 * ui, below - 1.5 * ui, bw + 4 * ui, 7 * ui, 2 * ui).fill(0x07080d);
+          if (full <= 16) {
+            const gap = 1.5 * ui;
+            const pw = (bw - gap * (full - 1)) / full;
+            for (let i = 0; i < full; i++) bars.rect(bx + i * (pw + gap), below, pw, 4 * ui).fill(i < left ? on : AMMO_OFF);
+          } else {
+            bars.rect(bx, below, bw, 4 * ui).fill(AMMO_OFF);
+            bars.rect(bx, below, (bw * left) / full, 4 * ui).fill(on);
+          }
+          below += 7 * ui;
         }
         let pi = 0;
         for (const k of ["shield", "speed", "heavy", "damage", "jump"] as const) {
           if (f.power[k] <= 0) continue;
-          bars.circle(bx + 6 * ui + pi * 13 * ui, by + bh + (f.power.jetpack > 0 || f.jetting ? 16 : 10) * ui, 5 * ui).fill(POWER_COLOR[k]!).stroke({ width: 1.5 * ui, color: 0x07080d });
+          bars.circle(bx + 6 * ui + pi * 13 * ui, below + 6 * ui, 5 * ui).fill(POWER_COLOR[k]!).stroke({ width: 1.5 * ui, color: 0x07080d });
           pi++;
         }
       }
     }
   }
 }
+
+/** Ammo pips under the health bar (#95): loaded, low (at or under the low share), spent. */
+const AMMO_ON = 0xffd84a;
+const AMMO_LOW = 0xff5a4a;
+const AMMO_OFF = 0x3a3324;
 
 function drawJetpack(g: Graphics, burning: boolean, time: number) {
   for (const [x, y] of [[-0.83, -0.31], [-0.58, -0.22]] as const) {
