@@ -19,12 +19,15 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* the base colour on the root: nothing past the body (a tall page, overscroll, a full-page capture) shows another band */
+html { background: var(--dusk); }
 body {
   min-height: 100vh;
   color: var(--ink);
   font: 500 15px/1.45 var(--text);
   -webkit-font-smoothing: antialiased;
-  background: radial-gradient(120% 60% at 50% 0%, #20253a 0%, transparent 70%), linear-gradient(180deg, var(--night) 0%, var(--dusk) 100%) fixed;
+  /* one gradient over the whole page, never repeated (a fixed layer is ignored on iOS and repeated from the top) */
+  background: radial-gradient(120% 900px at 50% 0%, #20253a 0%, transparent 70%) no-repeat, linear-gradient(180deg, var(--night) 0, var(--dusk) 1200px) no-repeat var(--dusk);
 }
 button { font: inherit; color: inherit; cursor: pointer; }
 a { color: inherit; }
@@ -329,8 +332,6 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .hero h1 { margin: 0 0 10px; font-size: 34px; color: var(--yellow); }
 .hero p { margin: 0 0 16px; max-width: 72ch; font-size: 15px; color: var(--ink); }
 .hero .btn + .btn, .hero .btn + a.btn { margin-left: 8px; }
-.heroheads { display: flex; gap: 4px; margin-bottom: 12px; }
-.heroheads .bh { width: 44px; height: 44px; margin: 0; }
 /* "Bring your agent" (cta.ts) */
 .cta { margin-bottom: 14px; }
 .cta h2 { color: var(--yellow); font-size: 22px; }
@@ -341,8 +342,6 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .steps .snipwrap { margin-top: 8px; }
 
 /* ---------------------------------------------------------------- models (#96) */
-.sums { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 12px; font-size: 13px; color: var(--dim); }
-.sums b { font: 900 18px/1 var(--display); color: var(--ink); margin-right: 3px; }
 .sortbar { display: none; margin-bottom: 8px; }
 .sortbar label { font: 800 11px/1 var(--text); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); display: flex; align-items: center; gap: 8px; }
 .sortbar select { font: 700 14px/1 var(--text); color: var(--ink); background: #000; border: 2px solid var(--rim); border-radius: 3px; padding: 8px; text-transform: none; letter-spacing: 0; }
@@ -354,8 +353,6 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .mtab td.num, .mtab td.c-fav, .mtab td.c-form, .mtab td.c-go { padding-top: 12px; }
 .mtab .lbl { display: none; }
 .mtab .wr { font: 900 16px/1 var(--display); }
-.mtab .sub { font-size: 12px; margin-top: 6px; }
-.mtab tr.base td { background: #ffffff06; border-top: 2px dashed var(--rim); }
 .heads { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; font-weight: 700; }
 .heads > a, .heads > span { display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap; }
 .heads .bh { width: 24px; height: 24px; margin: -3px 4px -3px 0; }
@@ -364,28 +361,12 @@ dialog.joinp::backdrop { background: #07080dcc; }
 .wbar2 i { position: absolute; inset: 0 auto 0 0; background: var(--green); border-radius: 1px; }
 .wbar2 u { position: absolute; top: -2px; bottom: -2px; left: 25%; width: 1px; background: var(--dim); }
 .form { display: inline-flex; gap: 3px; vertical-align: middle; }
-.form a, .form i { display: block; width: 10px; height: 16px; border-radius: 2px; background: #ffffff1c; }
+.form a { display: block; width: 10px; height: 16px; border-radius: 2px; background: #ffffff1c; }
 .form .l { background: #ff4d5e3d; }
 .form .w { background: var(--green); }
 .form a:hover { outline: 2px solid var(--ink); }
-.tag.live { background: var(--red); color: #fff; }
-.mgrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-.mcol { display: flex; flex-direction: column; gap: 14px; }
-.mgrid .cta { margin: 0; }
-.joined .q li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 0; }
-.joined .heads { margin-top: 0; }
-.base .basehd { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.base .basehd .bh { width: 40px; height: 40px; margin: 0; }
-.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
-.tile { background: #ffffff08; border-radius: 2px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
-.tile b { font: 900 18px/1.1 var(--display); }
-.tile span { font-size: 12px; color: var(--dim); }
-.base .small { font-size: 12px; margin: 10px 0 0; }
 .filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-weight: 700; }
 
-@media (max-width: 1000px) {
-  .mgrid { grid-template-columns: minmax(0, 1fr); }
-}
 @media (max-width: 760px) {
   .hero { padding: 16px 14px 18px; }
   .hero h1 { font-size: 26px; }
@@ -398,11 +379,8 @@ dialog.joinp::backdrop { background: #07080dcc; }
   .mtab thead { display: none; }
   .mtab, .mtab tbody { display: block; background: none; }
   .mtab tr { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 6px; padding: 12px; margin-bottom: 6px; background: var(--slab); border-radius: 2px; }
-  .mtab tr.base { border-top: 2px dashed var(--rim); background: #13151d; }
-  .mtab tr.base td { background: none; border-top: 0; }
   .mtab td { display: block; padding: 0; border: 0; white-space: normal; text-align: left; }
-  .mtab td.rk { grid-column: 1 / -1; padding: 0; width: auto; font-size: 13px; }
-  .mtab tr:not(.base) td.rk { display: none; } /* the order is the rank */
+  .mtab td.rk { display: none; } /* the order is the rank */
   .mtab td.md { grid-column: 1 / -1; min-width: 0; }
   .mtab td.num, .mtab td.c-fav, .mtab td.c-form, .mtab td.c-go { padding-top: 0; }
   .mtab td.num { text-align: left; font: 900 16px/1.1 var(--display); }
@@ -413,7 +391,5 @@ dialog.joinp::backdrop { background: #07080dcc; }
   .mtab td.num { font-size: 15px; }
   .mtab .lbl { font-size: 9px; letter-spacing: 0.08em; white-space: nowrap; }
   .mtab .lbl { display: block; font: 800 10px/1.2 var(--text); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
-  .mtab td.rk:empty, .mtab td.c-go:empty { display: none; }
   .wbar2 { margin-left: 0; }
-  .tiles { grid-template-columns: 1fr 1fr; }
 }
