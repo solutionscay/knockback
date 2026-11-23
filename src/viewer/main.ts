@@ -1,4 +1,5 @@
 import { initPlushArt, plushSettle } from "./plush-bot";
+import { initWorldArt } from "./world-art";
 import { PickPanel } from "./picks";
 import { Application } from "pixi.js";
 import { initPhysics } from "../sim/sim";
@@ -61,6 +62,7 @@ await app.init({
 });
 document.getElementById("app")!.appendChild(app.canvas);
 await initPlushArt(); // the fighters' sprite format (the sheets load per round)
+await initWorldArt(); // the world sprites (pickups, props, projectiles): small, loaded once
 if (capture) document.body.classList.add("capture");
 // Site pages (#22) show the viewer in an iframe with ?embed: no seed line or match buttons, playback reported to the page
 const embedded = params.has("embed") && !capture;

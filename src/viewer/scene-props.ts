@@ -1,14 +1,18 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import type { Sim } from "../sim/sim";
 import type { Entity } from "../sim/sim-types";
 import type { Fx } from "./fx";
 import type { Palette } from "./palette";
-import { drawProp as drawPropShape } from "./props";
+import { drawProp as drawPropShape, pickupFrame } from "./props";
 import type { XformAt } from "./scene";
 import { drawPiece, pieceSig } from "./terrainview";
+import { setWorldFrame } from "./world-art";
 
 interface PropView {
+  /** the view: the code frame (g) under the plush sprite (s) */
+  root: Container;
   g: Graphics;
+  s: Sprite;
   e: Entity;
   /** a new grenade is drawn from the thrower's drawn hand, easing onto its sim path (view only) */
   off?: { x: number; y: number };
@@ -28,7 +32,7 @@ export class PropViews {
   private dropMarks = new Map<number, number>();
 
   clear() {
-    for (const v of this.props.values()) v.g.destroy();
+    for (const v of this.props.values()) v.root.destroy({ children: true });
     this.props.clear();
   }
 
@@ -48,15 +52,19 @@ export class PropViews {
   sync(sim: Sim) {
     for (const [id, v] of this.props) {
       if (v.e.dead) {
-        v.g.destroy();
+        v.root.destroy({ children: true });
         this.props.delete(id);
       }
     }
     for (const e of sim.entities.values()) {
       if (e.kind === "fighter" || this.props.has(e.id)) continue;
+      const root = new Container();
       const g = new Graphics();
-      this.layer.addChild(g);
-      const v: PropView = { g, e, hp: -1, sig: "", every: true, flash: 0, squash: 0 };
+      const s = new Sprite();
+      s.visible = false;
+      root.addChild(g, s);
+      this.layer.addChild(root);
+      const v: PropView = { root, g, s, e, hp: -1, sig: "", every: true, flash: 0, squash: 0 };
       if (e.kind === "grenade" && e.owner !== undefined && sim.tick - e.born < 3) {
         const m = this.muzzleOf?.(e.owner);
         const q = e.body.translation();
@@ -80,6 +88,7 @@ export class PropViews {
     if (v.hp >= 0 && v.hp !== e.hp) v.flash = 0.1;
     v.hp = e.hp;
     v.every = drawPropShape(v.g, e, time);
+    if (e.kind === "item") setWorldFrame(v.s, pickupFrame(e.itemType ?? "health"));
   }
 
   render(pal: Palette, fx: Fx, projG: Graphics, time: number, dt: number, alpha: number, xform: XformAt) {
@@ -87,22 +96,22 @@ export class PropViews {
       const e = v.e;
       const p = xform(e, alpha);
       this.drawProp(v, pal, time);
-      v.g.position.set(p.x, -p.y);
+      v.root.position.set(p.x, -p.y);
       if (v.off) {
         v.off.x *= Math.exp(-dt * 14);
         v.off.y *= Math.exp(-dt * 14);
-        v.g.position.set(p.x + v.off.x, -(p.y + v.off.y));
+        v.root.position.set(p.x + v.off.x, -(p.y + v.off.y));
       }
-      v.g.rotation = -p.a;
-      if (e.kind === "barrel" && e.fuse !== undefined) v.g.scale.set(1 + 0.12 * Math.sin(time * 60));
+      v.root.rotation = -p.a;
+      if (e.kind === "barrel" && e.fuse !== undefined) v.root.scale.set(1 + 0.12 * Math.sin(time * 60));
       if (e.kind === "item") {
         // a pickup stays upright (its badge is round) and bobs gently, so it stands apart from crates and barrels
-        v.g.rotation = 0;
-        v.g.position.y += Math.sin(time * 3.2 + e.id) * 0.07;
+        v.root.rotation = 0;
+        v.root.position.y += Math.sin(time * 3.2 + e.id) * 0.07;
       }
       if (e.kind === "pad") {
         v.squash = Math.max(0, v.squash - dt * 5);
-        v.g.scale.set(1 + v.squash * 0.2, 1 - v.squash * 0.45);
+        v.root.scale.set(1 + v.squash * 0.2, 1 - v.squash * 0.45);
       }
       if (e.kind === "gas" && e.thrust !== undefined && Math.random() < 0.9) {
         // exhaust from the bottom of the canister
@@ -124,8 +133,8 @@ export class PropViews {
       }
       if (v.flash > 0) {
         v.flash -= dt;
-        v.g.tint = 0xffaaaa;
-      } else v.g.tint = 0xffffff;
+        v.root.tint = 0xffaaaa;
+      } else v.root.tint = 0xffffff;
     }
   }
 
