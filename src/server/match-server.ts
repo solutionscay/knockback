@@ -17,7 +17,6 @@ import { Arena, type ArenaOptions } from "./arena";
 import { errorResponse, HttpError, json, RateLimiter } from "./limits";
 import { apiRoute, health } from "./match-routes";
 import { storedRuleset } from "./match-rulesets";
-import { modelsPage } from "./models-page";
 import { PICK_MIN_WINDOW_MS, PICKS_PER_ADDRESS } from "./picks";
 import { ServerMatch, tierOf, type SeatKind } from "./server-match";
 import { SqliteStore, type MatchStore } from "./store";
@@ -201,7 +200,6 @@ export class MatchServer {
   /** Handle an /api request (null for other paths). `ip` keys the rate limits. */
   async handle(req: Request, ip = "local"): Promise<Response | null> {
     const url = new URL(req.url);
-    if (url.pathname === "/models" && req.method === "GET") return new Response(modelsPage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     if (!url.pathname.startsWith("/api/") && url.pathname !== "/api" && !url.pathname.startsWith("/share/")) return null;
     if (url.pathname === "/api/health") return health(this);
     try {

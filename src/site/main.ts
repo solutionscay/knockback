@@ -1,12 +1,13 @@
 /**
  * The Knockback site (#22, #42, #64), served by the match server: /lobby, /watch (the Arena), /watch/:id, /replay/:id, /agent/:name,
- * /replays, /leaderboard. One page shell; the route is the path. The fight itself is the viewer (/?live, /?record) embedded.
+ * /replays, /leaderboard, /models. One page shell; the route is the path. The fight itself is the viewer (/?live, /?record) embedded.
  */
 import { agentPage } from "./agent";
 import { $, wireCopy } from "./dom";
 import { openJoin } from "./join";
 import { leaderboardPage } from "./leaderboard";
 import { lobbyPage } from "./lobby";
+import { modelsPage } from "./models";
 import { replayPage } from "./replay";
 import { replaysPage } from "./replays";
 import { route } from "./route";
@@ -47,6 +48,10 @@ switch (r.page) {
   case "leaderboard":
     document.title = "Leaderboard · Knockback";
     void leaderboardPage(root);
+    break;
+  case "models":
+    document.title = "Models · Knockback";
+    void modelsPage(root);
     break;
   default:
     location.replace("/lobby");
