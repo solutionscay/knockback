@@ -9,9 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initPhysics } from "../src/sim";
 import { modelBoard, type BoardRound, type BoardSeat, type ModelBoard } from "../src/stats/model-board";
-import { sortRows } from "../src/site/models";
-import { withModel } from "../src/site/replays";
-import { route, SITE_PATHS } from "../src/site/route";
+import { filterChoices, withFilter, withModel } from "../src/site/replays";
+import { REDIRECTS, route, SITE_PATHS } from "../src/site/route";
 import type { ReplayInfo } from "../src/site/data";
 import type { SqliteStore } from "../src/server/store";
 import { arenaServer, call, enter, round } from "./helpers/arena";
@@ -85,26 +84,36 @@ describe("the models board (pure)", () => {
     expect(e.connected.map((c) => c.key)).toEqual(["self:claude-opus-5-5"]);
     expect(modelBoard([], [], [], [])).toEqual({ rounds: 0, rows: [], house: null, houseFrom: null, connected: [] });
   });
-
-  test("sorting: numbers best first, names A to Z, ties by rounds", () => {
-    const [a, g] = b.rows;
-    expect(sortRows(b.rows, "damagePerRound").map((r) => r.key)).toEqual([a!.key, g!.key]);
-    expect(sortRows(b.rows, "name").map((r) => r.name)).toEqual(["CLAUDE OPUS 5.5", "GPT-6 LUNA"]);
-    expect(sortRows(b.rows, "kd").map((r) => r.key)).toEqual([a!.key, g!.key]);
-  });
 });
 
-describe("the site serves /models (#96)", () => {
-  test("route and paths", () => {
-    expect(route("/models")).toEqual({ page: "models", nav: "models" });
-    expect(route("/models/")).toEqual({ page: "models", nav: "models" });
-    expect(SITE_PATHS).toContain("/models");
+describe("the site: four pages (#106)", () => {
+  test("routes, and the old paths redirect", () => {
+    expect(route("/models")).toEqual({ page: "redirect", nav: "", to: "/leaderboard?view=models" });
+    expect(route("/models/")).toEqual({ page: "redirect", nav: "", to: "/leaderboard?view=models" });
+    expect(route("/watch")).toEqual({ page: "redirect", nav: "", to: "/lobby" });
+    expect(route("/lobby", "#join")).toEqual({ page: "redirect", nav: "", to: "/connect" });
+    expect(route("/watch/m_0123abcd")).toEqual({ page: "lobby", nav: "lobby", id: "m_0123abcd" });
+    expect(route("/")).toEqual({ page: "lobby", nav: "lobby", id: null });
+    expect(route("/connect")).toEqual({ page: "connect", nav: "connect" });
+    expect(route("/agent/Brixel")).toEqual({ page: "agent", nav: "leaderboard", name: "Brixel" });
+    expect(SITE_PATHS).not.toContain("/models");
+    expect(SITE_PATHS).toContain("/connect");
+    for (const p of Object.keys(REDIRECTS)) expect(SITE_PATHS as readonly string[]).not.toContain(p);
   });
   test("replays of one model", () => {
     const r = (match: string, labels: string[]) => ({ match, labels }) as ReplayInfo;
     const rs = [r("a", ["remote/Ann@claude-opus-5-5", "house", "house", "house"]), r("b", ["remote/Ben@gpt-6-luna", "house", "house", "house"])];
     expect(withModel(rs, "self:claude-opus-5-5").map((x) => x.match)).toEqual(["a"]);
     expect(withModel(rs, "").length).toBe(2);
+  });
+  test("replays of one agent; the filter's choices", () => {
+    const r = (match: string, labels: string[]) => ({ match, labels }) as ReplayInfo;
+    const rs = [r("a", ["remote/Ann@claude-opus-5-5", "house", "house", "house"]), r("b", ["remote/Ben@gpt-6-luna", "remote/Ann@claude-opus-5-5", "house", "house"])];
+    expect(withFilter(rs, { model: "", agent: "ann" }).map((x) => x.match)).toEqual(["a", "b"]);
+    expect(withFilter(rs, { model: "", agent: "Ben" }).map((x) => x.match)).toEqual(["b"]);
+    const c = filterChoices(rs);
+    expect(c.agents).toEqual(["Ann", "Ben"]);
+    expect(c.models.map(([, n]) => n)).toEqual(["CLAUDE OPUS 5.5", "GPT-6 LUNA"]);
   });
 });
 

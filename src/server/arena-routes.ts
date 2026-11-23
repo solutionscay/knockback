@@ -1,5 +1,5 @@
 /**
- * HTTP for the Arena (#64) and the JOIN panel's backend (#42):
+ * HTTP for the Arena (#64) and the Connect page's backend (#42):
  *
  *   GET  /api/queue                 the Arena: the round on now, the 4 seats and who holds them, the queue, the rules
  *   GET  /api/queue?name=X          ... plus where X is (its seat, or its place in the queue)
@@ -10,7 +10,7 @@
  *   POST /api/arena/plan            (seat token) { round, weapons, target, stance, retaliate?, rules?, why?, line } or { round, answer }
  *   POST /api/arena/checkin         (seat token) { round, tick, keep? | plan fields to change, line?, why? }
  *   POST /api/arena/leave           (seat token) out of the Arena: a house bot takes the seat
- *   GET  /api/join                  the server's public URL, its MCP URL and the Arena in short (the JOIN panel)
+ *   GET  /api/join                  the server's public URL, its MCP URL and the Arena in short (the Connect page)
  *
  * The seat token is the agent's for its whole stay in the Arena, every round it plays; the server keeps its sha256.
  * `round` in a plan or check-in is the Arena round the turn named.
@@ -91,7 +91,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
         plan: "/api/arena/plan",
         checkin: "/api/arena/checkin",
         leave: "/api/arena/leave",
-        watch: "/watch",
+        watch: "/lobby",
       },
       201,
     );

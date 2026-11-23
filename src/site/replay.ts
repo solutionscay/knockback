@@ -1,26 +1,17 @@
 /**
- * /replay/:id (#22): a finished match from its record in the real viewer, with a scrubber (round segments, event
- * pins for ring-outs, K.O.s and the win, in the victim's or winner's color) and 1x / 2x; under it the seat row and
- * beside it the match's lines as the same short feed as /watch, as far as playback has reached.
+ * /replay/:id (#22, #106): a finished match from its record in the real viewer, with a scrubber (round segments, event
+ * pins for ring-outs, K.O.s and the win, in the victim's or winner's color) and 1x / 2x; under it the seat row.
  *
  * The timeline comes from the match report (knockout ticks, fight ticks) and the viewer's own beat timing
  * (src/flow/pacing.ts), the same numbers the server paces broadcasts with.
  */
 import { cleanIdentity, colorVars } from "./bots";
-import { clock, posAtTime, timeOfPos, timeline, visibleFeed, type FeedEntry, type MatchInfo, type ReplayInfo, type ReportRound, type Timeline } from "./data";
+import { cap, clock, posAtTime, timeOfPos, timeline, type MatchInfo, type ReplayInfo, type ReportRound, type Timeline } from "./data";
 import { $, getJson, html, mount, raw } from "./dom";
-import { Picks } from "./picks";
-import { renderSeats } from "./seats";
+import { when as dateOf } from "./replays";
+import { PLAN_SLOT, renderSeats } from "./seats";
 import { Stage } from "./stage";
 import type { Identity } from "../sim/identity";
-
-/** The record's lines and round results as feed entries (pure). */
-function replayFeed(rp: ReplayInfo): FeedEntry[] {
-  return rp.rounds.flatMap((rd, r) => [
-    ...rd.lines.map((text, seat) => ({ kind: "line" as const, seat, round: r + 1, text, plan: "", when: { round: r + 1, phase: "plan" as const, tick: 0 }, key: `d${r + 1}.${seat}` })),
-    { kind: "round" as const, round: r + 1, winner: rd.winner, kos: [], when: { round: r + 1, phase: "end" as const, tick: 0 }, key: `r${r + 1}` },
-  ]);
-}
 
 export async function replayPage(root: HTMLElement, id: string) {
   mount(root, html`<div class="wrap"><div class="meta">Loading replay ${id}…</div></div>`);
@@ -34,49 +25,27 @@ export async function replayPage(root: HTMLElement, id: string) {
   const names = rp?.names ?? (info.ok ? info.data.seats.map((s) => s.fighter ?? "?") : []);
   const labels = rp?.labels ?? (info.ok ? info.data.seats.map((s) => s.label ?? "house") : []);
   const w = rp?.winner ?? -1;
-  const when = rp ? new Date(rp.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+  const when = rp ? [dateOf(rp.createdAt), cap(rp.theme)].filter(Boolean).join(" · ") : "";
   const agents = info.ok ? info.data.seats.map((s) => s.agent) : [];
 
   mount(
     root,
-    html`<div class="wrap live">
+    html`<div class="wrap lobby">
       <div class="main">
-        <div class="wbar"><span class="meta">Replay · ${when}</span><span class="sp"></span><input id="r-link" hidden readonly value="${location.origin}/replay/${id}" /><button class="btn small ghost" type="button" data-copy="#r-link">Copy link</button></div>
+        <div class="wbar"><span class="meta">Replay${when ? ` · ${when}` : ""}</span></div>
         <div class="stage" id="r-stage"><div class="seeking" id="r-seek" hidden>Rewinding…</div></div>
         ${html`<div class="scrub" id="r-scrub"><button class="play" id="r-play" type="button" aria-label="Pause">❚❚</button><div class="track" id="r-track" role="slider" aria-label="Replay position" tabindex="0"></div><span class="tm" id="r-tm"></span><div class="speed"><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="2" aria-pressed="false">2×</button></div></div>`}
         <div class="seatrow" id="r-seats"></div>
+        ${raw(PLAN_SLOT)}
       </div>
-      <aside class="feed" id="r-feed" hidden></aside>
     </div>`,
   );
   if (rp)
     renderSeats(
       $("#r-seats")!,
-      ids.map((x, i) => ({ name: names[i] ?? x.name, id: x, label: labels[i] ?? "house", wins: rp.wins[i] ?? 0, autopilot: rp.control.some((c) => c.seat === i && c.mode === "autopilot"), agent: agents[i] ?? null })),
-      new Picks(() => undefined),
+      ids.map((x, i) => ({ name: names[i] ?? x.name, id: x, label: labels[i] ?? "house", autopilot: rp.control.some((c) => c.seat === i && c.mode === "autopilot"), agent: agents[i] ?? null })),
       w,
     );
-  const entries = rp ? replayFeed(rp) : [];
-  let feedKeys = "";
-  const renderFeed = () => {
-    const vis = visibleFeed(entries, stage.pos).filter((e) => e.kind === "round" || (e.kind === "line" && e.text));
-    const keys = vis.map((e) => e.key).join(",");
-    if (keys === feedKeys) return;
-    feedKeys = keys;
-    const feed = $("#r-feed")!;
-    feed.hidden = !vis.length;
-    mount(
-      feed,
-      html`${vis.map((e) =>
-        e.kind === "line"
-          ? html`<p style="${colorVars(ids[e.seat]?.color)}"><b>${names[e.seat]}</b> ${e.text}</p>`
-          : e.kind === "round"
-            ? html`<p class="sys" style="${colorVars(ids[e.winner]?.color)}">Round ${e.round}: <b>${names[e.winner] ?? "?"}</b></p>`
-            : "",
-      )}`,
-    );
-  };
-
   let tl: Timeline | null = null;
   let speed = 1;
   let shownT = 0;
@@ -84,7 +53,6 @@ export async function replayPage(root: HTMLElement, id: string) {
   const stage = new Stage($("#r-stage")!, {
     seeking: (on) => ($("#r-seek")!.hidden = !on),
     pos: (p) => {
-      renderFeed();
       if (!tl) return;
       // fight ticks map exactly; between them, run a local clock so the knob moves through the talk and the round end
       const t = timeOfPos(tl, p);

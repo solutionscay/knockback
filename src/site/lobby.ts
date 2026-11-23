@@ -1,176 +1,110 @@
 /**
- * Lobby home (/lobby, #22, #64): the Arena live on stage (the real viewer on the Arena's stream: every round, back to
- * back) with its seat row (seats.ts: names, models, wins, picks). There is no waiting state: house bots fight when no
- * agent does. Beside it: the crown (#65: its holder, the streak, the last round's places), the next round (the 4
- * seats, agents and house bots, and the queue) and the recent results (featured rounds first, #67). The holder's seat
- * in the row carries the crown mark.
- * Data: the Arena stream, GET /api/queue (every 3 s), /api/replays per tier (every 20 s).
+ * The Lobby (/lobby, #22, #64, #106): the Arena live is the page. The real viewer on the Arena's stream (every round,
+ * back to back), one line over it (the round and its clock), the four fighters under it (seats.ts) and the next round in
+ * one quiet line. /watch/:id is the same view on one round.
+ * Data: the stream; GET /api/queue every 3 s (who plays each seat, the next round); /api/matches/:id for /watch/:id.
  */
-import { cleanIdentity, colorVars, head, HOUSE_LOOK } from "./bots";
-import { ago, arenaInfo, cap, crownText, featuredFirst, ordinal, feedEntries, galleryReplays, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type ReplayInfo } from "./data";
-import { $, every, getJson, html, mount } from "./dom";
-import { openJoin } from "./join";
-import { Picks } from "./picks";
-import { renderSeats, wirePicks } from "./seats";
+import { arenaInfo, clock, feedEntries, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type MatchInfo } from "./data";
+import { cleanIdentity } from "./bots";
+import { $, every, getJson, html, mount, raw } from "./dom";
+import { PLAN_SLOT, renderSeats } from "./seats";
 import { Stage } from "./stage";
 import type { Identity } from "../sim/identity";
+import { TICK_RATE } from "../sim/constants";
 
-interface LiveLineup {
+interface Lineup {
   match: string;
   round: number;
-  /** the crown holder's seat in this round and its streak coming in (#65) */
-  crown: { seat: number; streak: number } | null;
   names: string[];
   labels: string[];
   identities: Identity[];
 }
 
-export function lobbyPage(root: HTMLElement) {
+/** "Next · Vanta, Brixel + 2 house bots · 1 waiting" (pure). */
+export function nextLine(a: ArenaInfo): string {
+  const seats = nextLineup(a);
+  const agents = seats.flatMap((s) => (s.agent ? [s.agent] : []));
+  const house = seats.length - agents.length;
+  const who = agents.length ? `${agents.join(", ")}${house ? ` + ${house} house bot${house === 1 ? "" : "s"}` : ""}` : "house bots";
+  return `Next · ${who}${a.queue.length ? ` · ${a.queue.length} waiting` : ""}`;
+}
+
+export function lobbyPage(root: HTMLElement, id: string | null) {
   mount(
     root,
-    html`<div class="wrap home">
-      <div class="main">
-        <div class="wbar"><span class="meta" id="l-meta">Connecting…</span><span class="sp"></span><a class="btn small" id="l-watch" href="/watch">Watch</a></div>
-        <div class="stage" id="l-stage"></div>
-        <div class="seatrow" id="l-seats"></div>
-      </div>
-      <aside class="rail">
-        <section class="card" id="c-card" hidden><h2>The crown <a href="/leaderboard">Leaderboard</a></h2><div id="c-body"></div></section>
-        <section class="card" id="n-card" hidden><h2>Next round <small id="n-sub"></small></h2><div id="n-body"></div></section>
-        <section class="card"><h2>Recent results <a href="/replays">All</a></h2><div id="r-body" class="empty">Loading…</div></section>
-      </aside>
+    html`<div class="wrap lobby">
+      <div class="wbar"><span class="meta" id="l-meta">Connecting…</span><span class="sp"></span><a class="btn small ghost" id="l-replay" hidden>Replay</a></div>
+      <div class="stage" id="l-stage"></div>
+      <div class="seatrow" id="l-seats"></div>
+      ${raw(PLAN_SLOT)}
+      <div class="nextline" id="l-next"></div>
     </div>`,
   );
 
-  let lineup: LiveLineup | null = null;
+  let lineup: Lineup | null = null;
   let entries: FeedEntry[] = [];
   let arena: ArenaInfo | null = null;
-  let replays: ReplayInfo[] = [];
-  const picks = new Picks(() => renderStage());
-  wirePicks($("#l-seats")!, picks);
+  let info: MatchInfo | null = null;
 
-  // the Arena stream: each round starts with a `match` message that names its match and Arena round
   const stage = new Stage($("#l-stage")!, {
     live: (msg) => {
-      const m = msg as { type?: string; matchId?: unknown; arenaRound?: unknown; crown?: { seat?: unknown; streak?: unknown } | null; names?: string[]; labels?: string[]; identities?: unknown[] };
-      if (m.type === "match" && typeof m.matchId === "string") {
-        const cr = m.crown && Number.isInteger(m.crown.seat) && Number.isInteger(m.crown.streak) ? { seat: m.crown.seat as number, streak: m.crown.streak as number } : null;
-        lineup = { match: m.matchId, round: typeof m.arenaRound === "number" ? m.arenaRound : 0, crown: cr, names: (m.names ?? []).map(String), labels: (m.labels ?? []).map(String), identities: [0, 1, 2, 3].map((i) => cleanIdentity(m.identities?.[i], i)) };
+      const m = msg as { type?: string; matchId?: unknown; arenaRound?: unknown; names?: string[]; labels?: string[]; identities?: unknown[] };
+      if (m.type === "match") {
+        lineup = {
+          match: typeof m.matchId === "string" ? m.matchId : (id ?? ""),
+          round: typeof m.arenaRound === "number" ? m.arenaRound : 0,
+          names: (m.names ?? []).map(String),
+          labels: (m.labels ?? []).map(String),
+          identities: [0, 1, 2, 3].map((i) => cleanIdentity(m.identities?.[i], i)),
+        };
         entries = [];
-        void picks.load(lineup.match);
       }
       entries.push(...feedEntries(msg));
-      renderStage();
+      render();
     },
-    pos: () => renderStage(),
+    pos: () => render(),
   });
-  stage.arena();
+  if (id) stage.live(id);
+  else stage.arena();
 
-  function renderStage() {
-    const wins = [0, 0, 0, 0];
+  function render() {
     const auto = [false, false, false, false];
     let winner = -1;
     for (const e of entries) {
       if (!reachedPos(stage.pos, e.when)) continue;
-      if (e.kind === "round" && e.winner >= 0) wins[e.winner]!++;
       if (e.kind === "control") auto[e.seat] = e.mode === "autopilot";
       if (e.kind === "done") winner = e.winner;
     }
-    const pickLine = picks.status();
-    const round = lineup?.round ? `Arena round ${lineup.round}` : "Arena";
-    $("#l-meta")!.textContent = !lineup
-      ? "Connecting to the Arena…"
-      : winner >= 0
-        ? [`${round} · final`, pickLine].filter(Boolean).join(" · ") // the viewer's win screen says who won, once
-        : pickLine || `Live · ${round}`;
+    const p = stage.pos;
+    const round = lineup?.round || info?.arenaRound;
+    const when = winner >= 0 || p?.done ? "Final" : p?.phase === "fight" ? clock(Math.floor(p.tick / TICK_RATE)) : p?.phase === "plan" ? "Plans" : p?.phase === "end" ? "Round over" : "";
+    $("#l-meta")!.textContent = !lineup ? "Connecting…" : ["Live", round ? `Round ${round}` : "", when].filter(Boolean).join(" · ");
+    const replay = $<HTMLAnchorElement>("#l-replay")!;
+    replay.hidden = !(id && winner >= 0);
+    if (id) replay.href = `/replay/${id}`;
+    $("#l-next")!.textContent = !id && arena ? nextLine(arena) : "";
     if (!lineup) return mount($("#l-seats"), html``);
-    // who plays each seat of the round on stage (agents link to their page)
-    const playing = arena?.round?.match === lineup.match ? arena.round.playing : null;
+    // who plays each seat (agents link to their page)
+    const playing = id ? info?.seats.map((s) => s.agent) : arena?.round?.match === lineup.match ? arena.round.playing.map((s) => s?.agent ?? null) : null;
     renderSeats(
       $("#l-seats")!,
-      lineup.identities.map((id, i) => ({ name: lineup!.names[i] ?? id.name, id, label: lineup!.labels[i] ?? "house", wins: wins[i]!, autopilot: auto[i]!, agent: playing?.[i]?.agent ?? null, crown: lineup!.crown?.seat === i ? lineup!.crown.streak : null })),
-      picks,
+      lineup.identities.map((x, i) => ({ name: lineup!.names[i] ?? x.name, id: x, label: lineup!.labels[i] ?? "house", autopilot: auto[i]!, agent: playing?.[i] ?? null })),
       winner,
     );
   }
 
-  /** The next round: the 4 seats (an agent, and the round it enters, or a house bot) and the queue behind them. */
-  function renderNext() {
-    const card = $("#n-card")!;
-    card.hidden = !arena;
-    if (!arena) return;
-    const a = arena;
-    $("#n-sub")!.textContent = `round ${a.nextRound}${a.queue.length ? ` · ${a.queue.length} waiting` : ""}`;
-    const seat = (s: ReturnType<typeof nextLineup>[number]) =>
-      s.agent
-        ? html`<li>${head({ ...cleanIdentity(s.look, s.seat), name: s.agent })}<a class="n" href="/agent/${encodeURIComponent(s.agent)}">${s.agent}</a>${s.owner ? html` <span class="ow">· ${s.owner}</span>` : ""}${s.enters ? html` <span class="dim">· enters round ${s.enters}</span>` : ""}${s.soulLine ? html`<div class="sl">${s.soulLine}</div>` : ""}</li>`
-        : html`<li>${head(HOUSE_LOOK, "sleepy")}<span class="dim">house bot</span> <button class="link" type="button" data-join>take this seat</button></li>`;
-    mount(
-      $("#n-body"),
-      html`<ul class="q">${nextLineup(a).map(seat)}</ul>${a.queue.length
-        ? html`<ul class="q">${a.queue.map((w, i) => html`<li>${head({ ...cleanIdentity(w.look, i), name: w.agent })}<span class="dim">#${w.position}</span> <a class="n" href="/agent/${encodeURIComponent(w.agent)}">${w.agent}</a>${w.owner ? html` <span class="ow">· ${w.owner}</span>` : ""}</li>`)}</ul>`
-        : ""}`,
-    );
-  }
-
-  /** The crown (#65): who holds it and the streak, then the last round's places with knockouts and damage. */
-  function renderCrown() {
-    const card = $("#c-card")!;
-    const c = arena?.crown ?? null;
-    const lr = arena?.lastRound ?? null;
-    card.hidden = !c && !lr;
-    if (card.hidden) return;
-    // the holder's look: its seat in the last round (a house bot holds its seat; an agent is found by name)
-    const hs = c && lr ? lr.seats.find((s) => (c.agent ? s.agent === c.agent : s.seat === c.houseSeat)) : undefined;
-    const holder = hs ? cleanIdentity(hs.identity, hs.seat) : c && !c.agent ? HOUSE_LOOK : null;
-    const who = (agent: string | null, owner: string | null, fallback: string) => (agent ? html`<a class="n" href="/agent/${encodeURIComponent(agent)}">${agent}</a>${owner ? html` <span class="ow">· ${owner}</span>` : ""}` : html`<span class="dim">${fallback}</span>`);
-    mount(
-      $("#c-body"),
-      html`${c ? html`<p class="crownline">${holder ? head(holder, "cocky") : ""}<span class="tag crown">♛ ${c.streak}</span> ${who(c.agent, c.owner, "House bot")} <span class="dim">· ${crownText(c)}${c.seat === null ? " · not in the next round" : ""}</span></p>` : ""}
-      ${lr
-        ? html`<div class="meta">Round ${lr.number}${lr.tier === "warm-up" ? " · warm-up" : lr.tier === "featured" ? " · featured" : ""}${lr.replay ? html` · <a href="${lr.replay}">replay</a>` : ""}</div>
-          <ul class="q">${[...lr.seats].sort((a, b) => a.place - b.place).map((s) => html`<li>${head(cleanIdentity(s.identity, s.seat), s.place === 1 ? "win" : "fight")}<b>${ordinal(s.place)}</b> ${s.fighter} ${who(s.agent, s.owner, "· house bot")} <span class="dim">· ${s.kos} KO · ${s.damage} dmg</span></li>`)}</ul>`
-        : ""}`,
-    );
-  }
-
-  function renderResults() {
-    const body = $("#r-body")!;
-    const rs = featuredFirst(galleryReplays(replays)).slice(0, 6);
-    if (!rs.length) {
-      body.className = "empty";
-      body.textContent = "No finished rounds yet.";
-      return;
-    }
-    body.className = "";
-    mount(
-      body,
-      html`<ul class="results">${rs.map((r) => {
-        const w = r.winner >= 0 ? r.winner : 0;
-        const wid = cleanIdentity(r.identities[w], w);
-        return html`<li style="${colorVars(wid.color)}"><a href="/replay/${r.match}">${head(wid, "win")}<b>${r.names[w]}</b> wins</a><span class="dim">${r.tier === "warm-up" ? "Warm-up · " : ""}${cap(r.theme)} · ${ago(r.createdAt)}</span></li>`;
-      })}</ul>`,
-    );
-  }
-
-  every(3000, async () => {
-    const q = await getJson<unknown>("/api/queue");
-    if (!q.ok) {
-      $("#l-meta")!.textContent = "Server unreachable, retrying…";
-      return;
-    }
-    arena = arenaInfo(q.data);
-    renderCrown();
-    renderNext();
-    renderStage();
-    if (lineup) await picks.load(lineup.match); // the picks of the round on stage, so the row's buttons and shares are its own
-  });
-  every(1000, () => renderStage()); // the lock countdown ticks between polls
-  every(20_000, async () => {
-    // featured rounds first (#67): each tier on its own, so a run of warm-ups never hides the featured ones
-    const [f, w] = await Promise.all(["featured", "warm-up"].map((t) => getJson<{ replays: ReplayInfo[] }>(`/api/replays?tier=${t}&limit=20`)));
-    if (f.ok && w.ok) replays = [...f.data.replays, ...w.data.replays];
-    renderResults();
-  });
-  if (location.hash === "#join") void openJoin();
+  if (id)
+    every(4000, async () => {
+      const r = await getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`);
+      if (r.ok) info = r.data;
+      else if (r.status === 404) return mount($("#l-meta"), html`No round ${id}. <a href="/lobby">Watch the Arena</a>`);
+      render();
+    });
+  else
+    every(3000, async () => {
+      const q = await getJson<unknown>("/api/queue");
+      if (!q.ok) return void ($("#l-meta")!.textContent = "Server unreachable, retrying…");
+      arena = arenaInfo(q.data);
+      render();
+    });
 }

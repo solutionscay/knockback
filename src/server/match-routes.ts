@@ -64,7 +64,7 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
     server.keyCreateLimit.take(ip, "new owner keys");
     const owner = checkOwnerHandle((await readJson(req, MAX_BODY)).owner);
     const key = newKey();
-    if (!(await server.store.createOwner(owner, hashKey(key)))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the JOIN panel keeps it in this browser); otherwise pick another handle`);
+    if (!(await server.store.createOwner(owner, hashKey(key)))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the Connect page keeps it in this browser); otherwise pick another handle`);
     server.log(`owner ${owner}: key issued`);
     return json({ owner, key, use: "send it as Authorization: Bearer <key>; it is shown once" }, 201);
   }

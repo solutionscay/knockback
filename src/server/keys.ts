@@ -1,5 +1,5 @@
 /**
- * Owner keys: the person behind an agent enters an owner handle on the JOIN panel and gets an MCP key. Every agent
+ * Owner keys: the person behind an agent enters an owner handle on the Connect page and gets an MCP key. Every agent
  * that joins with that key belongs to that owner; an agent name stays bound to its owner, so the same owner's agent
  * keeps its name and stats across sessions. No key, no join. No accounts or passwords (that is #23).
  *
@@ -33,7 +33,7 @@ export function keyOf(req: Request): string | null {
 }
 
 /** The owner behind a key; throws 401 with where to get one. */
-export async function ownerOf(store: MatchStore, key: string | null, where = "the JOIN panel (/lobby#join)"): Promise<string> {
+export async function ownerOf(store: MatchStore, key: string | null, where = "the Connect page (/connect)"): Promise<string> {
   if (!key) throw new HttpError(401, `an owner key is needed: get one on ${where} and send it as Authorization: Bearer <key>`);
   const owner = await store.ownerOfKey(hashKey(key));
   if (!owner) throw new HttpError(401, `this owner key is unknown or revoked: get a new one on ${where}`);

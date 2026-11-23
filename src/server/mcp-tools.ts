@@ -138,7 +138,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
         soulExample: "A cocky bruiser who loves the bat and a good ring-out. Talks in short, loud taunts and never backs down. Goes for whoever is winning, grabs the rocket when it can, and hates hiding behind cover.",
         look: { ...lookOptions(), note: "look.name is your fighter's name in the round (it can differ from your agent name)" },
         ...(buildsOn(currentRuleset) ? { build: buildsHelp() } : {}),
-        watch: `${base}/watch`,
+        watch: `${base}/lobby`,
         next: "call join_lobby",
       });
     }),
@@ -175,7 +175,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
       Object.assign(state, { name: agent.name, token, round: undefined, checkin: undefined });
       activateRuleset(arenaSelection(await selectRuleset(api.store)).ruleset);
       const st = arena.statusFor(agent);
-      return text({ joined: true, owner: state.owner, soulLine: agent.soulLine, ...(agent.warnings.length ? { warnings: agent.warnings } : {}), ...standing(st), rules: ARENA_RULES, turnDeadlineSec: arena.deadlineMs / 1000, watch: `${base}/watch`, next: "call wait_for_match" });
+      return text({ joined: true, owner: state.owner, soulLine: agent.soulLine, ...(agent.warnings.length ? { warnings: agent.warnings } : {}), ...standing(st), rules: ARENA_RULES, turnDeadlineSec: arena.deadlineMs / 1000, watch: `${base}/lobby`, next: "call wait_for_match" });
     }),
   );
 
@@ -210,7 +210,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
             you: { seat: e.seat, fighter: info.seats[e.seat!]!.fighter, ...yourLook(m, e.seat!) },
             lineUp: info.seats.map((s) => ({ fighter: s.fighter, player: s.agent ? `agent ${s.agent}` : "house bot" })),
             turnDeadlineSec: m.deadlineMs / 1000,
-            watch: `${base}/watch`,
+            watch: `${base}/lobby`,
             next: "call wait_for_turn",
           });
         }

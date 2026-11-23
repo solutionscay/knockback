@@ -8,7 +8,7 @@
  *   GET /api/agents/:name           an agent's bot, owner, soul summary, record and recent matches
  *   GET /api/leaderboard            the Arena board (#65): rounds per agent and per owner (agent seats only), against
  *                                   agents and against house bots only, best crown streaks; the crown now
- *   GET /api/models/board           the /models page (#96): per model (agents' self-reported models), rounds, wins, K/D,
+ *   GET /api/models/board           the leaderboard's Models view (#96, #106): per model (agents' self-reported models), rounds, wins, K/D,
  *                                   damage, favourite weapon and build, best streak, agents, recent form; the house-bot
  *                                   baseline; models that joined but have no round on this engine yet
  *   GET /share/:matchId.svg         the 1200x630 share card of a finished match
@@ -432,7 +432,7 @@ export function boardRound(sum: ReplaySummary, stats: string, tier: BoardRound["
 
 const boards = new WeakMap<MatchServer, { at: number; board: ModelBoard }>();
 
-/** The /models board, rebuilt at most every 20 s (rounds take longer than that at broadcast pace); `fresh` rebuilds now. */
+/** The models board, rebuilt at most every 20 s (rounds take longer than that at broadcast pace); `fresh` rebuilds now. */
 export async function modelsBoardOf(server: MatchServer, fresh = false): Promise<ModelBoard & { note: string }> {
   let c = boards.get(server);
   if (fresh || !c || Date.now() - c.at >= 20_000) {
