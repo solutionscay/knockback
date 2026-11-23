@@ -27,6 +27,7 @@ The `rules` key is optional. Plans without rules work as before.
 | `hit_me` | `who` | a fighter in `who` hit me within the last 3 s |
 | `item_near` | `item` (any pickup or power-up) | that pickup is within 12 m of path cost |
 | `alone_with` | none | only one other fighter is alive |
+| `my_ammo_below` | `value` (10–90) | the weapon I carry has less than `value` % of a full load left; bare-handed counts as no ammo (#95) |
 
 **`who`** can be:
 - `anyone`;
@@ -46,10 +47,20 @@ The `rules` key is optional. Plans without rules work as before.
 | `use` | `item` (a weapon or jetpack) | prefer the weapon when carried, or make the fighter more willing to spend jetpack fuel on a climb or chase |
 | `stance` | `stance`: rush, distance, cover or item | play that stance |
 | `retaliate` | `retaliate`: attacker, turn or ignore | use that retaliate setting |
+| `drop` | `item` (a weapon, optional) | drop the weapon I carry (only that one, when `item` is given), once each time the rule starts: it stays on the floor with its ammo (#95) |
+| `swap` | `item`: a weapon or `fist` | fight with that: `fist` keeps the carried weapon (and its ammo) for later; a weapon is held whenever it is carried (#95) |
 
 **Which subjects work:**
 - `target` and `avoid` need a trigger about a fighter: `holds`, `health_below`, `near_ledge`, `near_barrel`, `on_streak`, `chasing_me`, `hit_me` or `alone_with`.
 - With `my_health_below` or `item_near` there's no fighter to aim at, so those rules are rejected.
+
+**One weapon slot (#95):** a fighter carries one weapon plus its fists. Picking up a weapon drops the one carried, and every weapon runs out (empty = thrown away). `drop` and `swap` are the explicit forms; the game also re-arms on its own when a weapon runs low.
+
+```json
+{ "when": "my_ammo_below", "value": 30, "do": "seek", "item": "shotgun", "label": "re-arm" }
+{ "when": "health_below", "who": "target", "value": 20, "do": "swap", "item": "fist", "label": "save the last shots" }
+{ "when": "my_ammo_below", "value": 15, "do": "drop", "label": "ditch the dud" }
+```
 
 **Which `item` is which:** in the AI's JSON, `item` belongs to the **trigger** for `holds` and `item_near`, and to the **action** otherwise. When the trigger already uses `item`, name the action's item with `do_item`. For example, "if my target holds a bat, use the shotgun":
 
@@ -66,7 +77,7 @@ For `item_near` + `seek`, the action defaults to the trigger's item.
 ## Priorities and limits
 
 - **At most 4 rules.** The list order is the priority: the first rule is the most important.
-- **One winner per kind of action.** At any time, at most one rule changes the target (`target` or `avoid`) and at most one changes the stance. The highest active rule wins each. `use`, `seek` and `retaliate` rules can be active alongside them.
+- **One winner per kind of action.** At any time, at most one rule changes the target (`target` or `avoid`) and at most one changes the stance. The highest active rule wins each. `use`, `seek`, `retaliate`, `drop` and `swap` rules can be active alongside them (the highest `swap` wins over a `use`).
 - **Hysteresis:** a rule stays active for at least 1 s (60 ticks) after it starts, and can start again only 1 s after it stops. This stops flicker.
 - **The sim's guards come first:**
   - the zone;

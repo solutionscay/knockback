@@ -12,10 +12,13 @@ import { throwMine } from "./sim-mines";
 import { fireRailgun, slamHammer } from "./sim-impact-weapons";
 import { boltLine, castBolt } from "./sim-lightning";
 import { firePrecision } from "./sim-precision";
+import { throwAway } from "./sim-items";
 
 export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
   if (f.cooldown[weapon] > 0 || (weapon !== "fist" && !sim.ruleset.weapons.enabled.includes(weapon))) return;
   if (usesAmmo(weapon) && f.ammo[weapon] <= 0) return;
+  // the bat spends a hit only when it lands on a fighter (#95); the flamethrower spends its fuel in sim-fire
+  let spend = usesAmmo(weapon) && weapon !== "bat" && weapon !== "flamethrower";
   if (weapon === "hammer" && !f.grounded) return;
   const p = sim.pos(f);
   const ox = p.x;
@@ -43,7 +46,7 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
       const block = sim.raycast(ox, oy, dx, dy, muzzle, f.entity.collider);
       if (block) {
         sim.explode(ox + dx * block.dist, oy + dy * block.dist, sim.ruleset.weapons.table.rocket, "rocket", f.id, 0, null);
-        return;
+        break;
       }
       const s = sim.ruleset.weapons.table.rocket.speed;
       sim.rockets.push({ id: sim.entityStore.allocateId(), owner: f.id, x: ox + dx * muzzle, y: oy + dy * muzzle, vx: dx * s, vy: dy * s, age: 0 });
@@ -55,7 +58,7 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
       break;
     case "bat":
       f.cooldown.bat = sim.ruleset.weapons.table.bat.cooldown;
-      swingMelee(sim, f, "bat", ox, oy, dx, dy);
+      spend = swingMelee(sim, f, "bat", ox, oy, dx, dy) > 0;
       break;
     case "fist":
       f.cooldown.fist = sim.ruleset.weapons.table.fist.cooldown;
@@ -93,10 +96,8 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
       break;
     }
   }
-  if (usesAmmo(weapon) && --f.ammo[weapon] === 0 && f.weapons[f.slot] === weapon) {
-    f.weapons[f.slot] = "fist";
-    sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: "fist" });
-  }
+  // empty: thrown away, fists in hand (#95)
+  if (spend && usesAmmo(weapon) && --f.ammo[weapon] <= 0) throwAway(sim, f, weapon);
 }
 
 function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
@@ -135,7 +136,8 @@ function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
   }
 }
 
-function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: number, dx: number, dy: number) {
+/** Returns how many fighters the swing hit (the bat's ammo counts them, #95). */
+function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: number, dx: number, dy: number): number {
   const spec = sim.ruleset.weapons.table[weapon];
   const tuning = sim.ruleset.weapons.melee[weapon];
   const cx = ox + dx * spec.reach;
@@ -153,12 +155,14 @@ function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: n
   lx /= l;
   ly /= l;
   let hitAny = false;
+  let fighters = 0;
   for (const e of found) {
     if (e.kind === "fighter" && e.fighter) {
       if (!e.fighter.alive) continue;
       const t = e.body.translation();
       sim.damageFighter(e.fighter, spec.damage, f.id, lx * spec.knockback, ly * spec.knockback, weapon, t.x, t.y);
       hitAny = true;
+      fighters++;
     } else if (e.kind !== "item") {
       hitProp(sim, e, tuning.propDamage, f.id, weapon, cx, cy);
       if (!e.dead) {
@@ -179,6 +183,7 @@ function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: n
     hitAny = true;
   }
   sim.events.push({ type: "swing", tick: sim.tick, fighter: f.id, x: cx, y: cy, dx, dy, hit: hitAny, weapon });
+  return fighters;
 }
 
 function throwGrenade(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {

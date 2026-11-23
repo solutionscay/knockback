@@ -25,6 +25,7 @@ import { catchFighters, cellCanCatch, igniteCell, igniteEntityAt, igniteFighter,
 import { hitProp } from "./sim-objects";
 import { damageTerrainCell, prunePiece } from "./sim-terrain";
 import type { Entity, Fighter } from "./sim-types";
+import { throwAway } from "./sim-items";
 import { pieceCellWorld, type PieceCell } from "./terrain";
 
 // --------------------------------------------------------------- flamethrower
@@ -77,12 +78,10 @@ export function fireFlamethrower(sim: Sim, f: Fighter, ox: number, oy: number, d
     igniteFighter(sim, h.fi, f.id, "flamethrower");
   }
   sim.stats.flamePulses++;
-  if (--f.fuel <= 0) {
-    // empty: the tank is thrown away
-    const slot = f.weapons.indexOf("flamethrower");
-    if (slot >= 0) f.weapons[slot] = "fist";
-    f.fuel = 0;
+  if (--f.ammo.flamethrower <= 0) {
+    // empty: the tank is thrown away (#95: like every weapon)
     sim.events.push({ type: "fuelOut", tick: sim.tick, fighter: f.id });
+    throwAway(sim, f, "flamethrower");
   }
 }
 

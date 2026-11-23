@@ -23,14 +23,15 @@ const valueRanges = Object.entries(RULE_VALUE)
   .join(", ");
 
 function buildRuleSchema(ruleset: Ruleset) {
-  const pickups = enabledItems(ruleset);
+  // "fist" is no pickup, but do=swap can hold fists (#95)
+  const pickups = [...enabledItems(ruleset), "fist"];
   return z
     .object({
       when: z.enum(RULE_WHEN as unknown as [string, ...string[]]).describe("the trigger the game checks during the round"),
       who: z.string().max(24).optional().describe(`whom the trigger is about (for ${WHO_TRIGGERS.join(", ")}): anyone | enemy | target | a rival's name`),
       value: z.number().optional().describe(`a threshold for: ${valueRanges}`),
-      item: z.enum(pickups as [string, ...string[]]).optional().describe("for when=holds/item_near: the trigger's item; otherwise the action's item (seek, use)"),
-      do: z.enum(RULE_DO as unknown as [string, ...string[]]).describe("the action while the trigger holds"),
+      item: z.enum(pickups as [string, ...string[]]).optional().describe("for when=holds/item_near: the trigger's item; otherwise the action's item (seek, use; swap: a weapon or fist; drop: a weapon, or none for whatever you carry)"),
+      do: z.enum(RULE_DO as unknown as [string, ...string[]]).describe("the action while the trigger holds (drop: put your weapon down once; swap: fight with that weapon or fist, keeping the other)"),
       do_item: z.enum(pickups as [string, ...string[]]).optional().describe("the action's item when `item` already names the trigger's item"),
       stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).optional().describe("for do=stance"),
       retaliate: z.enum(RULE_RETALIATE as unknown as [string, ...string[]]).optional().describe("for do=retaliate"),
@@ -55,7 +56,7 @@ function buildStrategySchema(ruleset: Ruleset) {
       .array(z.enum(ruleset.weapons.enabled as readonly [string, ...string[]]))
       .min(1)
       .max(3)
-      .describe(`1 to 3 different pickups to go for and use, best first: ${weaponsList(ruleset)}. Everyone starts with fists.`),
+      .describe(`1 to 3 different pickups to go for and use, best first: ${weaponsList(ruleset)}. Everyone starts with fists and carries one weapon at a time; every weapon runs out.`),
     target: z.string().max(24).describe(`a rival's name, or one of ${TARGET_CHOICES.join(" | ")}`),
     stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).describe(stanceChoices()),
     retaliate: z

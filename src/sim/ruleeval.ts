@@ -27,6 +27,8 @@ export interface RuleState {
   offAt: number;
   /** fighter that made the trigger true (closest by path cost), -1 if none */
   subject: number;
+  /** a drop rule (#95) drops once per activation: done for this one */
+  dropped?: boolean;
 }
 
 export class RuleEngine {
@@ -101,6 +103,12 @@ export class RuleEngine {
         return this.some(cand().filter((f) => hasLongGun(sim, f)));
       case "in_cover":
         return { on: inCover(sim, me), who: [] };
+      case "my_ammo_below": {
+        // #95: bare-handed counts as no ammo at all
+        const w = me.weapons[1];
+        const share = w === "fist" ? 0 : me.ammo[w] / Math.max(1, sim.ruleset.weapons.table[w].ammo);
+        return { on: share * 100 < r.value!, who: [] };
+      }
     }
   }
 
@@ -150,6 +158,7 @@ export class RuleEngine {
         st.active = true;
         st.since = t;
         st.subject = subj;
+        st.dropped = false;
         this.starts[i]!++;
         sim.events.push({ type: "rule", tick: t, fighter: me.id, rule: i, on: true, subject: subj });
       }
@@ -184,6 +193,28 @@ export class RuleEngine {
   use(): Weapon | "jetpack" | null {
     const item = this.first(["use"])?.rule.doItem;
     return item === "jetpack" || isPickupWeapon(item) ? item : null;
+  }
+
+  /** The highest active swap rule's choice (#95): a weapon (when carried) or "fist", held in hand. */
+  swap(): Weapon | null {
+    const item = this.first(["swap"])?.rule.doItem;
+    return item === "fist" || isPickupWeapon(item) ? item : null;
+  }
+
+  /**
+   * An active drop rule that has not dropped yet this activation and matches what is carried (#95): true once, then
+   * marked done (a rule that stays on does not drop every weapon picked up meanwhile).
+   */
+  takeDrop(carried: Weapon): boolean {
+    if (carried === "fist") return false;
+    for (let i = 0; i < this.rules.length; i++) {
+      const r = this.rules[i]!;
+      const st = this.state[i]!;
+      if (!st.active || r.do !== "drop" || st.dropped || (r.doItem && r.doItem !== carried)) continue;
+      st.dropped = true;
+      return true;
+    }
+    return false;
   }
 
   retaliate(): Retaliate | null {

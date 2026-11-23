@@ -19,9 +19,14 @@ export const PATIENCE = { calmTicks: 330, stuckTicks: 110, avoidTicks: 300, digT
 /**
  * Pickup hunting (path cost in meters-ish). Unarmed fighters go a long way
  * for any weapon; armed ones detour only for a better one, or for anything
- * when their stance is "item".
+ * when their stance is "item". #95: lowAmmoShare: carrying this share of a full load or less is "low" -
+ * any weapon with more ammo is worth taking, and the nearest one within rearmLimit is worth a trip; a low weapon not
+ * fired for dropIdleTicks (house bots) is dropped, so the fighter goes as far as an unarmed one (unarmedLimit) to
+ * re-arm; a weapon given up on (giveUpTicks) is tried again after rearmSkipTicks, not skipTicks. One slot: a fighter
+ * that has fired nothing for noShotTicks with its target within noShotReach (a rocket in a rival's face) closes in
+ * with fists until it lands one. saveShotsReach: low on ammo, a rival this close is fought with fists (the last shots kept for range).
  */
-export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, jetpackLimit: 11, giveUpTicks: 100, skipTicks: 420, seekLimit: 60 };
+export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, jetpackLimit: 11, giveUpTicks: 100, skipTicks: 420, seekLimit: 60, lowAmmoShare: 0.25, rearmLimit: 40, dropIdleTicks: 480, saveShotsReach: 1.3, rearmSkipTicks: 150, noShotTicks: 240, noShotReach: 4.5 };
 
 export const WALL_PURSUIT = { routeTicks: 48, attackTicks: 88, retargetTicks: 175, flankTicks: 174, flankPeriod: 150, flankFor: 85 };
 export const RULE_EVAL = { everyTicks: 12, minOnTicks: 60, minOffTicks: 60, ledgeM: 2, barrelM: 3, chaseTicks: 180, hitTicks: 180, itemCost: 12 };

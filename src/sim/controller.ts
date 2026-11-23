@@ -17,6 +17,10 @@ import { RuleEngine } from "./ruleeval";
 import { inOpen } from "./tactical";
 import { type Sim } from "./sim";
 import { NO_INPUT, isPickupWeapon, isPrecision, type Fighter, type Input, type Stance, type Strategy, type Weapon } from "./sim-types";
+import { lowOnAmmo } from "./sim-items";
+
+/** Weapons that are for close range anyway: saving their last uses for later means nothing (#95). */
+const CLOSE_WEAPONS: readonly Weapon[] = ["bat", "hammer", "flamethrower", "lightning", "shotgun"];
 
 
 const NO_FIRE: Input = { ...NO_INPUT };
@@ -48,6 +52,11 @@ export class Controller {
   private readonly wallPursuit = new WallPursuit();
   private wallRoute = 0;
   private readonly jetpack = new JetpackPilot();
+  /** the carried weapon (#95) and the last tick it was fired (or picked up): a low one left unused is dropped */
+  private held: Weapon = "fist";
+  private lastFired = 0;
+  /** the last tick this fighter fired anything (fists too) */
+  private lastShot = 0;
 
   get goal() {
     return this.navigation.goal;
@@ -230,7 +239,10 @@ export class Controller {
     const ready = (w: Weapon) => has(w) && me.cooldown[w] < 15;
     const mp = sim.pos(me);
     // an active use rule: that weapon, when it is carried and can reach
-    const u = this.rules.use();
+    // a swap rule (#95) holds its weapon (or fists); a use rule prefers its weapon
+    const swap = this.rules.swap();
+    if (swap === "fist") return "fist";
+    const u = swap ?? this.rules.use();
     const railLine = () => dist >= sim.ruleset.weapons.table.railgun.minRange && railCanReach(sim, mp, sight);
     if (u && u !== "jetpack" && has(u) && (u === "railgun" ? railLine() : inReach(u, dist, los, sim.ruleset, me.ammo.lightning))) return u;
     if (ready("hammer") && me.grounded && Math.abs(dy0) < 1.2 && dist < sim.ruleset.weapons.table.hammer.range) return "hammer";
@@ -302,6 +314,7 @@ export class Controller {
     // ledge safety (#69) on the final input: combat moves come after steering
     const me = sim.fighters[this.fighterId]!;
     if (me.alive && !me.removed && input !== NO_FIRE) {
+      this.dropIfDone(sim, me, input);
       this.navigation.guardLiveGround(sim, me, sim.pos(me), input);
       this.navigation.guardLedge(sim, me, sim.pos(me), sim.vel(me), input);
       // no idle gaps (#69): a target we can neither reach nor shoot is left for one we can
@@ -321,18 +334,60 @@ export class Controller {
     return input;
   }
 
+  /**
+   * Drop the carried weapon (#95): an active drop rule (once per activation), or - every fighter - a weapon low on
+   * ammo that has not been fired for a while, out of a fight, with another weapon on the floor to go for.
+   */
+  private dropIfDone(sim: Sim, me: Fighter, input: Input) {
+    const held = me.weapons[1];
+    if (held !== this.held) {
+      this.held = held;
+      this.lastFired = sim.tick;
+    }
+    if (input.fire) this.lastShot = sim.tick;
+    if (held === "fist") return;
+    if (input.fire && (input.weapon ?? sim.weapon(me)) === held) this.lastFired = sim.tick;
+    const tuning = sim.ruleset.tactics.pickup;
+    const idle = lowOnAmmo(sim.ruleset, me) && sim.tick - this.lastFired >= tuning.dropIdleTicks && sim.tick - this.lastFight >= tuning.dropIdleTicks / 2 &&
+      sim.items().some((e) => isPickupWeapon(e.itemType) && e.owner !== me.id);
+    if (this.rules.takeDrop(held) || idle) {
+      input.drop = true;
+      input.fire = false;
+    }
+  }
+
+  private reachCheck = { at: -1e9, weapons: [] as Weapon[] };
+  /**
+   * Weapons that reach the target, longest first, when this fighter has no route to it and nothing carried reaches
+   * (#95: one slot; checked twice a second). Empty otherwise.
+   */
+  private needsReach(sim: Sim, me: Fighter): Weapon[] {
+    if (sim.tick - this.reachCheck.at < 30) return this.reachCheck.weapons;
+    this.reachCheck.at = sim.tick;
+    this.reachCheck.weapons = [];
+    const target = this.targetId >= 0 ? sim.fighters[this.targetId] : undefined;
+    if (!target || !target.alive || target.removed || me.surface < 0 || target.surface < 0) return [];
+    const mp = sim.pos(me), tp = sim.pos(target);
+    if (sim.nav.fighterPlan(sim.grid, me.surface, mp.x).cost[target.surface] !== Infinity) return [];
+    const dist = length2D(tp.x - mp.x, tp.y - mp.y);
+    const reach = (w: Weapon) => sim.ruleset.tactics.weapons.reach[w].max;
+    if (reach(me.weapons[1]) >= dist) return [];
+    this.reachCheck.weapons = sim.ruleset.weapons.enabled.filter((w) => reach(w) >= dist).sort((a, b) => reach(b) - reach(a));
+    return this.reachCheck.weapons;
+  }
+
   private decide(sim: Sim): Input {
     const me = sim.fighters[this.fighterId]!;
     if (!me.alive) return NO_FIRE;
-    if (this.rules.any) {
-      this.rules.evaluate(sim, this, me);
-      // an active seek rule for a weapon puts it first in the wish list (so it gets picked up)
-      const seekW = this.rules.seeking().filter(isPickupWeapon);
-      const key = seekW.join(">");
-      if (key !== this.prefsKey) {
-        this.prefsKey = key;
-        sim.setPrefs(this.fighterId, [...seekW, ...this.strategy.weapons]);
-      }
+    if (this.rules.any) this.rules.evaluate(sim, this, me);
+    // an active seek rule for a weapon puts it first in the wish list (so it gets picked up); cut off from the target
+    // with nothing that reaches it (#95: one slot), weapons that reach go first
+    const seekW = this.rules.any ? this.rules.seeking().filter(isPickupWeapon) : [];
+    const reachW = this.needsReach(sim, me);
+    const key = `${seekW.join(">")}|${reachW.join(">")}`;
+    if (key !== this.prefsKey) {
+      this.prefsKey = key;
+      sim.setPrefs(this.fighterId, [...seekW, ...reachW, ...this.strategy.weapons]);
     }
     let target = this.resolveTarget(sim, me);
     // the back-attack reflex overrides who we face (and, unless glancing, who we chase)
@@ -383,11 +438,28 @@ export class Controller {
       this.reflex = null;
     }
     const tacticalSight = sim.ruleset.tactics.weapons.enabled ? sightTarget(sim, me, aimTarget, mp) : null;
-    const ruleWeapon = tacticalSight ? this.rules.use() : undefined;
+    // a swap rule (#95) holds its weapon or fists; low on ammo with a rival in fist reach, fists keep the last shots
+    const swap = tacticalSight ? this.rules.swap() : null;
+    const ruleWeapon = tacticalSight ? (swap && swap !== "fist" ? swap : this.rules.use()) : undefined;
+    const held = me.weapons[1];
+    const pickup = sim.ruleset.tactics.pickup;
+    const saveShots = !!tacticalSight && held !== "fist" && !CLOSE_WEAPONS.includes(held) && lowOnAmmo(sim.ruleset, me) &&
+      tacticalSight.dist <= pickup.saveShotsReach && tacticalSight.los;
+    // one slot (#95): no shot for a while with the rival right here (too close for a rocket, a level off for fists):
+    // fists, which close in
+    const quietClose = !!tacticalSight && held !== "fist" && sim.tick - this.lastShot > pickup.noShotTicks && tacticalSight.dist <= pickup.noShotReach;
+    const level = !!tacticalSight && Math.abs(tacticalSight.dy0) <= sim.ruleset.tactics.weapons.reach.fist.maxDy;
+    const noShot = quietClose && level;
+    // ...and standing on top of the target (a level too high for fists): step off it sideways
+    const stepOff = quietClose && !level && tacticalSight!.dy0 < 0 && Math.abs(tacticalSight!.dx0) < 1.2;
     const choice = tacticalSight ? chooseCombatWeapon(sim, me, mp, tacticalSight, ruleWeapon === "jetpack" ? undefined : ruleWeapon ?? undefined,
       this.onLedge(sim, aimTarget, mp.x, mp.y),
-      this.navigation.dig && sim.tick < this.navigation.dig.until ? this.navigation.dig.dir : undefined) : null;
+      this.navigation.dig && sim.tick < this.navigation.dig.until ? this.navigation.dig.dir : undefined, swap === "fist" || saveShots || noShot) : null;
     const surf = this.navigation.steer(sim, me, target, mp, mv, input, wallTicks >= sim.ruleset.tactics.wall.routeTicks, flank, choice?.weapon);
+    if (stepOff) {
+      input.move = mp.x >= sim.zone.center ? -1 : 1; // toward the middle of the zone
+      input.jump = true;
+    }
     const flying = this.jetpack.steer(sim, me, target, mp, mv, input, this.stanceNow(sim) === "rush", this.rules.use() === "jetpack");
     if (!choice && !me.railCharge && !flying && wall && wallTicks >= sim.ruleset.tactics.wall.attackTicks && !flank && attackWall(sim, me, mp, wall, input)) return input;
 

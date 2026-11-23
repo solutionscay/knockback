@@ -30,7 +30,7 @@ const lists: Readonly<Record<string, readonly (string | number)[]>> = {
 const signed = new Set(["hpBonus", "ringOutY", "bottom", "minHeight", "groundMin", "desperateBelow", "confidentAt"]);
 const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density"]);
 const ranges = new Set(["halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
-const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "skyDrops", "skyDropTicks", "betweenCaches", "holdTicks", "firstTick"]);
+const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "skyDrops", "skyDropTicks", "betweenCaches", "startWeapons", "powerStart", "holdTicks", "firstTick"]);
 const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "boltCooldown", "pulseTicks", "interval", "chargeTicks", "aimTicks", "viewStep", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
 const integral = /(?:ticks|cells|attempts|^hits$|^minOnTicks$|^minOffTicks$|^fuse(?:Min|Max)?$|^chainFuse$|^burnMin$|^burnMax$|^rows$|^maxLife$)/i;
@@ -74,7 +74,7 @@ function canonical(base: unknown, value: unknown, path = ""): unknown {
     if (fractions.test(leaf) || path === "fire.spread") high = 1;
     if (/Attempts$/.test(leaf)) high = 500;
     if (path === "arena.spawns.spread.jitter" || path === "arena.spawns.spread.innerOutset" || path === "arena.spawns.spread.outerOutset") high = 0.49;
-    if (leaf === "skyDrops" || leaf === "betweenCaches") high = 8;
+    if (leaf === "skyDrops" || leaf === "betweenCaches" || leaf === "startWeapons" || leaf === "powerStart") high = 8;
     if (path === "pickups.supply.avoidDistance") high = 40;
     if (path === "arena.layout.attempts") high = 100;
     if (path.includes(".themes.") && path.includes(".props.") || ["towers", "platforms", "extraPits", "coverStacks", "coverColumns", "coverRows"].includes(member)) high = 64;

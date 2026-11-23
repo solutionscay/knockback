@@ -1,9 +1,13 @@
 import { ordinaryWeapons } from "./spread-armory";
+import { dropHeight, makeRoomForWeapon } from "./weapon-spots";
 import { DT } from "./constants";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
 import { type Fighter } from "./sim-types";
 import { clamp } from "./dmath";
+
+/** Sudden-death drops (#95) fight from at least this far (m): they reach across a pit. */
+const SUDDEN_DEATH_REACH = 8;
 
 export function zoneHalfAt(tick: number, startHalf: number, ruleset: Ruleset = CLASSIC): number {
   const k = clamp((tick - ruleset.zone.boundary.holdTicks) / (ruleset.zone.boundary.shrinkEndTicks - ruleset.zone.boundary.holdTicks), 0, 1);
@@ -27,13 +31,23 @@ export class SimZone {
     if (sim.suddenDeath < 0) return;
     this.sdHalf = Math.max(sim.ruleset.zone.suddenDeath.endHalf, this.sdHalf - (sim.ruleset.zone.suddenDeath.shrinkPerSec * DT));
     z.half = Math.min(z.half, this.sdHalf);
-    // a weapon between the survivors
+    // a weapon that fights from range for the survivors (#95): between them, from under any roof over them (sudden
+    // death is for breaking stalemates: no spreading in a zone this narrow); at the cap on loose weapons the oldest
+    // one goes to make room
     if (alive.length >= 2 && (tick - sim.suddenDeath) % sim.ruleset.zone.suddenDeath.dropEvery === 0) {
+      const pool = ordinaryWeapons(sim);
+      const ranged = pool.filter((w) => sim.ruleset.tactics.weapons.reach[w].max >= SUDDEN_DEATH_REACH);
       let sx = 0;
-      for (const f of alive) sx += sim.pos(f).x;
+      let low = Infinity;
+      for (const f of alive) {
+        sx += sim.pos(f).x;
+        low = Math.min(low, sim.feetY(f));
+      }
       const x = clamp(sx / alive.length, z.center - z.half + 0.5, z.center + z.half - 0.5);
-      const e = sim.spawnItem(sim.rng.pick(ordinaryWeapons(sim)), x, 15);
-      sim.events.push({ type: "itemSpawn", tick, entity: e.id, item: e.itemType!, x, y: 15 });
+      makeRoomForWeapon(sim);
+      const y = dropHeight(sim, { x, y: low }, 15);
+      const e = sim.spawnItem(sim.rng.pick(ranged.length ? ranged : pool), x, y);
+      sim.events.push({ type: "itemSpawn", tick, entity: e.id, item: e.itemType!, x, y });
     }
   }
 

@@ -52,7 +52,7 @@ function melee(me: Fighter, weapon: Weapon) {
 
 function usable(sim: Sim, f: Fighter, weapon: Weapon) {
   return weapon === "fist" || (sim.ruleset.weapons.enabled.includes(weapon) && f.weapons.includes(weapon) &&
-    (!usesAmmo(weapon) || f.ammo[weapon] > 0) && (weapon !== "flamethrower" || f.fuel > 0));
+    (!usesAmmo(weapon) || f.ammo[weapon] > 0));
 }
 
 const distanceSafe = (sim: Sim, w: Weapon, distance: number) =>
@@ -107,19 +107,21 @@ function arcTo(sim: Sim, shooter: Fighter, weapon: "grenade" | "rocket" | "mine"
 }
 
 /** The same reach rules select fighter shots, obstruction shots and a weapon to keep in hand. */
-export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, target: Sight, preferred?: Weapon, ledge = false, digDirection?: number): WeaponChoice {
+/** `fists` (#95): fight with fists only, the carried weapon kept for later (a swap rule, or saving the last shots). */
+export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, target: Sight, preferred?: Weapon, ledge = false, digDirection?: number, fists = false): WeaponChoice {
   const ruleset = sim.ruleset;
   const config = ruleset.tactics.weapons;
   const { dist, dy0, dx0, los } = target;
   const origin = { x: position.x, y: position.y + config.aimHeight };
   const direct = aimVector(dx0, dy0 - config.aimHeight);
-  const carried = me.weapons.filter(w => w !== "fist" && usable(sim, me, w));
+  const carried = fists ? [] : me.weapons.filter(w => w !== "fist" && usable(sim, me, w));
   const ranged = carried.some(w => !melee(me, w));
   // a weapon that fights from range is kept in hand up close while the zone leaves room to back off to its range
   // (#69): no fists then
   const room = 2 * sim.zoneHalfAhead(0);
   const longReach = carried.some(w => weaponReach(ruleset, me, w).standOff >= RANGED_STANDOFF && room >= weaponReach(ruleset, me, w).standOff);
-  const canHold = (w: Weapon) => (w === "fist" ? !longReach : carried.includes(w)) && (!ranged || !melee(me, w) || inWeaponBand(me, w, dist, ruleset, dy0));
+  // a jab never lowers the weapon (#95: one slot, fists always there): a rival in fist reach gets punched even then
+  const canHold = (w: Weapon) => (w === "fist" ? !longReach || inWeaponBand(me, w, dist, ruleset, dy0) : carried.includes(w)) && (!ranged || !melee(me, w) || inWeaponBand(me, w, dist, ruleset, dy0));
   const ready = (w: Weapon) => me.cooldown[w] <= (w === sim.weapon(me) ? 0 : ruleset.combat.swapTicks) + config.readyMarginTicks;
   const normal = FIGHTER_ORDER.filter(canHold);
   const preference = [preferred, ...(ledge ? ["grapple" as const] : [])].filter((w): w is Weapon => w !== undefined && normal.includes(w));
@@ -148,11 +150,13 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   // aiming the sniper: keep it while the line stays clear (losing the line lets go and cancels the aim)
   if (me.scope > 0 && carried.includes("sniper")) return { weapon: "sniper", shot: fighterShot("sniper") };
 
-  // A destructible face is a separate target. Use unlimited tools ahead of charged or limited ammo.
+  // A destructible face is a separate target. Use unlimited tools ahead of charged or limited ammo; a weapon low on
+  // ammo keeps its last shots for fighters (#95)
+  const spare = (w: Weapon) => !usesAmmo(w) || w === "bat" || me.ammo[w] / Math.max(1, ruleset.weapons.table[w].ammo) > ruleset.tactics.pickup.lowAmmoShare;
   const wallShot = (hit: NonNullable<RayHit>, aim: Point): WeaponChoice | undefined => {
     if (!breakable(sim, origin, aim, hit)) return;
     for (const w of BREACH_ORDER) {
-      if (!canHold(w) || !ready(w) || !inWeaponBand(me, w, hit.dist, ruleset, aim.y * hit.dist) || !distanceSafe(sim, w, hit.dist) || (w === "hammer" && !me.grounded)) continue;
+      if (!canHold(w) || !ready(w) || !spare(w) || !inWeaponBand(me, w, hit.dist, ruleset, aim.y * hit.dist) || !distanceSafe(sim, w, hit.dist) || (w === "hammer" && !me.grounded)) continue;
       // the sword cuts a wall; a bolt would only waste a charge on it (#72)
       if (w === "lightning" && !inSlash(ruleset, hit.dist, aim.y * hit.dist)) continue;
       if (w === "grenade" || w === "mine") {

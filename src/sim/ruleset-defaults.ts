@@ -26,8 +26,24 @@ export const CLOSE_ARMORY = {
     enabled: false, betweenCaches: 2, cacheMaxRise: 2, skyDrops: 8, skyDropTicks: C.TICK_RATE / 2,
     minSpawnDistance: 9, preferLocalTicks: 7 * C.TICK_RATE, otherQuarterCost: 26,
     powerWeapons: ["railgun", "sniper"] as readonly Exclude<Weapon, "fist">[], powerMinDistance: 10, powerMinHeight: 4,
+    /** spread-out start weapons (#95), placed like supply drops (pickups.spots); 0 = only betweenCaches */
+    startWeapons: 0,
+    /** how many of the power weapons are on the map at the start (high or exposed), out of powerWeapons */
+    powerStart: 2,
   },
 };
+
+/**
+ * Where weapons appear (#95): start weapons, supply drops and sky drops. A spot is a nav point every fighter can reach,
+ * inside the zone (zoneAhead ticks ahead), at least itemGap from loose weapons, fighterGap from fighters and recentGap
+ * from pickups of the last recentTicks; when nothing qualifies the gaps shrink by relax per try. Among the spots left,
+ * an area (a quarter of the arena, low ground or high) with the fewest loose weapons is chosen first, so weapons spread
+ * across the map's areas and heights. highRise: meters above the lowest ground below that count as high. edgeGap: no
+ * spot this close to a surface's drop edge (while others are left). Every spot is a round trip from the fighters.
+ * Mid-round, with fighters bare-handed, the spot is one of the raceChoices that those fighters reach at about the same
+ * time (a race, not a gift). A loose weapon outside the zone for outsideTicks is cleared away.
+ */
+export const WEAPON_SPOTS = { itemGap: 9, fighterGap: 6, recentGap: 6, recentTicks: 12 * C.TICK_RATE, zoneAhead: 8 * C.TICK_RATE, relax: 0.7, highRise: 2.5, startSpawnGap: 5, edgeGap: 1.5, raceChoices: 4, outsideTicks: 4 * C.TICK_RATE };
 
 /** AI effective reach in meters. Physical damage and range remain in the weapon table. */
 const TACTICAL_WEAPONS = {
@@ -122,8 +138,11 @@ export const RULESET_DEFAULTS = {
   },
   pickups: {
     enabled: POWER_LIST as readonly (typeof POWER_LIST)[number][],
-    item: C.ITEM, power: C.POWER, armory: { ...CLOSE_ARMORY, spread: { ...CLOSE_ARMORY.spread, enabled: true } },
+    // #95: one weapon between each pair of neighbouring spawns and one power weapon (high or exposed), no sky drops,
+    // rarer drops
+    item: C.ITEM, power: C.POWER, armory: { ...CLOSE_ARMORY, minGap: 6, crateWeaponChance: 0.3, spread: { ...CLOSE_ARMORY.spread, enabled: true, betweenCaches: 1, skyDrops: 0, powerStart: 1 } },
     supply: { ...C.SUPPLY, firstTick: 8 * C.TICK_RATE, itemHeight: 16, propEvery: 2, tntChance: 0.3, propHeight: 15, extraBarrelHeight: 16.4, barrelOffset: 0.75, avoidDistance: 7 },
+    spots: WEAPON_SPOTS,
     weights: { health: 3, shield: 2.5, speed: 2, heavy: 1.5, damage: 2, jump: 2, jetpack: 2 },
   },
   arena: {

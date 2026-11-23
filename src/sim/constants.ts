@@ -60,6 +60,7 @@ export const WEAPONS = {
     groundStep: 0.55, feetReach: 0.85, terrainRadius: 1.5, terrainDamage: 98, propDamage: 30,
   },
   rocket: {
+    ammo: 8,
     cooldown: 155,
     speed: 19,
     gravity: 7,
@@ -72,6 +73,7 @@ export const WEAPONS = {
     maxLife: 240,
   },
   shotgun: {
+    ammo: 12,
     cooldown: 46,
     range: 7.5,
     pellets: 6,
@@ -81,8 +83,9 @@ export const WEAPONS = {
     pelletTerrainDamage: 11,
     pelletImpulse: 1.6,
   },
-  /** Melee launch: the ring-out tool. */
+  /** Melee launch: the ring-out tool. ammo: hits on fighters (a miss, a prop or a wall costs none). */
   bat: {
+    ammo: 8,
     cooldown: 38,
     reach: 0.95,
     radius: 0.95,
@@ -94,6 +97,7 @@ export const WEAPONS = {
     terrainDamage: 75,
   },
   grenade: {
+    ammo: 8,
     cooldown: 130,
     speed: 13,
     fuse: 85,
@@ -125,14 +129,14 @@ export const WEAPONS = {
    * trigger is held. Each pulse casts 5 fixed rays across the cone (no trig:
    * the spread is fixed rotation coefficients), hurts and lightly pushes
    * fighters it reaches, sets them and anything flammable alight, and uses one
-   * pulse of fuel. Empty: the weapon is dropped (gone).
+   * pulse of fuel (ammo: pulses in a full tank). Empty: the weapon is thrown away (gone).
    */
   flamethrower: {
+    ammo: 60,
     cooldown: 4,
     range: 3.8,
     damage: 0.9,
     push: 1.6,
-    fuel: 60,
     /** chance per pulse that a ray sets the flammable cell or prop it reaches alight */
     igniteChance: 0.45,
     chainDamage: 1.2,
@@ -182,6 +186,7 @@ export const WEAPONS = {
   },
   /** Hook: yanks a fighter (or a prop) toward the shooter. */
   grapple: {
+    ammo: 8,
     cooldown: 110,
     range: 15,
     pull: 15,
@@ -354,8 +359,12 @@ export const ZONE = {
  */
 export const STALEMATE = { quietTicks: 7 * TICK_RATE, shrinkPerSec: 2.4, endHalf: 2.5, dropEvery: 3 * TICK_RATE, shockAfter: 60, shockEvery: 40, shockDamage: 8 };
 
-/** Supply drops: every interval an item (often a weapon) inside the zone, barrels every other drop. */
-export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 6 * TICK_RATE, weaponChance: 0.65, maxLooseWeapons: 8 };
+/**
+ * Supply drops: every interval an item (sometimes a weapon) inside the zone, barrels every other drop. With
+ * maxLooseWeapons or more weapons on the floor (start weapons, drops, dropped and knocked-out fighters' weapons) the
+ * drop is a power-up instead, and crates and sudden death drop no weapon (#95).
+ */
+export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 8 * TICK_RATE, weaponChance: 0.5, maxLooseWeapons: 3 };
 
 /**
  * Weapons waiting in the arena when a round starts. Everyone starts with

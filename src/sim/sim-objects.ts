@@ -4,7 +4,7 @@ import type { Sim } from "./sim";
 import { type Entity } from "./sim-types";
 import { dcos, dsin } from "./dmath";
 import { type PropKind } from "./level-config";
-import { randomDrop } from "./sim-items";
+import { randomDrop, roomForWeapon } from "./sim-items";
 import { damagePiece } from "./sim-terrain";
 
 const PROP_FILTER = G.TERRAIN | G.FIGHTER | G.PROP | G.ITEM | G.GRENADE;
@@ -262,7 +262,7 @@ export function hitProp(sim: Sim, e: Entity, dmg: number, owner: number, cause: 
       sim.entityStore.remove(e);
       if (e.kind === "crate") {
         sim.stats.cratesDestroyed++;
-        if (sim.rng.chance(sim.ruleset.arena.props.crate.dropChance)) sim.spawnItem(randomDrop(sim, sim.ruleset.pickups.armory.crateWeaponChance), t.x, t.y + 0.2, 0, 3);
+        if (sim.rng.chance(sim.ruleset.arena.props.crate.dropChance)) sim.spawnItem(randomDrop(sim, roomForWeapon(sim) ? sim.ruleset.pickups.armory.crateWeaponChance : 0), t.x, t.y + 0.2, 0, 3);
       }
     }
   }

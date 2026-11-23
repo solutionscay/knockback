@@ -19,6 +19,7 @@ import { Rng } from "./rng";
 import { explode } from "./sim-blast";
 import { damageFighter, knockOut, removeFighterBody } from "./sim-damage";
 import { EntityStore } from "./sim-entities";
+import { clearOutsideWeapons } from "./weapon-spots";
 import { applyItem, checkPickups, items, randomPower, setPrefs, spawnItem, skyDrop, stockArmory, supplyDrop, tickPowers, wantsWeapon } from "./sim-items";
 import { addFighter, applyInput, checkGrounded } from "./sim-movement";
 import { addProp, dangers, updateObjects } from "./sim-objects";
@@ -84,6 +85,8 @@ export class Sim {
   /** The round is decided (set by the fight once one fighter or none is left): the walls stop, no more supply drops. */
   roundOver = false;
   private supplyCount = 0;
+  /** where weapons were picked up lately (#95: new weapons keep away from them), pruned as spots are chosen */
+  recentPickups: { x: number; y: number; tick: number }[] = [];
   /** last tick a fighter damaged another fighter (anti-stalemate clock) */
   lastClashTick: number;
   /** tick sudden death started this round, or -1 */
@@ -162,16 +165,18 @@ export class Sim {
     setPrefs(this, id, prefs);
   }
 
-  wantsWeapon(f: Fighter, w: Weapon): boolean {
-    return wantsWeapon(f, w);
+  /** `ammo`: the loose item's count (none = a full one). */
+  wantsWeapon(f: Fighter, w: Weapon, ammo?: number): boolean {
+    return wantsWeapon(f, w, this.ruleset, ammo);
   }
 
   spawnItem(type: ItemType, x: number, y: number, vx = 0, vy = 0): Entity {
     return spawnItem(this, type, x, y, vx, vy);
   }
 
-  applyItem(f: Fighter, item: ItemType) {
-    return applyItem(this, f, item);
+  /** `ammo`: a weapon's count (none = a full one, #95). */
+  applyItem(f: Fighter, item: ItemType, ammo?: number) {
+    return applyItem(this, f, item, ammo);
   }
 
   items(): Entity[] {
@@ -254,6 +259,7 @@ export class Sim {
     }
     const opening = this.ruleset.pickups.armory.spread;
     if (!this.roundOver && opening.enabled && opening.skyDrops > 0 && tick === opening.skyDropTicks) skyDrop(this, this.skyRng);
+    clearOutsideWeapons(this);
     if (!this.roundOver && tick >= this.ruleset.pickups.supply.firstTick && (tick - this.ruleset.pickups.supply.firstTick) % this.ruleset.pickups.supply.interval === 0) supplyDrop(this, this.supplyCount++);
 
     for (const f of this.fighters) {
@@ -393,7 +399,6 @@ export class Sim {
       num(f.aimY);
       num(f.burning);
       num(f.burnBy);
-      num(f.fuel);
       num(f.railCharge);
       num(f.scope);
       num(f.pinned);

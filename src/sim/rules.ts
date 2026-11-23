@@ -17,10 +17,11 @@ export const WHO_TRIGGERS: readonly RuleWhen[] = ["holds", "health_below", "near
 export const SUBJECT_TRIGGERS: readonly RuleWhen[] = [...WHO_TRIGGERS, "alone_with"];
 
 /** Value ranges by trigger. */
-export const RULE_VALUE: Partial<Record<RuleWhen, [number, number]>> = { my_health_below: [10, 90], health_below: [10, 90], on_streak: [1, 3] };
+export const RULE_VALUE: Partial<Record<RuleWhen, [number, number]>> = { my_health_below: [10, 90], health_below: [10, 90], on_streak: [1, 3], my_ammo_below: [10, 90] };
 
+/** Fists are never a pickup, but a swap rule can hold them (#95). */
 export function availableRule(rule: Pick<Rule, "item" | "doItem">, ruleset: Ruleset): boolean {
-  return (!rule.item || availableItem(ruleset, rule.item)) && (!rule.doItem || availableItem(ruleset, rule.doItem));
+  return (!rule.item || availableItem(ruleset, rule.item)) && (!rule.doItem || rule.doItem === "fist" || availableItem(ruleset, rule.doItem));
 }
 
 /** Problem with a stored rule (null = fine). `me` is the rule owner's seat. */
@@ -45,6 +46,8 @@ export function checkRule(r: Rule, me: number, ruleset: Ruleset = CLASSIC): stri
   if ((r.do === "target" || r.do === "avoid") && !SUBJECT_TRIGGERS.includes(r.when)) return `"${r.do}" needs a trigger about a fighter, not "${r.when}"`;
   if (r.do === "seek" && !PICKUPS.includes(r.doItem as never)) return `"seek" needs a pickup, got ${JSON.stringify(r.doItem)}`;
   if (r.do === "use" && r.doItem !== "jetpack" && !isPickupWeapon(r.doItem)) return `"use" needs a weapon or jetpack, got ${JSON.stringify(r.doItem)}`;
+  if (r.do === "swap" && r.doItem !== "fist" && !isPickupWeapon(r.doItem)) return `"swap" needs a weapon or "fist", got ${JSON.stringify(r.doItem)}`;
+  if (r.do === "drop" && r.doItem !== undefined && !isPickupWeapon(r.doItem)) return `"drop" takes a weapon or nothing, got ${JSON.stringify(r.doItem)}`;
   if (r.do === "stance" && !(RULE_STANCES as readonly string[]).includes(r.stance as string)) return `"stance" needs one of ${RULE_STANCES.join(", ")}`;
   if (r.do === "retaliate" && !(RULE_RETALIATE as readonly string[]).includes(r.retaliate as string)) return `"retaliate" needs one of ${RULE_RETALIATE.join(", ")}`;
   if (!availableRule(r, ruleset)) return "item is disabled in this ruleset";
@@ -73,8 +76,9 @@ export function autoLabel(r: Omit<Rule, "label">, names: string[]): string {
     in_open: `${who} in the open`,
     has_long_gun: `${who} has a long gun`,
     in_cover: "I'm in cover",
+    my_ammo_below: `ammo below ${r.value}%`,
   };
-  const act: Record<Rule["do"], string> = { target: "go for them", avoid: "keep away", seek: `get ${it(r.doItem)}`, use: `use ${it(r.doItem)}`, stance: r.stance ?? "stance", retaliate: `retaliate ${r.retaliate ?? ""}`.trim() };
+  const act: Record<Rule["do"], string> = { target: "go for them", avoid: "keep away", seek: `get ${it(r.doItem)}`, use: `use ${it(r.doItem)}`, stance: r.stance ?? "stance", retaliate: `retaliate ${r.retaliate ?? ""}`.trim(), drop: r.doItem ? `drop ${it(r.doItem)}` : "drop my weapon", swap: r.doItem === "fist" ? "fists" : `swap to ${it(r.doItem)}` };
   return `${cond[r.when]}: ${act[r.do]}`.slice(0, MAX_RULE_LABEL);
 }
 
