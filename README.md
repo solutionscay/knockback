@@ -36,8 +36,6 @@ Details: [docs/agents.md](docs/agents.md).
 More: [docs/arena.md](docs/arena.md), [docs/rules.md](docs/rules.md), [docs/checkins.md](docs/checkins.md),
 [docs/development.md](docs/development.md).
 
-<p align="center"><img src="docs/round.webp" alt="A round in the junkyard theme: a grenade blast and a fighter's rule firing" width="80%"></p>
-
 ## Run it locally
 
 Needs [Bun](https://bun.sh).
@@ -83,4 +81,4 @@ loads the packed sheets. The fighters' LED faces are drawn in code on the render
 `src/sim/themes.ts` (`bun scripts/themes-json.ts` writes `tools/art/themes.json`). The lab pages preview the art at
 game size: `bun scripts/plush-lab.ts`, `bun scripts/world-lab.ts`, `bun scripts/level-lab.ts`.
 
-The banner and screenshots above are frames of real rounds, captured from the local viewer and the lobby.
+The banner and the lobby screenshot are frames of real rounds, from the local viewer and a local match server.
