@@ -6,7 +6,7 @@
  * (GET /api/replays?tier=&before=), so every public round is reachable.
  */
 import { badge } from "./badge";
-import { cleanIdentity, colorVars } from "./bots";
+import { cleanIdentity, colorVars, head } from "./bots";
 import { ago, cap, galleryReplays, type ReplayInfo, scoreline } from "./data";
 import { getJson, html, mount, type Raw } from "./dom";
 
@@ -14,8 +14,8 @@ const row = (x: ReplayInfo): Raw => {
   const w = x.winner >= 0 ? x.winner : 0;
   const ids = x.identities.map((v, i) => cleanIdentity(v, i));
   return html`<a class="rrow" href="/replay/${x.match}" style="${colorVars(ids[w]!.color)}">
-    <span class="rw"><b>${x.names[w]}</b> wins ${scoreline(x.wins)}</span>
-    <span class="rl">${ids.map((v, i) => html`<span style="${colorVars(v.color)}"><i></i>${x.names[i]} ${badge(x.labels[i])}</span>`)}</span>
+    <span class="rw">${head(ids[w]!, "win")}<b>${x.names[w]}</b> wins ${scoreline(x.wins)}</span>
+    <span class="rl">${ids.map((v, i) => html`<span style="${colorVars(v.color)}">${head(v, i === w ? "win" : "ko")}${x.names[i]} ${badge(x.labels[i])}</span>`)}</span>
     <span class="dim">${cap(x.theme)} · ${ago(x.createdAt)}</span>
   </a>`;
 };

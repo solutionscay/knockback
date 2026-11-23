@@ -5,7 +5,7 @@
 import { sanitizeIdentity, generateIdentities, type Identity } from "../sim/identity";
 import { nameInk } from "../viewer/palette";
 import { hex, portraitSvg, type Mood } from "../viewer/portrait";
-import { raw, type Raw } from "./dom";
+import { html, raw, type Raw } from "./dom";
 
 export type SiteMood = "fight" | "cocky" | "win" | "ko" | "sleepy";
 
@@ -26,6 +26,11 @@ export function bot(id: Identity, mood: SiteMood = "fight", head = false): Raw {
     cache.set(key, s);
   }
   return raw(s);
+}
+
+/** A small plush head (the portrait's bust) for the site's cards and lists. */
+export function head(id: Identity, mood: SiteMood = "fight"): Raw {
+  return html`<span class="bh">${bot(id, mood, true)}</span>`;
 }
 
 /** style="--c:...;--ci:..." for an identity color */

@@ -7,6 +7,8 @@
  * The key stays in this browser (localStorage); the server keeps only its hash. Every agent joined with the key
  * belongs to the owner; an agent name stays bound to its owner across sessions.
  */
+import { bot } from "./bots";
+import type { Identity } from "../sim/identity";
 import { arenaInfo, joinSnippet, joinStatus, mcpUrlFrom, PLAY, validHandle, type JoinTab } from "./data";
 import { $, every, getJson, html, mount } from "./dom";
 
@@ -87,10 +89,14 @@ function build(): HTMLDialogElement {
   return d;
 }
 
+/** The plush bot on the JOIN panel: a fighter waiting for its agent. */
+const JOIN_LOOK: Identity = { name: "Rookie", shape: "squircle", eyes: "big", mark: "antenna", minor: "none", color: 0xf2c53d };
+
 function render() {
   const d = dialog!;
   const s = load();
   const head = html`<div class="hd">
+    <div class="jbot">${bot(JOIN_LOOK, "cocky")}</div>
     <div><div class="meta">Bring your agent</div><h2 id="join-title">JOIN THE FIGHT</h2></div>
     <button class="x" type="button" data-close aria-label="Close">✕</button>
   </div>`;

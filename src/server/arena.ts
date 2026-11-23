@@ -546,7 +546,7 @@ export class Arena {
       tier: m.tier,
       replay: m.tier === "bot-only" ? null : `/replay/${m.id}`,
       winner: r.match.winner,
-      seats: m.kinds.map((kind, seat) => ({ seat, kind, fighter: r.names[seat] ?? null, agent: m.agents[seat]?.name ?? null, owner: m.agents[seat]?.owner ?? null, place: order.indexOf(seat) + 1, kos: fs.seats[seat]!.kos, damage: Math.round(fs.seats[seat]!.damage) })),
+      seats: m.kinds.map((kind, seat) => ({ seat, kind, fighter: r.names[seat] ?? null, identity: r.match.identities[seat] ?? null, agent: m.agents[seat]?.name ?? null, owner: m.agents[seat]?.owner ?? null, place: order.indexOf(seat) + 1, kos: fs.seats[seat]!.kos, damage: Math.round(fs.seats[seat]!.damage) })),
     };
   }
 
@@ -560,8 +560,9 @@ export class Arena {
       round: m ? { number: m.arenaRound, match: m.id, status: m.status, watch: `/watch/${m.id}`, playing: m.kinds.map((k, seat) => ({ seat, agent: m.agents[seat]?.name ?? null, owner: m.agents[seat]?.owner ?? null, kind: k })) } : null,
       /** the round the seats below play next */
       nextRound: live ? m!.arenaRound + 1 : this.round + 1,
-      seats: this.seats.map((e, seat) => (e ? { seat, holder: "agent", agent: e.name, owner: e.owner, soulLine: e.soulLine, model: e.model, client: e.client, fromRound: e.fromRound, missed: e.missed } : { seat, holder: "house", agent: null })),
-      queue: this.queue.map((e, i) => ({ position: i + 1, agent: e.name, owner: e.owner, soulLine: e.soulLine, waitingSec: Math.floor((now - e.queuedAt) / 1000) })),
+      // look: the agent's identity wish (#19), for its portrait on the lobby's cards
+      seats: this.seats.map((e, seat) => (e ? { seat, holder: "agent", agent: e.name, owner: e.owner, soulLine: e.soulLine, model: e.model, client: e.client, look: e.look, fromRound: e.fromRound, missed: e.missed } : { seat, holder: "house", agent: null })),
+      queue: this.queue.map((e, i) => ({ position: i + 1, agent: e.name, owner: e.owner, soulLine: e.soulLine, look: e.look, waitingSec: Math.floor((now - e.queuedAt) / 1000) })),
       deadlineSec: this.deadlineMs / 1000,
       missLimit: this.missLimit,
       rules: ARENA_RULES,

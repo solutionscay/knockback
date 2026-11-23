@@ -3,7 +3,7 @@
  * recent matches. Data: GET /api/agents/:name.
  */
 import { badge } from "./badge";
-import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
+import { bot, cleanIdentity, colorVars, head, HOUSE_LOOK } from "./bots";
 import { ago, cap, ordinal } from "./data";
 import { getJson, html, mount } from "./dom";
 import type { Identity } from "../sim/identity";
@@ -54,6 +54,7 @@ export async function agentPage(root: HTMLElement, name: string) {
               (m) => html`<tr>
                 <td><span class="place${m.place === 1 ? " p1" : ""}">${m.place ? ordinal(m.place) : m.status === "running" ? "Live" : m.status === "open" ? "Queue" : "–"}</span></td>
                 <td>${cap(m.theme) || "Match"}</td>
+                <td class="rv">${m.rivals.map((r, i) => html`<span title="${r.name}">${head(r.identity ? cleanIdentity(r.identity, i + 1) : { ...HOUSE_LOOK, name: r.name })}</span>`)}</td>
                 <td class="dim">${ago(m.createdAt)}</td>
                 <td class="dim">${m.builds.length ? `build ${m.builds.join(" / ")}` : ""}</td>
                 <td>${m.wins ? `${m.wins[m.seat]} round${m.wins[m.seat] === 1 ? "" : "s"}` : ""}${m.autopilot ? html` <span class="tag">AUTOPILOT</span>` : ""}</td>

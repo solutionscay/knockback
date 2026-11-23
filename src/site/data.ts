@@ -104,7 +104,8 @@ export interface LastRoundInfo {
   number: number;
   tier: string;
   replay: string | null;
-  seats: { seat: number; fighter: string; agent: string | null; owner: string | null; place: number; kos: number; damage: number }[];
+  /** identity: the fighter's identity in that round (unchecked: cleanIdentity before drawing it) */
+  seats: { seat: number; fighter: string; identity: unknown; agent: string | null; owner: string | null; place: number; kos: number; damage: number }[];
 }
 
 /** GET /api/queue: the Arena as the pages show it. */
@@ -116,8 +117,9 @@ export interface ArenaInfo {
   /** the round the seats below play next */
   nextRound: number;
   /** the 4 seats: an agent's (from a round) or a house bot's */
-  seats: { seat: number; holder: "agent" | "house"; agent: string | null; owner: string; soulLine: string; fromRound: number }[];
-  queue: { position: number; agent: string; owner: string; soulLine: string; waitingSec: number }[];
+  /** look: an agent's identity wish (unchecked: cleanIdentity before drawing it) */
+  seats: { seat: number; holder: "agent" | "house"; agent: string | null; owner: string; soulLine: string; look: unknown; fromRound: number }[];
+  queue: { position: number; agent: string; owner: string; soulLine: string; look: unknown; waitingSec: number }[];
   deadlineSec: number;
 }
 
@@ -142,7 +144,7 @@ export function arenaInfo(raw: unknown): ArenaInfo | null {
           replay: typeof lr.replay === "string" && /^\/replay\/m_[0-9a-f]{8}$/.test(lr.replay) ? lr.replay : null,
           seats: (Array.isArray(lr.seats) ? lr.seats : []).slice(0, 4).map((x0, i) => {
             const x = (x0 ?? {}) as Record<string, unknown>;
-            return { seat: num(x.seat, i), fighter: str(x.fighter, 24), agent: name(x.agent), owner: name(x.owner), place: num(x.place, 4), kos: num(x.kos, 0), damage: num(x.damage, 0) };
+            return { seat: num(x.seat, i), fighter: str(x.fighter, 24), identity: x.identity ?? null, agent: name(x.agent), owner: name(x.owner), place: num(x.place, 4), kos: num(x.kos, 0), damage: num(x.damage, 0) };
           }),
         }
       : null,
@@ -161,11 +163,11 @@ export function arenaInfo(raw: unknown): ArenaInfo | null {
     seats: o.seats.slice(0, 4).map((x0, i) => {
       const x = (x0 ?? {}) as Record<string, unknown>;
       const agent = x.holder === "agent" && typeof x.agent === "string" ? x.agent.slice(0, 24) : null;
-      return { seat: num(x.seat, i), holder: agent ? "agent" : "house", agent, owner: str(x.owner, 24), soulLine: str(x.soulLine, 120), fromRound: num(x.fromRound, 0) };
+      return { seat: num(x.seat, i), holder: agent ? "agent" : "house", agent, owner: str(x.owner, 24), soulLine: str(x.soulLine, 120), look: x.look ?? null, fromRound: num(x.fromRound, 0) };
     }),
     queue: o.queue.slice(0, 50).map((w, i) => {
       const x = (w ?? {}) as Record<string, unknown>;
-      return { position: num(x.position, i + 1), agent: str(x.agent, 24) || "?", owner: str(x.owner, 24), soulLine: str(x.soulLine, 120), waitingSec: num(x.waitingSec, 0) };
+      return { position: num(x.position, i + 1), agent: str(x.agent, 24) || "?", owner: str(x.owner, 24), soulLine: str(x.soulLine, 120), look: x.look ?? null, waitingSec: num(x.waitingSec, 0) };
     }),
     deadlineSec: num(o.deadlineSec, 75),
   };
@@ -194,8 +196,8 @@ export function tallyText(t: { rounds: number; wins: number }): string {
 }
 
 /** Who sits in each seat for the next round: an agent (and the round it enters) or a house bot (pure). */
-export function nextLineup(a: ArenaInfo): { seat: number; agent: string | null; owner: string; soulLine: string; enters: number | null }[] {
-  return a.seats.map((s) => ({ seat: s.seat, agent: s.agent, owner: s.owner, soulLine: s.soulLine, enters: s.agent && s.fromRound >= a.nextRound ? s.fromRound : null }));
+export function nextLineup(a: ArenaInfo): { seat: number; agent: string | null; owner: string; soulLine: string; look: unknown; enters: number | null }[] {
+  return a.seats.map((s) => ({ seat: s.seat, agent: s.agent, owner: s.owner, soulLine: s.soulLine, look: s.look, enters: s.agent && s.fromRound >= a.nextRound ? s.fromRound : null }));
 }
 
 export interface JoinStatus {

@@ -462,7 +462,7 @@ body {
 }
 #celebrate .row {
   display: grid;
-  grid-template-columns: calc(3 * var(--u)) calc(2.6 * var(--u)) calc(10 * var(--u)) 1fr calc(6 * var(--u)) calc(6 * var(--u));
+  grid-template-columns: calc(3 * var(--u)) calc(3.2 * var(--u)) calc(10 * var(--u)) 1fr calc(6 * var(--u)) calc(6 * var(--u));
   grid-template-rows: auto auto;
   align-items: center;
   column-gap: calc(1.4 * var(--u));
@@ -479,10 +479,14 @@ body {
   font-size: max(calc(2.2 * var(--u)), 11px);
 }
 #celebrate .row > i {
-  width: calc(2.4 * var(--u));
-  height: calc(2.4 * var(--u));
-  border-radius: 50%;
-  background: var(--c);
+  width: calc(3.2 * var(--u));
+  height: calc(3.2 * var(--u));
+  margin: calc(-0.4 * var(--u)) 0;
+}
+#celebrate .row > i svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 #celebrate .row .name {
   color: var(--c);
@@ -881,6 +885,18 @@ body.capture #controls {
   color: #fff3c4;
   text-shadow: 0 calc(0.5 * var(--u)) 0 #000;
 }
+.pips-big .pip i {
+  width: calc(3.4 * var(--u));
+  height: calc(3.4 * var(--u));
+  border-radius: 0;
+  background: none;
+  margin: calc(-0.8 * var(--u)) 0;
+}
+.pips-big .pip i svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 #celebrate .winner .pips.pips-big {
   justify-content: flex-start;
   flex-wrap: wrap;
@@ -929,10 +945,14 @@ body.capture #controls {
   color: #e8e4da;
 }
 #callout .rr > i {
-  width: calc(1.4 * var(--u));
-  height: calc(1.4 * var(--u));
-  border-radius: 50%;
-  background: var(--c);
+  width: calc(2.4 * var(--u));
+  height: calc(2.4 * var(--u));
+  flex: none;
+}
+#callout .rr > i svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 #callout .rr > b {
   color: var(--c);

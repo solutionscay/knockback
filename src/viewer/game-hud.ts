@@ -88,7 +88,9 @@ export function pipsHtml(match: Match, size: "small" | "big"): string {
   const pips = match.identities.map((c, i) => {
     const w = match.wins[i]!;
     const dots = Array.from({ length: match.ruleset.round.winsToTake }, (_, k) => `<b class="${k < w ? "on" : ""}"></b>`).join("");
-    return `<span class="pip" style="--c:${hex(c.color)}"><i></i>${size === "big" ? esc(c.name) : ""}${dots}</span>`;
+    // the big line (round end, the winner's card) shows each fighter's plush head; the clock's small one a dot
+    const face = size === "big" ? portraitSvg(c, w > 0 && w >= Math.max(...match.wins) ? "win" : "fight", "tiny") : "";
+    return `<span class="pip" style="--c:${hex(c.color)}"><i>${face}</i>${size === "big" ? esc(c.name) : ""}${dots}</span>`;
   }).join("");
   return `<span class="pips pips-${size}">${pips}</span>`;
 }
@@ -103,7 +105,7 @@ export function recapHtml(match: Match, facts: RoundFacts, firings: RuleFiring[]
     const worst = topDamager(st, i);
     const w = worst >= 0 ? st.damage[worst]![i]! : null;
     const hurt = w && w.damage >= 8 ? `${esc(match.identities[worst]!.name)} ${Math.round(w.damage)}${behindHitText(w, 1)}` : "";
-    return `<div class="rr" style="--c:${hex(c.color)}"><i></i><b>${esc(c.name)}</b>${modelBadgeHtml(labels[i] ?? null, "xs")}<span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
+    return `<div class="rr" style="--c:${hex(c.color)}"><i>${portraitSvg(c, "fight", "tiny")}</i><b>${esc(c.name)}</b>${modelBadgeHtml(labels[i] ?? null, "xs")}<span>dealt ${Math.round(dealt)}</span><span>took ${Math.round(took)}</span><em>${hurt ? `hurt most by ${hurt}` : ""}</em></div>`;
   }).join("");
   // best rule (#11): a rule firing followed within 5 s by a knockout by the same fighter
   const br = bestRule(firings, kos);
@@ -177,7 +179,7 @@ export function celebrateHtml(match: Match, tally: Tally, matchPoints: number[],
       const kos = m.kos[id]!;
       const parts = [wins ? `${wins} ROUND${wins > 1 ? "S" : ""} +${wins * POINTS.win}` : "", kos ? `${kos} KO +${kos * POINTS.ko}` : ""].filter(Boolean).join(" · ");
       return `<div class="row${id === m.winner ? " champ" : ""}" style="--c:${hex(c.color)};--w:${(100 * tally.points[id]!) / best}%">
-          <span class="rank">${rank + 1}</span><i></i><span class="name">${esc(c.name)}</span>
+          <span class="rank">${rank + 1}</span><i>${portraitSvg(c, id === m.winner ? "win" : "fight", "tiny")}</i><span class="name">${esc(c.name)}</span>
           <span class="bar"><span></span></span><span class="pts">${tally.points[id]}</span>${gained ? `<em>+${gained}</em>` : `<em class="zero">+0</em>`}<span class="mdl">${modelBadgeHtml(labels[id] ?? null, "sm")}</span><span class="why">${parts}${autopilot[id] ? `${parts ? " · " : ""}<b class="autopilot">finished on autopilot</b>` : ""}</span></div>`;
     })
     .join("");

@@ -4,7 +4,7 @@
  * keeps only the fight and its plan chips, so this is the one place the line-up shows.
  */
 import { badge } from "./badge";
-import { colorVars } from "./bots";
+import { colorVars, head } from "./bots";
 import { html, mount, raw } from "./dom";
 import { type Picks, pct } from "./picks";
 import type { Identity } from "../sim/identity";
@@ -30,7 +30,7 @@ export function renderSeats(el: HTMLElement, seats: Seat[], picks: Picks, winner
       const share = v && !open && v.total > 0 ? html`<span class="pct" title="the crowd's picks">${pct(v.counts[i]!, v.total)}%</span>` : "";
       const name = s.agent ? html`<a class="sn" href="/agent/${encodeURIComponent(s.agent)}">${s.name}</a>` : html`<span class="sn">${s.name}</span>`;
       return html`<div class="seat${i === winner ? " won" : ""}${mine ? " mine" : ""}${s.autopilot ? " auto" : ""}" style="${colorVars(s.id.color)}">
-        <div class="st">${s.crown ? html`<span class="tag crown" title="crown holder · ${s.crown} round${s.crown === 1 ? "" : "s"} won in a row">♛ ${s.crown}</span>` : ""}${name}<span class="wins" title="${s.wins} round${s.wins === 1 ? "" : "s"} won"><i class="${s.wins >= 1 ? "w" : ""}"></i><i class="${s.wins >= 2 ? "w" : ""}"></i></span></div>
+        <div class="st">${head(s.id, s.autopilot ? "sleepy" : i === winner ? "win" : "fight")}${s.crown ? html`<span class="tag crown" title="crown holder · ${s.crown} round${s.crown === 1 ? "" : "s"} won in a row">♛ ${s.crown}</span>` : ""}${name}<span class="wins" title="${s.wins} round${s.wins === 1 ? "" : "s"} won"><i class="${s.wins >= 1 ? "w" : ""}"></i><i class="${s.wins >= 2 ? "w" : ""}"></i></span></div>
         <div class="sb">${s.autopilot ? raw('<span class="tag">AUTOPILOT</span>') : badge(s.label)}${open ? html`<button class="pick" type="button" data-pick="${i}" aria-pressed="${mine}">${mine ? "Picked" : "Pick"}</button>` : share}</div>
       </div>`;
     })}`,

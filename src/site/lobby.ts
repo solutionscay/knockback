@@ -6,7 +6,7 @@
  * in the row carries the crown mark.
  * Data: the Arena stream, GET /api/queue (every 3 s), /api/replays per tier (every 20 s).
  */
-import { cleanIdentity, colorVars } from "./bots";
+import { cleanIdentity, colorVars, head, HOUSE_LOOK } from "./bots";
 import { ago, arenaInfo, cap, crownText, featuredFirst, ordinal, feedEntries, galleryReplays, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type ReplayInfo } from "./data";
 import { $, every, getJson, html, mount } from "./dom";
 import { openJoin } from "./join";
@@ -103,12 +103,12 @@ export function lobbyPage(root: HTMLElement) {
     $("#n-sub")!.textContent = `round ${a.nextRound}${a.queue.length ? ` · ${a.queue.length} waiting` : ""}`;
     const seat = (s: ReturnType<typeof nextLineup>[number]) =>
       s.agent
-        ? html`<li><a class="n" href="/agent/${encodeURIComponent(s.agent)}">${s.agent}</a>${s.owner ? html` <span class="ow">· ${s.owner}</span>` : ""}${s.enters ? html` <span class="dim">· enters round ${s.enters}</span>` : ""}${s.soulLine ? html`<div class="sl">${s.soulLine}</div>` : ""}</li>`
-        : html`<li><span class="dim">house bot</span> <button class="link" type="button" data-join>take this seat</button></li>`;
+        ? html`<li>${head({ ...cleanIdentity(s.look, s.seat), name: s.agent })}<a class="n" href="/agent/${encodeURIComponent(s.agent)}">${s.agent}</a>${s.owner ? html` <span class="ow">· ${s.owner}</span>` : ""}${s.enters ? html` <span class="dim">· enters round ${s.enters}</span>` : ""}${s.soulLine ? html`<div class="sl">${s.soulLine}</div>` : ""}</li>`
+        : html`<li>${head(HOUSE_LOOK, "sleepy")}<span class="dim">house bot</span> <button class="link" type="button" data-join>take this seat</button></li>`;
     mount(
       $("#n-body"),
       html`<ul class="q">${nextLineup(a).map(seat)}</ul>${a.queue.length
-        ? html`<ul class="q">${a.queue.map((w) => html`<li><span class="dim">#${w.position}</span> <a class="n" href="/agent/${encodeURIComponent(w.agent)}">${w.agent}</a>${w.owner ? html` <span class="ow">· ${w.owner}</span>` : ""}</li>`)}</ul>`
+        ? html`<ul class="q">${a.queue.map((w, i) => html`<li>${head({ ...cleanIdentity(w.look, i), name: w.agent })}<span class="dim">#${w.position}</span> <a class="n" href="/agent/${encodeURIComponent(w.agent)}">${w.agent}</a>${w.owner ? html` <span class="ow">· ${w.owner}</span>` : ""}</li>`)}</ul>`
         : ""}`,
     );
   }
@@ -120,13 +120,16 @@ export function lobbyPage(root: HTMLElement) {
     const lr = arena?.lastRound ?? null;
     card.hidden = !c && !lr;
     if (card.hidden) return;
+    // the holder's look: its seat in the last round (a house bot holds its seat; an agent is found by name)
+    const hs = c && lr ? lr.seats.find((s) => (c.agent ? s.agent === c.agent : s.seat === c.houseSeat)) : undefined;
+    const holder = hs ? cleanIdentity(hs.identity, hs.seat) : c && !c.agent ? HOUSE_LOOK : null;
     const who = (agent: string | null, owner: string | null, fallback: string) => (agent ? html`<a class="n" href="/agent/${encodeURIComponent(agent)}">${agent}</a>${owner ? html` <span class="ow">· ${owner}</span>` : ""}` : html`<span class="dim">${fallback}</span>`);
     mount(
       $("#c-body"),
-      html`${c ? html`<p class="crownline"><span class="tag crown">♛ ${c.streak}</span> ${who(c.agent, c.owner, "House bot")} <span class="dim">· ${crownText(c)}${c.seat === null ? " · not in the next round" : ""}</span></p>` : ""}
+      html`${c ? html`<p class="crownline">${holder ? head(holder, "cocky") : ""}<span class="tag crown">♛ ${c.streak}</span> ${who(c.agent, c.owner, "House bot")} <span class="dim">· ${crownText(c)}${c.seat === null ? " · not in the next round" : ""}</span></p>` : ""}
       ${lr
         ? html`<div class="meta">Round ${lr.number}${lr.tier === "warm-up" ? " · warm-up" : lr.tier === "featured" ? " · featured" : ""}${lr.replay ? html` · <a href="${lr.replay}">replay</a>` : ""}</div>
-          <ul class="q">${[...lr.seats].sort((a, b) => a.place - b.place).map((s) => html`<li><b>${ordinal(s.place)}</b> ${s.fighter} ${who(s.agent, s.owner, "· house bot")} <span class="dim">· ${s.kos} KO · ${s.damage} dmg</span></li>`)}</ul>`
+          <ul class="q">${[...lr.seats].sort((a, b) => a.place - b.place).map((s) => html`<li>${head(cleanIdentity(s.identity, s.seat), s.place === 1 ? "win" : "fight")}<b>${ordinal(s.place)}</b> ${s.fighter} ${who(s.agent, s.owner, "· house bot")} <span class="dim">· ${s.kos} KO · ${s.damage} dmg</span></li>`)}</ul>`
         : ""}`,
     );
   }
@@ -144,7 +147,8 @@ export function lobbyPage(root: HTMLElement) {
       body,
       html`<ul class="results">${rs.map((r) => {
         const w = r.winner >= 0 ? r.winner : 0;
-        return html`<li style="${colorVars(cleanIdentity(r.identities[w], w).color)}"><a href="/replay/${r.match}"><b>${r.names[w]}</b> wins</a><span class="dim">${r.tier === "warm-up" ? "Warm-up · " : ""}${cap(r.theme)} · ${ago(r.createdAt)}</span></li>`;
+        const wid = cleanIdentity(r.identities[w], w);
+        return html`<li style="${colorVars(wid.color)}"><a href="/replay/${r.match}">${head(wid, "win")}<b>${r.names[w]}</b> wins</a><span class="dim">${r.tier === "warm-up" ? "Warm-up · " : ""}${cap(r.theme)} · ${ago(r.createdAt)}</span></li>`;
       })}</ul>`,
     );
   }
