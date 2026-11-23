@@ -4,15 +4,6 @@ import { TNT } from "../sim/constants";
 import type { Entity } from "../sim/sim-types";
 import { POWER_COLOR, shade } from "./palette";
 
-const C = {
-  block: 0xc8a06a,
-  blockDark: 0x8d6a3f,
-  blockLight: 0xe2c08c,
-  crate: 0xa86d3a,
-  crateDark: 0x6b4221,
-  barrel: 0xd9342b,
-  barrelDark: 0x8e1d17,
-};
 
 const INK = 0x15171d;
 /** The pickup badge: drawn bigger than the 0.5 m physics box so the icon reads in View all at 720p (the body is unchanged). */
@@ -38,69 +29,57 @@ export function drawPickup(g: Graphics, it: string, time: number) {
 /** The plush sprite on a pickup's badge: w-<weapon> or p-<power>. */
 export const pickupFrame = (it: string) => (it in POWER_COLOR ? "p-" : "w-") + it;
 
-/** Draw a prop/item/grenade into g (local frame, centered). Returns true if it needs redrawing every frame. */
-export function drawProp(g: Graphics, e: Entity, time: number): boolean {
+/** The plush sprite of a prop and its damage state (crate-0, crate-1, crate-2, steel), or null: drawn in code. */
+export function propFrame(e: Entity): string | null {
+  switch (e.kind) {
+    case "steel":
+      return "steel";
+    case "block":
+    case "crate":
+    case "barrel":
+    case "tnt":
+    case "gas": {
+      const dmg = isFinite(e.maxHp) && e.maxHp > 0 ? 1 - Math.max(0, e.hp) / e.maxHp : 0;
+      return `${e.kind}-${dmg > 0.6 ? 2 : dmg > 0.25 ? 1 : 0}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Draw a prop/item/grenade into g (local frame, centered): the code parts. A prop with a plush sprite (propFrame)
+ * gets only what moves on it here (a fuse, a flame); `blink` says when the sprite flashes white. Returns true if it
+ * needs redrawing every frame.
+ */
+export function drawProp(g: Graphics, e: Entity, time: number, out: { blink: boolean } = { blink: false }): boolean {
   g.clear();
   const w = e.hw;
   const h = e.hh;
-  const dmg = isFinite(e.maxHp) && e.maxHp > 0 ? 1 - Math.max(0, e.hp) / e.maxHp : 0;
+  out.blink = false;
   switch (e.kind) {
     case "block":
-      g.rect(-w, -h, w * 2, h * 2).fill(C.block);
-      g.rect(-w, -h, w * 2, 0.1).fill(C.blockLight);
-      g.rect(-w, h - 0.1, w * 2, 0.1).fill(C.blockDark);
-      g.rect(-w, -h, w * 2, h * 2).stroke({ width: 0.05, color: 0x4e3a22 });
-      if (dmg > 0.25) g.moveTo(-w * 0.6, -h * 0.9).lineTo(-w * 0.1, -h * 0.2).lineTo(-w * 0.35, h * 0.4).stroke({ width: 0.05, color: 0x4e3a22 });
-      if (dmg > 0.6) g.moveTo(w * 0.7, -h * 0.5).lineTo(w * 0.1, h * 0.1).lineTo(w * 0.4, h * 0.85).stroke({ width: 0.05, color: 0x4e3a22 });
-      return false;
     case "crate":
-      g.rect(-w, -h, w * 2, h * 2).fill(C.crate).stroke({ width: 0.06, color: C.crateDark });
-      g.moveTo(-w, -h).lineTo(w, h).moveTo(w, -h).lineTo(-w, h).stroke({ width: 0.09, color: C.crateDark });
-      g.rect(-w * 0.35, -h * 0.35, w * 0.7, h * 0.7).fill({ color: 0xffde4a, alpha: 0.85 });
-      g.rect(-0.04, -0.13, 0.08, 0.17).fill(0x3a2a10);
-      g.circle(0, 0.1, 0.04).fill(0x3a2a10);
+    case "steel":
       return false;
     case "barrel": {
       const armed = e.fuse !== undefined;
-      const blink = armed && Math.floor(time * 30) % 2 === 0;
-      g.roundRect(-w, -h, w * 2, h * 2, 0.1).fill(blink ? 0xffffff : C.barrel).stroke({ width: 0.05, color: C.barrelDark });
-      g.rect(-w, -h * 0.55, w * 2, 0.1).fill(C.barrelDark);
-      g.rect(-w, h * 0.45, w * 2, 0.1).fill(C.barrelDark);
-      g.poly([0, -0.18, 0.17, 0.13, -0.17, 0.13]).fill(0xffd23a);
-      g.rect(-0.02, -0.08, 0.04, 0.12).fill(0x1a1a1a);
+      out.blink = armed && Math.floor(time * 30) % 2 === 0;
       return armed;
     }
     case "tnt": {
       const lit = e.fuse !== undefined;
-      const blink = lit && Math.floor(time * ((e.fuse ?? 99) < 40 ? 20 : 6)) % 2 === 0;
-      for (let i = -1; i <= 1; i++) g.roundRect(i * 0.26 - 0.12, -h, 0.24, h * 2, 0.06).fill(blink ? 0xffffff : 0xc81e1e).stroke({ width: 0.03, color: 0x5a0a0a });
-      g.rect(-w, -0.07, w * 2, 0.14).fill(0x2a1a10);
+      out.blink = lit && Math.floor(time * ((e.fuse ?? 99) < 40 ? 20 : 6)) % 2 === 0;
       // fuse wire shortens as it burns
       const len = lit ? 0.5 * Math.max(0, e.fuse!) / TNT.fuse : 0.5;
-      g.moveTo(0, -h).quadraticCurveTo(0.12, -h - len * 0.6, 0.05, -h - len).stroke({ width: 0.04, color: 0x222222 });
+      g.moveTo(0, -h + 0.04).quadraticCurveTo(0.12, -h - len * 0.6, 0.05, -h - len).stroke({ width: 0.04, color: 0x222222 });
       if (lit) g.circle(0.05, -h - len, 0.08 + 0.04 * Math.sin(time * 40)).fill(0xffd23a);
       return true;
     }
     case "gas": {
       const on = e.thrust !== undefined;
-      g.roundRect(-w, -h, w * 2, h * 2, 0.18).fill(0x5fb7e5).stroke({ width: 0.04, color: 0x2a5a78 });
-      g.rect(-w, -h * 0.25, w * 2, 0.16).fill(0xffffff);
-      g.rect(-0.07, -h - 0.12, 0.14, 0.14).fill(0x30343c);
-      g.rect(-0.12, -h - 0.16, 0.24, 0.05).fill(0x30343c);
-      if (on) g.poly([-0.14, h, 0.14, h, 0, h + 0.5 + 0.2 * Math.sin(time * 50)]).fill(0xffb347);
+      if (on) g.poly([-0.14, h - 0.05, 0.14, h - 0.05, 0, h + 0.5 + 0.2 * Math.sin(time * 50)]).fill(0xffb347);
       return on;
     }
-    case "steel":
-      g.rect(-w, -h, w * 2, h * 2).fill(0x5a606c).stroke({ width: 0.07, color: 0x2a2e36 });
-      g.moveTo(-w, -h).lineTo(w, h).moveTo(w, -h).lineTo(-w, h).stroke({ width: 0.08, color: 0x3f444e });
-      for (const [x, y] of [
-        [-w + 0.1, -h + 0.1],
-        [w - 0.1, -h + 0.1],
-        [-w + 0.1, h - 0.1],
-        [w - 0.1, h - 0.1],
-      ] as const)
-        g.circle(x, y, 0.045).fill(0xa8b0bc);
-      return false;
     case "glass":
       g.rect(-w, -h, w * 2, h * 2).fill({ color: 0x9fe8ff, alpha: 0.35 }).stroke({ width: 0.04, color: 0xd8f6ff, alpha: 0.9 });
       g.moveTo(-w * 0.4, -h * 0.6).lineTo(w * 0.5, -h * 0.75).stroke({ width: 0.025, color: 0xffffff, alpha: 0.8 });

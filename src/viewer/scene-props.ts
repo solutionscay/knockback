@@ -3,7 +3,8 @@ import type { Sim } from "../sim/sim";
 import type { Entity } from "../sim/sim-types";
 import type { Fx } from "./fx";
 import type { Palette } from "./palette";
-import { drawProp as drawPropShape, pickupFrame } from "./props";
+import { PROP_HALF } from "../sim/level-config";
+import { drawProp as drawPropShape, pickupFrame, propFrame } from "./props";
 import type { XformAt } from "./scene";
 import { drawPiece, pieceSig } from "./terrainview";
 import { setWorldFrame } from "./world-art";
@@ -13,6 +14,8 @@ interface PropView {
   root: Container;
   g: Graphics;
   s: Sprite;
+  /** the sprite again, added on top: a lit fuse's white blink (a tint can only darken) */
+  hi: Sprite;
   e: Entity;
   /** a new grenade is drawn from the thrower's drawn hand, easing onto its sim path (view only) */
   off?: { x: number; y: number };
@@ -22,6 +25,8 @@ interface PropView {
   flash: number;
   squash: number;
 }
+
+const blink = { blink: false };
 
 export class PropViews {
   readonly layer = new Container();
@@ -61,10 +66,12 @@ export class PropViews {
       const root = new Container();
       const g = new Graphics();
       const s = new Sprite();
-      s.visible = false;
-      root.addChild(g, s);
+      const hi = new Sprite();
+      s.visible = hi.visible = false;
+      hi.blendMode = "add";
+      root.addChild(g, s, hi);
       this.layer.addChild(root);
-      const v: PropView = { root, g, s, e, hp: -1, sig: "", every: true, flash: 0, squash: 0 };
+      const v: PropView = { root, g, s, hi, e, hp: -1, sig: "", every: true, flash: 0, squash: 0 };
       if (e.kind === "grenade" && e.owner !== undefined && sim.tick - e.born < 3) {
         const m = this.muzzleOf?.(e.owner);
         const q = e.body.translation();
@@ -87,8 +94,15 @@ export class PropViews {
     if (!v.every && v.hp === e.hp) return;
     if (v.hp >= 0 && v.hp !== e.hp) v.flash = 0.1;
     v.hp = e.hp;
-    v.every = drawPropShape(v.g, e, time);
+    v.every = drawPropShape(v.g, e, time, blink);
     if (e.kind === "item") setWorldFrame(v.s, pickupFrame(e.itemType ?? "health"));
+    const f = propFrame(e);
+    if (f) {
+      // the model is the default size: a ruleset that resizes a prop stretches its sprite to the body
+      const half = PROP_HALF[e.kind as keyof typeof PROP_HALF];
+      setWorldFrame(v.s, f, e.hw / half[0], e.hh / half[1]);
+      v.hi.visible = blink.blink && setWorldFrame(v.hi, f, e.hw / half[0], e.hh / half[1]);
+    }
   }
 
   render(pal: Palette, fx: Fx, projG: Graphics, time: number, dt: number, alpha: number, xform: XformAt) {
