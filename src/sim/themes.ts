@@ -30,6 +30,10 @@ export interface ThemeRules {
   platform: Mat[];
   tower: Mat;
   bridge: Mat[];
+  /**
+   * #100: generated pits (holes in the ground to fall through) are rare: chance of the one main pit near the middle,
+   * and how many extra pits (0 0 in every theme now). Ring-outs come from the arena's edges and the zone.
+   */
   pitChance: number;
   extraPits: [number, number];
   towers: [number, number];
@@ -98,7 +102,7 @@ export const THEME_DEFS = {
   warehouse: {
     rules: {
       body: Mat.Concrete, surface: Mat.Concrete, platform: [Mat.Steel, Mat.Wood, Mat.Wood], tower: Mat.Steel, bridge: [Mat.Steel, Mat.Wood],
-      pitChance: 0.6, extraPits: [0, 1], towers: [2, 3], platforms: [11, 15], crumble: 0.08,
+      pitChance: 0, extraPits: [0, 0], towers: [2, 3], platforms: [11, 15], crumble: 0.08,
       props: { crate: [6, 9], steel: [2, 4], barrel: [4, 6], gas: [2, 4], glass: [1, 3], weight: [1, 3], pad: [1, 2], tnt: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: NO_SPECKLE, parapet: 0,
       hazards: NO_HAZARDS, physics: EARTH,
@@ -111,9 +115,9 @@ export const THEME_DEFS = {
   rooftop: {
     rules: {
       body: Mat.Brick, surface: Mat.Concrete, platform: [Mat.Concrete, Mat.Wood, Mat.Steel], tower: Mat.Brick, bridge: [Mat.Wood, Mat.Wood, Mat.Steel],
-      pitChance: 0.85, extraPits: [1, 2], towers: [1, 2], platforms: [10, 14], crumble: 0.12,
+      pitChance: 0.3, extraPits: [0, 0], towers: [1, 2], platforms: [10, 14], crumble: 0.12,
       props: { glass: [4, 6], gas: [2, 3], barrel: [3, 5], crate: [3, 5], pad: [2, 3], tnt: [1, 2], weight: [1, 2], steel: [1, 2] },
-      stepy: false, ground: { heights: "roof", runs: "whole", steps: false }, speckle: NO_SPECKLE, parapet: Mat.Brick,
+      stepy: false, ground: { heights: "roof", runs: "random", steps: true }, speckle: NO_SPECKLE, parapet: Mat.Brick,
       hazards: NO_HAZARDS, physics: EARTH,
     },
     look: {
@@ -124,7 +128,7 @@ export const THEME_DEFS = {
   junkyard: {
     rules: {
       body: Mat.Dirt, surface: Mat.Dirt, platform: [Mat.Steel, Mat.Wood, Mat.Steel], tower: Mat.Steel, bridge: [Mat.Wood, Mat.Steel],
-      pitChance: 0.55, extraPits: [0, 1], towers: [1, 2], platforms: [10, 13], crumble: 0.15,
+      pitChance: 0, extraPits: [0, 0], towers: [1, 2], platforms: [10, 13], crumble: 0.15,
       props: { barrel: [7, 10], steel: [3, 5], tnt: [1, 3], crate: [3, 5], gas: [1, 3], pad: [1, 2], glass: [0, 1], weight: [0, 1] },
       stepy: true, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.12 }, parapet: 0,
       hazards: NO_HAZARDS, physics: EARTH,
@@ -137,7 +141,7 @@ export const THEME_DEFS = {
   construction: {
     rules: {
       body: Mat.Dirt, surface: Mat.Dirt, platform: [Mat.Steel, Mat.Wood, Mat.Crumble], tower: Mat.Steel, bridge: [Mat.Steel, Mat.Wood],
-      pitChance: 0.6, extraPits: [0, 1], towers: [2, 3], platforms: [11, 15], crumble: 0.22,
+      pitChance: 0, extraPits: [0, 0], towers: [2, 3], platforms: [11, 15], crumble: 0.22,
       props: { tnt: [2, 4], weight: [2, 3], crate: [3, 5], barrel: [3, 5], gas: [1, 3], steel: [1, 3], pad: [1, 2], glass: [0, 2] },
       stepy: true, ground: { heights: "ground", runs: "random", steps: true }, speckle: NO_SPECKLE, parapet: 0,
       hazards: NO_HAZARDS, physics: EARTH,
@@ -154,7 +158,7 @@ export const THEME_DEFS = {
   testbed: {
     rules: {
       body: Mat.Dirt, surface: Mat.Sand, platform: [Mat.Ice, Mat.Mud, Mat.Rock, Mat.Wood], tower: Mat.Rock, bridge: [Mat.Ice, Mat.Wood],
-      pitChance: 0.6, extraPits: [0, 1], towers: [1, 2], platforms: [11, 14], crumble: 0.1,
+      pitChance: 0, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.1,
       props: { barrel: [4, 6], steel: [2, 4], tnt: [1, 2], crate: [3, 5], gas: [1, 3], pad: [1, 2], glass: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.15 }, parapet: 0,
       hazards: { pools: [2, 3], width: [2.5, 4], depth: [2, 3], water: 3, oil: 2, lava: 1, acid: 1 }, physics: EARTH,

@@ -14,7 +14,7 @@ import { boltLine, castBolt } from "./sim-lightning";
 import { firePrecision } from "./sim-precision";
 import { throwAway } from "./sim-items";
 
-export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
+export function fire(sim: Sim, f: Fighter, weapon: Weapon, dig = false) {
   if (f.cooldown[weapon] > 0 || (weapon !== "fist" && !sim.ruleset.weapons.enabled.includes(weapon))) return;
   if (usesAmmo(weapon) && f.ammo[weapon] <= 0) return;
   // the bat spends a hit only when it lands on a fighter (#95); the flamethrower spends its fuel in sim-fire
@@ -62,7 +62,7 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon) {
       break;
     case "fist":
       f.cooldown.fist = sim.ruleset.weapons.table.fist.cooldown;
-      swingMelee(sim, f, "fist", ox, oy, dx, dy);
+      swingMelee(sim, f, "fist", ox, oy, dx, dy, dig);
       break;
     case "grenade":
       f.cooldown.grenade = sim.ruleset.weapons.table.grenade.cooldown;
@@ -137,7 +137,7 @@ function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
 }
 
 /** Returns how many fighters the swing hit (the bat's ammo counts them, #95). */
-function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: number, dx: number, dy: number): number {
+function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: number, dx: number, dy: number, dig = false): number {
   const spec = sim.ruleset.weapons.table[weapon];
   const tuning = sim.ruleset.weapons.melee[weapon];
   const cx = ox + dx * spec.reach;
@@ -176,7 +176,11 @@ function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: n
   const chainDamage = weapon !== "fist" ? sim.ruleset.arena.chain.batDamage : f.power.heavy > 0 ? sim.ruleset.arena.chain.heavyFistDamage : 0;
   if (chainDamage > 0 && swingChains(sim, cx, cy, spec.radius, chainDamage, f.id, weapon)) hitAny = true;
   // The swing also damages static terrain just past its hit center.
-  const smashed = sim.terrain.carve(cx + dx * tuning.terrainOffset, cy + dy * tuning.terrainOffset, spec.terrainRadius, spec.terrainDamage);
+  // a digging punch (#100) carves at arm's length, harder
+  const D = sim.ruleset.arena.terrain.dig;
+  const smashed = dig
+    ? sim.terrain.carve(ox + dx * D.reach, oy + dy * D.reach, D.radius, D.damage)
+    : sim.terrain.carve(cx + dx * tuning.terrainOffset, cy + dy * tuning.terrainOffset, spec.terrainRadius, spec.terrainDamage);
   if (smashed.length) {
     sim.stats.cellsDestroyed += smashed.length;
     sim.events.push({ type: "carve", tick: sim.tick, cells: smashed });

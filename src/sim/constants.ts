@@ -295,6 +295,12 @@ export const FIRE = {
   feetChance: 0.12,
 };
 
+/**
+ * Digging (#100): a fist punch with Input.dig carves at `reach` m along the aim (the fist's own swing still lands as
+ * usual), `radius` m wide, `damage` hit points at its center falling to 0 at its edge. Dirt (36) goes in one or two.
+ */
+export const DIG = { reach: 0.85, radius: 0.6, damage: 60 };
+
 /** Crumbling cells lose this many hit points per second while stood on. */
 export const CRUMBLE_DPS = 20;
 

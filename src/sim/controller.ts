@@ -10,6 +10,7 @@ import { aimAndFire, inReach, railCanReach, sightTarget } from "./controller-aim
 import { JetpackPilot } from "./controller-jetpack";
 import { chooseCombatWeapon, playCombatChoice } from "./controller-weapons";
 import { ControllerNavigation } from "./controller-navigation";
+import { Escape } from "./controller-escape";
 import { attackWall, WallPursuit } from "./controller-wall";
 import type { Surface } from "./nav";
 import { availableRule } from "./rules";
@@ -29,6 +30,8 @@ const NO_FIRE: Input = { ...NO_INPUT };
 export class Controller {
   strategy: Strategy;
   private readonly navigation = new ControllerNavigation(this);
+  /** #100: out of a pocket (a crater, a carved hole): climb, else dig */
+  readonly escape: Escape;
   /** All controllers in the match. */
   peers: Controller[] = [];
   private nextRetarget = 0;
@@ -144,6 +147,7 @@ export class Controller {
     readonly aimNoise: number,
   ) {
     this.strategy = { target: "nearest", stance: "rush", weapons: ["shotgun", "rocket", "bat"], line: "" };
+    this.escape = new Escape(fighterId);
   }
 
   setStrategy(s: Strategy, sim: Sim) {
@@ -318,6 +322,9 @@ export class Controller {
       this.navigation.guardLiveGround(sim, me, sim.pos(me), input);
       this.navigation.guardLedge(sim, me, sim.pos(me), sim.vel(me), input);
       this.navigation.guardLiquid(sim, me, sim.pos(me), sim.vel(me), input);
+      this.escape.intoZone(sim, me, input);
+      const tf = this.targetId >= 0 ? sim.fighters[this.targetId] : undefined;
+      this.escape.breakHops(sim, me, input, tf && tf.alive && !tf.removed ? sim.pos(tf).x : null);
       // no idle gaps (#69): a target we can neither reach nor shoot is left for one we can
       const target = this.targetId >= 0 ? sim.fighters[this.targetId]! : null;
       if (this.navigation.watchIdle(sim, me, input, target) && target && sim.alive().length > 2 && me.surface >= 0 && target.surface >= 0 &&
@@ -482,6 +489,8 @@ export class Controller {
       this.nextRetarget = 0;
       this.noReach = 0;
     }
+    // trapped in a pocket (#100): climb or dig out toward open floor, unless there is a shot to take from here
+    if (!flying && !choice?.shot && this.escape.act(sim, me, input)) return input;
     // stranded (#88): no route and nothing that reaches - dig toward the target through what is in the way
     const dig = !flying && !choice?.shot ? this.navigation.tunnel(sim, me, target) : null;
     if (dig) {

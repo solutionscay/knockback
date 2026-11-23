@@ -220,5 +220,5 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     if (++f.scope < sim.ruleset.weapons.table.sniper.aimTicks) return;
   }
   f.scope = 0;
-  if (firing) fire(sim, f, weapon);
+  if (firing) fire(sim, f, weapon, !!inp.dig);
 }

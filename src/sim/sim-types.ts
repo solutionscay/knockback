@@ -128,6 +128,8 @@ export interface Input {
   fire: boolean;
   /** Drop the carried weapon (#95): it stays on the floor with its ammo; fists in hand. */
   drop?: boolean;
+  /** #100: a fist punch that digs (arena.terrain.dig: carves at arm's length, harder); the house bots dig out with it */
+  dig?: boolean;
 }
 
 export const NO_INPUT: Input = { move: 0, jump: false, aimX: 1, aimY: 0, weapon: null, fire: false };
