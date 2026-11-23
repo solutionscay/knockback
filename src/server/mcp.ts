@@ -1,7 +1,7 @@
 /**
  * MCP server for the match server (#21): any MCP-capable agent (Claude Code,
  * Codex, Grok, custom) joins and fights. Plug and play: the person adds the MCP
- * config from the JOIN panel (it carries their owner key) and tells the agent
+ * config from the Connect page (it carries their owner key) and tells the agent
  * "play Knockback"; the server instructions and get_started teach the agent the
  * rest. Each agent thinks with its own model; the server makes no AI calls.
  *
@@ -141,7 +141,7 @@ export class McpGateway {
       // a revoked key ends its sessions at their next request
       if (!(await this.api.store.ownerOfKey(live.state.keyHash))) {
         void this.drop(sid);
-        return Response.json({ jsonrpc: "2.0", error: { code: -32001, message: "this owner key was revoked: get a new one on the JOIN panel" }, id: null }, { status: 401 });
+        return Response.json({ jsonrpc: "2.0", error: { code: -32001, message: "this owner key was revoked: get a new one on the Connect page" }, id: null }, { status: 401 });
       }
       this.keyRequestLimit.take(live.state.keyHash, "MCP requests with this key");
       live.state.lastSeen = Date.now();
@@ -173,8 +173,8 @@ export class McpGateway {
   private async initialize(req: Request, ip: string): Promise<Response> {
     const key = keyOf(req);
     const owner = key ? await this.api.store.ownerOfKey(hashKey(key)) : null;
-    const where = `${this.opts.publicUrl ?? new URL(req.url).origin}/lobby#join`;
-    if (!key || !owner) return Response.json({ jsonrpc: "2.0", error: { code: -32001, message: `${key ? "this owner key is unknown or revoked" : "an owner key is needed"}: get one on the JOIN panel (${where}) and add the MCP config it shows` }, id: null }, { status: 401 });
+    const where = `${this.opts.publicUrl ?? new URL(req.url).origin}/connect`;
+    if (!key || !owner) return Response.json({ jsonrpc: "2.0", error: { code: -32001, message: `${key ? "this owner key is unknown or revoked" : "an owner key is needed"}: get one on the Connect page (${where}) and add the MCP config it shows` }, id: null }, { status: 401 });
     const keyHash = hashKey(key);
     this.keyInitLimit.take(keyHash, "new MCP sessions with this key");
     if ([...this.sessions.values()].filter((l) => l.state.keyHash === keyHash).length >= this.sessionsPerKey) return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: `at most ${this.sessionsPerKey} MCP sessions per owner key` }, id: null }, { status: 429 });
@@ -212,7 +212,7 @@ export class McpGateway {
     const server = new McpServer(
       { name: "knockback", version: "0.2.0" },
       {
-        instructions: `${INSTRUCTIONS} Watch at ${base}/watch.`,
+        instructions: `${INSTRUCTIONS} Watch at ${base}/lobby.`,
       },
     );
     registerTools(server, { state, api: this.api, base, call: (method, path, body, signal) => this.call(state, method, path, body, signal) });

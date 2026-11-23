@@ -1,56 +1,32 @@
 /**
- * /agent/:name (#22): the agent's bot, name, owner and model, its soul summary, one line of record and style, and its
- * recent matches. Data: GET /api/agents/:name.
+ * /agent/:name (#22, #106): where a leaderboard row goes. The agent's plush bot, name, model and record, then its
+ * rounds with their replays. Data: GET /api/agents/:name.
  */
 import { badge } from "./badge";
-import { bot, cleanIdentity, colorVars, head, HOUSE_LOOK } from "./bots";
-import { ago, cap, ordinal } from "./data";
-import { ctaCard, mcpUrl } from "./cta";
+import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
+import { cap, ordinal } from "./data";
 import { getJson, html, mount } from "./dom";
+import { when } from "./replays";
 import type { Identity } from "../sim/identity";
 
 interface Profile {
   name: string;
   identity: Identity | null;
-  weapon: string;
   label: string;
-  owner: string;
-  summary: string;
-  catchphrase: string;
-  signature: string;
-  stats: { matches: number; won: number; lost: number; rounds: number; roundsWon: number; planChanges: number; autopilot: number };
-  style: { stance: string | null; target: string | null; weapon: string | null; build: string | null };
-  matches: { match: string; seat: number; status: string; createdAt: string; fighter: string | null; place: number | null; wins: number[] | null; theme: string; record: string | null; rivals: { name: string; identity: Identity | null }[]; autopilot: boolean; builds: string[] }[];
+  stats: { rounds: number; roundsWon: number };
+  matches: { match: string; status: string; createdAt: string; place: number | null; theme: string }[];
   now: { match: string; status: string } | null;
 }
 
 export async function agentPage(root: HTMLElement, name: string) {
-  mount(root, html`<div class="wrap"><div class="meta">Loading ${name}…</div></div>`);
+  mount(root, html`<div class="wrap"><div class="empty">Loading…</div></div>`);
   const r = await getJson<Profile>(`/api/agents/${encodeURIComponent(name)}`);
-  if (!r.ok) {
-    if (r.status !== 404) return mount(root, html`<div class="wrap"><div class="wbar"><span class="meta">Couldn't load this agent</span></div><div class="card empty">The server did not answer. <a href="/agent/${encodeURIComponent(name)}">Try again</a>.</div></div>`);
-    const mcp = await mcpUrl();
-    return mount(
-      root,
-      html`<div class="wrap agent">
-        <section class="ahead">
-          ${bot({ ...HOUSE_LOOK, name }, "sleepy")}
-          <div class="b">
-            <div class="nm">${name}</div>
-            <div class="line">No agent called ${name} has played on this engine yet. An agent gets its page when it joins the Arena: its bot, owner, model and every round it plays.</div>
-            <div class="by"><a class="btn small" href="/leaderboard">Leaderboard</a><a class="btn small ghost" href="/models">Models</a></div>
-          </div>
-        </section>
-        ${ctaCard(mcp, `Is ${name} yours? Bring it in with these steps (or pick a name of your own).`)}
-      </div>`,
-    );
-  }
+  if (!r.ok) return mount(root, html`<div class="wrap"><div class="empty">${r.status === 404 ? `No agent called ${name} yet.` : "Couldn't load this agent."}</div></div>`);
   const p = r.data;
   const id = p.identity ? cleanIdentity(p.identity, 0) : { ...HOUSE_LOOK, name: p.name };
   const st = p.stats;
-  const rate = st.rounds ? Math.round((st.roundsWon / st.rounds) * 100) : 0;
   document.title = `${p.name} · Knockback`;
-  const style = [p.style.stance, p.style.target && `target ${p.style.target}`, p.style.weapon, p.style.build && `build ${p.style.build}`].filter(Boolean).join(" · ");
+  const done = p.matches.filter((m) => m.status === "over");
   mount(
     root,
     html`<div class="wrap agent" style="${colorVars(p.identity ? id.color : null)}">
@@ -58,27 +34,13 @@ export async function agentPage(root: HTMLElement, name: string) {
         ${bot(id, "cocky")}
         <div class="b">
           <div class="nm">${p.name}</div>
-          ${p.owner ? html`<div class="meta">owner ${p.owner}</div>` : ""}
-          <div class="by">${badge(p.label, "lg")}${p.identity && id.name !== p.name ? html`<span>fights as <b style="color:var(--ci)">${id.name}</b></span>` : ""}${p.now ? html`<a class="btn small" href="/watch/${p.now.match}">${p.now.status === "running" ? "Fighting now · watch" : "In the queue"}</a>` : ""}</div>
-          <div class="line">${st.won}–${st.lost} in matches · ${rate}% of ${st.rounds} rounds${st.planChanges ? ` · ${st.planChanges} plan changes` : ""}${st.autopilot ? ` · ${st.autopilot} on autopilot` : ""}${style ? ` · ${style}` : ""}</div>
-          ${p.summary ? html`<p class="persona">${p.summary}</p>` : ""}
+          <div class="by">${badge(p.label, "lg")}${p.now?.status === "running" ? html`<a class="btn small" href="/watch/${p.now.match}">Fighting now</a>` : ""}</div>
+          <div class="line">${st.roundsWon} won of ${st.rounds} round${st.rounds === 1 ? "" : "s"}</div>
         </div>
       </section>
-      ${
-        p.matches.length
-          ? html`<table class="hist"><tbody>${p.matches.map(
-              (m) => html`<tr>
-                <td><span class="place${m.place === 1 ? " p1" : ""}">${m.place ? ordinal(m.place) : m.status === "running" ? "Live" : m.status === "open" ? "Queue" : "–"}</span></td>
-                <td>${cap(m.theme) || "Match"}</td>
-                <td class="rv">${m.rivals.map((r, i) => html`<span title="${r.name}">${head(r.identity ? cleanIdentity(r.identity, i + 1) : { ...HOUSE_LOOK, name: r.name })}</span>`)}</td>
-                <td class="dim">${ago(m.createdAt)}</td>
-                <td class="dim">${m.builds.length ? `build ${m.builds.join(" / ")}` : ""}</td>
-                <td>${m.wins ? `${m.wins[m.seat]} round${m.wins[m.seat] === 1 ? "" : "s"}` : ""}${m.autopilot ? html` <span class="tag">AUTOPILOT</span>` : ""}</td>
-                <td style="text-align:right">${m.status === "over" ? html`<a class="rp" href="/replay/${m.match}">Replay</a>` : m.status === "running" || m.status === "open" ? html`<a class="rp" href="/watch/${m.match}">Watch</a>` : ""}</td>
-              </tr>`,
-            )}</tbody></table>`
-          : html`<div class="card empty">${p.now ? html`No finished round yet: ${p.name} is ${p.now.status === "running" ? "fighting now" : "in the queue"}. <a href="/watch/${p.now.match}">Watch</a>` : "No finished round on this engine yet. Its rounds show up here with their replays."}</div>`
-      }
+      ${done.length
+        ? html`<div class="rlist">${done.map((m) => html`<a class="rrow arow" href="/replay/${m.match}"><span class="place${m.place === 1 ? " p1" : ""}">${m.place ? ordinal(m.place) : "–"}</span><span>${cap(m.theme)}</span><span class="dim">${when(m.createdAt)}</span></a>`)}</div>`
+        : html`<div class="empty">No rounds yet.</div>`}
     </div>`,
   );
 }

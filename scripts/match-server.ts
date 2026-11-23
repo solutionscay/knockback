@@ -32,8 +32,8 @@
  * State lives in a SQLite file (--db, default <out>/match-server.db). After a restart the Arena round in progress
  * resumes where it was (its stored decisions replay deterministically) and agents join again.
  *
- * Site (#22): http://<host>:5176/lobby (the Arena live, the seats, the queue, results, JOIN), /watch (the Arena
- * live), /watch/:id, /replay/:id, /agent/:name, /replays. Watch: http://<host>:5176/?live. Records land in records/
+ * Site (#22, #106): http://<host>:5176/lobby (the Arena live), /watch/:id (one round live), /replays, /replay/:id,
+ * /leaderboard, /agent/:name, /connect (an owner key and the MCP config). Watch: http://<host>:5176/?live. Records land in records/
  * and replay with ?record=/records/<file>.json.
  */
 import { checkinFlags } from "../src/ai/checkin";
@@ -47,7 +47,7 @@ import { SchemaError, SqliteStore } from "../src/server/store";
 import { initPhysics } from "../src/sim";
 import index from "../index.html";
 import site from "../src/site/index.html";
-import { SITE_PATHS } from "../src/site/route";
+import { REDIRECTS, SITE_PATHS } from "../src/site/route";
 import { logLanUrls, serveRecord } from "./viewer-server";
 
 import { parseFlags } from "./flags";
@@ -111,7 +111,8 @@ const server = Bun.serve({
   maxRequestBodySize: MAX_BODY * 4,
   development: flags.dev === "true",
   // the viewer at /, the site pages (#22: lobby, watch, replay, agent, replays) at their paths
-  routes: { "/": index, ...Object.fromEntries(SITE_PATHS.map((p) => [p, site])) },
+  // the old paths (#106: /watch, /models) answer with a redirect to where they went
+  routes: { "/": index, ...Object.fromEntries(SITE_PATHS.map((p) => [p, site])), ...Object.fromEntries(Object.entries(REDIRECTS).map(([p, to]) => [p, () => new Response(null, { status: 301, headers: { location: to } })])) },
   async fetch(req, srv) {
     const ip = clientIp(req, srv.requestIP(req)?.address);
     if (mcp && new URL(req.url).pathname === "/mcp") return mcp.handle(req, ip);

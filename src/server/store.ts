@@ -236,11 +236,6 @@ export interface MatchStore {
    * only warm-up or featured rounds.
    */
   listRecords(limit?: number, before?: number, tier?: Exclude<RoundTier, "bot-only">): Promise<RecordRow[]>;
-  /**
-   * The house bots' own rounds (bot-only) on this engine, newest first (#96): only for the house-bot baseline's
-   * aggregates on /models while no agent has played. Never listed or served.
-   */
-  houseRecords(limit?: number): Promise<RecordRow[]>;
   /** the record row of a public path (/records/<file>.json), any engine; null when no match saved it */
   recordByPath(path: string): Promise<RecordRow | null>;
   /**
@@ -675,9 +670,6 @@ export class SqliteStore implements MatchStore {
     const where = `r.tier IN (${tiers.map(() => "?").join(",")}) AND m.engine = ?${before !== undefined ? " AND r.created_at < ?" : ""}`;
     const args = [...tiers, this.engine, ...(before !== undefined ? [before] : []), limit];
     return (this.db.query(`SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id WHERE ${where} ORDER BY r.created_at DESC, r.rowid DESC LIMIT ?`).all(...(args as never[])) as Row[]).map(recordOf);
-  }
-  async houseRecords(limit = 200) {
-    return (this.db.query("SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id WHERE r.tier = 'bot-only' AND m.engine = ? ORDER BY r.created_at DESC, r.rowid DESC LIMIT ?").all(this.engine, limit) as Row[]).map(recordOf);
   }
   async recordByPath(path: string) {
     const r = this.db.query("SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id WHERE r.path = ?").get(path) as Row | null;
