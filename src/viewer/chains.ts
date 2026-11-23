@@ -13,7 +13,7 @@
  *                             the platform's anchor cell
  * View only: reads the Sim, never writes it.
  */
-import { Container, Graphics, Texture, TilingSprite } from "pixi.js";
+import { Container, Graphics, TilingSprite } from "pixi.js";
 import { CELL } from "../sim/grid";
 import type { Sim } from "../sim/sim";
 import type { Chain } from "../sim/sim-chains";
@@ -22,34 +22,14 @@ import type { Entity } from "../sim/sim-types";
 import type { PieceCell } from "../sim/terrain";
 import type { CameraFrame } from "./scene-camera";
 import type { XformAt } from "./scene";
+import { worldTile } from "./world-art";
 
-const LINK_W = 0.14; // meters
-const LINK_H = 0.32; // meters per link
-const TEX_W = 28;
-const TEX_H = 64;
+/** meters per link (the plush chain tile is one link tall) */
+const LINK_H = 0.32;
 /** the swaying end of a broken chain (meters) */
 const DANGLE = 1.6;
 /** the stub left on the platform (meters) */
 const STUB = 0.55;
-
-let linkTexture: Texture | null = null;
-/** One chain link, drawn once on a canvas (the same look as the old per-link outlines). */
-function chainTexture(): Texture {
-  if (linkTexture) return linkTexture;
-  const cv = document.createElement("canvas");
-  cv.width = TEX_W;
-  cv.height = TEX_H;
-  const c = cv.getContext("2d")!;
-  const k = TEX_W / LINK_W; // px per meter
-  c.strokeStyle = "rgba(138,138,150,0.8)";
-  c.lineWidth = 0.035 * k;
-  const w = 0.1 * k, h = 0.22 * k, r = 0.05 * k, x = (TEX_W - w) / 2, y = 0.03 * k;
-  c.beginPath();
-  c.roundRect(x, y, w, h, r);
-  c.stroke();
-  linkTexture = Texture.from(cv);
-  return linkTexture;
-}
 
 interface ChainSprites {
   ch: Chain;
@@ -74,10 +54,12 @@ export class ChainView {
   private chains: ChainSprites[] = [];
 
   constructor(private readonly sim: Sim) {
-    const tex = chainTexture();
+    // one plush link per tile (#87, tools/art/plush_world.py): 0.14 m wide, a link every 0.32 m
+    const tile = worldTile("chain");
     const sprite = () => {
-      const s = new TilingSprite({ texture: tex, width: LINK_W, height: 1 });
-      s.tileScale.set(LINK_W / TEX_W, LINK_H / TEX_H);
+      const s = new TilingSprite({ texture: tile.texture, width: tile.w, height: 1 });
+      s.tileScale.set(tile.w / tile.texture.width, tile.h / tile.texture.height);
+      s.alpha = 0.9;
       s.anchor.set(0.5, 0);
       this.container.addChild(s);
       return s;
