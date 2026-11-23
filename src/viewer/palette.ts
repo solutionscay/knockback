@@ -1,50 +1,31 @@
 /**
- * Palettes per theme: the sky and hills, and each material's color (the debris of broken cells). The terrain itself is
- * plush art per theme (#92, level-art.ts; tools/art/plush_level.py holds the same colors and the top edges').
+ * Palettes per theme: the sky and hills, and each material's color (the debris of broken cells). Since #94 they are
+ * the themes' data (src/sim/themes.ts, `look`); the terrain itself is plush art per theme (#92, level-art.ts).
  */
 import { contrast, fromOklch, oklch } from "../sim/color";
-import { Mat } from "../sim/grid";
-import type { Theme } from "../sim/level-config";
+import { ALL_THEMES, MAT_NAMES, THEME_DEFS, themeMatColors, type MatName, type Theme } from "../sim/themes";
 
 export interface Palette {
   sky: [number, number];
   hills: [number, number];
+  /** Mat ID -> color */
   mat: Record<number, number>;
 }
 
-const BASE: Record<number, number> = {
-  [Mat.Dirt]: 0x6b5a45,
-  [Mat.Rock]: 0x6f7480,
-  [Mat.Wood]: 0x9a6a3c,
-  [Mat.Steel]: 0x56657e,
-  [Mat.Concrete]: 0x8a8f99,
-  [Mat.Crumble]: 0xb59a6a,
-  [Mat.Bedrock]: 0x1c1a26,
-  [Mat.Brick]: 0x8e4a3a,
-};
+function palette(t: Theme): Palette {
+  const look = THEME_DEFS[t].look;
+  const colors = themeMatColors(t);
+  const mat: Record<number, number> = {};
+  MAT_NAMES.forEach((n, id) => {
+    if (n) mat[id] = colors[n as MatName];
+  });
+  return { sky: [...look.sky] as [number, number], hills: [...look.hills] as [number, number], mat };
+}
 
-export const PALETTES: Record<Theme, Palette> = {
-  warehouse: {
-    sky: [0x111522, 0x262a3d],
-    hills: [0x1d2234, 0x252b40],
-    mat: { ...BASE, [Mat.Concrete]: 0x7c818c, [Mat.Steel]: 0x4f6a8c },
-  },
-  rooftop: {
-    sky: [0x161b38, 0x5a3550],
-    hills: [0x2a2547, 0x352b52],
-    mat: { ...BASE, [Mat.Concrete]: 0x9a9aa4 },
-  },
-  junkyard: {
-    sky: [0x1a1a22, 0x4a3a2c],
-    hills: [0x2a2620, 0x342e26],
-    mat: { ...BASE, [Mat.Dirt]: 0x5e4d38, [Mat.Steel]: 0x7a5a48 },
-  },
-  construction: {
-    sky: [0x14192c, 0x40364a],
-    hills: [0x22253a, 0x2b2e45],
-    mat: { ...BASE, [Mat.Steel]: 0xc76a2a, [Mat.Dirt]: 0x705a40 },
-  },
-};
+export const PALETTES: Record<Theme, Palette> = Object.fromEntries(ALL_THEMES.map((t) => [t, palette(t)])) as Record<Theme, Palette>;
+
+/** #94: each liquid's color (splashes, the fallback before its art loads), by grid.ts Liquid. */
+export const LIQUID_COLOR: readonly number[] = [0, 0x3d93dc, 0x2c2240, 0xe2481a, 0x6ad83a];
 
 export function shade(color: number, k: number): number {
   const r = Math.min(255, Math.max(0, ((color >> 16) & 255) * k));

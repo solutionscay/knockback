@@ -1,6 +1,7 @@
 import { arenaQuarter } from "./level-spawns";
 import type { Controller } from "./controller";
-import { runUp, type Link, type NavGraph, type Surface } from "./nav";
+import { Liquid } from "./grid";
+import { hazardous, LIQUID_COST, runUp, type Link, type NavGraph, type Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
@@ -298,7 +299,8 @@ export class ControllerNavigation {
     const tp = sim.pos(target);
     const [zl, zr] = this.zoneBounds(sim);
     const zonePenalty = (x: number) => (x < zl ? 40 + (zl - x) * 6 : x > zr ? 40 + (x - zr) * 6 : 0);
-    const fragilePenalty = (s: number) => (nav.surfaces[s]?.fragile ? 3 : 0) + (this.isBad(sim, s) ? 30 : 0);
+    // #94: a pool floor costs its liquid (lava and acid: never a place to stand)
+    const fragilePenalty = (s: number) => (nav.surfaces[s]?.fragile ? 3 : 0) + LIQUID_COST[nav.surfaces[s]?.liquid ?? 0]! + (this.isBad(sim, s) ? 30 : 0);
     if (flank) {
       // Step around the obstruction at a different x before trying to breach again.
       const x = tp.x + flank * 4.5;
@@ -781,6 +783,43 @@ export class ControllerNavigation {
         input.jump = false;
         return;
       }
+    }
+  }
+
+  /**
+   * Liquids (#94), on the final input. Afloat in water: swim strokes (jump) to keep the head up and reach a rim; in
+   * lava or acid with feet down: jump out at once. On the ground, its own feet never walk it off an edge into lava or
+   * acid unless the link it is taking starts there (a jump across a pool takes off from the rim).
+   */
+  guardLiquid(sim: Sim, me: Fighter, mp: { x: number; y: number }, mv: { x: number; y: number }, input: Input) {
+    const g = sim.grid;
+    const feet = sim.feetY(me);
+    const atBody = g.liquidAt(mp.x, mp.y);
+    const atFeet = g.liquidAt(mp.x, feet + 0.1);
+    if (!me.grounded && (atBody === Liquid.Water || atFeet === Liquid.Water)) {
+      if (mv.y < 1) input.jump = true;
+      return;
+    }
+    if (me.grounded && (hazardous(atFeet) || hazardous(atBody))) {
+      input.jump = true;
+      return;
+    }
+    if (!me.grounded || me.surface < 0 || input.move === 0) return;
+    const s = sim.nav.surfaces[me.surface];
+    if (!s || s.liquid) return;
+    const dir = input.move > 0 ? 1 : -1;
+    const edge = dir > 0 ? s.x1 : s.x0;
+    if ((edge - mp.x) * dir > 0.6 + Math.max(0, mv.x * dir) * 0.1) return;
+    const link = this.edgeLink ?? this.activeLink;
+    if (link && link.from === s.id && Math.sign(link.landX - link.takeoffX) === dir && link.kind === "jump") return;
+    const below = g.cy(s.y - 0.01);
+    for (let cy = below; cy >= Math.max(0, below - 6); cy--) {
+      const cx = g.cx(edge + dir * 0.3);
+      if (hazardous(g.liqAt(cx, cy))) {
+        input.move = 0;
+        return;
+      }
+      if (g.solid(cx, cy)) return;
     }
   }
 

@@ -12,6 +12,7 @@ import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { G, groups } from "./constants";
 import { dcos, dsin } from "./dmath";
 import { CELL, F_ANCHOR, Grid, greedyRects, Mat, MAT_DENSITY } from "./grid";
+import { moveSolidOnGrid } from "./liquid-flow";
 
 export const CHUNK = 16;
 
@@ -99,6 +100,23 @@ export class Terrain {
     this.touch(cx, cy);
     this.supportDirty = true;
     return true;
+  }
+
+  /** #94: place a static cell (lava cooled to rock). */
+  placeCell(cx: number, cy: number, mat: number) {
+    if (!this.grid.inside(cx, cy)) return;
+    this.grid.set(cx, cy, mat);
+    this.touch(cx, cy);
+    this.supportDirty = true;
+  }
+
+  /** #94: a static cell moved from grid index `from` to `to` (sand falling; a liquid in `to` takes `from`'s place). */
+  moveCell(from: number, to: number) {
+    moveSolidOnGrid(this.grid, from, to);
+    const c = this.grid.cols;
+    this.touch(from % c, Math.floor(from / c));
+    this.touch(to % c, Math.floor(to / c));
+    this.supportDirty = true;
   }
 
   /** Damage one static cell. Returns true if it broke. */

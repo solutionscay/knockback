@@ -14,12 +14,39 @@ export const enum Mat {
   Crumble = 6,
   Bedrock = 7,
   Brick = 8,
+  /** #94: soft, crumbles fast, and falls into a hole carved under it */
+  Sand = 9,
+  /** #94: slows whoever stands on it */
+  Mud = 10,
+  /** #94: slippery, and shatters (few hit points) */
+  Ice = 11,
 }
 
+/** The highest material ID (validation and the viewer's tables). */
+export const MAT_MAX = Mat.Ice;
+
 /** Hit points per material. Bedrock never breaks. */
-export const MAT_HP: readonly number[] = [0, 36, 70, 20, 85, 40, 24, Infinity, 32];
+export const MAT_HP: readonly number[] = [0, 36, 70, 20, 85, 40, 24, Infinity, 32, 12, 30, 16];
 /** Density of loose pieces per material. */
-export const MAT_DENSITY: readonly number[] = [0, 1.6, 2.4, 0.7, 3.2, 2.2, 0.8, 3, 1.9];
+export const MAT_DENSITY: readonly number[] = [0, 1.6, 2.4, 0.7, 3.2, 2.2, 0.8, 3, 1.9, 1.5, 1.8, 0.9];
+
+/**
+ * Liquids (#94): a layer over the empty cells (`Grid.liq`), never solid (no collider: shots and bodies pass through).
+ * They settle and spill into carved terrain (sim-liquid.ts).
+ */
+export const enum Liquid {
+  None = 0,
+  /** slows, floats a fighter (sinks slowly, can swim out), puts out fire */
+  Water = 1,
+  /** slippery; fire or a blast lights it into a burning pool */
+  Oil = 2,
+  /** damage over time, sets fighters alight, melts the terrain beside it, ignites oil */
+  Lava = 3,
+  /** damage over time, melts the terrain beside it (cold: lights nothing) */
+  Acid = 4,
+}
+export const LIQUID_NAMES = ["none", "water", "oil", "lava", "acid"] as const;
+export type LiquidName = Exclude<(typeof LIQUID_NAMES)[number], "none">;
 
 export const F_ANCHOR = 1; // holds up whatever is connected to it (hanging platforms)
 export const F_BRIDGE = 2;
@@ -34,6 +61,8 @@ export class Grid {
   readonly mat: Uint8Array;
   readonly hp: Float64Array;
   readonly flags: Uint8Array;
+  /** #94: the liquid in each (empty) cell, a Liquid */
+  readonly liq: Uint8Array;
 
   constructor(
     readonly cols: number,
@@ -46,6 +75,21 @@ export class Grid {
     this.mat = new Uint8Array(cols * rows);
     this.hp = new Float64Array(cols * rows);
     this.flags = new Uint8Array(cols * rows);
+    this.liq = new Uint8Array(cols * rows);
+  }
+
+  liqAt(cx: number, cy: number): number {
+    return this.inside(cx, cy) ? this.liq[cy * this.cols + cx]! : Liquid.None;
+  }
+
+  /** The liquid at a world point (None outside the grid). */
+  liquidAt(x: number, y: number): number {
+    return this.liqAt(this.cx(x), this.cy(y));
+  }
+
+  hasLiquid(): boolean {
+    for (let i = 0; i < this.liq.length; i++) if (this.liq[i]) return true;
+    return false;
   }
 
   get width() {
@@ -74,6 +118,7 @@ export class Grid {
     this.mat[i] = m;
     this.hp[i] = m === Mat.Bedrock ? Infinity : this.hitPoints[m]!;
     this.flags[i] = m === Mat.Empty ? 0 : flags;
+    if (m !== Mat.Empty) this.liq[i] = Liquid.None;
   }
 
   clear(cx: number, cy: number) {
@@ -127,6 +172,7 @@ export class Grid {
     g.mat.set(this.mat);
     g.hp.set(this.hp);
     g.flags.set(this.flags);
+    g.liq.set(this.liq);
     return g;
   }
 }

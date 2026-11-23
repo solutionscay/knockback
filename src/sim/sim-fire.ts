@@ -23,6 +23,7 @@ import type { Sim } from "./sim";
 import { chainAtCell, damageChain, shootChains } from "./sim-chains";
 import { catchFighters, cellCanCatch, igniteCell, igniteEntityAt, igniteFighter, ignitePieceCell, igniteProp, propFlammable } from "./sim-ignite";
 import { hitProp } from "./sim-objects";
+import { igniteOilNear } from "./sim-liquid";
 import { damageTerrainCell, prunePiece } from "./sim-terrain";
 import type { Entity, Fighter } from "./sim-types";
 import { pieceCellWorld, type PieceCell } from "./terrain";
@@ -56,6 +57,8 @@ export function fireFlamethrower(sim: Sim, f: Fighter, ox: number, oy: number, d
     const hit = sim.raycast(ox, oy, rx, ry, W.range, f.entity.collider);
     const dist = hit ? hit.dist : W.range;
     shootChains(sim, ox, oy, ox + rx * dist, oy + ry * dist, W.chainDamage, f.id, "fire");
+    // #94: the flame lights the oil it passes over (no RNG drawn on a level without liquids)
+    if (sim.liquids.on) for (let d = 0.5; d <= dist; d += 0.5) igniteOilNear(sim, ox + rx * d, oy + ry * d, 0.3, f.id);
     if (!hit) continue;
     const hx = ox + rx * dist;
     const hy = oy + ry * dist;

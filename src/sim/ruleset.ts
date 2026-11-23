@@ -1,7 +1,7 @@
 import { SUPPLY } from "./constants";
 import { CLOSE_ARMORY, RULESET_DEFAULTS } from "./ruleset-defaults";
-import { CLOSE_SPAWNS } from "./level-config";
-import { Mat } from "./grid";
+import { ALL_THEMES, CLOSE_SPAWNS } from "./level-config";
+import { Mat, MAT_MAX } from "./grid";
 import { isPickupWeapon, WEAPON_LIST, type ItemType, type Weapon } from "./sim-types";
 
 type Wide<T> = T extends number ? number : T extends boolean ? boolean
@@ -23,13 +23,13 @@ const lists: Readonly<Record<string, readonly (string | number)[]>> = {
   "pickups.armory.spread.powerWeapons": WEAPON_LIST,
   "tactics.stances.longGuns": WEAPON_LIST,
   "pickups.enabled": RULESET_DEFAULTS.pickups.enabled,
-  "arena.enabledThemes": RULESET_DEFAULTS.arena.enabledThemes,
-  "fire.materials": [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Brick],
+  "arena.enabledThemes": ALL_THEMES,
+  "fire.materials": [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Brick, Mat.Sand, Mat.Mud, Mat.Ice],
   "fire.props": RULESET_DEFAULTS.fire.props,
 };
 const signed = new Set(["hpBonus", "ringOutY", "bottom", "minHeight", "groundMin", "desperateBelow", "confidentAt"]);
-const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density"]);
-const ranges = new Set(["halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
+const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density", "width"]);
+const ranges = new Set(["pools", "width", "depth", "halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
 const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "skyDrops", "skyDropTicks", "betweenCaches", "holdTicks", "firstTick"]);
 const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "boltCooldown", "pulseTicks", "interval", "chargeTicks", "aimTicks", "viewStep", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
@@ -47,8 +47,10 @@ function canonical(base: unknown, value: unknown, path = ""): unknown {
       if (value.length === 0 && (path === "weapons.enabled" || path === "arena.enabledThemes")) return fail("select at least one");
       return Object.freeze(order.filter(v => value.includes(v)));
     }
-    if (value.length !== base.length) return fail(`expected ${base.length} entries`);
-    const row = base.map((v, i) => canonical(v, value[i], `${path}.${i}`));
+    // #94 added materials: a ruleset saved before them (a match record) gets their default hit points and density
+    const list: unknown[] = (path === "arena.terrain.hitPoints" || path === "arena.terrain.density") && value.length < base.length ? [...value, ...base.slice(value.length)] : value;
+    if (list.length !== base.length) return fail(`expected ${base.length} entries`);
+    const row = base.map((v, i) => canonical(v, list[i], `${path}.${i}`));
     const field = path.split(".").at(-1)!;
     if ((ranges.has(field) || path.includes(".themes.") && path.includes(".props.")) && typeof row[0] === "number" && typeof row[1] === "number" && row[0] > row[1]) return fail("minimum must be at most maximum");
     return Object.freeze(row);
@@ -65,8 +67,9 @@ function canonical(base: unknown, value: unknown, path = ""): unknown {
     const parts = path.split(".");
     const leaf = parts.at(-1)!;
     const member = /^\d+$/.test(leaf) ? parts.at(-2)! : leaf;
-    const material = /\.themes\.[^.]+\.(body|surface|tower|platform|bridge)(?:\.|$)/.test(path);
-    if (material && (!Number.isInteger(value) || value < Mat.Dirt || value > Mat.Brick || value === Mat.Bedrock)) return fail("expected a destructible material ID (1–6 or 8)");
+    const material = /\.themes\.[^.]+\.(body|surface|tower|platform|bridge|speckle\.on|speckle\.mat)(?:\.|$)/.test(path);
+    if (material && (!Number.isInteger(value) || value < Mat.Dirt || value > MAT_MAX || value === Mat.Bedrock)) return fail(`expected a destructible material ID (1–6 or 8–${MAT_MAX})`);
+    if (/\.themes\.[^.]+\.parapet$/.test(path) && (!Number.isInteger(value) || value < 0 || value > MAT_MAX || value === Mat.Bedrock)) return fail("expected 0 (none) or a destructible material ID");
     const whole = strictlyPositive.has(leaf) || zeroAllowed.has(leaf) || integral.test(leaf) || path.includes(".themes.") && path.includes(".props.") || /^\d+$/.test(leaf) && ranges.has(member) && !realArrays.has(member);
     if (whole && !Number.isInteger(value)) return fail("expected a whole number");
     const low = signed.has(member) || ["groundHeight", "rooftopHeight", "groundStep"].includes(member) ? -1_000 : strictlyPositive.has(leaf) ? 1 : 0;
@@ -145,6 +148,20 @@ export function validateRuleset(input: unknown): Ruleset {
   require(B.caps.knockbackTaken > 0 && B.caps.knockbackTaken <= P.heavy.kbMul && B.caps.density >= P.heavy.densityMul, "builds.caps", "knockbackTaken must be positive and at most the Heavy power-up's kbMul, density at least its densityMul");
   require(B.caps.damage >= P.damage.mul && B.caps.knockbackDealt >= P.damage.kbMul, "builds.caps", "damage and knockbackDealt must be at least the Damage power-up's mul and kbMul");
   require(r.tactics.weapons.lobCheckStep >= 0.05, "tactics.weapons.lobCheckStep", "expected at least 0.05 seconds");
+  // #94: themes as data
+  for (const [name, t] of Object.entries(r.arena.themes)) {
+    const at = `arena.themes.${name}`;
+    require(t.ground.heights === "ground" || t.ground.heights === "roof", `${at}.ground.heights`, "expected ground or roof");
+    require(t.ground.runs === "random" || t.ground.runs === "whole", `${at}.ground.runs`, "expected random or whole");
+    require(t.physics.gravity >= 0.25 && t.physics.gravity <= 2 && t.physics.friction >= 0.1 && t.physics.friction <= 2, `${at}.physics`, "gravity expected 0.25 to 2, friction 0.1 to 2");
+    require(t.speckle.chance <= 1, `${at}.speckle.chance`, "expected 0 to 1");
+    const H = t.hazards;
+    require(H.pools[1] === 0 || H.water + H.oil + H.lava + H.acid > 0, `${at}.hazards`, "pools need a liquid with positive weight");
+    require(H.width[0] >= 1 && H.width[1] <= 8 && H.depth[0] >= 1 && H.depth[1] <= 6 && H.pools[1] <= 6, `${at}.hazards`, "width expected 1 to 8 meters, depth 1 to 6 cells, at most 6 pools");
+  }
+  const L = r.liquids;
+  require(L.flowTicks >= 1 && L.water.speedMul > 0 && L.water.speedMul <= 1 && L.mud.speedMul > 0 && L.mud.speedMul <= 1, "liquids", "flowTicks at least 1, speed multipliers 0 to 1");
+  require(L.water.sinkSpeed > 0 && L.water.strokeSpeed > 0 && L.oil.burnTicks >= 1, "liquids", "sinkSpeed, strokeSpeed and burnTicks must be positive");
   return r;
 }
 
@@ -178,4 +195,21 @@ export function availableItem(ruleset: Ruleset, item: ItemType): boolean {
 
 export function allowedWeapon(ruleset: Ruleset, weapon: unknown): weapon is Exclude<Weapon, "fist"> {
   return isPickupWeapon(weapon) && ruleset.weapons.enabled.includes(weapon);
+}
+
+/**
+ * The ruleset a round on `theme` plays (#94): the theme's physics applied (gravity scales `combat.gravity`, friction
+ * scales the fighters' ground acceleration). With both at 1 (every current theme) it is the ruleset itself.
+ */
+export function themedRuleset(r: Ruleset, theme: string): Ruleset {
+  const t = (r.arena.themes as Record<string, Ruleset["arena"]["themes"]["warehouse"] | undefined>)[theme];
+  if (!t || (t.physics.gravity === 1 && t.physics.friction === 1)) return r;
+  return Object.freeze({
+    ...r,
+    combat: Object.freeze({
+      ...r.combat,
+      gravity: r.combat.gravity * t.physics.gravity,
+      fighter: Object.freeze({ ...r.combat.fighter, groundAccel: r.combat.fighter.groundAccel * t.physics.friction }),
+    }),
+  });
 }

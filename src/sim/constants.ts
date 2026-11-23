@@ -363,3 +363,24 @@ export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 6 * TICK_RATE, weapo
  * neighbours can contest it) and a few more in the middle and up high.
  */
 export const ARMORY = { nearSpawn: 1, spawnOffset: 3.5, middle: 3, minGap: 1.5, high: 1, jetpackOffset: 1.2, crateWeaponChance: 0.55, pickupGraceTicks: 45 };
+
+/**
+ * Liquids and the #94 materials. Rates per second unless named ticks.
+ *   flowTicks     the liquid layer (and sand) settles one step every this many ticks while anything near it changed
+ *   water         speedMul / accelMul: walking in it; buoyancy: share of gravity it cancels on a body in it; sinkSpeed:
+ *                 the fastest a body sinks; strokeSpeed / strokeTicks: a swim stroke (jump while afloat) and its pace
+ *   oil           accelMul: grip in it (slippery); burnTicks: how long a lit oil cell burns before it is used up;
+ *                 spreadTicks: a burning cell lights the oil beside it after this long; dps: burning oil on a body
+ *   lava, acid    dps on a body in it; meltDps: hit points per second off each solid cell beside it (bedrock never);
+ *                 lava also sets fighters alight and lights oil. Lava meeting water turns to rock; lava melts ice into water.
+ *   mud, ice      standing on it: mud speedMul / jumpMul; ice accelMul (slippery)
+ */
+export const LIQUIDS = {
+  flowTicks: 6,
+  water: { speedMul: 0.55, accelMul: 0.6, buoyancy: 0.85, sinkSpeed: 1.5, strokeSpeed: 5.8, strokeTicks: 16 },
+  oil: { accelMul: 0.18, burnTicks: 210, spreadTicks: 12, dps: 9 },
+  lava: { dps: 16, meltDps: 2.5 },
+  acid: { dps: 11, meltDps: 4 },
+  mud: { speedMul: 0.5, jumpMul: 0.8 },
+  ice: { accelMul: 0.12 },
+};

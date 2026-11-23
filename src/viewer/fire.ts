@@ -26,6 +26,12 @@ export class FireView {
       const cy = (i - cx) / g.cols;
       spots.push({ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL * 0.75, spread: CELL * 0.45, scale: 1 });
     }
+    // #94: burning oil, a little wider and taller than a burning cell
+    for (const i of sim.liquids.oilFires.keys()) {
+      const cx = i % g.cols;
+      const cy = (i - cx) / g.cols;
+      spots.push({ x: g.wx(cx) + CELL / 2, y: g.wy(cy) + CELL * 0.9, spread: CELL * 0.55, scale: 1.2 });
+    }
     for (const e of sim.entities.values()) {
       if (e.dead) continue;
       if (e.kind === "chunk") this.pieceSpots(e, alpha, xform, spots);

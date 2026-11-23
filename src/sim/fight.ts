@@ -137,7 +137,7 @@ export class Fight {
       c.peers = this.controllers;
       c.setStrategy(this.strategies[i]!, this.sim);
     }
-    this.record = { ...(opts.embedRuleset !== false ? { ruleset: this.sim.ruleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s, ...(s.build ? { build: { ...s.build } } : {}) })), updates: this.updates, checkpoints: [], finalHash: "", ticks: 0 };
+    this.record = { ...(opts.embedRuleset !== false ? { ruleset: this.sim.baseRuleset } : {}), seed, level: { theme: this.sim.level.theme, attempt: this.sim.level.attempt, width: this.sim.level.width }, strategies: this.strategies.map((s) => ({ ...s, ...(s.build ? { build: { ...s.build } } : {}) })), updates: this.updates, checkpoints: [], finalHash: "", ticks: 0 };
     for (const u of updates) this.addUpdate(u);
   }
 

@@ -1,7 +1,6 @@
-import { Mat } from "./grid";
+import { ALL_THEMES, THEME_DEFS, THEMES, type Theme, type ThemeRules } from "./themes";
 
-export type Theme = "warehouse" | "rooftop" | "junkyard" | "construction";
-export const THEMES: readonly Theme[] = ["warehouse", "rooftop", "junkyard", "construction"];
+export { ALL_THEMES, THEMES, type Theme };
 
 export type PropKind = "block" | "crate" | "barrel" | "gas" | "tnt" | "steel" | "glass" | "pad" | "weight";
 
@@ -18,79 +17,8 @@ export const PROP_HALF: Record<PropKind, [number, number]> = {
   weight: [0.5, 0.5],
 };
 
-interface ThemeSpec {
-  body: Mat;
-  surface: Mat;
-  platform: Mat[];
-  tower: Mat;
-  bridge: Mat[];
-  pitChance: number;
-  extraPits: [number, number];
-  towers: [number, number];
-  platforms: [number, number];
-  crumble: number;
-  props: Partial<Record<PropKind, [number, number]>>;
-  stepy: boolean;
-}
-
-export const LEVEL_THEMES: Record<Theme, ThemeSpec> = {
-  warehouse: {
-    body: Mat.Concrete,
-    surface: Mat.Concrete,
-    platform: [Mat.Steel, Mat.Wood, Mat.Wood],
-    tower: Mat.Steel,
-    bridge: [Mat.Steel, Mat.Wood],
-    pitChance: 0.6,
-    extraPits: [0, 1],
-    towers: [2, 3],
-    platforms: [11, 15],
-    crumble: 0.08,
-    props: { crate: [6, 9], steel: [2, 4], barrel: [4, 6], gas: [2, 4], glass: [1, 3], weight: [1, 3], pad: [1, 2], tnt: [0, 1] },
-    stepy: false,
-  },
-  rooftop: {
-    body: Mat.Brick,
-    surface: Mat.Concrete,
-    platform: [Mat.Concrete, Mat.Wood, Mat.Steel],
-    tower: Mat.Brick,
-    bridge: [Mat.Wood, Mat.Wood, Mat.Steel],
-    pitChance: 0.85,
-    extraPits: [1, 2],
-    towers: [1, 2],
-    platforms: [10, 14],
-    crumble: 0.12,
-    props: { glass: [4, 6], gas: [2, 3], barrel: [3, 5], crate: [3, 5], pad: [2, 3], tnt: [1, 2], weight: [1, 2], steel: [1, 2] },
-    stepy: false,
-  },
-  junkyard: {
-    body: Mat.Dirt,
-    surface: Mat.Dirt,
-    platform: [Mat.Steel, Mat.Wood, Mat.Steel],
-    tower: Mat.Steel,
-    bridge: [Mat.Wood, Mat.Steel],
-    pitChance: 0.55,
-    extraPits: [0, 1],
-    towers: [1, 2],
-    platforms: [10, 13],
-    crumble: 0.15,
-    props: { barrel: [7, 10], steel: [3, 5], tnt: [1, 3], crate: [3, 5], gas: [1, 3], pad: [1, 2], glass: [0, 1], weight: [0, 1] },
-    stepy: true,
-  },
-  construction: {
-    body: Mat.Dirt,
-    surface: Mat.Dirt,
-    platform: [Mat.Steel, Mat.Wood, Mat.Crumble],
-    tower: Mat.Steel,
-    bridge: [Mat.Steel, Mat.Wood],
-    pitChance: 0.6,
-    extraPits: [0, 1],
-    towers: [2, 3],
-    platforms: [11, 15],
-    crumble: 0.22,
-    props: { tnt: [2, 4], weight: [2, 3], crate: [3, 5], barrel: [3, 5], gas: [1, 3], steel: [1, 3], pad: [1, 2], glass: [0, 2] },
-    stepy: true,
-  },
-};
+/** Each theme's generator rules: the data in themes.ts (#94). */
+export const LEVEL_THEMES: Record<Theme, ThemeRules> = Object.fromEntries(ALL_THEMES.map((t) => [t, THEME_DEFS[t].rules])) as Record<Theme, ThemeRules>;
 
 export const LEVEL = {
   halfWidth: [28, 38], rows: 64, bottom: -8, top: 13, attempts: 30,
