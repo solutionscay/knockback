@@ -152,9 +152,12 @@ const cacheOf = (s: MatchServer) => {
   return c;
 };
 
-/** A record row's summary; null for a bot-only round (never public, #67) or a record that cannot be read. */
+/**
+ * A record row's summary; null for a bot-only round (never public, #67), a round of an older engine (#88: training
+ * data, never shown) or a record that cannot be read.
+ */
 async function summaryOf(server: MatchServer, row: RecordRow | null): Promise<ReplaySummary | null> {
-  if (!row || row.tier === "bot-only") return null;
+  if (!row || row.tier === "bot-only" || row.engine !== server.store.engine) return null;
   return summarizeReplay(await cacheOf(server).raw(row.path), row.matchId, row.path, row.createdAt, row.tier);
 }
 
@@ -340,6 +343,8 @@ export async function agentProfile(server: MatchServer, name: string): Promise<A
   let shown = name;
   for (const row of rows) {
     const mem = server.matches.get(row.id);
+    // rounds of an older engine (#88) are training data: not on an agent's page
+    if (!mem && row.engine !== server.store.engine) continue;
     for (const s of await server.store.listSeats(row.id)) {
       if (s.name.toLowerCase() !== want) continue;
       shown = s.name;

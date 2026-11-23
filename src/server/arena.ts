@@ -355,6 +355,13 @@ export class Arena {
     const away = new Map<number, string>();
     m.agents.forEach((a, seat) => a && a.leftAt === null && away.set(seat, "the server restarted"));
     await m.resumeRunning(await store.listRounds(row.id), away);
+    // played on an older engine (#88): marked and closed by resumeRunning, not resumed; the loop starts a fresh round
+    if (m.status === "failed" && m.error === "played on an older engine") {
+      this.current = null;
+      this.api.matches.delete(row.id); // not kept in memory either: it is never shown
+      this.live.reset();
+      return { round: null };
+    }
     this.api.log(`arena: round ${row.arenaRound} (${row.id}) resumed after a restart`);
     return { round: row.arenaRound };
   }

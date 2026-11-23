@@ -5,7 +5,8 @@
  * the API serves (turn, info, report). The server runs no model: agents think with their own.
  */
 import type { Seat } from "../ai/decide";
-import { MatchRunner, type ControlEvent, type RunnerEvent, type StoredRound } from "../ai/runner";
+import { MatchRunner, OlderEngineError, type ControlEvent, type RunnerEvent, type StoredRound } from "../ai/runner";
+import { OLDER_ENGINE } from "../sim/engine";
 import { settleSuitUp, type SuitUpAnswer, type SuitUpResult } from "../ai/suitup";
 import { assignIdentities, type Identity, type IdentityWish } from "../sim/identity";
 import { entranceLine, type Entrance } from "../sim/entrance";
@@ -451,18 +452,34 @@ export class ServerMatch {
       // the round was decided before the restart: its decisions go out again now, so picks must be closed
       if (rounds.length) await this.lockPicks();
       for (const r of rounds) await this.runner.replayRound(r);
+      // it replays: played on this engine (a round from before stamps gets the stamp now)
+      if (rounds.length) await this.store.updateMatch(this.id, { engine: this.store.engine });
       await this.restoreControl();
       if (!rounds.length) {
         for (const seat of [...away.keys()]) if (await this.store.getPlan(this.id, 1, seat)) away.delete(seat);
         this.awayAtStart(away);
       }
     } catch (e) {
+      if (e instanceof OlderEngineError) return this.retireOlderEngine();
       this.fail(e);
       return;
     }
     this.server.log(`round ${this.arenaRound} (${this.id}): resumed after ${rounds.length} stored round${rounds.length === 1 ? "" : "s"} (hashes ${this.runner.match.record.rounds.map((r) => r.fight.finalHash).join(",") || "-"})`);
     this.changed();
     this.play();
+  }
+
+  /**
+   * The stored round was played on an older engine (#88): it does not play again the same way, so it is not resumed.
+   * It is marked older (kept as training data, never shown) and closed quietly; the Arena starts a fresh round.
+   */
+  private async retireOlderEngine() {
+    this.status = "failed";
+    this.error = "played on an older engine";
+    await this.store.updateMatch(this.id, { engine: OLDER_ENGINE, status: "failed", error: this.error, endedAt: Date.now() }).catch((x) => this.server.log(`store: ${x}`));
+    this.server.log(`round ${this.arenaRound} (${this.id}): played on an older engine, not resumed (kept as training data); a fresh round starts`);
+    this.changed();
+    this.settle();
   }
 
   /** Rebuild a finished round from storage (for its report and replay); not played on. */

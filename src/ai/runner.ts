@@ -11,6 +11,7 @@ import type { Ruleset } from "../sim/ruleset";
  */
 import { fightStatsOf, type FightStats } from "../stats/models";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { engineStamp } from "../sim/engine";
 import { join } from "node:path";
 import { formatSeconds } from "../format";
 import type { IdentityWish } from "../sim/identity";
@@ -127,6 +128,11 @@ export type StoredRound = Pick<RoundAsk, "decisions" | "meta" | "prompts" | "raw
 
 /** Replaying stored rounds did not reproduce the match (a changed sim, or a corrupt store). */
 export class ResumeError extends Error {}
+/**
+ * A stored round that does not play again the same way on this engine (#88): the house bots plan differently or the
+ * fight ends in another state. The round was played on an older engine: kept as training data, never shown again.
+ */
+export class OlderEngineError extends ResumeError {}
 
 export interface RoundPrompts {
   round: number;
@@ -283,11 +289,11 @@ export class MatchRunner {
       if (m.outcome === "ok") return;
       const bot = JSON.stringify((m.outcome === "house" ? houseBrain : autopilotBrain)(ctxs[me]!));
       // fallback-invalid keeps the AI's usable half of the answer, so only the others must equal the bot exactly
-      if (m.outcome !== "fallback-invalid" && bot !== JSON.stringify(stored.decisions[me])) throw new ResumeError(`round ${round}, seat ${me}: the house bot's plan differs from the stored one`);
+      if (m.outcome !== "fallback-invalid" && bot !== JSON.stringify(stored.decisions[me])) throw new OlderEngineError(`round ${round}, seat ${me}: the house bot's plan differs from the stored one`);
     });
     const f = await this.applyRound(round, { decisions: stored.decisions, meta: stored.meta, prompts: stored.prompts, raw: stored.raw }, 0, true, stored.planUpdates ?? []);
     const hash = match.record.rounds[round - 1]!.fight.finalHash;
-    if (stored.finalHash && stored.finalHash !== hash) throw new ResumeError(`round ${round} replayed to ${hash}, stored ${stored.finalHash}`);
+    if (stored.finalHash && stored.finalHash !== hash) throw new OlderEngineError(`round ${round} replayed to ${hash}, stored ${stored.finalHash}`);
     return f;
   }
 
@@ -547,9 +553,10 @@ export class MatchRunner {
   }
 
   /** The record as saved: the match record plus labels, lineup and total time. */
-  savedRecord(): MatchRecord & { labels: string[]; lineup: string[]; totalMs: number; control?: ControlEvent[]; fightStats: FightStats } {
+  savedRecord(): MatchRecord & { engine: string; labels: string[]; lineup: string[]; totalMs: number; control?: ControlEvent[]; fightStats: FightStats } {
     // fightStats: knockouts, ring-outs, damage, survival per round and seat, for the model leaderboard (not hashed)
-    return { ...this.match.record, labels: this.labels, lineup: this.lineup, totalMs: Math.round(this.totalMs), ...(this.control.length ? { control: this.control.map((c) => ({ ...c })) } : {}), fightStats: fightStatsOf(this.match.facts) };
+    // engine (#88): the stamp of the engine it was played on, so the next sim change marks it older by itself
+    return { ...this.match.record, engine: engineStamp(), labels: this.labels, lineup: this.lineup, totalMs: Math.round(this.totalMs), ...(this.control.length ? { control: this.control.map((c) => ({ ...c })) } : {}), fightStats: fightStatsOf(this.match.facts) };
   }
 
   /**

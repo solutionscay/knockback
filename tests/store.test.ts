@@ -1,7 +1,8 @@
 /**
  * Contract 6: store. A fresh database gets the current schema and works; reopening it keeps the data. A database with
  * an old schema is refused (pre-alpha: never upgraded, never touched) with a message that says how to reset it, and
- * that reset works.
+ * that reset works. The one exception is v7 (#88): v8 only added matches.engine, so a v7 database gets that column
+ * (empty: its rounds are checked later) and keeps all its data.
  */
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, test } from "bun:test";
@@ -50,7 +51,7 @@ describe("store", () => {
   });
 
   for (const [what, version] of [
-    ["an older schema version", SCHEMA_VERSION - 1],
+    ["an older schema version", SCHEMA_VERSION - 2],
     ["tables from before the single schema (no version)", 0],
   ] as const)
     test(`refuses ${what} with the reset command, and leaves the file alone`, () => {
@@ -69,8 +70,19 @@ describe("store", () => {
       db.close();
     });
 
+  test("v7 (#88) gets the engine column and keeps its data; the column starts empty", async () => {
+    expect(SCHEMA_VERSION).toBe(8);
+    const path = oldDb("v7.db", 7);
+    const s = new SqliteStore(path, "e-test");
+    await s.close();
+    const db = new Database(path); // WAL now: read it with a normal connection
+    expect((db.query("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(8);
+    expect(db.query("SELECT seed, engine FROM matches").get()).toEqual({ seed: 42, engine: null });
+    db.close();
+  });
+
   test("the reset command from the message gives a working database and keeps the old file", async () => {
-    const path = oldDb("reset.db", SCHEMA_VERSION - 1);
+    const path = oldDb("reset.db", SCHEMA_VERSION - 2);
     const p = Bun.spawnSync(["bun", "scripts/db-reset.ts", "--db", path], { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
     expect(p.exitCode).toBe(0);
     expect(p.stdout.toString()).toContain(`schema v${SCHEMA_VERSION}`);
