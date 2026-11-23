@@ -13,6 +13,7 @@ Groups and sprites (frame names):
   pickups      w-<weapon> for all 13 weapons; p-<power> for health, shield, speed, heavy, damage, jetpack, jump
   props        crate, block, barrel, tnt, gas (each -0 intact, -1 damaged, -2 nearly broken), steel
   projectiles  rocket, grenade, mine, hook, bolt (pointing screen right: the viewer turns them)
+  tiles        chain: one link of the platforms' chains, a seamless vertical tile (exactly one period tall)
 Per frame it writes meta.json: the size in pixels, the pixels per game meter, and the anchor (the pixel of the
 model's center: the sim body's center for props, the middle for the rest).
 """
@@ -34,7 +35,8 @@ import plush_bot as pb  # noqa: E402
 
 ANGLE = pa.ANGLE
 ELEV = 0.18
-PPM = {"pickups": 100.0, "props": 80.0, "projectiles": 80.0}
+PPM = {"pickups": 100.0, "props": 80.0, "projectiles": 80.0, "tiles": 200.0}
+CHAIN_W, CHAIN_P = 0.14, 0.32  # the chain tile: its width and its period (one link) in game meters (chains.ts)
 ICON_M = 0.88  # a pickup icon fits this many game meters (the badge is 1.12 m across)
 WEAPONS = ["rocket", "bat", "rifle", "shotgun", "sniper", "crossbow", "railgun", "hammer", "flamethrower", "lightning",
            "grenade", "mine", "grapple"]
@@ -85,6 +87,7 @@ def mats():
         pink=pb.fabric_mat("World pink", "#e8649e", rough=0.9, sheen=0.9, fuzz_bump=0.3, felt=0.2),
         mine_light=pb.emit_mat("World mine light", "#ff7cc0", 8.0),
         gunmetal=pb.glossy_mat("World gunmetal", "#2e333d", rough=0.18, coat=1.0, metal=0.3, spec=0.6),
+        chain=pb.glossy_mat("World chain", "#9a9eaa", rough=0.3, coat=0.8, metal=0.5, spec=0.6),
     )
 
 
@@ -399,6 +402,41 @@ def projectiles(M, weapons):
     return out
 
 
+# ---------------------------------------------------------------- tiles (front space)
+
+def chain_tile(M):
+    """Chain links, face-on and edge-on in turn, one face-on link per period; copies above and below so the
+    frame's top and bottom cut through the edge-on links the same way (the tile repeats)."""
+    G = Group("chain", "tiles")
+    per = CHAIN_P / math.cos(ELEV)  # the camera looks down ELEV: a world period this long is CHAIN_P on screen
+    prof = pb.circle(0.017, 12)
+    for k in range(-2, 3):
+        v, f = pa.ring((0, 0, 0), (0, 1, 0), 0.042, prof, 40)
+        v[:, 2] *= 2.55
+        v[:, 2] += k * per
+        G.add(mesh(f"Chain face {k}", v, f, M["chain"]))
+        v, f = pa.ring((0, 0, 0), (1, 0, 0), 0.042, prof, 40)
+        v[:, 2] *= 2.55
+        v[:, 2] += (k + 0.5) * per
+        G.add(mesh(f"Chain edge {k}", v, f, M["chain"]))
+    return G
+
+
+def render_tile(sc, name, obs, ppm, out_dir, w_m, h_m):
+    """Render exactly w_m by h_m (screen meters) around the origin: a tile that repeats with no seam."""
+    for o in sc.objects:
+        if o.type == "MESH":
+            o.hide_render = o not in obs
+    cam = aim_camera(sc, Vector((0, 0, 0)), 1.0)
+    W, H = int(round(w_m * ppm)), int(round(h_m * ppm))
+    sc.render.resolution_x, sc.render.resolution_y = W, H
+    cam.data.ortho_scale = max(W, H) / ppm
+    bpy.context.view_layer.update()
+    sc.render.filepath = os.path.join(out_dir, name + ".png")
+    bpy.ops.render.render(write_still=True)
+    return {"w": W, "h": H, "ppm": ppm, "ax": W / 2, "ay": 0, "tile": True}
+
+
 # ---------------------------------------------------------------- placing and rendering
 
 def weapon_space(ob, wf):
@@ -560,6 +598,10 @@ def main():
                 ext = float(max(P.max(0) - P.min(0)))
                 place(parts, PLACE, scale=size / ext)
                 jobs.append((name, "projectiles", parts, PPM["projectiles"], None, None))
+    if "tiles" in groups:
+        G = chain_tile(M)
+        place(G.obs, FRONT)
+        jobs.append((G.name, "tiles", G.obs, PPM["tiles"], "tile", None))
     # everything is placed at the origin: spread the groups apart so a framing never sees another's objects
     every = set()
     for k, (name, group, obs, ppm, anchor, _) in enumerate(jobs):
@@ -572,11 +614,14 @@ def main():
         if only and name not in only:
             continue
         t = time.time()
-        P = world_bbox(obs)
-        center = (P.min(0) + P.max(0)) / 2 if anchor is None else np.array(tuple(anchor))
         d = os.path.join(out, group)
         os.makedirs(d, exist_ok=True)
-        fm = render_sprite(sc, name, obs, ppm, d, tuple(center))
+        if anchor == "tile":
+            fm = render_tile(sc, name, obs, ppm, d, CHAIN_W, CHAIN_P)
+        else:
+            P = world_bbox(obs)
+            center = (P.min(0) + P.max(0)) / 2 if anchor is None else np.array(tuple(anchor))
+            fm = render_sprite(sc, name, obs, ppm, d, tuple(center))
         fm["group"] = group
         meta["frames"][name] = fm
         json.dump(meta, open(meta_path, "w"), indent=1)
