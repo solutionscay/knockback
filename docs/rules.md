@@ -48,6 +48,7 @@ The `rules` key is optional. Plans without rules work as before.
 | `stance` | `stance`: rush, distance, cover or item | play that stance |
 | `retaliate` | `retaliate`: attacker, turn or ignore | use that retaliate setting |
 | `drop` | `item` (a weapon, optional) | drop the weapon I carry (only that one, when `item` is given), once each time the rule starts: it stays on the floor with its ammo (#95) |
+| `dig` | none | dig toward the target with digging punches through soft ground (dirt, planks, concrete, brick, sand, mud, ice) when no way leads to it (#100). Rock, steel and bedrock do not dig. Every fighter already digs and wall-jumps out of a pocket on its own |
 | `swap` | `item`: a weapon or `fist` | fight with that: `fist` keeps the carried weapon (and its ammo) for later; a weapon is held whenever it is carried (#95) |
 
 **Which subjects work:**
@@ -100,3 +101,10 @@ Match records store fighter identities and plans, including rules. Rules store s
 ### Replay
 
 A record replays only when each round reaches its recorded final state hash. A replay that diverges is refused (`ReplayDivergedError` for a match, `FightDivergedError` for a fight). There is no fallback and no summary card. A sim change that moves the hashes leaves older records unreplayable; pre-alpha, they are not kept in the app.
+
+## The stage (#100)
+
+- **Jump-through platforms:** most hanging platforms (the one-row ones, and the catwalk over a gap) are jump-through: a fighter jumps up through them from below and holds down to drop through; they hold fighters, items and props landing from above. Shots and rockets pass through them (they are no cover); blasts and swings break them. The two-row platforms stay solid.
+- **Gaps, not pits:** a level has at most one generated gap, near the middle, with a jump-through catwalk over it; most holes come from play.
+- **Soft over hard:** the ground is a soft top (the theme's dirt, concrete or brick) over a hard frame (rock or steel), with bedrock at the bottom. Digging punches only break soft materials; blasts and heavy weapons wear the frame down slowly.
+- **Wall jump:** in the air against a wall, jump again to kick off it (up and away). Not off the same side twice before standing again, not while stunned or just after being knocked (a fighter knocked off an edge is not saved by the wall), never over the void.

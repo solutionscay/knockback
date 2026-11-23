@@ -9,6 +9,7 @@ import { fire } from "./sim-weapons";
 import { dropCarried } from "./sim-items";
 import { fighterStats, type Build } from "./build";
 import { footing, setSlick } from "./sim-liquid";
+import { FIGHTER_FILTER } from "./sim-oneway";
 
 export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number, build: Build) {
   const stats = fighterStats(sim.ruleset, build);
@@ -24,7 +25,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
       .setDensity(stats.density)
       .setFriction(0)
       .setRestitution(0)
-      .setCollisionGroups(groups(G.FIGHTER, G.TERRAIN | G.FIGHTER | G.PROP | G.GRENADE)),
+      .setCollisionGroups(groups(G.FIGHTER, FIGHTER_FILTER)),
     body,
   );
   const e: Entity = {
@@ -70,6 +71,8 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     stun: 0,
     jumpCd: 0,
     airJumped: false,
+    dropTicks: 0,
+    wallSide: 0,
     grounded: false,
     surface: s ? s.id : -1,
     lastHitBy: -1,
@@ -113,7 +116,8 @@ export function checkGrounded(sim: Sim, f: Fighter): boolean {
   const reach = sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.12;
   for (const ox of [-0.28, 0, 0.28]) {
     const ray = new RAPIER.Ray({ x: p.x + ox, y: p.y }, { x: 0, y: -1 });
-    const hit = sim.world.castRay(ray, reach, true, undefined, groups(0xffff, G.TERRAIN | G.PROP | G.FIGHTER), f.entity.collider);
+    // #100: jump-through platforms count as ground only while they hold the fighter
+    const hit = sim.world.castRay(ray, reach, true, undefined, groups(0xffff, G.TERRAIN | G.PROP | G.FIGHTER | (sim.oneWayLand[f.id] ? G.ONEWAY : 0)), f.entity.collider);
     if (hit) return true;
   }
   return false;
@@ -153,7 +157,15 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   const F = sim.ruleset.combat.fighter;
   const accel = (f.grounded ? F.groundAccel : F.airAccel) * DT * (f.power.speed > 0 ? SPEED_ACCEL_MUL : 1) * foot.accel;
   vx += clamp(target - vx, -accel, accel);
-  if (inp.jump && f.jumpCd === 0) {
+  // #100: down (or down + jump) on a jump-through platform drops through it
+  const dropping = !!inp.down && f.grounded && onOneWay(sim, f);
+  if (dropping) {
+    if (f.dropTicks === 0) sim.stats.platformDrops++;
+    f.dropTicks = 14;
+    f.grounded = false;
+  }
+  if (inp.jump && f.jumpCd === 0 && !dropping) {
+    const wall = f.grounded || foot.swim ? 0 : wallToKick(sim, f, inp.move);
     if (foot.swim) {
       // a swim stroke (#94): up, on its own pace
       vy = Math.max(vy, sim.ruleset.liquids.water.strokeSpeed);
@@ -163,6 +175,15 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
       f.jumpCd = 14;
       f.grounded = false;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: false });
+    } else if (wall) {
+      // a wall jump (#100): up, and away from the wall
+      const W = sim.ruleset.combat.wallJump;
+      vy = Math.max(vy, W.speed);
+      vx = -wall * W.push;
+      f.wallSide = wall;
+      f.jumpCd = 14;
+      sim.stats.wallJumps++;
+      sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: true, wall: true });
     } else if (f.power.jump > 0 && !f.airJumped) {
       // the Jump power-up's air jump: a little under a ground jump
       vy = F.jumpSpeed * 0.95;
@@ -220,5 +241,36 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     if (++f.scope < sim.ruleset.weapons.table.sniper.aimTicks) return;
   }
   f.scope = 0;
-  if (firing) fire(sim, f, weapon);
+  if (firing) fire(sim, f, weapon, !!inp.dig);
+}
+
+/** #100: is the fighter standing on a jump-through cell (the cell under the middle of its feet)? */
+export function onOneWay(sim: Sim, f: Fighter): boolean {
+  const g = sim.grid;
+  const p = f.entity.body.translation();
+  const cy = g.cy(sim.feetY(f) - 0.1);
+  return g.oneway(g.cx(p.x), cy) || (!g.blocks(g.cx(p.x), cy) && (g.oneway(g.cx(p.x - 0.3), cy) || g.oneway(g.cx(p.x + 0.3), cy)));
+}
+
+/**
+ * #100: the wall a fighter in the air can kick off (-1 left, 1 right, 0 none): a wall (not a jump-through cell)
+ * within combat.wallJump.reach of the body's side over most of its height, preferring the side it presses toward. Not
+ * off the side it last kicked off before it stood again, not in stun or soon after a knock, not over the void.
+ */
+export function wallToKick(sim: Sim, f: Fighter, move: number): number {
+  const W = sim.ruleset.combat.wallJump;
+  if (f.stun > 0 || sim.tick - f.kbTick < W.knockTicks || f.pinned > 0) return 0;
+  const g = sim.grid;
+  const p = f.entity.body.translation();
+  const feet = sim.feetY(f);
+  if (sim.nav.fallBelow(g, p.x, feet) === Infinity) return 0;
+  const R = sim.ruleset.combat.fighter.radius + W.reach;
+  const touching = (side: number) => {
+    let n = 0;
+    for (const y of [feet + 0.35, p.y, feet + 1.35]) if (g.blocksAt(p.x + side * R, y)) n++;
+    return n >= 2;
+  };
+  const order = move < -0.1 ? [-1, 1] : [1, -1];
+  for (const side of order) if (side !== f.wallSide && touching(side)) return side;
+  return 0;
 }

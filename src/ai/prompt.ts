@@ -119,10 +119,15 @@ const r = (n: number) => Math.round(n);
 
 function levelLine(lv: LevelDef): string {
   const count = (k: string) => lv.props.filter((p) => p.kind === k).length;
+  // #100: jump-through platforms (their top cells)
+  let through = 0;
+  const g = lv.grid;
+  for (let cy = 0; cy < g.rows; cy++) for (let cx = 0; cx < g.cols; cx++) if (g.oneway(cx, cy) && !g.oneway(cx - 1, cy)) through++;
   const bits = [
     `${lv.width} m wide`,
     `${lv.platforms} floating platforms`,
-    lv.pits.length ? `${lv.pits.length} pit${lv.pits.length > 1 ? "s" : ""} to fall into` : "no pits (edges only)",
+    through ? `${through} of them jump-through (jump up through, hold down to drop through; shots pass through them)` : "",
+    lv.pits.length ? `${lv.pits.length} gap${lv.pits.length > 1 ? "s" : ""} to fall into (a jump-through catwalk over it)` : "no gaps (the edges only)",
     `${count("crate")} crates (break them for pickups)`,
     `${count("barrel")} explosive barrels`,
     count("tnt") ? `${count("tnt")} TNT` : "",
@@ -130,7 +135,7 @@ function levelLine(lv: LevelDef): string {
     count("pad") ? `${count("pad")} bounce pads` : "",
     count("weight") ? `${count("weight")} hanging weights` : "",
   ].filter(Boolean);
-  return `${lv.theme}: ${bits.join(", ")}. Almost everything breaks; the level resets every round.`;
+  return `${lv.theme}: ${bits.join(", ")}. The ground is soft on top (it breaks and digs) over a hard frame (rock or steel: only blasts wear it down). In the air against a wall, jump again to wall-jump (not while stunned or just knocked). Almost everything breaks; the level resets every round.`;
 }
 
 /** The soul as the AI reads it: its text (without the house bot's line bank) plus its stated values. */
@@ -264,7 +269,7 @@ export function rulesSection(examples: string[], ruleset: Ruleset = CLASSIC): st
   return [
     `RULES (optional, max 4, first wins): active while triggered, for at least ${tuning.minOnTicks / TICK_RATE} s. A rule that never fires does nothing.`,
     'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two) | in_open who (I have a clear shot) | has_long_gun who | in_cover (me)',
-    `who: anyone | enemy | target | name. do: target | avoid | seek item | use item (${holds}) | stance "stance": ${RULE_STANCES.join("/")} | retaliate "retaliate": attacker/turn/ignore. target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.`,
+    `who: anyone | enemy | target | name. do: target | avoid | seek item | use item (${holds}) | stance "stance": ${RULE_STANCES.join("/")} | retaliate "retaliate": attacker/turn/ignore | dig (dig toward the target through soft ground when no way leads there). target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.`,
     `Examples: ${examples.join(" ")}`,
   ].join("\n");
 }

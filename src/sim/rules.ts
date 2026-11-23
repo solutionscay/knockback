@@ -78,7 +78,7 @@ export function autoLabel(r: Omit<Rule, "label">, names: string[]): string {
     in_cover: "I'm in cover",
     my_ammo_below: `ammo below ${r.value}%`,
   };
-  const act: Record<Rule["do"], string> = { target: "go for them", avoid: "keep away", seek: `get ${it(r.doItem)}`, use: `use ${it(r.doItem)}`, stance: r.stance ?? "stance", retaliate: `retaliate ${r.retaliate ?? ""}`.trim(), drop: r.doItem ? `drop ${it(r.doItem)}` : "drop my weapon", swap: r.doItem === "fist" ? "fists" : `swap to ${it(r.doItem)}` };
+  const act: Record<Rule["do"], string> = { target: "go for them", avoid: "keep away", seek: `get ${it(r.doItem)}`, use: `use ${it(r.doItem)}`, stance: r.stance ?? "stance", retaliate: `retaliate ${r.retaliate ?? ""}`.trim(), drop: r.doItem ? `drop ${it(r.doItem)}` : "drop my weapon", swap: r.doItem === "fist" ? "fists" : `swap to ${it(r.doItem)}`, dig: "dig through" };
   return `${cond[r.when]}: ${act[r.do]}`.slice(0, MAX_RULE_LABEL);
 }
 

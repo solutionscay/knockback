@@ -16,6 +16,7 @@ import { NavGraph } from "./nav";
 import { strategyBuild, type Build } from "./build";
 import { CLASSIC, themedRuleset, type Ruleset } from "./ruleset";
 import { LiquidState, updateLiquids } from "./sim-liquid";
+import { oneWayHooks, updateOneWay } from "./sim-oneway";
 import { Rng } from "./rng";
 import { explode } from "./sim-blast";
 import { damageFighter, knockOut, removeFighterBody } from "./sim-damage";
@@ -122,10 +123,18 @@ export class Sim {
     propsBurnedOff: 0,
     fightersIgnited: 0,
     flamePulses: 0,
+    /** #100 */
+    wallJumps: 0,
+    digPunches: 0,
+    platformDrops: 0,
   };
 
   /** The round's ruleset: the match's, with the theme's physics applied (#94; the same object when they are 1). */
   readonly ruleset: Ruleset;
+  /** #100: per seat, whether jump-through platforms hold the fighter this tick (sim-oneway.ts) */
+  readonly oneWayLand: boolean[] = [true, true, true, true];
+  private readonly hooks = oneWayHooks(this);
+  private readonly eventQueue = new RAPIER.EventQueue(false);
   /** #94: liquids, sand, mud and ice (inactive on a level with none) */
   readonly liquids: LiquidState;
 
@@ -291,9 +300,11 @@ export class Sim {
     if (this.liquids.on) updateLiquids(this);
     updateLiveGround(this);
     flushTerrain(this);
+    updateOneWay(this);
 
     const pre: { x: number; y: number }[] = this.fighters.map((f) => (f.removed ? { x: 0, y: 0 } : this.vel(f)));
-    this.world.step();
+    // Rapier runs the contact filter only with an event queue (nothing raises events: it stays empty)
+    this.world.step(this.eventQueue, this.hooks);
 
     for (const f of this.fighters) {
       if (f.removed) continue;
@@ -307,6 +318,7 @@ export class Sim {
       f.grounded = checkGrounded(this, f);
       if (f.grounded) {
         f.airJumped = false;
+        f.wallSide = 0;
         const s = this.nav.surfaceAt(p.x, this.feetY(f));
         if (s) f.surface = s.id;
         if (!wasGrounded && pre[f.id]!.y < -4) this.events.push({ type: "land", tick, fighter: f.id, speed: -pre[f.id]!.y });
@@ -413,6 +425,7 @@ export class Sim {
       num(f.scope);
       num(f.pinned);
       num(f.shockCd);
+      num(f.dropTicks * 4 + f.wallSide + 1);
       for (const weapon of AMMO_WEAPONS) num(f.ammo[weapon]);
     }
     for (const r of this.rockets) {

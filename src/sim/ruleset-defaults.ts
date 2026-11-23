@@ -129,7 +129,7 @@ const BUILDS = {
 };
 
 export const RULESET_DEFAULTS = {
-  combat: { gravity: C.GRAVITY, fighter: { ...C.FIGHTER, ringOutMargin: 6 }, launch: C.LAUNCH, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, blastCarveScale: 1.12, attributionTicks: 120 },
+  combat: { gravity: C.GRAVITY, fighter: { ...C.FIGHTER, ringOutMargin: 6 }, launch: C.LAUNCH, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, wallJump: C.WALL_JUMP, blastCarveScale: 1.12, attributionTicks: 120 },
   weapons: {
     enabled: WEAPON_LIST,
     table: { ...C.WEAPONS, shotgun: { ...C.WEAPONS.shotgun, spread: 0.16, jitter: 0.03 }, flamethrower: { ...C.WEAPONS.flamethrower, spreadScale: 1 } },
@@ -149,7 +149,7 @@ export const RULESET_DEFAULTS = {
     layout: LEVEL, enabledThemes: THEMES, themes: LEVEL_THEMES, spawns: SPAWNS, walls: WALLS,
     propHalf: PROP_HALF, chain: C.CHAIN,
     props: { barrel: C.BARREL, block, crate, crush: C.CRUSH, gas: C.GAS, glass: C.GLASS, pad: C.PAD, steel: C.STEEL, tnt: C.TNT, weight: C.WEIGHT },
-    terrain: { hitPoints: MAT_HP.map(n => Number.isFinite(n) ? n : 0), density: MAT_DENSITY, crumbleDps: C.CRUMBLE_DPS, debris: C.DEBRIS },
+    terrain: { hitPoints: MAT_HP.map(n => Number.isFinite(n) ? n : 0), density: MAT_DENSITY, crumbleDps: C.CRUMBLE_DPS, debris: C.DEBRIS, dig: C.DIG },
     navigation: { headroomCells: 4, jumpMargin: 0.55, maxGap: 3.5, dropFall: 3 },
   },
   zone: { boundary: { ...C.ZONE, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: { ...C.STALEMATE, graceTicks: 20 * C.TICK_RATE } },

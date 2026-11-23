@@ -22,13 +22,14 @@ const UPDATE: PlanUpdate = { tick: 300, fighter: 1, strategy: { target: "stronge
 const GOLDEN_MATCH_SEED = 7;
 const GOLDEN = {
   // #95: the weapon economy (few, spread-out weapons, one slot plus fists, ammo on every weapon, bots that re-arm)
-  fight: "4c80b718",
-  fightWithUpdate: "99f35ac8",
-  closeQuarters: "22698c21",
+  // #100: the stage (a gap with a catwalk, jump-through platforms, soft over hard ground, wall jump); bots climb or dig out
+  fight: "37bc82cd",
+  fightWithUpdate: "75504571",
+  closeQuarters: "770dea9c",
   // house bots play their souls' builds (#80)
-  match: ["37f24fde", "020ae005", "9517448b"],
+  match: ["5e759f76", "a2e21b72"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["ed75d02e", "b822a003", "5baf492a"],
+  neutralMatch: ["bc41d8c5", "86b1c8e4"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

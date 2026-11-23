@@ -17,6 +17,14 @@ beforeAll(async () => {
 });
 
 const F = CLASSIC.combat.fighter;
+/** The level data these seeds were picked with (before #100: more pits, flat roofs, bridges, no jump-through platforms,
+ * no hard frame): the same seeds, the same levels. */
+const OLD_STAGE = { oneWay: 0, catwalk: false, frame: 0 };
+const PITTED = resolveRuleset({ arena: { themes: {
+  warehouse: { pitChance: 0.6, extraPits: [0, 1], stage: OLD_STAGE },
+  rooftop: { pitChance: 0.85, extraPits: [1, 2], ground: { heights: "roof", runs: "whole", steps: false }, stage: OLD_STAGE },
+  junkyard: { pitChance: 0.55, extraPits: [0, 1], stage: OLD_STAGE }, construction: { pitChance: 0.6, extraPits: [0, 1], stage: OLD_STAGE },
+} } });
 /** no zone pressure, no drops, no pickups lying about */
 const QUIET = resolveRuleset({ pickups: { supply: { firstTick: 36_000 }, armory: { nearSpawn: 0, middle: 0, high: 0, spread: { skyDrops: 0 } } } });
 
@@ -51,7 +59,7 @@ function fetchBat(lv: LevelDef, start: [number, number], bat: [number, number], 
 describe("ceiling jumps (#84)", () => {
   // seed 4, Classic: a jump from [19.5, 23.5] at y 2 up onto [-0.5, 19.5] at y 3, under a platform [14.5, 19] at y 6
   // (underside 5.5). A body that rises past the platform's edge lands on top of it.
-  const lv4 = () => generateLevel(4, undefined, CLASSIC);
+  const lv4 = () => generateLevel(4, undefined, PITTED);
   const seed4Link = (nav: NavGraph) => nav.links.find((l) => nav.surfaces[l.from]!.x0 === 19.5 && nav.surfaces[l.from]!.y === 2 && nav.surfaces[l.to]!.x1 === 19.5 && nav.surfaces[l.to]!.y === 3)!;
 
   test("seed 4: a fighter plans the jump under the platform and lands on the link's target, never on the platform", () => {
@@ -103,7 +111,7 @@ describe("ceiling jumps (#84)", () => {
       [73, [3, 10, 9], [13.5, 20, 8], "a platform that does not overhang the landing is flown over"],
     ];
     for (const [seed, a, b, why] of cases) {
-      const lv = generateLevel(seed, undefined, CLASSIC);
+      const lv = generateLevel(seed, undefined, PITTED);
       const nav = NavGraph.fromGrid(lv.grid, 2, CLASSIC);
       const l = nav.links.find((k) => {
         const f = nav.surfaces[k.from]!, t = nav.surfaces[k.to]!;
@@ -116,7 +124,7 @@ describe("ceiling jumps (#84)", () => {
   test("with the Speed power-up the way down to the floor is still flown at the base speed the planner flew", () => {
     // seed 30, Classic: off the right end of [-2.5, 4] at y 4 down to the floor at y 0, with a platform [5.5, 10.5]
     // at y 3.5 just 1.5 m on: flown at Speed power-up speed, the body can carry onto that platform
-    const lv = generateLevel(30, undefined, CLASSIC);
+    const lv = generateLevel(30, undefined, PITTED);
     const nav = NavGraph.fromGrid(lv.grid, 2, CLASSIC);
     const top = nav.surfaces.find((s) => s.x0 === -2.5 && s.y === 4)!, floor = nav.surfaces.find((s) => s.x0 === -1 && s.y === 0)!;
     const ledge = nav.surfaces.find((s) => s.x0 === 5.5 && s.y === 3.5)!;

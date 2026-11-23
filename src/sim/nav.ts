@@ -21,6 +21,8 @@ export interface Surface {
   fragile: boolean;
   /** #94: the liquid over it (a pool's floor; a surface never mixes liquids), or Liquid.None */
   liquid: Liquid;
+  /** #100: a jump-through platform's top (all its cells jump-through): jumped up through, dropped down through */
+  oneWay: boolean;
 }
 
 /** #94: extra path cost of landing on a surface under each liquid: lava and acid are avoided, water and oil slow. */
@@ -35,6 +37,8 @@ export interface Link {
   takeoffX: number;
   landX: number;
   cost: number;
+  /** #100: straight up through a jump-through platform (a jump), or down through the one stood on (a drop: hold down) */
+  through?: boolean;
 }
 
 export interface NavPoint {
@@ -77,6 +81,7 @@ export class NavGraph {
       let run = -1;
       let fragile = false;
       let liquid = Liquid.None;
+      let oneWay = false;
       const close = (cx: number) => {
         if (run >= 0 && cx - run >= minRun) {
           nav.surfaces.push({
@@ -88,6 +93,7 @@ export class NavGraph {
             dropRight: false,
             fragile: fragile || liquid !== Liquid.None,
             liquid,
+            oneWay,
           });
         }
         run = -1;
@@ -104,11 +110,14 @@ export class NavGraph {
         }
         // a surface is all dry or all under one liquid: a change of liquid starts a new one
         const wet = ok ? grid.liqAt(cx, cy + 1) : Liquid.None;
-        if (ok && run >= 0 && wet !== liquid) close(cx);
+        // ...and all jump-through or none (#100)
+        const ow = ok && grid.oneway(cx, cy);
+        if (ok && run >= 0 && (wet !== liquid || ow !== oneWay)) close(cx);
         if (ok && run < 0) {
           run = cx;
           fragile = false;
           liquid = wet;
+          oneWay = ow;
         }
         if (ok) {
           const i = grid.idx(cx, cy);
@@ -162,6 +171,10 @@ export class NavGraph {
         if (dy > maxJumpUp) continue;
         const overlap = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
         if (overlap > 0) {
+          // #100: straight up through a jump-through platform, and down through the one stood on
+          const mid = (Math.max(a.x0, b.x0) + Math.min(a.x1, b.x1)) / 2;
+          if (dy > 0.4 && b.oneWay && overlap >= 0.8) this.addLink({ from: a.id, to: b.id, kind: "jump", takeoffX: mid, landX: mid, through: true });
+          if (dy < -0.4 && a.oneWay && overlap >= 0.8) this.addLink({ from: a.id, to: b.id, kind: "drop", takeoffX: mid, landX: mid, through: true });
           if (dy > 0.4) {
             const tl = b.x0 - 0.9;
             if (tl >= a.x0 + 0.3) this.addLink({ from: a.id, to: b.id, kind: "jump", takeoffX: tl, landX: b.x0 + 0.9 });
@@ -223,12 +236,12 @@ export class NavGraph {
     const floor = grid.cy(to.y + 0.05);
     // the overhang of column cx: its underside and top, or null (open sky, or a wall at the landing's height)
     const overhang = (cx: number) => {
-      if (grid.solid(cx, floor)) return null;
+      if (grid.blocks(cx, floor)) return null;
       let cy = floor + 1;
-      while (cy < grid.rows && !grid.solid(cx, cy)) cy++;
+      while (cy < grid.rows && !grid.blocks(cx, cy)) cy++;
       if (cy >= grid.rows) return null;
       const under = grid.wy(cy);
-      while (grid.solid(cx, cy + 1)) cy++;
+      while (grid.blocks(cx, cy + 1)) cy++;
       const top = grid.wy(cy + 1);
       return under - to.y >= 2 * (F.halfHeight + F.radius) && top > from.y + 0.05 ? { under, top } : null;
     };
@@ -268,14 +281,24 @@ export class NavGraph {
     const dt = 1 / 30;
     const dir = Math.sign(l.landX - l.takeoffX) || 1;
     const { r, top } = bodyBox(this.ruleset);
+    // jump-through cells never stop a body moving (#100); landing on one that is not the goal fails the arc (below)
     const blocked = (x: number, feet: number) => {
-      for (let y = feet + 0.3; y <= feet + top + 0.01; y += (top - 0.3) / 3) for (const bx of [x - r, x, x + r]) if (grid.solidAt(bx, y)) return true;
+      for (let y = feet + 0.3; y <= feet + top + 0.01; y += (top - 0.3) / 3) for (const bx of [x - r, x, x + r]) if (grid.blocksAt(bx, y)) return true;
+      return false;
+    };
+    const caught = (x: number, feet: number, nf: number) => {
+      for (let cy = grid.cy(feet - 0.01); grid.wy(cy + 1) > nf && cy >= 0; cy--) {
+        const top = grid.wy(cy + 1);
+        if (Math.abs(top - to.y) < 0.05 || (l.through && Math.abs(top - from.y) < 0.05)) continue;
+        if (grid.oneway(grid.cx(x), cy)) return true;
+      }
       return false;
     };
     let x = l.takeoffX, feet = from.y;
     const run = runUp(this, l);
-    // a gap jump is run at, a drop is walked off at speed, a jump up beside a platform starts from standing
-    let vx = run || l.kind === "drop" ? dir * M.walkSpeed : 0, vy = l.kind === "jump" ? M.jumpSpeed : 0;
+    // a gap jump is run at, a drop is walked off at speed (a drop through a platform: straight down), a jump up beside
+    // a platform (or up through it) starts from standing
+    let vx = run || (l.kind === "drop" && !l.through) ? dir * M.walkSpeed : 0, vy = l.kind === "jump" ? M.jumpSpeed : 0;
     for (let i = 0; i < 90; i++) {
       const d = this.flightAim(grid, l, x, feet, vx, vy) - x;
       const want = Math.abs(d) < 0.15 ? 0 : Math.max(-1, Math.min(1, d / 0.7)) * M.walkSpeed;
@@ -284,11 +307,12 @@ export class NavGraph {
       const nx = x + vx * dt;
       let nf = feet + vy * dt;
       // still over the surface it left: standing on it
-      if (vy <= 0 && feet >= from.y - 0.01 && nf < from.y && nx >= from.x0 && nx <= from.x1) {
+      if (!l.through && vy <= 0 && feet >= from.y - 0.01 && nf < from.y && nx >= from.x0 && nx <= from.x1) {
         nf = from.y;
         vy = 0;
       }
       if (vy <= 0 && nf <= to.y + 0.05 && nx >= to.x0 - 0.1 && nx <= to.x1 + 0.1) return true;
+      if (vy <= 0 && caught(nx, feet, nf)) return false;
       if (vy < 0 && nf < to.y - 0.4) return false;
       if (!blocked(nx, nf)) {
         x = nx;

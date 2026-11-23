@@ -83,6 +83,9 @@ export function turnContext(match: Match, me: number) {
       width: lv.width,
       platforms: lv.platforms,
       pits: lv.pits.length,
+      // #100: jump-through platforms (jump up through, hold down to drop; shots pass), soft ground over a hard frame, wall jumps
+      jumpThrough: jumpThroughCount(lv),
+      stage: "pits are gaps with a jump-through catwalk over them; most hanging platforms are jump-through (jump up through, hold down to drop through, shots pass through); the ground is soft on top over a hard rock or steel frame (dig action: digs soft ground only); in the air against a wall, jump again to wall-jump (not while stunned or just knocked)",
       props: Object.fromEntries(["crate", "barrel", "tnt", "glass", "pad", "weight"].map((k) => [k, count(k)])),
     },
     // high ground, cover, sightlines and long guns (#38): the same facts as the prompt's TACTICS paragraph
@@ -407,4 +410,11 @@ export class RemoteSeat {
     turn.resolve(raw);
     return { ok: true, plan, warnings: p.ruleProblems ?? [] };
   }
+}
+
+/** #100: jump-through platforms in a level (runs of jump-through cells). */
+function jumpThroughCount(lv: { grid: { rows: number; cols: number; oneway(cx: number, cy: number): boolean } }): number {
+  let n = 0;
+  for (let cy = 0; cy < lv.grid.rows; cy++) for (let cx = 0; cx < lv.grid.cols; cx++) if (lv.grid.oneway(cx, cy) && !lv.grid.oneway(cx - 1, cy)) n++;
+  return n;
 }

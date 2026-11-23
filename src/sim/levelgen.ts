@@ -10,7 +10,7 @@
  * If a candidate fails validation (level-validate.ts) the generator retries
  * with the next attempt number (also deterministic).
  */
-import { CELL, F_ANCHOR, F_BRIDGE, Grid, Liquid, Mat } from "./grid";
+import { CELL, F_ANCHOR, F_BRIDGE, F_ONEWAY, Grid, Liquid, Mat } from "./grid";
 import { placeWalls, wallCorridor, type Wall } from "./level-walls";
 import { NavGraph, type Surface } from "./nav";
 import { Rng } from "./rng";
@@ -131,11 +131,13 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     }
   }
   const speckle = T.speckle.chance > 0 ? T.speckle : null;
+  // #100: soft over hard: softDepth rows of the theme's ground on a hard frame (its color tells what breaks)
+  const soft = T.stage.frame ? rng.int(T.stage.softDepth[0], T.stage.softDepth[1]) : Infinity;
   for (let cx = 0; cx < grid.cols; cx++) {
     if (top[cx] === -Infinity) continue;
     const ty = cyOf(top[cx]!);
     for (let cy = 0; cy < ty; cy++) {
-      let m: Mat = cy < L.bedrockRows ? Mat.Bedrock : cy === ty - 1 ? T.surface : T.body;
+      let m: Mat = cy < L.bedrockRows ? Mat.Bedrock : cy === ty - 1 ? T.surface : cy < ty - soft ? (T.stage.frame as Mat) : T.body;
       if (speckle && m === speckle.on && rng.chance(speckle.chance)) m = speckle.mat;
       grid.set(cx, cy, m);
     }
@@ -166,6 +168,17 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     const rt = rc < grid.cols ? top[rc]! : -Infinity;
     const wide = p.x1 - p.x0;
     const isCenter = p.x0 < L.bridgeCenter && p.x1 > -L.bridgeCenter;
+    if (T.stage.catwalk && lt > -Infinity && rt > -Infinity) {
+      // #100: a hanging jump-through catwalk over the gap, catwalkHeight above the lower rim, a cell past each rim
+      const cy = cyOf(Math.min(lt, rt) + T.stage.catwalkHeight) - 1;
+      const m = rng.pick(T.bridge);
+      const c0 = lc, c1 = rc;
+      for (let cx = c0; cx <= c1; cx++) grid.set(cx, cy, m, F_ONEWAY);
+      grid.flags[grid.idx(c0, cy)]! |= F_ANCHOR;
+      grid.flags[grid.idx(c1, cy)]! |= F_ANCHOR;
+      bridges++;
+      continue;
+    }
     if (lt > -Infinity && rt > -Infinity && Math.abs(lt - rt) <= L.bridgeHeightGap && rng.chance(isCenter ? L.bridgeCenterChance : L.bridgeChance) && wide <= L.bridgeMaxWidth) {
       const cy = cyOf(Math.min(lt, rt)) - 1;
       const m = rng.pick(T.bridge);
@@ -212,7 +225,9 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     const cyBot = cyTop - thick + 1;
     if (y > L.top || !clear(cx0, cyBot, cx1, cyTop)) continue;
     const m = rng.chance(T.crumble) ? Mat.Crumble : rng.pick(T.platform);
-    for (let cx = cx0; cx <= cx1; cx++) for (let cy = cyBot; cy <= cyTop; cy++) grid.set(cx, cy, m);
+    // #100: most single-row hanging platforms are jump-through; the thick ones stay solid (cover)
+    const through = T.stage.oneWay > 0 && thick === 1 && rng.chance(T.stage.oneWay) ? F_ONEWAY : 0;
+    for (let cx = cx0; cx <= cx1; cx++) for (let cy = cyBot; cy <= cyTop; cy++) grid.set(cx, cy, m, through);
     // anchors: the end cells hold the platform up (hanging from above)
     grid.flags[grid.idx(cx0, cyTop)]! |= F_ANCHOR;
     grid.flags[grid.idx(cx1, cyTop)]! |= F_ANCHOR;

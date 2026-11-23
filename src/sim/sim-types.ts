@@ -72,7 +72,7 @@ export type Retaliate = "attacker" | "turn" | "ignore";
  */
 export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with", "in_open", "has_long_gun", "in_cover", "my_ammo_below"] as const;
 export type RuleWhen = (typeof RULE_WHEN)[number];
-export const RULE_DO = ["target", "avoid", "seek", "use", "stance", "retaliate", "drop", "swap"] as const;
+export const RULE_DO = ["target", "avoid", "seek", "use", "stance", "retaliate", "drop", "swap", "dig"] as const;
 export type RuleDo = (typeof RULE_DO)[number];
 /** anyone | enemy (not me) | target (my current target) | a seat number */
 export type RuleWho = "anyone" | "enemy" | "target" | number;
@@ -128,6 +128,10 @@ export interface Input {
   fire: boolean;
   /** Drop the carried weapon (#95): it stays on the floor with its ammo; fists in hand. */
   drop?: boolean;
+  /** #100: hold down: drop through the jump-through platform under the feet */
+  down?: boolean;
+  /** #100: a fist punch that digs (arena.terrain.dig: carves at arm's length, harder); the house bots dig out with it */
+  dig?: boolean;
 }
 
 export const NO_INPUT: Input = { move: 0, jump: false, aimX: 1, aimY: 0, weapon: null, fire: false };
@@ -224,6 +228,10 @@ export interface Fighter {
   stun: number;
   jumpCd: number;
   airJumped: boolean;
+  /** #100: dropping through jump-through platforms for this many more ticks */
+  dropTicks: number;
+  /** #100: the side (-1, 1) of the last wall jump since the fighter last stood on something (0: none) */
+  wallSide: number;
   grounded: boolean;
   surface: number; // last known nav surface (-1 unknown)
   lastHitBy: number;
@@ -329,7 +337,7 @@ export type SimEvent =
   | { type: "power"; tick: number; fighter: number; power: PowerUp; on: boolean }
   | { type: "shieldPop"; tick: number; fighter: number; x: number; y: number }
   | { type: "impact"; tick: number; fighter: number; damage: number; x: number; y: number }
-  | { type: "jump"; tick: number; fighter: number; air: boolean }
+  | { type: "jump"; tick: number; fighter: number; air: boolean; wall?: boolean }
   | { type: "land"; tick: number; fighter: number; speed: number }
   | { type: "bounce"; tick: number; fighter: number; x: number; y: number }
   | { type: "shatter"; tick: number; entity: number; x: number; y: number }

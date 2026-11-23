@@ -120,7 +120,7 @@ describe("fire", () => {
     expect(again.stats).toEqual(sim.stats);
     const { firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited } = sim.stats;
     expect({ hash: sim.hash(), firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited }).toEqual({
-      hash: "064b23ae",
+      hash: "10b73476",
       firesStarted: 10,
       cellsIgnited: 31,
       cellsBurnedDown: 10,
