@@ -19,6 +19,7 @@ import { ChainView } from "./chains";
 import { FireView } from "./fire";
 import { levelRound } from "./level-art";
 import { TerrainView } from "./terrainview";
+import { LiquidView } from "./liquidview";
 
 
 interface Xform {
@@ -37,6 +38,9 @@ export class Scene {
   private hills = new Graphics();
   private world = new Container();
   private terrainView: TerrainView | null = null;
+  /** #94: the liquids, in front of the fighters */
+  private liquidView: LiquidView | null = null;
+  private readonly liquidLayer = new Container();
   private chainView: ChainView | null = null;
   private readonly chainLayer = new Container();
   /** chain bolts and pivot rings on swinging platforms (#34), in front of the pieces */
@@ -66,7 +70,7 @@ export class Scene {
 
   constructor(private readonly app: Application) {
     app.stage.addChild(this.sky, this.hills, this.world, this.overlay, this.effects.flashScreen);
-    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.entrance.layer, this.projectiles.graphics, this.projectiles.sprites, this.effects.front);
+    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.liquidLayer, this.entrance.layer, this.projectiles.graphics, this.projectiles.sprites, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
     this.projectiles.muzzleOf = (id) => this.fighters.muzzle(id); // rockets, mines, the grapple line leave the plush hand
     this.props.muzzleOf = (id) => this.fighters.muzzle(id); // ... and grenades
@@ -153,6 +157,9 @@ export class Scene {
     void levelRound(sim.level.theme); // the theme's terrain art (the view draws once it arrives)
     this.terrainView = new TerrainView(sim.grid, sim.level.theme);
     this.terrainLayer.addChild(this.terrainView.container);
+    if (this.liquidView) this.liquidView.container.destroy({ children: true });
+    this.liquidView = new LiquidView(sim.grid, sim.level.theme);
+    this.liquidLayer.addChild(this.liquidView.container);
     this.chainView?.destroy();
     this.chainView = new ChainView(sim);
     this.chainLayer.addChild(this.chainView.container);
@@ -292,6 +299,7 @@ export class Scene {
     const fx = this.effects.fx;
     this.props.sync(sim);
     this.terrainView?.update();
+    this.liquidView?.update(this.time);
     fx.update(fxDt);
     this.fireView.emit(sim, fx, fxDt, alpha, this.xform);
 

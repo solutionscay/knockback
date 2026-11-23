@@ -16,9 +16,17 @@ Frames (group `level`, shared by every theme):
   char-<v>           burned out: scorched felt over the cell (an overlay)
   e-l, e-r, e-b      the piping on an exposed left, right or bottom side
   anchor             the bolt a hanging platform's chain is fixed to
+Frames (group `level-nature`, #94: loaded with any theme that uses them):
+  c-<mat>-<v>, t-<mat>   sand, mud and ice cells and their top edges (their own colors: no theme recolors them yet)
+  q-<liquid>-<v>         a cell full of water, oil, lava or acid, variant v (0, 1)
+  s-<liquid>-<f>         the liquid's top cell (its surface, in the top part of the cell), loop frame f (0-7)
 Props (group `props`): glass, pad, weight.
+
+The palettes come from tools/art/themes.json, written from src/sim/themes.ts (`bun scripts/themes-json.ts`).
 """
+import json
 import math
+import os
 
 import bpy
 import numpy as np
@@ -35,15 +43,14 @@ MATS = ["dirt", "rock", "wood", "steel", "concrete", "crumble", "bedrock", "bric
 MAT_ID = {"dirt": 1, "rock": 2, "wood": 3, "steel": 4, "concrete": 5, "crumble": 6, "bedrock": 7, "brick": 8}
 THEMES = ["warehouse", "rooftop", "junkyard", "construction"]
 
-# The themed palettes (src/viewer/palette.ts keeps the same `mat` colors for debris).
-BASE = {"dirt": 0x6b5a45, "rock": 0x6f7480, "wood": 0x9a6a3c, "steel": 0x56657e, "concrete": 0x8a8f99,
-        "crumble": 0xb59a6a, "bedrock": 0x1c1a26, "brick": 0x8e4a3a}
-PALETTE = {
-    "warehouse": ({"concrete": 0x7c818c, "steel": 0x4f6a8c}, {"concrete": 0xe8c44a, "steel": 0x9fb6d6, "wood": 0xc8955a}),
-    "rooftop": ({"concrete": 0x9a9aa4}, {"concrete": 0xcfcfd6, "brick": 0xb86a55, "wood": 0xc8955a, "steel": 0xa8b4c6}),
-    "junkyard": ({"dirt": 0x5e4d38, "steel": 0x7a5a48}, {"dirt": 0x8a9a5a, "steel": 0xb08066, "wood": 0xc8955a}),
-    "construction": ({"steel": 0xc76a2a, "dirt": 0x705a40}, {"dirt": 0xa58a5a, "steel": 0xf0a050, "wood": 0xd9a560}),
-}
+# The themed palettes: src/sim/themes.ts (the source), exported to themes.json (#94).
+_TJ = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "themes.json")))
+BASE = {k: v for k, v in _TJ["base"].items() if k in MATS}
+PALETTE = {t: (_TJ["themes"][t]["mat"], _TJ["themes"][t]["top"]) for t in THEMES}
+NATURE_MATS = ["sand", "mud", "ice"]
+NATURE_BASE = {k: _TJ["base"][k] for k in NATURE_MATS}
+LIQUIDS = ["water", "oil", "lava", "acid"]
+SURF_FRAMES = 8
 
 
 def shade(c, k):
@@ -509,9 +516,12 @@ def anchor():
 
 
 def level_tiles(themes=THEMES, common=True):
-    """Every terrain frame, as Tiles (built lazily: call .build() just before rendering)."""
+    """Every terrain frame, as Tiles (built lazily: call .build() just before rendering). "nature" in `themes`: the
+    #94 materials and liquids."""
     out = []
-    for th in themes:
+    if "nature" in themes:
+        out += nature_tiles()
+    for th in [t for t in themes if t in THEMES]:
         mcol, tcol = theme_colors(th)
         for m in MATS:
             for v in (0, 1):
@@ -538,6 +548,201 @@ def level_tiles(themes=THEMES, common=True):
         T = anchor()
         T.make = lambda: None
         out.append(T)
+    return out
+
+
+# ---------------------------------------------------------------- #94: sand, mud, ice and the liquids
+
+def cell_sand(T, col, rng, v):
+    """Sand: a pale felt slab under many tiny felt grains, wind ripples stitched across, a shell or a pebble."""
+    backing(T, shade(col, 0.8))
+    T.add(*soft((0, 0, 0), 0.245, 0.03, 0.245, p=9.0), felt(col, felt=0.6, mottle=(0.9, 1.06)))
+    tones = [felt(shade(col, 1.1), felt=0.6), felt(shade(col, 0.88), felt=0.6), felt(shade(col, 0.95), felt=0.6)]
+    for k in range(26):
+        x, z = rng.uniform(-0.24, 0.24, 2)
+        r = rng.uniform(0.008, 0.016)
+        T.add(*blob((x, -0.032, z), r, r * 0.6, r), tones[k % 3])
+    rip = thread(hexs(shade(col, 0.7)))
+    for z0 in ((-0.12, 0.1) if v == 0 else (-0.02, 0.17)):
+        pts = [(-0.25 + t * 0.5, 0, z0 + 0.025 * math.sin(t * 2 * math.pi)) for t in np.linspace(0, 1, 30)]
+        T.stitch(pts, rip, dash=0.03, gap=0.016, width=0.009)
+    if v == 1:
+        x, z = rng.uniform(-0.12, 0.12, 2)
+        T.add(*blob((x, -0.04, z), 0.03, 0.012, 0.024, rot=0.4), felt(0xf2e6d8, felt=0.3))
+
+
+def cell_mud(T, col, rng, v):
+    """Mud: a dark, wet-looking slab (low gloss vinyl) with felt clods and a shiny puddle or two."""
+    backing(T, shade(col, 0.6))
+    T.add(*soft((0, 0, 0), 0.245, 0.04, 0.245, p=6.0), vinyl(col, rough=0.55, coat=0.35))
+    tones = [felt(shade(col, 1.15), felt=0.5), felt(shade(col, 0.85), felt=0.5)]
+    for k in range(7):
+        x, z = rng.uniform(-0.22, 0.22, 2)
+        T.add(*blob((x, -0.035, z), rng.uniform(0.04, 0.07), 0.018, rng.uniform(0.03, 0.05), rot=rng.uniform(-0.6, 0.6)), tones[k % 2])
+    wet = vinyl(shade(col, 0.7), rough=0.08, coat=1.0)
+    for k in range(1 + v):
+        x, z = rng.uniform(-0.15, 0.15, 2)
+        T.add(*blob((x, -0.046, z), rng.uniform(0.05, 0.08), 0.004, rng.uniform(0.025, 0.04)), wet)
+    for k in range(3):
+        x, z = rng.uniform(-0.2, 0.2, 2)
+        r = rng.uniform(0.01, 0.018)
+        T.add(*blob((x, -0.05, z), r, r, r), vinyl(shade(col, 1.3), rough=0.15, coat=0.9))
+
+
+def cell_ice(T, col, rng, v):
+    """Ice: a clear, glossy block (a pale blue vinyl) with white stitched cracks and frosted felt corners."""
+    backing(T, shade(col, 0.7), mat=vinyl(shade(col, 0.7), rough=0.2, coat=0.9))
+    T.add(*soft((0, 0, 0), 0.24, 0.045, 0.24, p=8.0), vinyl(col, rough=0.06, coat=1.0, spec=0.9))
+    frost = felt(0xeef8ff, felt=0.7, mottle=(0.95, 1.05))
+    for x, z in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+        if rng.uniform() < 0.6:
+            T.add(*blob((x * 0.2, -0.048, z * 0.2), 0.045, 0.006, 0.035, rot=rng.uniform(0, 3)), frost)
+    crack = thread("#ffffff")
+    x0, z0 = rng.uniform(-0.1, 0.1, 2)
+    for k in range(3 if v == 0 else 4):
+        a = rng.uniform(0, 2 * math.pi)
+        L = rng.uniform(0.12, 0.2)
+        mid = (x0 + math.cos(a) * L * 0.5 + rng.uniform(-0.03, 0.03), z0 + math.sin(a) * L * 0.5 + rng.uniform(-0.03, 0.03))
+        end = (x0 + math.cos(a) * L, z0 + math.sin(a) * L)
+        T.stitch(line_pts((x0, z0), mid, 8) + line_pts(mid, end, 8)[1:], crack, dash=0.02, gap=0.008, width=0.007, height=0.006)
+    glint = pb.emit_mat("Ice glint %d" % len(_MAT), "#ffffff", 1.4)
+    _MAT[("glint", len(_MAT))] = glint
+    tv, tf = pa.tube((-0.17, -0.05, 0.12), (-0.09, -0.05, 0.19), [(0.0, 0.007), (1.0, 0.007)], 8)
+    T.add(tv, tf, glint)
+
+
+NATURE_CELLS = {"sand": cell_sand, "mud": cell_mud, "ice": cell_ice}
+
+
+def liquid_mat(kind):
+    """The liquids' satin: water clear blue (see-through), oil a black-violet gloss, lava hot felt, acid glowing green."""
+    key = ("liquid", kind)
+    if key in _MAT:
+        return _MAT[key]
+    spec = {
+        "water": ("#3d93dc", 0.62, 0.55, 0.0, None, 0.0),
+        "oil": ("#2c2240", 0.9, 0.45, 0.15, None, 0.0),
+        "lava": ("#c8300a", 1.0, 0.7, 0.1, "#ff3c00", 0.9),
+        "acid": ("#6ad83a", 0.82, 0.55, 0.0, "#4fc020", 0.6),
+    }[kind]
+    col, alpha, rough, coat, emit, strength = spec
+    m = pb.glossy_mat("Liquid %s" % kind, col, rough=rough, coat=coat, spec=0.15)
+    p = [n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"][0]
+    p.inputs["Alpha"].default_value = alpha
+    if emit:
+        p.inputs["Emission Color"].default_value = pb.srgb(emit)
+        p.inputs["Emission Strength"].default_value = strength
+    _MAT[key] = m
+    return m
+
+
+LIQ_ACCENT = {"water": "#bfe6ff", "oil": "#7a5cff", "lava": "#ffd27a", "acid": "#d8ff9a"}
+LIQ_DARK = {"water": 0x2a6aa8, "oil": 0x120d18, "lava": 0x3a140a, "acid": 0x2f7a1a}
+
+
+def slab(x0, x1, z0, top, ty=0.03, n=33):
+    """A thin slab, flat bottom at z0, its top edge the profile top(x) (x0..x1), ty thick (front -ty, back +ty)."""
+    xs = np.linspace(x0, x1, n)
+    v = []
+    for y in (-ty, ty):
+        for x in xs:
+            v.append((x, y, z0))
+            v.append((x, y, top(x)))
+    f = []
+    for side in (0, 1):
+        o = side * 2 * n
+        for i in range(n - 1):
+            a, b, c, d = o + 2 * i, o + 2 * (i + 1), o + 2 * (i + 1) + 1, o + 2 * i + 1
+            f.append([a, b, c, d] if side == 0 else [a, d, c, b])
+    for i in range(n - 1):  # the top strip
+        f.append([2 * i + 1, 2 * (i + 1) + 1, 2 * n + 2 * (i + 1) + 1, 2 * n + 2 * i + 1])
+    return np.array(v, float), f
+
+
+def wave(kind, phase):
+    """The surface line of one cell, periodic over the cell (x in -0.25..0.25) and over the loop (phase 0..2pi)."""
+    amp = {"water": 0.022, "oil": 0.012, "lava": 0.016, "acid": 0.018}[kind]
+    k = 2 * math.pi / CELL
+    return lambda x: 0.16 + amp * math.sin(k * x - phase) + amp * 0.4 * math.sin(2 * k * x + 2 * phase + 1.0)
+
+
+def liquid_body(T, kind, rng, v):
+    """A cell full of liquid: the satin slab, with what moves in it (ripple lines, crust, bubbles)."""
+    T.add(*slab(-0.25, 0.25, -0.25, lambda x: 0.25), liquid_mat(kind))
+    acc = thread(LIQ_ACCENT[kind])
+    if kind == "water":
+        for z in ((-0.1, 0.12) if v == 0 else (0.0,)):
+            pts = [(-0.25 + t * 0.5, 0, z + 0.012 * math.sin(t * 2 * math.pi * 2)) for t in np.linspace(0, 1, 30)]
+            T.stitch(pts, acc, dash=0.03, gap=0.03, width=0.007, height=0.004)
+    elif kind == "oil":
+        T.stitch([(-0.25 + t * 0.5, 0, -0.05 + 0.02 * math.sin(t * 2 * math.pi)) for t in np.linspace(0, 1, 30)], acc, dash=0.05, gap=0.02, width=0.008, height=0.004)
+    elif kind == "lava":
+        vein = pa.emit_two("Lava vein %d" % v, "#fff0a0", "#ffa020", 2.5)
+        for z in ((-0.14, 0.06) if v == 0 else (-0.05, 0.15)):
+            T.stitch([(-0.25 + t * 0.5, 0, z + 0.03 * math.sin(t * 2 * math.pi + z * 9)) for t in np.linspace(0, 1, 30)], vein, dash=0.05, gap=0.02, width=0.012, height=0.006)
+        crust = felt(LIQ_DARK[kind], felt=0.5, mottle=(0.8, 1.2))
+        for k in range(2 + v):
+            x, z = rng.uniform(-0.18, 0.18, 2)
+            T.add(*blob((x, -0.035, z), rng.uniform(0.05, 0.08), 0.008, rng.uniform(0.03, 0.05), rot=rng.uniform(0, 3)), crust)
+    if kind in ("lava", "acid"):
+        b = vinyl(int(LIQ_ACCENT[kind][1:], 16), rough=0.2, coat=0.8)
+        for k in range(2):
+            x, z = rng.uniform(-0.2, 0.2, 2)
+            r = rng.uniform(0.012, 0.022)
+            T.add(*blob((x, -0.036, z), r, r * 0.7, r), b)
+
+
+def liquid_surface(T, kind, f):
+    """The liquid's top cell, loop frame f: the slab up to a moving wave line, a rolled satin crest along it, and
+    (lava, acid) bubbles that swell and pop; (water) foam dots riding the crest."""
+    ph = 2 * math.pi * f / SURF_FRAMES
+    top = wave(kind, ph)
+    T.add(*slab(-0.25, 0.25, -0.25, top), liquid_mat(kind))
+    xs = np.linspace(-0.25, 0.25, 33)
+    pts = [(x, -0.032, top(x) - 0.006) for x in xs]
+    N = [np.array([0.0, 0.0, 1.0])] * len(pts)
+    cv, cf = pb.sweep(pts, N, pb.circle(0.011, 8), closed=False, cap=False)
+    T.add(cv, cf, vinyl(int(LIQ_ACCENT[kind][1:], 16), rough=0.15, coat=0.9) if kind != "oil" else vinyl(0x4a3a6a, rough=0.05, coat=1.0))
+    if kind == "oil":  # a rainbow sheen below the crest
+        for k, c in enumerate(("#7a5cff", "#3ad0c0", "#e0d05a")):
+            T.stitch([(x, 0, top(x) - 0.05 - k * 0.018) for x in xs], thread(c), dash=0.05, gap=0.015, width=0.006, height=0.004)
+    if kind == "water":
+        foam = felt(0xf4fbff, felt=0.5)
+        for k in range(3):
+            x = ((k / 3 + f / SURF_FRAMES) % 1.0) * CELL - 0.25
+            T.add(*blob((x, -0.045, top(x) + 0.004), 0.016, 0.008, 0.011), foam)
+    if kind in ("lava", "acid"):
+        b = vinyl(int(LIQ_ACCENT[kind][1:], 16), rough=0.2, coat=0.8)
+        for k, (x, off) in enumerate(((-0.13, 0.0), (0.1, 0.45))):
+            t = (f / SURF_FRAMES + off) % 1.0
+            r = 0.035 * math.sin(math.pi * t)
+            if r > 0.006:
+                T.add(*blob((x, -0.02, top(x) - 0.01 + r * 0.6), r, r * 0.7, r), b)
+    return T
+
+
+def nature_tiles():
+    out = []
+    g = "level-nature"
+    for m in NATURE_MATS:
+        col = NATURE_BASE[m]
+        for v in (0, 1):
+            T = Tile("c-%s-%d" % (m, v), g)
+            T.make = (lambda T=T, m=m, v=v, c=col: NATURE_CELLS[m](T, c, np.random.default_rng(900 + NATURE_MATS.index(m) * 10 + v), v))
+            out.append(T)
+        T = Tile("t-" + m, g, kind="cap")
+        top = {"sand": 0xeedcae, "mud": 0x7a5c40, "ice": 0xe6f6ff}[m]
+        T.make = (lambda T=T, m=m, c=top: cap(T, m, c, np.random.default_rng(950 + NATURE_MATS.index(m))))
+        out.append(T)
+    for kind in LIQUIDS:
+        for v in (0, 1):
+            T = Tile("q-%s-%d" % (kind, v), g)
+            T.make = (lambda T=T, k=kind, v=v: liquid_body(T, k, np.random.default_rng(970 + LIQUIDS.index(k) * 10 + v), v))
+            out.append(T)
+        for f in range(SURF_FRAMES):
+            T = Tile("s-%s-%d" % (kind, f), g, kind="cap", rep=(2, 0))
+            T.make = (lambda T=T, k=kind, f=f: liquid_surface(T, k, f))
+            out.append(T)
     return out
 
 

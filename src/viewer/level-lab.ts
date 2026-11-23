@@ -3,9 +3,14 @@
  * grid the way the game draws it (TerrainView): its ground and every platform material, a carved hole, cells at
  * crack stages 1 and 2, burned cells, a loose chunk and a chain anchor; then the glass pane, the jump pad and the
  * weight, and a plush fighter for scale. ?s= screen pixels per meter (45: the View-all median at 1080p). View only.
+ *
+ * #94: a last row, the testbed theme: a pool of each liquid (water, oil, lava, acid; their surfaces loop), sand
+ * ground, and columns of sand, mud, ice and rock (one cracked), an ice platform, a fighter wading in the water.
+ * ?t= seconds into the liquids' loop (stills).
  */
 import { Application, Container, Sprite, Text } from "pixi.js";
-import { F_ANCHOR, F_CHARRED, Grid, Mat, MAT_HP } from "../sim/grid";
+import { F_ANCHOR, F_CHARRED, Grid, Liquid, Mat, MAT_HP } from "../sim/grid";
+import { LiquidView } from "./liquidview";
 import { LEVEL_THEMES, PROP_HALF, type Theme } from "../sim/level-config";
 import { levelLoad, levelMemory } from "./level-art";
 import { initPlushArt, loadPlushSheets, plushFormat, plushNeeds, PlushBot } from "./plush-bot";
@@ -14,12 +19,13 @@ import { initWorldArt, setWorldFrame } from "./world-art";
 
 const q = new URLSearchParams(location.search);
 const S = Number(q.get("s") ?? "45");
-const THEMES: Theme[] = ["rooftop", "warehouse", "junkyard", "construction"];
+const THEMES: Theme[] = ["rooftop", "warehouse", "junkyard", "construction", "testbed"];
+const T0 = Number(q.get("t") ?? "0");
 await initPlushArt();
 await initWorldArt();
 await loadPlushSheets(plushNeeds("balanced", "none"));
 const app = new Application();
-await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 31), antialias: true, resolution: 1, preference: "webgl" });
+await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 39), antialias: true, resolution: 1, preference: "webgl" });
 document.body.appendChild(app.canvas);
 
 function label(text: string, x: number, y: number, size = 13) {
@@ -53,6 +59,29 @@ function patch(theme: Theme): Grid {
   return g;
 }
 
+/** #94, the testbed: four pools and the new materials. */
+function proving(): Grid {
+  const g = new Grid(22, 8, 0, 0);
+  for (let cx = 0; cx < 22; cx++) for (let cy = 0; cy < 4; cy++) g.set(cx, cy, cy === 0 ? Mat.Bedrock : cy === 3 ? Mat.Sand : cy === 1 && cx % 5 === 2 ? Mat.Rock : Mat.Dirt);
+  const pool = (c0: number, c1: number, cy0: number, l: Liquid) => {
+    for (let cx = c0; cx <= c1; cx++) for (let cy = cy0; cy < 4; cy++) {
+      g.clear(cx, cy);
+      g.liq[g.idx(cx, cy)] = l;
+    }
+  };
+  pool(1, 4, 1, Liquid.Water);
+  pool(6, 8, 2, Liquid.Oil);
+  pool(10, 12, 2, Liquid.Lava);
+  pool(14, 16, 2, Liquid.Acid);
+  [Mat.Sand, Mat.Mud, Mat.Ice, Mat.Rock].forEach((m, i) => { g.set(18 + i, 4, m); g.set(18 + i, 5, m); });
+  g.hp[g.idx(20, 5)] = MAT_HP[Mat.Ice]! * 0.2;
+  g.hp[g.idx(18, 5)] = MAT_HP[Mat.Sand]! * 0.5;
+  for (let cx = 7; cx < 13; cx++) g.set(cx, 7, Mat.Ice, cx === 7 || cx === 12 ? F_ANCHOR : 0);
+  for (let cx = 1; cx < 4; cx++) g.set(cx, 6, Mat.Mud);
+  return g;
+}
+const liquidViews: LiquidView[] = [];
+
 function fighter(x: number, ground: number) {
   const pl = new PlushBot(0x3fa7ff, "none", "balanced");
   pl.update({ dt: 1 / 12, alive: true, air: false, stunned: false, vx: 0, vy: 0, weapon: "fist", aim: 0, swingT: 0, recoil: 0, hitT: 0, celebrate: false, facing: 1 });
@@ -70,11 +99,24 @@ for (const theme of THEMES) {
   bytes.push(levelMemory(theme).bytes);
   const rowH = S * 7.4;
   label(`${theme} (${S} px/m, ${plushFormat()})`, 12, y);
-  const g = patch(theme);
+  const g = theme === "testbed" ? proving() : patch(theme);
   const tv = new TerrainView(g, theme);
   tv.update();
   const world = new Container();
   world.addChild(tv.container);
+  if (theme === "testbed") {
+    const lv = new LiquidView(g, theme);
+    lv.update(T0);
+    liquidViews.push(lv);
+    world.scale.set(S);
+    world.position.set(S * 1.5, y + S * 7.2);
+    app.stage.addChild(world);
+    fighter(S * 2.9, y + S * 5.2 + S * 1.0);
+    world.addChild(lv.container);
+    app.stage.addChild(world); // the liquid in front of the wading fighter
+    y += rowH + 8;
+    continue;
+  }
   // a loose chunk (a broken-off piece), turned a little
   const piece = new Container();
   drawPiece(piece, theme, [{ lx: 0, ly: 0, mat: LEVEL_THEMES[theme].platform[1]!, hp: 99 }, { lx: 1, ly: 0, mat: LEVEL_THEMES[theme].platform[1]!, hp: 6 }, { lx: 1, ly: 1, mat: LEVEL_THEMES[theme].platform[1]!, hp: 99 }]);
@@ -95,6 +137,9 @@ for (const theme of THEMES) {
   fighter(S * 3.2, y + S * 5.2);
   y += rowH + 8;
 }
+app.ticker.add(() => {
+  for (const lv of liquidViews) lv.update(T0 + app.ticker.lastTime / 1000);
+});
 label(`GPU per theme (its atlas + the shared one): ${bytes.map((b) => (b / 1e6).toFixed(2) + " MB").join(", ")}`, 12, y);
 (window as unknown as { __ready: boolean; __levelBytes: number[] }).__ready = true;
 (window as unknown as { __levelBytes: number[] }).__levelBytes = bytes;

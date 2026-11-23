@@ -3,7 +3,7 @@ import { type Sim } from "../sim/sim";
 import { clamp } from "../sim/dmath";
 import { type SimEvent } from "../sim/sim-types";
 import { Fx } from "./fx";
-import { POWER_COLOR, WEAPON_ACCENT, type Palette } from "./palette";
+import { LIQUID_COLOR, POWER_COLOR, WEAPON_ACCENT, type Palette } from "./palette";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { FighterViews } from "./scene-fighters";
 import type { ProjectileViews } from "./scene-projectiles";
@@ -64,6 +64,17 @@ export class SceneEffects {
           const col = pal.mat[c.mat] ?? 0x888888;
           if (i % (n > 30 ? 3 : 1) === 0) this.fx.debris(c.x, c.y, 0.2, 0.2, col, n > 30 ? 1 : 2);
         }
+        break;
+      }
+      case "splash": {
+        // #94: a fighter went into a liquid: drops of it thrown up
+        const col = LIQUID_COLOR[e.liquid] ?? 0x3d93dc;
+        for (let i = 0; i < 9; i++) this.fx.add({ x: e.x + (Math.random() - 0.5) * 0.6, y: e.y - 0.3, vx: (Math.random() - 0.5) * 4, vy: 3 + Math.random() * 3, gravity: 14, life: 0.5 + Math.random() * 0.3, size: 0.07 + Math.random() * 0.05, color: col, alpha: 0.9 });
+        break;
+      }
+      case "douse": {
+        this.fx.dust(e.x, e.y + 0.6, 5);
+        this.float("DOUSED", e.x, e.y + 1.1, 0xbfe6ff, 0.7);
         break;
       }
       case "detach": {
