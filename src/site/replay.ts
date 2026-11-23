@@ -8,6 +8,7 @@
 import { cleanIdentity, colorVars } from "./bots";
 import { cap, clock, posAtTime, timeOfPos, timeline, type MatchInfo, type ReplayInfo, type ReportRound, type Timeline } from "./data";
 import { $, getJson, html, mount, raw } from "./dom";
+import { PlanCard } from "./plan-card";
 import { when as dateOf } from "./replays";
 import { PLAN_SLOT, renderSeats } from "./seats";
 import { Stage } from "./stage";
@@ -50,9 +51,12 @@ export async function replayPage(root: HTMLElement, id: string) {
   let speed = 1;
   let shownT = 0;
   let anchor = { t: 0, at: performance.now(), key: "" };
+  let plan: PlanCard | null = null;
   const stage = new Stage($("#r-stage")!, {
     seeking: (on) => ($("#r-seek")!.hidden = !on),
+    ev: (round, e) => plan?.book.event(round, e),
     pos: (p) => {
+      plan?.render();
       if (!tl) return;
       // fight ticks map exactly; between them, run a local clock so the knob moves through the talk and the round end
       const t = timeOfPos(tl, p);
@@ -61,6 +65,14 @@ export async function replayPage(root: HTMLElement, id: string) {
     },
   });
   stage.record(record);
+  // the plan card (#104): a tapped fighter's plan at the playhead; the record has the plans, updates and firings
+  plan = new PlanCard($("#plan-slot")!, stage, $("#r-seats"));
+  plan.ids = ids;
+  plan.book.names = names;
+  plan.book.labels = labels;
+  void getJson<unknown>(record).then((r) => {
+    if (r.ok) plan!.book.record(r.data);
+  });
 
   const rep = await getJson<{ rounds: ReportRound[] }>(`/api/matches/${encodeURIComponent(id)}/report`);
   if (!rep.ok) {

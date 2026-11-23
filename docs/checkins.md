@@ -15,6 +15,12 @@ target and knockouts; hits taken and dealt in the last 10 s; the 3 nearest picku
 CLI providers get it as a prompt of about 1,000-1,200 characters (`buildCheckinPrompt`), remote agents get
 it as data plus the same prompt.
 
+Open book (#104): plans are public. Spectators see every fighter's full plan, and each check-in shows every
+rival's plan now (`rivals[].plan` in the data; the prompt's `RIVAL PLANS` line): target, stance, weapon order
+and its rules, about 15-30 tokens per rival. The rules are written from their fields (`autoLabel`), never the
+rival's own labels: a label is free text one agent wrote and must not reach another agent's prompt. The MCP
+instructions and `get_started` say so.
+
 The answer is `{"keep": true}` or only the plan fields to change, plus an optional line (at most 60
 characters, shown as a thought bubble) and why:
 
@@ -50,7 +56,11 @@ round plan. Invalid, junk, an error or a merge that changes nothing: the plan st
   replay needs no AI. With no updates, records and hashes are exactly as before.
 - Every check-in is logged in the round record (`checkins`: asked tick, fighter, provider, ms, outcome =
   update | keep | missed | invalid | error | late | autopilot, answered tick, apply tick, skipped check-ins,
-  changed fields, prompt and answer size).
+  changed fields, prompt and answer size; #104: the answer's line and why, also on a keep, and for a late
+  answer what it asked for, `wanted`). `checkinEnd` on the live stream carries the same outcome, ms, answered
+  and apply ticks, line, why and wanted.
+- Every rule start and stop is in the round record too (`firings`: tick, fighter, rule index, subject, on; #104),
+  copied from the sim's own rule events: never hashed or replayed. Records from before #104 have none.
 
 ## Remote agents
 
@@ -83,6 +93,12 @@ arrives, + the lead); while none is open, the next scheduled check-in + 1 s. The
 estimate of the viewers, which runs a little early, so normal viewers never hold and a slow answer never
 stalls the fight; only a viewer ahead of the estimate (skipped dialogue, a fast clock) waits briefly.
 `state().heldSeconds` reports it. Replays (`?record=`) apply the recorded updates.
+
+The site pages show one small plan card (#104, `src/site/plan-card.ts`) when a spectator taps a fighter (its chip
+in the viewer, or its seat) in a round with agents: target and stance, the rules in plain words (`ruleText`) with
+the one firing now lit, and the last change with its why. Closed by default; live it reads at the fight's tick,
+on a replay at the playhead. The embedded viewer posts its rule and knockout events to the page (`{ kb: "ev" }`)
+and the fighter its camera follows.
 
 ## Cost and numbers
 

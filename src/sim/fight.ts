@@ -54,6 +54,17 @@ export interface PlanUpdate {
   source?: "checkin";
 }
 
+/** A plan rule that started or stopped (#104): copied from the sim's own rule events, for spectators' plan timelines. Never hashed or replayed. */
+export interface RuleFiring {
+  tick: number;
+  fighter: number;
+  /** the rule's index in the plan the fighter played at that tick */
+  rule: number;
+  /** the fighter that made the rule true, or -1 */
+  subject: number;
+  on: boolean;
+}
+
 export interface FightRecord {
   ruleset?: Ruleset;
   /** The seed makes the level too (levelgen.ts); theme/attempt are informational. */
@@ -100,6 +111,8 @@ export class Fight {
   private finishLeft = -1;
   over = false;
   private koLog: FightResult["koLog"] = [];
+  /** every rule start and stop, in tick order (#104): read-only for the sim */
+  readonly firings: RuleFiring[] = [];
   /** the last fighter hit on each fighter and how far away it was (#38: knockout range) */
   private lastHit: { by: number; dist: number }[] = [0, 1, 2, 3].map(() => ({ by: -1, dist: 0 }));
   // facts for morale and dialogue
@@ -228,7 +241,10 @@ export class Fight {
       if (e.type === "pickup" || e.type === "hit" || e.type === "ko") for (const c of this.controllers) c.rules.dirty = true;
       if (e.type === "ko") this.koLog.push({ fighter: e.fighter, by: e.by, cause: e.cause, weapon: e.weapon, tick: e.tick, ...(e.by >= 0 && e.by !== e.fighter && this.lastHit[e.fighter]!.by === e.by ? { range: Math.round(this.lastHit[e.fighter]!.dist * 10) / 10 } : {}) });
       else if (e.type === "pickup") this.stats.pickup(e.fighter, e.item, e.tick);
-      else if (e.type === "rule") this.stats.rule(e.fighter, e.rule, e.on, e.tick);
+      else if (e.type === "rule") {
+        this.stats.rule(e.fighter, e.rule, e.on, e.tick);
+        this.firings.push({ tick: e.tick, fighter: e.fighter, rule: e.rule, subject: e.subject, on: e.on });
+      }
       else if (e.type === "hit") {
         if (e.source >= 0 && e.source !== e.target) {
           const a = this.sim.fighters[e.source]!;

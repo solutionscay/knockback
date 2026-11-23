@@ -3,11 +3,13 @@
  * iframe with `?embed`. The fight code is untouched; this bridge only reports where playback is and, for
  * replays, lets the page seek and change speed:
  *
- *   viewer -> page   { kb: "pos", pos: PlaybackPos | null, speed }       every 250 ms
+ *   viewer -> page   { kb: "pos", pos: PlaybackPos | null, speed, follow } every 250 ms (follow: the fighter the camera follows, or -1)
  *                    { kb: "live", msg }                                  every live stream message (the page's fight feed)
+ *                    { kb: "ev", round, e }                               rule starts/stops and knockouts as the fight plays (#104: the plans column)
  *                    { kb: "seeking", on }
  *   page -> viewer   { kb: "seek", to: PlaybackPos }                      fast-forward (or restart and fast-forward) to a point
  *                    { kb: "speed", speed }                               0 = pause, 1, 2
+ *                    { kb: "follow", id }                                 the camera follows a fighter (-1: back to auto)
  *
  * Messages are only exchanged with the same origin.
  */
@@ -59,7 +61,14 @@ export interface EmbedHost {
   restart: (() => void) | null;
   /** turn the game's sound off and on while seeking */
   mute(on: boolean): void;
+  /** the fighter the camera follows (-1: none); view only */
+  follow?(): number;
+  /** follow a fighter (-1: back to auto); view only */
+  setFollow?(id: number): void;
 }
+
+/** A fight event the page's plans column uses (#104). */
+export type PlanEvent = { type: "rule"; tick: number; fighter: number; rule: number; on: boolean; subject: number } | { type: "ko"; tick: number; fighter: number; by: number };
 
 export class EmbedBridge {
   speed = 1;
@@ -70,11 +79,12 @@ export class EmbedBridge {
   constructor(private host: EmbedHost) {
     addEventListener("message", (ev) => {
       if (ev.origin !== this.origin || !ev.data || typeof ev.data !== "object") return;
-      const d = ev.data as { kb?: string; to?: PlaybackPos; speed?: number };
+      const d = ev.data as { kb?: string; to?: PlaybackPos; speed?: number; id?: number };
+      if (d.kb === "follow" && typeof d.id === "number") this.host.setFollow?.(d.id);
       if (d.kb === "speed" && typeof d.speed === "number") this.speed = Math.max(0, Math.min(4, d.speed));
       if (d.kb === "seek" && d.to && typeof d.to.round === "number") this.seek(d.to);
     });
-    setInterval(() => this.post({ kb: "pos", pos: this.host.pos(), speed: this.speed }), 250);
+    setInterval(() => this.post({ kb: "pos", pos: this.host.pos(), speed: this.speed, follow: this.host.follow?.() ?? -1 }), 250);
   }
 
   post(msg: unknown) {
@@ -84,6 +94,11 @@ export class EmbedBridge {
   /** the live stream message, for the page's fight feed */
   live(msg: unknown) {
     this.post({ kb: "live", msg });
+  }
+
+  /** a rule or knockout event of round `round`, for the page's plans column (#104) */
+  event(round: number, e: PlanEvent) {
+    this.post({ kb: "ev", round, e });
   }
 
   /** The frame's game time to advance (0 while seeking or paused). */

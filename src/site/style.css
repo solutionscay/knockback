@@ -213,6 +213,20 @@ pre.snip { margin: 0; padding: 12px 64px 12px 12px; background: #000; border-rad
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
+/* ---------------------------------------------------------------- the plan card (#104): a tapped fighter's plan */
+.plancard { background: var(--slab); border-radius: 2px; border-left: 4px solid var(--c); padding: 8px 10px; max-width: 520px; font-size: 13px; }
+.pc-hd { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.pc-n { font: 900 14px/1.1 var(--display); color: var(--ci, var(--c)); text-transform: uppercase; flex: none; }
+.pc-h { font: 900 14px/1.2 var(--display); min-width: 0; }
+.pc-h em { font-style: normal; color: var(--ci, var(--c)); }
+.pc-x { margin-left: auto; border: 0; background: none; color: var(--dim); font: 800 13px/1 var(--text); padding: 2px 4px; flex: none; }
+.pc-rules { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.pc-rules li { padding: 3px 7px; border-radius: 2px; color: var(--dim); }
+.pc-rules li.on { color: #1a1505; background: var(--yellow); font-weight: 800; }
+.pc-chg { margin: 6px 0 0; color: var(--dim); }
+.pc-chg b { color: var(--ci, var(--c)); font: 900 11px/1 var(--display); }
+.pc-chg q { color: var(--ink); }
+
 /* #85: the plush portraits on the cards (site/bots.ts head(): the portrait's bust) */
 .bh { display: inline-block; flex: none; width: 26px; height: 26px; margin: -6px 6px -6px 0; vertical-align: middle; }
 .bh svg { display: block; width: 100%; height: 100%; }

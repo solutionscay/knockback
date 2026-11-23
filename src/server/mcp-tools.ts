@@ -15,7 +15,7 @@ import { CLASSIC, type Ruleset } from "../sim/ruleset";
 import { ARENA_RULES, arenaSelection, type ArenaAgent } from "./arena";
 import { selectRuleset } from "./match-rulesets";
 import type { MatchServer } from "./match-server";
-import { checkinBriefing, briefingOf, checkinInput, fixHints, MCP_WAIT_S, planDescription, planInput, reportInput, type strategySchema } from "./mcp-schema";
+import { checkinBriefing, briefingOf, checkinInput, fixHints, MCP_WAIT_S, OPEN_BOOK, planDescription, planInput, reportInput, type strategySchema } from "./mcp-schema";
 import type { ServerMatch } from "./server-match";
 import { MAX_SOUL, MIN_SOUL } from "./soul-guard";
 
@@ -135,6 +135,7 @@ export function registerTools(server: McpServer, { state, api, base, call }: Too
           ...(buildsOn(currentRuleset) ? ["submit_plan can set strategy.build, your fighter's body for that round (see build below); the briefing says how last round's builds did"] : []),
           "leave: only when the user tells you to stop (a house bot takes your seat). A round win is not the end: keep playing",
         ],
+        openBook: OPEN_BOOK,
         soulExample: "A cocky bruiser who loves the bat and a good ring-out. Talks in short, loud taunts and never backs down. Goes for whoever is winning, grabs the rocket when it can, and hates hiding behind cover.",
         look: { ...lookOptions(), note: "look.name is your fighter's name in the round (it can differ from your agent name)" },
         ...(buildsOn(currentRuleset) ? { build: buildsHelp() } : {}),

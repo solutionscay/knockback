@@ -123,8 +123,20 @@ const bridge = embedded
         if (on) mutedSound = game.sound ?? mutedSound;
         game.sound = on ? null : mutedSound;
       },
+      follow: () => {
+        const m = game.scene.camera.camMode;
+        return m.kind === "follow" ? m.id : -1;
+      },
+      setFollow: (id) => game.setCamera(id >= 0 ? { kind: "follow", id } : { kind: "auto" }),
     })
   : null;
+// the plans column (#104): rule starts/stops and knockouts, as they play
+if (bridge)
+  game.onSimEvent = (e) => {
+    const round = game.match?.round ?? 0;
+    if (e.type === "rule") bridge.event(round, { type: "rule", tick: e.tick, fighter: e.fighter, rule: e.rule, on: e.on, subject: e.subject });
+    else if (e.type === "ko") bridge.event(round, { type: "ko", tick: e.tick, fighter: e.fighter, by: e.by });
+  };
 
 const seedEl = document.getElementById("seed")!;
 function start(seed: number) {

@@ -145,6 +145,69 @@ export function ruleTagText(rule: Rule | undefined): string {
   return `RULE: ${label.length > 28 ? `${label.slice(0, 27).trim()}…` : label}`;
 }
 
+// ------------------------------------------------------------------ plain words (#104)
+
+const ITEM_WORD: Partial<Record<string, string>> = { grapple: "hook", flamethrower: "flamer", lightning: "sword" };
+const itemWord = (x?: string) => (x ? (ITEM_WORD[x] ?? x) : "a pickup");
+/** a/an + item ("a rocket", "an ice ...") */
+const an = (x?: string) => {
+  const w = itemWord(x);
+  return /^[aeiou]/.test(w) ? `an ${w}` : `a ${w}`;
+};
+
+/** A stance in plain words: "rush in", "keep distance", ... */
+export function stanceText(stance: string): string {
+  const t: Record<string, string> = { rush: "rush in", distance: "keep distance", cover: "take cover", item: "grab pickups", overwatch: "hold high ground", flank: "flank", hold: "hold position" };
+  return t[stance] ?? stance;
+}
+
+/** What `retaliate` does, in plain words. */
+export function retaliateText(r: string | undefined): string {
+  return r === "attacker" ? "chase the attacker" : r === "ignore" ? "ignore it" : "turn and fight";
+}
+
+/**
+ * A rule in plain words for spectators (#104): "Anyone hits me → take cover", "Health under 35% → go get health".
+ * `names`: the fighters' names, for a rule about one rival.
+ */
+export function ruleText(rule: Rule, names: string[] = []): string {
+  const who = (cap: boolean) => {
+    const w = rule.who;
+    const s = typeof w === "number" ? (names[w] ?? `seat ${w + 1}`) : w === "enemy" ? "an enemy" : w === "target" ? "my target" : "anyone";
+    return cap && typeof w !== "number" ? s[0]!.toUpperCase() + s.slice(1) : s;
+  };
+  const v = rule.value ?? 0;
+  const when: Record<Rule["when"], string> = {
+    holds: `${who(true)} holds ${rule.item === "jetpack" ? "a jetpack" : an(rule.item)}`,
+    my_health_below: `Health under ${v}%`,
+    health_below: `${who(true)} under ${v}% health`,
+    near_ledge: `${who(true)} near a ledge`,
+    near_barrel: `${who(true)} near a barrel`,
+    on_streak: `${who(true)} has ${v} KO${v === 1 ? "" : "s"}`,
+    chasing_me: `${who(true)} chases me`,
+    hit_me: `${who(true)} hits me`,
+    item_near: `${an(rule.item)[0]!.toUpperCase()}${an(rule.item).slice(1)} nearby`,
+    alone_with: "Last two standing",
+    in_open: `${who(true)} in the open`,
+    has_long_gun: `${who(true)} has a long gun`,
+    in_cover: "I'm in cover",
+    my_ammo_below: `Ammo under ${v}%`,
+  };
+  const subj = ["holds", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "in_open", "has_long_gun", "alone_with"].includes(rule.when) ? "them" : "it";
+  const act: Record<Rule["do"], string> = {
+    target: `go after ${subj === "them" ? "them" : "my target"}`,
+    avoid: subj === "them" ? "keep away from them" : "keep away",
+    seek: rule.doItem === "health" ? "go get health" : `go get ${an(rule.doItem)}`,
+    use: rule.doItem === "bat" || rule.doItem === "hammer" ? `swing the ${itemWord(rule.doItem)}` : `use the ${itemWord(rule.doItem)}`,
+    stance: stanceText(rule.stance ?? "hold"),
+    retaliate: retaliateText(rule.retaliate),
+    drop: rule.doItem ? `drop the ${itemWord(rule.doItem)}` : "drop my weapon",
+    swap: rule.doItem === "fist" || !rule.doItem ? "switch to fists" : `switch to the ${itemWord(rule.doItem)}`,
+    dig: "dig through",
+  };
+  return `${when[rule.when]} → ${act[rule.do]}`;
+}
+
 // ------------------------------------------------------------------ best rule
 
 export interface RuleFiring {
