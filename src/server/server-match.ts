@@ -293,7 +293,7 @@ export class ServerMatch {
       const a = this.agents[i];
       const id = ids[i]!;
       const line = a?.openingLine ?? soulOpeningLine(souls[i]!.lines, souls[i]!.catchphrase || undefined, id.name, this.seed + i);
-      return { seat: i, name: id.name, color: id.color, look: id, label: a ? `agent · ${a.name}` : "house bot", model: this.modelLabel(i), line, svg: portraitSvg(id, "fist", "fight", "full") };
+      return { seat: i, name: id.name, color: id.color, look: id, label: a ? `agent · ${a.name}` : "house bot", model: this.modelLabel(i), line, svg: portraitSvg(id, "fight", "full") };
     });
   }
 

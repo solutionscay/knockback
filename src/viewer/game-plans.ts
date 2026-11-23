@@ -88,7 +88,7 @@ export class GamePlans {
   /** `labels`: who plays each seat, shown as a model badge on the chip; the tag next to it names the fighter's build (#81) */
   startLineup(lineup: HTMLElement, shown: Fight, decisions: Decision[], labels: (string | null)[] = []) {
     lineup.innerHTML = shown.sim.fighters
-      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.look, decisions[f.id]!.strategy.weapons[0] ?? "fist", "fight", "tiny")}<span class="nm"><span class="fn">${esc(f.name)}</span>${modelBadgeHtml(labels[f.id] ?? null, "sm")}${buildTagHtml(f.build)}<em class="plan"></em></span></div>`)
+      .map((f) => `<div class="chip" data-id="${f.id}" data-follow="${f.id}" style="--c:${hex(f.color)}">${portraitSvg(f.look, "fight", "tiny")}<span class="nm"><span class="fn">${esc(f.name)}</span>${modelBadgeHtml(labels[f.id] ?? null, "sm")}${buildTagHtml(f.build)}<em class="plan"></em></span></div>`)
       .join("");
     lineup.className = "show";
   }

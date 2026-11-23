@@ -67,6 +67,8 @@ export class Scene {
     app.stage.addChild(this.sky, this.hills, this.world, this.overlay, this.effects.flashScreen);
     this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.entrance.layer, this.projectiles.graphics, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
+    this.projectiles.muzzleOf = (id) => this.fighters.muzzle(id); // rockets, mines, the grapple line leave the plush hand
+    this.props.muzzleOf = (id) => this.fighters.muzzle(id); // ... and grenades
   }
 
   /**

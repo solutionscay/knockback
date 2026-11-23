@@ -5,28 +5,27 @@ import type { CameraFrame, SceneCamera } from "./scene-camera";
 import type { Fx } from "./fx";
 import { dcos, dsin } from "../sim/dmath";
 import { CELL } from "../sim/grid";
-import { drawArm, drawBody, drawFeet, drawHand, FEET_OVERLAP_PX, FEET_Y, FOOT_X, headTopAt, K, drawSilhouette, drawVisor, faceFor, faceKey, flapStep, lodFor, WEAPON_SCALE, type FaceMood } from "./bot";
+import { FEET_OVERLAP_PX, FEET_Y, FOOT_X, headTopAt, K, drawVisor, faceFor, faceKey, lodFor, type FaceMood } from "./bot";
 import { hash } from "./hash";
 import { POWER_COLOR, WEAPON_ACCENT } from "./palette";
 import { pixiPen } from "./pixiPen";
-import { drawWeapon } from "./props";
 import type { XformAt } from "./scene";
 import { buildGlow, hpBarWidth, hpTickStep } from "./build-view";
+import { PlushBot, plushBuild, plushNeeds, plushRound } from "./plush-bot";
 
+/**
+ * A fighter as the plush brawler (#85): its build's sprite frames (plush-bot.ts), its marks, its weapon layer, and
+ * the code LED face (bot.ts) mapped onto the rendered visor.
+ */
 interface FighterView {
   f: Fighter;
+  pl: PlushBot;
   root: Container;
-  /** torso, feet, head and marks (redrawn only when bodyKey changes) */
-  body: Graphics;
-  bodyKey: string;
-  /** the LED visor (redrawn only when faceKey changes) */
+  /** the LED face (redrawn only when faceKey changes), mapped onto the visor of each sprite frame */
   face: Graphics;
   faceKey: string;
   /** the mood shown last frame (sound: a robot beep when it changes) */
   mood: string;
-  arm: Graphics;
-  /** the feet, in their own layer: each foot stands on the ground under it */
-  feet: Graphics;
   feetKey: string;
   /** where each standing foot's sole is (world x of its middle), for the capture-mode check; null while not standing */
   soles: [number, number] | null;
@@ -35,13 +34,12 @@ interface FighterView {
   /** the "> <" face after a hit */
   hitT: number;
   lastFlash: number;
-  gun: Graphics;
-  flash: Graphics;
+  /** the hit flash: the sprite frame's silhouette */
+  flash: Container;
   aura: Graphics;
   over: Graphics;
   /** the build's body cue (#81): halos behind the bot, drawn once (the build is fixed for the round) */
   glow: Container;
-  gunKind: string;
   swingT: number;
   swapT: number;
   wingT: number;
@@ -78,29 +76,25 @@ export class FighterViews {
   }
 
   load(sim: Sim) {
+    // this round's plush sheets (its fighters' builds and marks); the rest are freed
+    void plushRound(sim.fighters.flatMap((f) => plushNeeds(plushBuild(f.build), f.look.mark, f.look.minor ?? "none")));
     for (const f of sim.fighters) this.fighters.push(this.makeFighter(f));
   }
 
   private makeFighter(f: Fighter): FighterView {
-    // a Skipper-style bot drawn from the fighter's generated identity (#18): body, visor, arm, weapon
     const root = new Container();
-    const body = new Graphics();
     const face = new Graphics();
-    const arm = new Graphics();
-    const feet = new Graphics();
-    const gun = new Graphics();
-    const flash = new Graphics();
     const aura = new Graphics();
     const over = new Graphics();
-    drawSilhouette(pixiPen(flash), f.look);
+    const pl = new PlushBot(f.color, f.look.mark, plushBuild(f.build), f.look.minor ?? "none");
+    const flash = pl.makeSil();
     flash.alpha = 0;
     // the build's body cue (#81): one halo the shape of the bot per raised attribute, the first innermost; view only
     const glow = new Container();
     buildGlow(f.build).forEach((g, i) => {
       // a soft edge: a wide faint layer, then a tighter stronger one; a second attribute sits outside the first
       for (const [k, a] of [[1.5, 0.45], [1.28, 1]] as const) {
-        const halo = new Graphics();
-        drawSilhouette(pixiPen(halo), f.look);
+        const halo = pl.makeSil();
         halo.tint = g.color;
         halo.alpha = g.alpha * a;
         halo.scale.set(k + 0.22 * i);
@@ -108,17 +102,13 @@ export class FighterViews {
         glow.addChildAt(halo, glow.children.length - 2 * i); // the second attribute's layers go behind the first's
       }
     });
-    root.addChild(glow, aura, feet, body, face, arm, gun, flash, over);
+    // a dark outline (the grown silhouette) keeps the bot apart from busy backgrounds and other bots
+    const outline = pl.makeSil();
+    outline.tint = 0x07080d;
+    outline.alpha = 0.8;
+    root.addChild(glow, aura, outline, pl.back.c, pl.body.c, pl.feet, pl.minor.c, face, pl.mark.c, pl.fist.c, pl.sleeve.c, pl.arm.c, flash, over);
     this.layer.addChild(root);
-    return { f, root, body, bodyKey: "", face, faceKey: "", mood: "", arm, feet, feetKey: "", soles: null, h: hash(f.look.name), hitT: 0, lastFlash: 0, gun, flash, aura, over, glow, gunKind: "", swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
-  }
-
-  private drawGun(v: FighterView, kind: string) {
-    if (v.gunKind === kind) return;
-    v.gunKind = kind;
-    v.gun.clear();
-    drawWeapon(v.gun, kind, v.f.color);
-    if (kind !== "fist") drawHand(v.gun, v.f.look); // the fist's glove is the hand
+    return { f, pl, root, face, faceKey: "", mood: "", feetKey: "", soles: null, h: hash(f.look.name), hitT: 0, lastFlash: 0, flash, aura, over, glow, swingT: 0, swapT: 0, wingT: 0, sx: 1, sy: 1, spin: 0, flashT: 0, recoil: 0, ghostHp: f.hp, trailT: 0 };
   }
 
   /** For the capture-mode feet check: show only the feet (no body, no weapon); returns a function that restores everything. */
@@ -127,7 +117,7 @@ export class FighterViews {
     for (const v of this.fighters) {
       for (const c of v.root.children) {
         saved.push([c, c.visible]);
-        c.visible = c === v.feet;
+        c.visible = c === v.pl.feet;
       }
     }
     return () => {
@@ -141,8 +131,8 @@ export class FighterViews {
     for (const v of this.fighters) {
       saved.push([v.root, v.root.visible]);
       if (v.f.id === except) v.root.visible = false;
-      saved.push([v.feet, v.feet.visible]);
-      v.feet.visible = false;
+      saved.push([v.pl.feet, v.pl.feet.visible]);
+      v.pl.feet.visible = false;
       saved.push([v.glow, v.glow.visible]);
       v.glow.visible = false; // the halo is not the body
     }
@@ -158,6 +148,16 @@ export class FighterViews {
 
   get(id: number) {
     return this.fighters[id]!;
+  }
+
+  /** Where a fighter's rendered weapon muzzle (or thrown object, hook) is (world meters, y up), or null. */
+  muzzle(id: number): { x: number; y: number } | null {
+    const v = this.fighters[id];
+    const m = v?.pl.muzzle();
+    if (!v || !m) return null;
+    v.root.updateLocalTransform();
+    const q = v.root.localTransform.apply(m);
+    return { x: q.x, y: -q.y };
   }
 
   render(sim: Sim, fx: Fx, camera: SceneCamera, frame: CameraFrame, W: number, H: number, time: number, dt: number, alpha: number, fxDt: number, xform: XformAt) {
@@ -216,17 +216,10 @@ export class FighterViews {
       v.root.scale.set(v.sx * (f.facing < 0 ? -1 : 1), v.sy);
       if (this.celebrateId === f.id) v.root.scale.x = Math.abs(v.root.scale.x) * (Math.sin(time * 1.3) > 0 ? 1 : -1);
       v.root.alpha = f.alive ? 1 : Math.max(0, 1 - (sim.tick - f.koTick) / 120);
-      // the bot: body (feet tuck in the air, marks flap), then the LED face
+      // the bot: the plush sprite frames, then the LED face on the rendered visor
       const aimLocalX = f.aimX * f.facing;
       const aimLocalY = -f.aimY;
       const weapon = sim.weapon(f);
-      const aiming = f.alive && weapon !== "fist" && weapon !== "bat";
-      const bodyKey = `${air ? 1 : 0}${flapStep(f.look, time)}${f.look.mark === "antenna" && aiming ? 1 : 0}`;
-      if (bodyKey !== v.bodyKey) {
-        v.bodyKey = bodyKey;
-        v.body.clear();
-        drawBody(pixiPen(v.body), f.look, { t: time, air, aiming, feet: false });
-      }
       if (v.flashT > v.lastFlash) v.hitT = 0.42;
       v.lastFlash = v.flashT;
       v.hitT = Math.max(0, v.hitT - dt);
@@ -256,27 +249,16 @@ export class FighterViews {
       if (key !== v.faceKey) {
         v.faceKey = key;
         v.face.clear();
-        drawVisor(pixiPen(v.face), f.look, faceNow, lod);
+        drawVisor(pixiPen(v.face), f.look, faceNow, lod, false); // the dots only: the visor glass is rendered
       }
       if (mood === "furious" && Math.random() < 0.08) fx.add({ x: p.x + (Math.random() - 0.5) * 0.4, y: p.y + 0.95, vy: 1.5, kind: "smoke", life: 0.6, size: 0.08, size1: 0.25, color: 0xffffff, alpha: 0.6, back: false });
-      // gun
-      this.drawGun(v, weapon);
-      v.gun.visible = f.alive;
-      v.gun.position.set(-v.recoil * 0.5 * 1, -0.05);
-      v.gun.rotation = Math.atan2(aimLocalY, aimLocalX);
-      if (v.swingT > 0) {
-        // bat swing: sweep from high to low
-        v.swingT -= dt;
-        v.gun.rotation += -1.3 + 2.6 * (v.swingT / 0.2);
-      }
+      // the aim (local, y down) and the swing timer drive the weapon layer
+      const aim = Math.atan2(aimLocalY, aimLocalX);
+      if (v.swingT > 0) v.swingT -= dt;
       v.swapT = Math.max(0, v.swapT - dt);
-      v.gun.scale.set(WEAPON_SCALE * (1 + v.swapT * 2.2));
-      // the front arm reaches from the shoulder to the grip
-      v.arm.clear();
-      v.arm.visible = f.alive;
-      if (f.alive) drawArm(pixiPen(v.arm), f.look, v.gun.position.x, v.gun.position.y, v.gun.rotation);
-      v.gun.tint = 0xffffff;
-      v.gun.alpha = v.swapT > 0.14 ? 0.5 : 1;
+      const fm = v.pl.update({ dt, alive: f.alive, air, stunned: f.stun > 0, vx: vel.x, vy: vel.y, weapon, aim, swingT: v.swingT, recoil: v.recoil, hitT: v.hitT, celebrate: this.celebrateId === f.id, facing: Math.sign(v.root.scale.x) || 1 });
+      v.face.visible = !!fm; // null: its sheets are still loading (nothing of the bot is drawn yet)
+      if (fm) v.face.setFromMatrix(fm);
       // power-up visuals, readable on the fighter
       const pw = f.power;
       const au = v.aura;
@@ -285,9 +267,10 @@ export class FighterViews {
       ov.clear();
       if (f.alive) {
         if (f.railCharge > 0) {
+          // the railgun's charge: a growing orb at the muzzle (the plush railgun's, else 0.9 m along the aim)
           const charge = f.railCharge / sim.ruleset.weapons.table.railgun.chargeTicks;
-          ov.circle(v.gun.position.x + dcos(v.gun.rotation) * 0.9, v.gun.position.y + dsin(v.gun.rotation) * 0.9, 0.09 + charge * 0.18)
-            .fill({ color: WEAPON_ACCENT.railgun, alpha: 0.35 + charge * 0.6 });
+          const m = v.pl.muzzle() ?? { x: dcos(aim) * 0.9, y: -0.05 + dsin(aim) * 0.9 };
+          ov.circle(m.x, m.y, 0.09 + charge * 0.18).fill({ color: WEAPON_ACCENT.railgun, alpha: 0.35 + charge * 0.6 });
         }
         if (pw.jetpack > 0 || f.jetting) drawJetpack(au, f.jetting, time);
         if (pw.damage > 0) {
@@ -382,8 +365,7 @@ export class FighterViews {
       const feetKey = `${air ? 1 : 0}|${dl.toFixed(3)}|${dr.toFixed(3)}|${xl.toFixed(2)}|${xr.toFixed(2)}|${al.toFixed(2)}|${ar.toFixed(2)}`;
       if (feetKey !== v.feetKey) {
         v.feetKey = feetKey;
-        v.feet.clear();
-        drawFeet(pixiPen(v.feet), f.look, { air, dl, dr, xl, xr, al, ar });
+        v.pl.setFeet({ dl, dr, xl, xr, al, ar }); // the boots (ground loops) stand on the ground under them
       }
       // hit flash
       v.flashT = Math.max(0, v.flashT - dt);
@@ -517,7 +499,7 @@ export function groundTop(sim: Sim, x: number, bottom: number, pose: (e: Entity)
     const q = g.grounded ? { ...g.entity.body.translation(), a: 0 } : pose(g.entity);
     if (Math.abs(q.a) > 0.15) continue;
     const u = 16 + (x - q.x) / (K * g.facing); // the head's grid column under x (the bot is mirrored when facing left)
-    const yg = headTopAt(g.look.shape, u);
+    const yg = headTopAt(u);
     if (yg !== null) take(q.y + FEET_Y + (3.5 - yg) * K); // grid y 3.5 is the capsule's top
   }
   for (const e of sim.entities.values()) {

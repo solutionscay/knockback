@@ -10,6 +10,8 @@ import { drawPiece, pieceSig } from "./terrainview";
 interface PropView {
   g: Graphics;
   e: Entity;
+  /** a new grenade is drawn from the thrower's drawn hand, easing onto its sim path (view only) */
+  off?: { x: number; y: number };
   hp: number;
   sig: string;
   every: boolean;
@@ -21,6 +23,8 @@ export class PropViews {
   readonly layer = new Container();
   readonly marks = new Graphics();
   private props = new Map<number, PropView>();
+  /** where a fighter's drawn hand or muzzle is (the plush bot), or null */
+  muzzleOf: ((fighter: number) => { x: number; y: number } | null) | null = null;
   private dropMarks = new Map<number, number>();
 
   clear() {
@@ -53,6 +57,11 @@ export class PropViews {
       const g = new Graphics();
       this.layer.addChild(g);
       const v: PropView = { g, e, hp: -1, sig: "", every: true, flash: 0, squash: 0 };
+      if (e.kind === "grenade" && e.owner !== undefined && sim.tick - e.born < 3) {
+        const m = this.muzzleOf?.(e.owner);
+        const q = e.body.translation();
+        if (m) v.off = { x: m.x - q.x, y: m.y - q.y };
+      }
       this.props.set(e.id, v);
     }
   }
@@ -79,6 +88,11 @@ export class PropViews {
       const p = xform(e, alpha);
       this.drawProp(v, pal, time);
       v.g.position.set(p.x, -p.y);
+      if (v.off) {
+        v.off.x *= Math.exp(-dt * 14);
+        v.off.y *= Math.exp(-dt * 14);
+        v.g.position.set(p.x + v.off.x, -(p.y + v.off.y));
+      }
       v.g.rotation = -p.a;
       if (e.kind === "barrel" && e.fuse !== undefined) v.g.scale.set(1 + 0.12 * Math.sin(time * 60));
       if (e.kind === "item") {

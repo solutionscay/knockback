@@ -51,7 +51,9 @@ async function openPage(browser: Browser, base: string, w: number, h: number): P
   const page = await browser.newPage({ viewport: { width: w, height: h } });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(`${base}/?record=/records/match.json&capture&video&sounds=off`);
+  // KB_VIEWER_QUERY adds viewer parameters to the page URL (e.g. KB_VIEWER_QUERY='&cam=all')
+  const extra = (process.env.KB_VIEWER_QUERY ?? "").replace(/[^\w&=-]/g, "");
+  await page.goto(`${base}/?record=/records/match.json&capture&video&sounds=off${extra}`);
   await page.waitForFunction(() => (window as unknown as { __kb?: { ready: boolean } }).__kb?.ready, null, { timeout: 60000 });
   if (errors.length) throw new Error(`viewer error: ${errors[0]}`);
   if (await page.$("#refused")) throw new Error("the viewer refused this record (not a match record)");
@@ -60,6 +62,8 @@ async function openPage(browser: Browser, base: string, w: number, h: number): P
 
 type Kb = {
   advance(dt: number, frames?: number, render?: boolean): void;
+  /** wait for art still loading (#85: the plush sheets of a new round), then redraw */
+  settle(): Promise<boolean>;
   state(): { finished: boolean; beat: string; view: View | null };
   timeline(): Timeline;
   drainSounds(): LoggedCue[];
@@ -141,11 +145,12 @@ export async function captureFrames(browser: Browser, base: string, plan: Plan, 
         const capNow: string | null = f ? (f.caption === "start" && !startCaption ? null : f.caption) : caption;
         const tagNow: boolean = f ? f.tag : tag;
         const got = await page.evaluate(
-          ([draw, cap, cKind, tg, tChange]) => {
+          async ([draw, cap, cKind, tg, tChange]) => {
             const kb = (window as unknown as { __kb: Kb }).__kb;
             if (cKind) kb.caption(cap === "start" ? { kind: "start", text: cKind[0] } : cap === "end" ? { kind: "end", title: cKind[1], text: cKind[2] } : null);
             if (tChange) kb.tag(tg);
             kb.advance(1 / 60, 1, draw);
+            if (draw) await kb.settle(); // art still loading (the plush sheets of a new round): wait, redraw
             return { cues: kb.drainSounds(), view: draw ? kb.state().view : null };
           },
           [!!f, capNow, capNow !== caption ? [startCaption ?? "", END_TITLE, END_TEXT] : null, tagNow, tagNow !== tag] as const,

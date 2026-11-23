@@ -10,6 +10,12 @@ export class ProjectileViews {
   waves: { paths: { x: number; y: number }[][]; life: number }[] = [];
   private minePrev = new Map<number, { x: number; y: number }>();
   private rocketPrev = new Map<number, { x: number; y: number }>();
+  /** where a fighter's drawn muzzle is (the plush bot), or null */
+  muzzleOf: ((fighter: number) => { x: number; y: number } | null) | null = null;
+  /** a new rocket is drawn from the drawn muzzle, easing onto its sim path (view only) */
+  private rocketOff = new Map<number, { x: number; y: number }>();
+  /** a new mine likewise starts at the drawn hand */
+  private mineOff = new Map<number, { x: number; y: number }>();
   ropes: { from: number; x0: number; y0: number; x1: number; y1: number; target: number; life: number; max: number }[] = [];
   zaps: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
   swings: { x: number; y: number; dx: number; dy: number; life: number; color: number }[] = [];
@@ -25,6 +31,8 @@ export class ProjectileViews {
 
   reset() {
     this.rocketPrev.clear();
+    this.rocketOff.clear();
+    this.mineOff.clear();
     this.ropes = [];
     this.zaps = [];
     this.swings = [];
@@ -45,10 +53,20 @@ export class ProjectileViews {
 
   render(sim: Sim, fx: Fx, dt: number, alpha: number, fxDt: number, xform: XformAt) {
     const pg = this.graphics;
+    for (const id of this.rocketOff.keys()) if (!sim.rockets.some((r) => r.id === id)) this.rocketOff.delete(id);
+    for (const id of this.mineOff.keys()) if (!sim.mines.some((m) => m.id === id)) this.mineOff.delete(id);
     for (const m of sim.mines) {
       const p = this.minePrev.get(m.id) ?? m;
-      const x = p.x + (m.x - p.x) * alpha;
-      const y = -(p.y + (m.y - p.y) * alpha);
+      let off = this.mineOff.get(m.id);
+      if (!off) {
+        const h = !this.minePrev.has(m.id) ? this.muzzleOf?.(m.owner) : null;
+        off = h ? { x: h.x - m.x, y: h.y - m.y } : { x: 0, y: 0 };
+        this.mineOff.set(m.id, off);
+      }
+      off.x *= Math.exp(-fxDt * 14);
+      off.y *= Math.exp(-fxDt * 14);
+      const x = p.x + (m.x - p.x) * alpha + off.x;
+      const y = -(p.y + (m.y - p.y) * alpha + off.y);
       const armed = m.armedAt >= 0 && sim.tick > m.armedAt;
       const glow = armed && sim.tick % 12 < 8;
       if (glow) pg.circle(x, y, 0.49).fill({ color: WEAPON_ACCENT.mine, alpha: 0.28 });
@@ -80,8 +98,16 @@ export class ProjectileViews {
     this.waves = this.waves.filter(wave => wave.life > 0);
     for (const r of sim.rockets) {
       const pr = this.rocketPrev.get(r.id) ?? r;
-      const x = pr.x + (r.x - pr.x) * alpha;
-      const y = pr.y + (r.y - pr.y) * alpha;
+      let off = this.rocketOff.get(r.id);
+      if (!off) {
+        const m = this.muzzleOf?.(r.owner);
+        off = m && r.age < 3 ? { x: m.x - r.x, y: m.y - r.y } : { x: 0, y: 0 };
+        this.rocketOff.set(r.id, off);
+      }
+      off.x *= Math.exp(-fxDt * 16);
+      off.y *= Math.exp(-fxDt * 16);
+      const x = pr.x + (r.x - pr.x) * alpha + off.x;
+      const y = pr.y + (r.y - pr.y) * alpha + off.y;
       const l = Math.hypot(r.vx, r.vy) || 1;
       const ux = r.vx / l;
       const uy = r.vy / l;
@@ -106,8 +132,10 @@ export class ProjectileViews {
       const d = hit ? hit.dist : range;
       const k = Math.min(1, f.scope / sim.ruleset.weapons.table.sniper.aimTicks);
       const ex = ox + f.aimX * d, ey = oy + f.aimY * d;
-      pg.moveTo(ox + f.aimX * 0.9, -(oy + f.aimY * 0.9)).lineTo(ex, -ey).stroke({ width: 0.16, color: WEAPON_ACCENT.sniper, alpha: 0.12 + 0.18 * k });
-      pg.moveTo(ox + f.aimX * 0.9, -(oy + f.aimY * 0.9)).lineTo(ex, -ey).stroke({ width: 0.045, color: WEAPON_ACCENT.sniper, alpha: 0.55 + 0.45 * k });
+      const lm = this.muzzleOf?.(f.id); // the laser starts at the plush scope's muzzle
+      const lx = lm ? lm.x : ox + f.aimX * 0.9, ly = lm ? lm.y : oy + f.aimY * 0.9;
+      pg.moveTo(lx, -ly).lineTo(ex, -ey).stroke({ width: 0.16, color: WEAPON_ACCENT.sniper, alpha: 0.12 + 0.18 * k });
+      pg.moveTo(lx, -ly).lineTo(ex, -ey).stroke({ width: 0.045, color: WEAPON_ACCENT.sniper, alpha: 0.55 + 0.45 * k });
       pg.circle(ex, -ey, 0.13 + 0.06 * k).fill({ color: WEAPON_ACCENT.sniper, alpha: 0.9 });
       pg.circle(ex, -ey, 0.05).fill({ color: 0xffffff, alpha: 0.9 });
     }
@@ -192,7 +220,8 @@ export class ProjectileViews {
       r.life -= fxDt;
       if (r.life <= 0) continue;
       const shooter = sim.fighters[r.from]!;
-      const sp = shooter.removed ? { x: r.x0, y: r.y0 } : xform(shooter.entity, alpha);
+      const hook = shooter.removed ? null : this.muzzleOf?.(r.from); // the line leaves the plush hook
+      const sp = shooter.removed ? { x: r.x0, y: r.y0 } : hook ? { x: hook.x, y: hook.y - 0.25 } : xform(shooter.entity, alpha);
       let ex = r.x1;
       let ey = r.y1;
       if (r.target >= 0) {
