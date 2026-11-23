@@ -7,6 +7,7 @@ import { type Sim } from "./sim";
 import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
 import { RANGED_STANDOFF, weaponReach } from "./controller-weapons";
 import { onLiveGround } from "./sim-lightning";
+import { lowOnAmmo } from "./sim-items";
 import { walkSpeedNow } from "./sim-movement";
 import { SPEED_ACCEL_MUL } from "./constants";
 import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } from "./tactical";
@@ -15,6 +16,7 @@ import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } f
 const IDLE_TICKS = 40;
 /** then look for a spot with a shot this long */
 const VANTAGE_TICKS = 120;
+const isWeaponItem = (t: unknown) => typeof t === "string" && !(POWER_LIST as readonly string[]).includes(t);
 const isRanged = (sim: Sim, w: Weapon) => w !== "fist" && sim.ruleset.tactics.weapons.reach[w].standOff >= RANGED_STANDOFF;
 /** A goal on live ground (#72) costs this much: fighters stand somewhere else while it is live. */
 const LIVE_GROUND_COST = 25;
@@ -24,7 +26,7 @@ const LIVE_GROUND_COST = 25;
  */
 const NOWHERE_TICKS = 100;
 const NOWHERE_W = 1.6;
-const NOWHERE_H = 2.2;
+const NOWHERE_H = 2.5;
 const ESCAPE_TICKS = 36;
 /** a blocked way (a prop or a wall the fighter cannot get past) is planned around this long */
 const BLOCKER_TICKS = 180;
@@ -319,8 +321,9 @@ export class ControllerNavigation {
     const hangBack = (stance === "overwatch" || stance === "distance") && !ranged;
     const close = me.weapons.includes("hammer") || me.weapons.includes("bat") || me.weapons.includes("shotgun") || me.weapons.includes("flamethrower");
 
-    // arm up: go for the pickups this fighter wants (fists only = go far for anything)
+    // arm up: go for the pickups this fighter wants (fists only = go far for anything; low on ammo = re-arm, #95)
     const armed = me.weapons.some((w) => w !== "fist");
+    const low = armed && lowOnAmmo(sim.ruleset, me);
     const opening = sim.ruleset.pickups.armory.spread;
     const preferLocal = opening.enabled && !armed && sim.tick < opening.preferLocalTicks;
     const quarter = (x: number) => arenaQuarter(sim.level.minX, sim.level.width, x);
@@ -342,16 +345,18 @@ export class ControllerNavigation {
         const isWeapon = !(POWER_LIST as readonly string[]).includes(type);
         let limit: number;
         let extra = 0;
-        if (sought >= 0 && (!isWeapon || sim.wantsWeapon(me, type as Weapon))) {
+        if (sought >= 0 && (!isWeapon || sim.wantsWeapon(me, type as Weapon, it.ammo))) {
           // an active seek rule: go far for it, ahead of everything else
           limit = sim.ruleset.tactics.pickup.seekLimit;
           extra = -40 + sought * 5;
         } else if (isWeapon) {
-          if (!sim.wantsWeapon(me, type as Weapon)) continue;
+          if (!sim.wantsWeapon(me, type as Weapon, it.ammo)) continue;
           if (it.owner === me.id && sim.tick - it.born < 45) continue;
           const rank = me.prefs.indexOf(type as Weapon);
-          extra = Math.max(0, rank) * sim.ruleset.tactics.pickup.rankCost;
+          // bare-handed or low (#95): the nearest weapon, whatever it is
+          extra = !armed || low ? 0 : Math.max(0, rank) * sim.ruleset.tactics.pickup.rankCost;
           limit = !armed ? sim.ruleset.tactics.pickup.unarmedLimit : stance === "item" ? sim.ruleset.tactics.pickup.itemStanceLimit : sim.ruleset.tactics.pickup.upgradeLimit;
+          if (low) limit = Math.max(limit, sim.ruleset.tactics.pickup.rearmLimit);
           if ((stranded && isRanged(sim, type as Weapon)) || nothingReaches) limit = Math.max(limit, sim.ruleset.tactics.pickup.unarmedLimit);
           // overwatch (#38) and distance (#69): a long gun first, from further away
           if ((stance === "overwatch" && isLongGun(sim.ruleset, type as Weapon) && !hasLongGun(sim, me)) || (hangBack && isRanged(sim, type as Weapon))) {
@@ -380,7 +385,9 @@ export class ControllerNavigation {
         if (!this.chase || this.chase.id !== best.item) this.chase = { id: best.item!, best: d, since: sim.tick };
         else if (d < this.chase.best - 0.5) this.chase = { id: best.item!, best: d, since: sim.tick };
         else if (sim.tick - this.chase.since > sim.ruleset.tactics.pickup.giveUpTicks) {
-          this.skipItems.set(best.item!, sim.tick + sim.ruleset.tactics.pickup.skipTicks);
+          // weapons are few (#95): bare-handed or low, try that one again soon
+          const again = (!armed || low) && sim.items().some((e) => e.id === best!.item && isWeaponItem(e.itemType));
+          this.skipItems.set(best.item!, sim.tick + (again ? sim.ruleset.tactics.pickup.rearmSkipTicks : sim.ruleset.tactics.pickup.skipTicks));
           this.chase = null;
           return this.chooseGoal(sim, me, target, plan, crossingWall, flank, weapon);
         }
@@ -400,7 +407,10 @@ export class ControllerNavigation {
       // pressing: get beside the target (at the weapon's range), switching sides now and then (breaks vertical and
       // wall deadlocks)
       const flip = Math.floor(sim.tick / sim.ruleset.tactics.patience.pressFlip) % 2 === 0 ? 1 : -1;
-      const gx = tp.x + flip * Math.max(2.2, standOff ?? 0);
+      // no route to the target (#95: one weapon, often a close one): switching sides only paces; the nearest point
+      // fists and the bat (#95: fists are common late) press in at their own reach, or they never land one
+      const gap = weapon === "fist" || weapon === "bat" ? (standOff ?? 2.2) : Math.max(2.2, standOff ?? 0);
+      const gx = stranded ? tp.x : tp.x + flip * gap;
       return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - gx) + Math.abs(py + 0.9 - tp.y) * 0.7 + zonePenalty(px) + fragilePenalty(sid));
     }
 
@@ -427,7 +437,7 @@ export class ControllerNavigation {
 
     // a spot closer than this to the target wastes a weapon that fights from range (#69)
     const tooClose = (d: number) => (weapon && isRanged(sim, weapon) && standOff ? Math.max(0, standOff * 0.7 - d) * 3 : 0);
-    const ideal = hangBack ? 12 : standOff !== undefined ? standOff : me.weapons.includes("hammer") ? 2.2 : me.weapons[0] === "mine" ? 5 : me.weapons[0] === "flamethrower" ? 2.6 : me.weapons[0] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
+    const ideal = hangBack ? 12 : standOff !== undefined ? standOff : me.weapons.includes("hammer") ? 2.2 : me.weapons[1] === "mine" ? 5 : me.weapons[1] === "flamethrower" ? 2.6 : me.weapons[1] === "shotgun" ? 4.5 : stance === "cover" ? 9 : 12;
     const st = sim.ruleset.tactics.stances;
     const tac = sim.tactical;
     const tFeet = sim.feetY(target);

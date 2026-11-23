@@ -2,11 +2,15 @@
  * Contract: fire (#33). Fire spreads through planks by seeded chance, eats the chain of a burning anchor (#34), burns
  * loose pieces down, and sets fighters who touch it alight, credited to whoever lit it. All of it is deterministic.
  *
- * The scene is built by hand (no level generator), so it moves only when fire, blasts or chains change, or when
- * Classic's start pickups do (the scene runs Classic, so its armory and sky drops land in it).
+ * The scene is built by hand (no level generator) and has no start weapons or supply drops (#95), so it moves only
+ * when fire, blasts or chains change.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { CELL, CLASSIC, F_ANCHOR, Grid, initPhysics, Mat, NO_INPUT, Sim, type LevelDef, type SimEvent } from "../src/sim";
+import { CELL, F_ANCHOR, Grid, initPhysics, Mat, NO_INPUT, Sim, type LevelDef, type SimEvent } from "../src/sim";
+import { resolveRuleset } from "../src/sim/ruleset";
+
+/** Classic without start weapons or supply drops (#95): the scene moves only with fire, blasts and chains. */
+const RULESET = resolveRuleset({ pickups: { armory: { spread: { startWeapons: 0, powerStart: 0, betweenCaches: 0, skyDrops: 0 } }, supply: { firstTick: 36_000 } } });
 import { pieceCellWorld } from "../src/sim/terrain";
 
 beforeAll(async () => {
@@ -30,7 +34,7 @@ function scene() {
     props: [{ kind: "crate", x: 10.5, y: 0 }], spawns: [{ x: -9, y: 0 }, { x: -7, y: 0 }, { x: 13, y: 0 }, { x: 16, y: 0 }],
     pits: [], zoneCenter: 0, platforms: 2, towers: 0, walls: [], bridges: 0,
   };
-  const sim = new Sim(1, level, undefined, CLASSIC);
+  const sim = new Sim(1, level, undefined, RULESET);
   sim.zoneEnabled = false;
   const events: SimEvent[] = [];
   const run = (ticks: number) => {
@@ -116,11 +120,11 @@ describe("fire", () => {
     expect(again.stats).toEqual(sim.stats);
     const { firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited } = sim.stats;
     expect({ hash: sim.hash(), firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited }).toEqual({
-      hash: "614feab7",
-      firesStarted: 11,
-      cellsIgnited: 32,
-      cellsBurnedDown: 6,
-      cellsBurnedOut: 18,
+      hash: "064b23ae",
+      firesStarted: 10,
+      cellsIgnited: 31,
+      cellsBurnedDown: 10,
+      cellsBurnedOut: 14,
       propsIgnited: 1,
       propsBurnedOff: 1,
       fightersIgnited: 2,

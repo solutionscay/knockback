@@ -126,6 +126,8 @@ export interface CheckinStatus {
     burning: boolean;
     jetpackFuel: number | null;
     flamethrowerFuel: number | null;
+    /** the carried weapon's ammo, "left/full" (#95: every weapon runs out; empty = thrown away), or null bare-handed */
+    ammo: string | null;
     plan: { target: string; stance: string; weapons: string[]; retaliate: string; rules: string[] };
     /** this round's build (#80): fixed for the round */
     build: Build;
@@ -138,6 +140,8 @@ export interface CheckinStatus {
     out: boolean;
     health: number;
     weapons: string[];
+    /** the rival's ammo, "left/full", or null bare-handed (#95) */
+    ammo: string | null;
     distance: number;
     direction: string;
     targeting: string | null;
@@ -182,6 +186,10 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
   };
   const p = pos(me) ?? { x: 0, y: 0 };
   const held = (x: (typeof sim.fighters)[number]) => x.weapons.filter((w) => w !== "fist").map(wn);
+  const ammoOf = (x: (typeof sim.fighters)[number]) => {
+    const w = x.weapons[1];
+    return w === "fist" ? null : `${x.ammo[w]}/${sim.ruleset.weapons.table[w].ammo}`;
+  };
   const pw = f.power;
   const powerUps = [pw.shield > 0 ? "shield" : "", pw.speed > 0 ? "speed" : "", pw.heavy > 0 ? "heavy" : "", pw.damage > 0 ? "damage" : "", pw.jump > 0 ? "jump" : ""].filter(Boolean);
   const targetOf = (i: number) => {
@@ -232,7 +240,8 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
       powerUps,
       burning: f.burning > 0,
       jetpackFuel: pw.jetpack > 0 ? r1((pw.jetpack / TICK_RATE) * 10) / 10 : null,
-      flamethrowerFuel: f.weapons.includes("flamethrower") ? f.fuel : null,
+      flamethrowerFuel: f.weapons.includes("flamethrower") ? f.ammo.flamethrower : null,
+      ammo: ammoOf(f),
       plan: planOf(ctl.strategy, names),
       build: { ...f.build },
       activeRules: ctl.rules.rules.filter((_, i) => ctl.rules.state[i]!.active).map((r) => r.label),
@@ -248,6 +257,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
           out: !x.alive,
           health: x.alive ? r1(x.hp) : 0,
           weapons: x.alive ? held(x) : [],
+          ammo: x.alive ? ammoOf(x) : null,
           distance: q && x.alive ? r1(Math.hypot(q.x - p.x, q.y - p.y)) : 0,
           direction: q && x.alive ? dir(q.x - p.x, q.y - p.y) : "",
           targeting: targetOf(x.id),
@@ -277,12 +287,12 @@ export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinC
   // the soul's first sentence (not its Markdown headings): enough to stay in character
   const persona = soul ? (soul.body.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#")).join(" ").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s/)[0] ?? "").slice(0, 140) : "";
   const rivals = st.rivals
-    .map((r) => (r.out ? `${r.name} OUT` : `${r.name} ${r.health}hp ${r.weapons.join("+") || "fists"} ${r.distance}m ${r.direction}${r.targeting ? ` ->${r.targeting === y.name ? "YOU" : r.targeting}` : ""}${r.knockouts ? ` ${r.knockouts}KO` : ""}${r.burning ? " burning" : ""}${r.jetpack ? " jetpack" : ""}${builds ? ` (build ${buildText(r.build)})` : ""}`))
+    .map((r) => (r.out ? `${r.name} OUT` : `${r.name} ${r.health}hp ${r.weapons.join("+") || "fists"}${r.ammo ? ` (${r.ammo})` : ""} ${r.distance}m ${r.direction}${r.targeting ? ` ->${r.targeting === y.name ? "YOU" : r.targeting}` : ""}${r.knockouts ? ` ${r.knockouts}KO` : ""}${r.burning ? " burning" : ""}${r.jetpack ? " jetpack" : ""}${builds ? ` (build ${buildText(r.build)})` : ""}`))
     .join("; ");
   const took = st.last10s.took.map((t) => `${t.from} ${t.damage} (${t.hits} hits, ${t.weapon})`).join(", ") || "nothing";
   const dealt = st.last10s.dealt.map((d) => `${d.to} ${d.damage}`).join(", ") || "nothing";
   const near = st.nearest.map((n) => `${n.item} ${n.distance}m ${n.direction}`).join(", ") || "none";
-  const me = [`${y.health}hp`, y.weapons.join("+") || "fists", ...y.powerUps, y.burning ? "BURNING" : "", y.jetpackFuel !== null ? `jetpack ${y.jetpackFuel}s` : "", y.flamethrowerFuel !== null ? `flame fuel ${y.flamethrowerFuel}` : ""].filter(Boolean).join(", ");
+  const me = [`${y.health}hp`, `${y.weapons.join("+") || "fists"}${y.ammo ? ` (${y.ammo} ammo)` : ""}`, ...y.powerUps, y.burning ? "BURNING" : "", y.jetpackFuel !== null ? `jetpack ${y.jetpackFuel}s` : "", y.flamethrowerFuel !== null ? `flame fuel ${y.flamethrowerFuel}` : ""].filter(Boolean).join(", ");
   const plan = `target ${y.plan.target}, ${y.plan.stance}, wants ${y.plan.weapons.join(">")}, retaliate ${y.plan.retaliate}${y.plan.rules.length ? `, rules: ${y.plan.rules.join("; ")}` : ""}${y.activeRules.length ? ` (active now: ${y.activeRules.join("; ")})` : ""}`;
   return [
     `Knockback check-in, round ${st.round}, ${st.second}s in (${st.secondsLeft}s left, zone ${st.zoneWidth}m wide). You are ${y.name}. ${persona}`,

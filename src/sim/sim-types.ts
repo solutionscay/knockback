@@ -8,8 +8,12 @@ import { generateIdentities, type Look } from "./identity";
 const PICKUP_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow", "lightning"] as const;
 export type Weapon = (typeof PICKUP_WEAPONS)[number] | "fist";
 export const WEAPON_LIST: readonly Weapon[] = PICKUP_WEAPONS;
-/** Weapons whose ammo runs out: empty, they are thrown away. */
-export const LIMITED_WEAPONS = ["mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
+/**
+ * Weapons whose ammo runs out (#95: every pickup weapon but the lightning sword): empty, they are thrown away and the
+ * fighter is back to fists. Shots, throws, slams or hits (the bat counts hits on fighters); the flamethrower counts
+ * pulses of fuel.
+ */
+export const LIMITED_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
 /**
  * Weapons that carry a count from pickup to pickup (it goes with the item when dropped): the limited weapons, and
  * the lightning sword's bolts (#72), which run out while the sword stays.
@@ -66,9 +70,9 @@ export type Retaliate = "attacker" | "turn" | "ignore";
  * See docs/rules.md. Validated in src/ai/parse.ts (AI answers) and
  * src/viewer/sanitize.ts (records, live stream); evaluated in controller.ts.
  */
-export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with", "in_open", "has_long_gun", "in_cover"] as const;
+export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with", "in_open", "has_long_gun", "in_cover", "my_ammo_below"] as const;
 export type RuleWhen = (typeof RULE_WHEN)[number];
-export const RULE_DO = ["target", "avoid", "seek", "use", "stance", "retaliate"] as const;
+export const RULE_DO = ["target", "avoid", "seek", "use", "stance", "retaliate", "drop", "swap"] as const;
 export type RuleDo = (typeof RULE_DO)[number];
 /** anyone | enemy (not me) | target (my current target) | a seat number */
 export type RuleWho = "anyone" | "enemy" | "target" | number;
@@ -80,10 +84,10 @@ export interface Rule {
   who?: RuleWho;
   /** for holds (a weapon or jetpack) and item_near (any pickup) */
   item?: ItemType;
-  /** for my_health_below / health_below (10-90 %) and on_streak (1-3 knockouts) */
+  /** for my_health_below / health_below / my_ammo_below (10-90 %) and on_streak (1-3 knockouts) */
   value?: number;
   do: RuleDo;
-  /** for seek (any pickup) and use (a weapon or jetpack) */
+  /** for seek (any pickup), use (a weapon or jetpack), swap (a weapon or "fist") and drop (a weapon; none = whatever is carried) */
   doItem?: ItemType;
   /** for do: stance */
   stance?: Stance;
@@ -119,9 +123,11 @@ export interface Input {
   thrust?: boolean;
   aimX: number;
   aimY: number;
-  /** Weapon the controller wants in hand (switches if carried). */
+  /** Weapon the controller wants in hand (switches if carried; "fist" jabs without a swap). */
   weapon: Weapon | null;
   fire: boolean;
+  /** Drop the carried weapon (#95): it stays on the floor with its ammo; fists in hand. */
+  drop?: boolean;
 }
 
 export const NO_INPUT: Input = { move: 0, jump: false, aimX: 1, aimY: 0, weapon: null, fire: false };
@@ -162,6 +168,8 @@ export interface Entity {
   // item
   itemType?: ItemType;
   ammo?: number;
+  /** a weapon outside the zone (#95): the tick it went out (it is gone after pickups.spots.outsideTicks) */
+  outSince?: number;
   // grenade
   owner?: number;
   ticksLeft?: number;
@@ -199,6 +207,10 @@ export interface Fighter {
   facing: 1 | -1;
   aimX: number;
   aimY: number;
+  /**
+   * One weapon slot plus fists (#95): weapons[0] is always "fist", weapons[1] the carried weapon ("fist" = none).
+   * slot: which is in hand. Picking up a weapon drops the carried one.
+   */
   weapons: [Weapon, Weapon];
   slot: 0 | 1;
   swap: number;
@@ -227,8 +239,6 @@ export interface Fighter {
   burning: number;
   burnBy: number;
   burnCause: string;
-  /** flamethrower fuel (#32): pulses left in the tank */
-  fuel: number;
   /** live ground (#72): ticks before another shock can stun this fighter */
   shockCd: number;
   outsideZone: boolean;
@@ -337,8 +347,14 @@ export type SimEvent =
   | { type: "douse"; tick: number; fighter: number; x: number; y: number }
   /** a fighter caught fire */
   | { type: "burn"; tick: number; fighter: number; by: number; cause: string }
-  /** a flamethrower ran dry and was dropped (#32) */
+  /** a flamethrower ran dry and was thrown away (#32) */
   | { type: "fuelOut"; tick: number; fighter: number }
+  /** a weapon ran out of ammo and was thrown away (#95) */
+  | { type: "empty"; tick: number; fighter: number; weapon: Weapon }
+  /** a loose weapon left outside the zone too long was cleared away (#95) */
+  | { type: "itemGone"; tick: number; entity: number; item: ItemType; x: number; y: number }
+  /** a fighter dropped its carried weapon (#95): on a pickup of another, or on purpose */
+  | { type: "drop"; tick: number; fighter: number; weapon: Weapon; entity: number; ammo: number; reason: "swap" | "drop" | "ko" }
   /** a platform chain snapped (#34); by = who damaged it last, or -1 */
   | { type: "chainBreak"; tick: number; chain: number; x: number; y: number; cause: string; by: number }
   /** a platform lost a chain and now hangs from its last one */

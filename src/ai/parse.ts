@@ -107,6 +107,14 @@ export function parseRules(raw: unknown, me: number, names: string[], ruleset: R
       if (ti) r.item = ti;
       else if (x.item !== undefined) return void problems.push(`${tag}: unknown item ${JSON.stringify(x.item)}`);
     }
+    if (r.do === "swap" || r.do === "drop") {
+      // swap to a weapon or fists (#95); drop a weapon, or (no item) whatever is carried
+      const src = triggerItem ? (x.do_item ?? x.weapon) : (x.item ?? x.do_item ?? x.weapon);
+      const name = typeof src === "string" ? src.toLowerCase().trim() : src;
+      const di = name === "fist" || name === "fists" || name === "hands" ? "fist" : itemOf(src);
+      if (di) r.doItem = di;
+      else if (src !== undefined && src !== null && src !== "") return void problems.push(`${tag}: unknown item ${JSON.stringify(src)}`);
+    }
     if (r.do === "seek" || r.do === "use") {
       const src = triggerItem ? (x.do_item ?? x.weapon ?? (r.do === "seek" && r.when === "item_near" ? x.item : undefined)) : (x.item ?? x.do_item ?? x.weapon);
       const di = itemOf(src);

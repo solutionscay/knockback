@@ -6,6 +6,7 @@ import type { Ruleset } from "./ruleset";
 import { type Look } from "./identity";
 import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
+import { dropCarried } from "./sim-items";
 import { fighterStats, type Build } from "./build";
 import { footing, setSlick } from "./sim-liquid";
 
@@ -62,7 +63,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     swap: 0,
     // nobody fires on the first frame
     cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
-    ammo: { mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
+    ammo: { rocket: 0, shotgun: 0, bat: 0, grenade: 0, grapple: 0, flamethrower: 0, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
     railCharge: 0,
     scope: 0,
     pinned: 0,
@@ -82,7 +83,6 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     burning: 0,
     burnBy: -1,
     burnCause: "",
-    fuel: 0,
     shockCd: 0,
     outsideZone: false,
     outsideTicks: 0,
@@ -192,8 +192,13 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
   if (f.aimX > 0.05) f.facing = 1;
   else if (f.aimX < -0.05) f.facing = -1;
 
-  // fists are always there: a jab needs no free slot and no weapon swap
-  const jab = inp.weapon === "fist" && !f.weapons.includes("fist");
+  // drop the carried weapon (#95): it lands in front, with its ammo; fists in hand
+  if (inp.drop && f.weapons[1] !== "fist") {
+    const p = body.translation();
+    dropCarried(sim, f, p.x + f.facing * 0.5, p.y + 0.3, f.facing * 2, 3, "drop");
+  }
+  // fists are always there: a jab needs no swap, and the carried weapon stays in hand
+  const jab = inp.weapon === "fist";
   if (inp.weapon && !jab && inp.weapon !== sim.weapon(f)) {
     const slot = f.weapons.indexOf(inp.weapon);
     if (slot >= 0) {

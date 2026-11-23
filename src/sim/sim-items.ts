@@ -4,6 +4,7 @@ import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
 import { ordinaryWeapons, stockSpreadArmory } from "./spread-armory";
 import type { Sim } from "./sim";
 import { hasAmmo, isPickupWeapon, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
+import { dropHeight, liveWeapons, looseWeapons, weaponSpot } from "./weapon-spots";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
 
@@ -62,16 +63,46 @@ export function setPrefs(sim: Sim, id: number, prefs: readonly Weapon[]) {
   f.prefs = [...ok, ...sim.ruleset.weapons.enabled.filter((w) => !ok.includes(w))];
 }
 
-/** Is a weapon pickup worth taking for this fighter right now? */
-export function wantsWeapon(f: Fighter, w: Weapon): boolean {
-  if (f.weapons.includes(w)) return false;
-  if (f.weapons.includes("fist")) return true;
-  const other = f.weapons[1 - f.slot]!;
+/**
+ * Share of a full load left in a weapon (#95): 1 = as it comes, 0 = empty. Fists (and nothing) count as empty. The
+ * lightning sword counts its bolts. `ammo`: a count to rate instead of the carried one (a loose item's).
+ */
+export function ammoShare(ruleset: Ruleset, f: Fighter | null, w: Weapon, ammo?: number): number {
+  if (!isPickupWeapon(w) || !hasAmmo(w)) return 0;
+  const full = ruleset.weapons.table[w].ammo;
+  const left = ammo ?? (f ? f.ammo[w] : full);
+  return full > 0 ? Math.max(0, Math.min(1, left / full)) : 1;
+}
+
+/** The weapon a fighter carries (its one slot, #95), or "fist" for none. */
+export function carried(f: Fighter): Weapon {
+  return f.weapons[1];
+}
+
+/** Low on ammo (#95): what it carries is at or under the low share (house bots re-arm). */
+export function lowOnAmmo(ruleset: Ruleset, f: Fighter): boolean {
+  const w = carried(f);
+  return w !== "fist" && ammoShare(ruleset, f, w) <= ruleset.tactics.pickup.lowAmmoShare;
+}
+
+/**
+ * Is a weapon pickup worth taking for this fighter right now? One slot (#95): taking it drops the carried one.
+ * Bare-handed, anything; low on ammo, anything with more left; otherwise a weapon it ranks higher. `ammo`: the
+ * item's count (none = a full one).
+ */
+export function wantsWeapon(f: Fighter, w: Weapon, ruleset: Ruleset = CLASSIC, ammo?: number): boolean {
+  if (w === "fist") return false;
+  const held = carried(f);
+  if (held === "fist") return true;
+  const fresh = ammoShare(ruleset, null, w, ammo);
+  const left = ammoShare(ruleset, f, held);
+  if (left <= ruleset.tactics.pickup.lowAmmoShare) return fresh > left;
+  if (held === w) return false;
   const rank = (x: Weapon) => {
     const i = f.prefs.indexOf(x);
     return i < 0 ? 99 : i;
   };
-  return rank(w) < rank(other);
+  return rank(w) < rank(held) && fresh > ruleset.tactics.pickup.lowAmmoShare;
 }
 
 export function spawnItem(sim: Sim, type: ItemType, x: number, y: number, vx = 0, vy = 0): Entity {
@@ -107,11 +138,17 @@ export function randomDrop(sim: Sim, weaponChance: number): ItemType {
   return sim.rng.chance(weaponChance) ? sim.rng.pick(weapons) : randomPower(sim.rng, sim.ruleset) ?? sim.rng.pick(weapons);
 }
 
-function looseWeapons(sim: Sim): number {
-  let n = 0;
-  for (const e of sim.entities.values()) if (e.kind === "item" && !e.dead && isPickupWeapon(e.itemType)) n++;
-  return n;
+/**
+ * Room for another weapon on the floor (#95): fewer than supply.maxLooseWeapons are still in play (weapon-spots), and
+ * fewer than a narrowing zone holds at the spots' item gap (one more per itemGap of zone width).
+ */
+export function roomForWeapon(sim: Sim): boolean {
+  const max = sim.ruleset.pickups.supply.maxLooseWeapons;
+  const fits = 1 + Math.floor((2 * sim.zone.half) / sim.ruleset.pickups.spots.itemGap);
+  // out-of-play weapons count too, at twice the cap: they never pile up where nobody can get them
+  return liveWeapons(sim) < Math.min(max, fits) && looseWeapons(sim).length < 2 * max;
 }
+
 function dropX(sim: Sim, rng: Rng = sim.rng): number {
   const z = sim.zone;
   const lo = Math.max(sim.level.minX + 3, z.center - z.half + 1.5);
@@ -139,18 +176,32 @@ function dropX(sim: Sim, rng: Rng = sim.rng): number {
 }
 
 /**
- * Start weapons that fall from the sky early in the round (#16), at clear points away from fighters and items.
- * They draw from their own stream of the round seed, so the rest of the round's chances stay as they were.
+ * A weapon falls in at a spread-out spot (#95, weapon-spots.ts): from the sky, or from just under whatever is above
+ * the spot. Without a spot it falls from the sky at a clear column (the old way).
+ */
+function dropWeapon(sim: Sim, rng: Rng, weapon: Weapon): Entity {
+  const top = sim.ruleset.pickups.supply.itemHeight;
+  const p = weaponSpot(sim, rng);
+  return p ? sim.spawnItem(weapon, p.x, dropHeight(sim, p, top)) : sim.spawnItem(weapon, dropX(sim, rng), top);
+}
+
+/**
+ * Start weapons that fall from the sky early in the round (#16), at spread-out spots. They draw from their own stream
+ * of the round seed, so the rest of the round's chances stay as they were.
  */
 export function skyDrop(sim: Sim, rng: Rng) {
   const weapons = ordinaryWeapons(sim);
-  for (let n = 0; n < sim.ruleset.pickups.armory.spread.skyDrops; n++) sim.spawnItem(rng.pick(weapons), dropX(sim, rng), sim.ruleset.pickups.supply.itemHeight);
+  for (let n = 0; n < sim.ruleset.pickups.armory.spread.skyDrops && roomForWeapon(sim); n++) dropWeapon(sim, rng, rng.pick(weapons));
 }
 
 export function supplyDrop(sim: Sim, n: number) {
   const supply = sim.ruleset.pickups.supply;
-  const wc = looseWeapons(sim) >= supply.maxLooseWeapons ? 0 : supply.weaponChance;
-  sim.spawnItem(randomDrop(sim, wc), dropX(sim), supply.itemHeight);
+  // no weapon in play and someone bare-handed: this drop is a weapon (#95: fewer weapons, never none)
+  const starved = liveWeapons(sim) === 0 && sim.alive().some((f) => f.weapons[1] === "fist");
+  const wc = !roomForWeapon(sim) ? 0 : starved ? 1 : supply.weaponChance;
+  const item = randomDrop(sim, wc);
+  if (isPickupWeapon(item)) dropWeapon(sim, sim.rng, item);
+  else sim.spawnItem(item, dropX(sim), supply.itemHeight);
   if (n % supply.propEvery === 0) {
     const x = dropX(sim);
     const tnt = sim.rng.chance(supply.tntChance);
@@ -181,20 +232,41 @@ export function tickPowers(sim: Sim, f: Fighter) {
 export function heavyDensity(ruleset: Ruleset, f: Fighter): number {
   return Math.min(f.stats.density * ruleset.pickups.power.heavy.densityMul, ruleset.combat.density * ruleset.builds.caps.density);
 }
-export function dropWeapons(sim: Sim, f: Fighter, x: number, y: number) {
-  let side = -1;
-  for (const w of f.weapons) {
-    if (w === "fist") continue;
-    const e = sim.spawnItem(w, x + side * 0.3, y + 0.6, side * 2.2, 4);
-    e.owner = f.id;
-    if (hasAmmo(w)) {
-      e.ammo = f.ammo[w];
-      f.ammo[w] = 0;
-    }
-    side = -side;
+/** Put the carried weapon on the floor with its ammo (#95): fists in hand. Returns the item, or null with none. */
+export function dropCarried(sim: Sim, f: Fighter, x: number, y: number, vx: number, vy: number, reason: "swap" | "drop" | "ko"): Entity | null {
+  const w = carried(f);
+  if (w === "fist") return null;
+  const e = sim.spawnItem(w, x, y, vx, vy);
+  e.owner = f.id;
+  if (hasAmmo(w)) {
+    e.ammo = f.ammo[w];
+    f.ammo[w] = 0;
   }
   f.weapons = ["fist", "fist"];
+  f.slot = 0;
+  f.railCharge = 0;
+  f.scope = 0;
+  sim.events.push({ type: "drop", tick: sim.tick, fighter: f.id, weapon: w, entity: e.id, ammo: e.ammo ?? 0, reason });
+  return e;
 }
+
+/** An empty weapon is thrown away (#95): gone, fists in hand. */
+export function throwAway(sim: Sim, f: Fighter, w: Weapon) {
+  if (carried(f) !== w) return;
+  f.weapons = ["fist", "fist"];
+  f.slot = 0;
+  f.railCharge = 0;
+  f.scope = 0;
+  if (hasAmmo(w)) f.ammo[w] = 0;
+  sim.events.push({ type: "empty", tick: sim.tick, fighter: f.id, weapon: w });
+  sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: "fist" });
+}
+
+/** A knocked-out fighter's weapon falls where it went out. */
+export function dropWeapons(sim: Sim, f: Fighter, x: number, y: number) {
+  dropCarried(sim, f, x - 0.3, y + 0.6, -2.2, 4, "ko");
+}
+
 export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
   for (const e of sim.entities.values()) {
     if (e.kind !== "item" || e.dead) continue;
@@ -210,7 +282,8 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
     if (isPickupWeapon(it)) {
       // the one who just dropped it can't grab it straight back
       if (e.owner === f.id && sim.tick - e.born < sim.ruleset.pickups.armory.pickupGraceTicks) continue;
-      if (!sim.wantsWeapon(f, it)) continue;
+      if (!sim.wantsWeapon(f, it, e.ammo)) continue;
+      sim.recentPickups.push({ x: t.x, y: t.y, tick: sim.tick });
     }
     applyItem(sim, f, it, e.ammo);
     sim.events.push({ type: "pickup", tick: sim.tick, fighter: f.id, item: e.itemType!, x: t.x, y: t.y });
@@ -248,26 +321,15 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
       f.power.jetpack = sim.ruleset.pickups.power.jetpack.fuelTicks;
       return on("jetpack");
     default: {
-      // a weapon: fill an empty (fists) slot, else replace the one not in hand and drop it
-      if (f.weapons.includes(it)) return;
-      const free = f.weapons[1 - f.slot] === "fist" ? 1 - f.slot : f.weapons[f.slot] === "fist" ? f.slot : -1;
-      const other = (free >= 0 ? free : 1 - f.slot) as 0 | 1;
-      const old = f.weapons[other]!;
-      if (old !== "fist") {
-        const p = sim.pos(f);
-        const d = sim.spawnItem(old, p.x - f.facing * 0.4, p.y + 0.4, -f.facing * 2.5, 3.5);
-        d.owner = f.id;
-        if (hasAmmo(old)) {
-          d.ammo = f.ammo[old];
-          f.ammo[old] = 0;
-        }
-      }
-      f.weapons[other] = it;
+      // a weapon (#95): one slot, so the carried one drops behind with its ammo
+      if (it === "fist") return;
+      const p = sim.pos(f);
+      dropCarried(sim, f, p.x - f.facing * 0.4, p.y + 0.4, -f.facing * 2.5, 3.5, "swap");
+      f.weapons = ["fist", it];
       if (hasAmmo(it)) f.ammo[it] = ammo ?? sim.ruleset.weapons.table[it].ammo;
       f.railCharge = 0;
       f.scope = 0;
-      if (it === "flamethrower") f.fuel = sim.ruleset.weapons.table.flamethrower.fuel; // a full tank
-      f.slot = other;
+      f.slot = 1;
       f.swap = sim.ruleset.combat.swapTicks;
       f.cooldown[it] = 0;
       sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: it });

@@ -2,6 +2,7 @@ import { quarterCenter } from "./level-spawns";
 import { isPickupWeapon, type Weapon } from "./sim-types";
 import type { Sim } from "./sim";
 import type { SpawnPoint } from "./level-spawns";
+import { weaponSpot } from "./weapon-spots";
 
 type PickupWeapon = Exclude<Weapon, "fist">;
 
@@ -79,7 +80,9 @@ export function stockSpreadArmory(sim: Sim, spawns: readonly SpawnPoint[]) {
     placed.push(p);
   };
   const rare = spread.powerWeapons.filter(w => sim.ruleset.weapons.enabled.includes(w));
-  for (const w of rare) {
+  // #95: only powerStart of them are on the map, a different pick each round
+  const onMap = sim.rng.shuffle(rare.slice()).slice(0, spread.powerStart);
+  for (const w of rare.filter(w => onMap.includes(w))) {
     const aim = quarterCenter(minX, width, sim.rng.int(0, 3));
     const exposed = (p: SpawnPoint) => {
       const g = sim.grid;
@@ -104,6 +107,11 @@ export function stockSpreadArmory(sim: Sim, spawns: readonly SpawnPoint[]) {
       const p = choose(p => between(p) && low(p), score) ?? choose(between, score);
       if (p) put(bag[i++ % bag.length]!, p);
     }
+  }
+  // spread-out start weapons (#95): apart from each other, the spawns and the caches, across the map's areas
+  for (let n = 0; n < spread.startWeapons && bag.length; n++) {
+    const p = weaponSpot(sim, sim.rng, spawns, placed);
+    if (p) put(bag[i++ % bag.length]!, p);
   }
   if (sim.ruleset.pickups.enabled.includes("jetpack")) {
     const p = choose(p => away(p, spread.minSpawnDistance), p => Math.abs(p.x - z.center - armory.jetpackOffset) + Math.abs(p.y));

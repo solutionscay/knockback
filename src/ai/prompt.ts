@@ -81,12 +81,12 @@ export interface PromptExtras {
 }
 
 export const WEAPON_HELP: Record<string, string> = {
-  rocket: "long-range terrain blast",
-  shotgun: "close spread and shove",
-  bat: "melee launch for ring-outs",
-  grenade: "bounces around cover",
-  grapple: "hook pulls rivals off ledges",
-  flamethrower: "short cone of fire, ignites wood and props, limited fuel",
+  rocket: "long-range terrain blast (8 rockets)",
+  shotgun: "close spread and shove (12 shells)",
+  bat: "melee launch for ring-outs (8 hits)",
+  grenade: "bounces around cover (8 grenades)",
+  grapple: "hook pulls rivals off ledges (8 hooks)",
+  flamethrower: "short cone of fire, ignites wood and props (4 s of fuel)",
   mine: "sticky throw, proximity or timed blast (3 throws)",
   railgun: "charged piercing beam, heavy shove (3 shots)",
   hammer: "ground shockwave, breaks walls (6 slams)",
@@ -99,9 +99,10 @@ export const WEAPON_HELP: Record<string, string> = {
 export function weaponHelp(ruleset: Ruleset = CLASSIC): Record<string, string> {
   const out = Object.fromEntries(Object.entries(WEAPON_HELP).filter(([w]) => ruleset.weapons.enabled.includes(w as Weapon)));
   const table = ruleset.weapons.table;
-  for (const [w, ammo, label] of [["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"], ["rifle", table.rifle.ammo, "rounds"], ["sniper", table.sniper.ammo, "rounds"], ["crossbow", table.crossbow.ammo, "bolts"], ["lightning", table.lightning.ammo, "bolts"]] as const) {
-    if (out[w]) out[w] = out[w].replace(/\d+ (throws|shots|slams|rounds|bolts)/, `${ammo} ${label}`);
+  for (const [w, ammo, label] of [["rocket", table.rocket.ammo, "rockets"], ["shotgun", table.shotgun.ammo, "shells"], ["bat", table.bat.ammo, "hits"], ["grenade", table.grenade.ammo, "grenades"], ["grapple", table.grapple.ammo, "hooks"], ["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"], ["rifle", table.rifle.ammo, "rounds"], ["sniper", table.sniper.ammo, "rounds"], ["crossbow", table.crossbow.ammo, "bolts"], ["lightning", table.lightning.ammo, "bolts"]] as const) {
+    if (out[w]) out[w] = out[w].replace(/\d+ (rockets|shells|hits|grenades|hooks|throws|shots|slams|rounds|bolts)/, `${ammo} ${label}`);
   }
+  if (out.flamethrower) out.flamethrower = out.flamethrower.replace(/[\d.]+ s of fuel/, `${+((table.flamethrower.ammo * table.flamethrower.cooldown) / 60).toFixed(1)} s of fuel`);
   return out;
 }
 
@@ -109,7 +110,8 @@ export function enabledRuleExamples(ruleset: Ruleset = CLASSIC): string[] {
   const items: readonly string[] = enabledItems(ruleset);
   return RULE_EXAMPLES.filter(example => {
     const e = JSON.parse(example) as { item?: string; do_item?: string };
-    return (!e.item || items.includes(e.item)) && (!e.do_item || items.includes(e.do_item));
+    const ok = (x?: string) => !x || x === "fist" || items.includes(x);
+    return ok(e.item) && ok(e.do_item);
   });
 }
 
@@ -243,6 +245,9 @@ export const RULE_EXAMPLES = [
   '{"when":"has_long_gun","who":"enemy","do":"stance","stance":"cover","label":"duck the long gun"}',
   '{"when":"in_open","who":"target","do":"use","item":"sniper","label":"take the shot"}',
   '{"when":"in_cover","do":"stance","stance":"overwatch","label":"settle in and scan"}',
+  '{"when":"my_ammo_below","value":30,"do":"seek","item":"shotgun","label":"re-arm"}',
+  '{"when":"health_below","who":"target","value":20,"do":"swap","item":"fist","label":"save the last shots"}',
+  '{"when":"my_ammo_below","value":15,"do":"drop","label":"ditch the dud"}',
 ];
 
 export function ruleExamplesFor(seed: number, round: number, me: number, ruleset: Ruleset = CLASSIC): string[] {
@@ -303,7 +308,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
   out.push(soulText(soul, ruleset).trim());
   out.push(
     `RULES: best of ${maxRounds} rounds; first to ${winsToTake} round wins takes the match, and if nobody has ${winsToTake} after round ${maxRounds} the round-${maxRounds} winner takes it. Each round is one continuous fight: last fighter standing wins (or most health after ${fightTicks / TICK_RATE} s). You get knocked out by losing all health or by flying off the level (ring-out); knockback grows as health drops. A safe zone shrinks and pushes everyone together. ` +
-      `${buildsOn(ruleset) ? "All four fighters move alike; each one's build sets its health, weight and power. All" : "All four fighters are physically identical and"} start every round with only their fists (weak). Weapons are pickups (arena, crates, supply drops); you carry 2, a new pickup replaces the one not in your hand, and knocked-out fighters drop theirs. You only choose a plan; the game moves, picks up, aims and shoots for you.`,
+      `${buildsOn(ruleset) ? "All four fighters move alike; each one's build sets its health, weight and power. All" : "All four fighters are physically identical and"} start every round with only their fists (weak). Weapons are few pickups (arena, crates, supply drops) and fighters race for them; you carry 1 weapon plus your fists, a new pickup drops the one you carry (it stays on the floor with its ammo), every weapon runs out (empty = thrown away, back to fists), and knocked-out fighters drop theirs. You only choose a plan; the game moves, picks up, aims and shoots for you.`,
   );
   out.push(`LEVEL: ${levelLine(x.level)}`);
   out.push(tacticsLines(levelTactics(x.level, ruleset), last ? longGunsLastRound(last.stats, names, ruleset) : null));
