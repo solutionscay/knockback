@@ -35,6 +35,27 @@ const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "boltCooldown",
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
 const integral = /(?:ticks|cells|attempts|^hits$|^minOnTicks$|^minOffTicks$|^fuse(?:Min|Max)?$|^chainFuse$|^burnMin$|^burnMax$|^rows$|^maxLife$)/i;
 
+/**
+ * Settings renamed since rulesets were first stored (match records pin theirs, presets keep theirs): an old body still
+ * loads. By object path: old key -> new key. The new key wins when both are given; the old one is then dropped.
+ *   #95 (#99): the flamethrower's `fuel` (pulses in a full tank) is its `ammo`, like every weapon's
+ */
+const LEGACY_KEYS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "weapons.table.flamethrower": { fuel: "ammo" },
+};
+
+function legacy(path: string, src: Record<string, unknown>): Record<string, unknown> {
+  const renames = LEGACY_KEYS[path];
+  if (!renames || !Object.keys(renames).some((k) => Object.hasOwn(src, k))) return src;
+  const out = { ...src };
+  for (const [old, now] of Object.entries(renames)) {
+    if (!Object.hasOwn(out, old)) continue;
+    if (!Object.hasOwn(out, now)) out[now] = out[old];
+    delete out[old];
+  }
+  return out;
+}
+
 function canonical(base: unknown, value: unknown, path = ""): unknown {
   const fail = (problem: string): never => { throw new RulesetError(path || "ruleset", problem); };
   if (value === undefined) value = base;
@@ -57,7 +78,7 @@ function canonical(base: unknown, value: unknown, path = ""): unknown {
   }
   if (typeof base === "object" && base !== null) {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return fail("expected an object");
-    const src = value as Record<string, unknown>;
+    const src = legacy(path, value as Record<string, unknown>);
     const template = base as Record<string, unknown>;
     for (const key of Object.keys(src)) if (!Object.hasOwn(template, key)) throw new RulesetError(path ? `${path}.${key}` : key, "unknown setting");
     return Object.freeze(Object.fromEntries(Object.keys(template).map(key => [key, canonical(template[key], Object.hasOwn(src, key) ? src[key] : undefined, path ? `${path}.${key}` : key)])));
