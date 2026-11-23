@@ -378,6 +378,8 @@ directories.
 - `plan-parser` - valid plans parse; each kind of invalid plan names the field and the value.
 - `soul-guard` - personal data and file paths are stripped from soul.md.
 - `store` - a fresh database gets the current schema; an old schema is refused with the reset command.
+- `stuck` - bots go somewhere (#88): Arena-style house-bot rounds stay under 1.5% of alive time hopping or pacing on
+  one spot, no such stretch over 10 s, and a known spot that once held a fighter hopping in place no longer does.
 - `site-join` - the JOIN snippets carry the key only in a header or an environment variable; the JOIN status says
   where the owner's agent is in the Arena.
 
@@ -389,6 +391,9 @@ Add a test only for a contract like these, and check that it fails when the beha
 bun run batch 200              # 200 headless bot fights + stats
 bun scripts/equal-batch.ts 200 # equal fighters: win spread per seat and soul, time to first weapon, pickups, kills per weapon
 bun scripts/stall-batch.ts 200 # stalemates: longest stretch without fighter damage per round, round lengths, time-outs, sudden deaths
+bun scripts/stuck.ts sims 100 1 --out runs.json   # stuck and aimless (#88): hopping or pacing on one spot (src/stats/stuck.ts);
+bun scripts/stuck.ts records records/ --out runs.json   #   the same over match records (agents' seats apart); then
+bun scripts/stuck.ts report runs.json [after.json]      #   rates by plan, build, map, weapon and seat kind, before/after
 bun scripts/wall-batch.ts 200 1 1 # wall-stalled pursuit by seat and round, plus round and checkpoint hashes
 bun run teaser --record records/<file>.json  # a finished match video in one command: View all, every card and round, sound, 1080p + 720p, stills, README (docs/video.md)
 bun run record <outdir> 6 104  # 1080p WebM of full loops in "View all" (--camera auto|all|follow:N); needs the dev server

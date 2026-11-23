@@ -21,13 +21,14 @@ const UPDATE: PlanUpdate = { tick: 300, fighter: 1, strategy: { target: "stronge
 
 const GOLDEN_MATCH_SEED = 7;
 const GOLDEN = {
-  fight: "1501ad3c",
-  fightWithUpdate: "2e154352",
-  closeQuarters: "f5861c02",
+  // #88: the controller plans around ways it cannot get past, escapes spots that go nowhere and digs when stranded
+  fight: "c38563ae",
+  fightWithUpdate: "2a1476d4",
+  closeQuarters: "e9b788f5",
   // house bots play their souls' builds (#80)
-  match: ["b398e5bd", "225186f8", "088c030d"],
+  match: ["a4007efa", "8f67618e", "818295a3"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["92cee62e", "19c8084a", "e3fa8442"],
+  neutralMatch: ["3f8fbd27", "906ea85a", "2bae7793"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

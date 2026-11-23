@@ -61,6 +61,16 @@ export class Controller {
     return this.navigation.dig;
   }
 
+  /** times the going-nowhere watchdog fired this fight (#88) */
+  get nowhereCount() {
+    return this.navigation.nowhereCount;
+  }
+
+  /** the last tick this fighter dealt or took fighter damage */
+  get lastFight() {
+    return Math.max(this.lastDealt, this.lastTaken);
+  }
+
   /** Called when this fighter damages another (from Fight, in event order). */
   onDealt(tick: number) {
     this.lastDealt = tick;
@@ -301,6 +311,12 @@ export class Controller {
         this.unreachable.set(target.id, sim.tick + sim.ruleset.tactics.patience.skipTicks);
         this.nextRetarget = 0;
       }
+      // going nowhere (#88): back off and plan around the spot; a target with no route is left for another
+      if (this.navigation.watchNowhere(sim, me, input, target) && target && sim.alive().length > 2 && me.surface >= 0 && target.surface >= 0 &&
+        sim.nav.fighterPlan(sim.grid, me.surface, sim.pos(me).x).cost[target.surface] === Infinity) {
+        this.unreachable.set(target.id, sim.tick + sim.ruleset.tactics.patience.skipTicks);
+        this.nextRetarget = 0;
+      }
     }
     return input;
   }
@@ -392,6 +408,18 @@ export class Controller {
       this.unreachable.set(target.id, sim.tick + sim.ruleset.tactics.patience.skipTicks);
       this.nextRetarget = 0;
       this.noReach = 0;
+    }
+    // stranded (#88): no route and nothing that reaches - dig toward the target through what is in the way
+    const dig = !flying && !choice?.shot ? this.navigation.tunnel(sim, me, target) : null;
+    if (dig) {
+      const w: Weapon = me.weapons.includes("hammer") ? "hammer" : me.weapons.includes("bat") ? "bat" : "fist";
+      input.weapon = w;
+      input.move = 0;
+      input.jump = false;
+      input.aimX = dig.x;
+      input.aimY = dig.y;
+      input.fire = (sim.weapon(me) === w || w === "fist") && me.swap === 0 && me.cooldown[w] === 0;
+      return input;
     }
     if (choice) {
       if (!choice.shot && dist > 0) {
