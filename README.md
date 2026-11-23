@@ -70,7 +70,8 @@ Records land in `records/` and replay exactly with `bun run dev` +
 `/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
 A record replays only if every round reaches its recorded final hash; a record that does not is refused, never
 replayed into a different result. A sim change that moves hashes leaves older records unreplayable (pre-alpha: they
-are not kept in the app).
+are not kept in the app). The match server stamps every round with the engine it was played on (#88); rounds from an
+older engine stay in its database and records folder as training data, are never shown, and their URLs are not found.
 Providers live in `src/ai/providers.ts` (one entry each).
 For ruleset files and named presets, see [docs/rulesets.md](docs/rulesets.md).
 
@@ -378,6 +379,9 @@ directories.
 - `plan-parser` - valid plans parse; each kind of invalid plan names the field and the value.
 - `soul-guard` - personal data and file paths are stripped from soul.md.
 - `store` - a fresh database gets the current schema; an old schema is refused with the reset command.
+- `old-engine` - rounds from an older engine (#88): kept in the database and on disk, never listed or shown; their
+  URLs are a clean 404 (no re-simulation); scripts still list them and tell them apart; an in-flight round that no
+  longer replays at startup is set aside for a fresh one.
 - `stuck` - bots go somewhere (#88): Arena-style house-bot rounds stay under 1.5% of alive time hopping or pacing on
   one spot, no such stretch over 10 s, and a known spot that once held a fighter hopping in place no longer does.
 - `site-join` - the JOIN snippets carry the key only in a header or an environment variable; the JOIN status says
@@ -391,6 +395,7 @@ Add a test only for a contract like these, and check that it fails when the beha
 bun run batch 200              # 200 headless bot fights + stats
 bun scripts/equal-batch.ts 200 # equal fighters: win spread per seat and soul, time to first weapon, pickups, kills per weapon
 bun scripts/stall-batch.ts 200 # stalemates: longest stretch without fighter damage per round, round lengths, time-outs, sudden deaths
+bun scripts/records-engine.ts records/   # which engine each record was played on (#88): current or older (older = training data, never shown); --db for the server's index, --json
 bun scripts/stuck.ts sims 100 1 --out runs.json   # stuck and aimless (#88): hopping or pacing on one spot (src/stats/stuck.ts);
 bun scripts/stuck.ts records records/ --out runs.json   #   the same over match records (agents' seats apart); then
 bun scripts/stuck.ts report runs.json [after.json]      #   rates by plan, build, map, weapon and seat kind, before/after

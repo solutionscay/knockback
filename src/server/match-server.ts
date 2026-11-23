@@ -7,7 +7,11 @@
  * server after a restart: the Arena round in progress replays its stored decisions (deterministic) and plays on;
  * finished rounds load on demand.
  */
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { CheckinConfig } from "../ai/checkin";
+import { OlderEngineError } from "../ai/runner";
+import { OLDER_ENGINE, recordEngine, type StampedRecord } from "../sim/engine";
 import { dedupe, headToHead, leaderboard, type SeatEntry } from "../stats/models";
 import { Arena, type ArenaOptions } from "./arena";
 import { errorResponse, HttpError, json, RateLimiter } from "./limits";
@@ -83,6 +87,15 @@ export class MatchServer {
     return this.arena.resume();
   }
 
+  /**
+   * May GET /records/<file>.json serve this file? Not the record of a round from an older engine or one not checked
+   * yet (#88: training data, never re-simulated in a viewer). A file no match saved (an ai-match run) is served.
+   */
+  async servesRecord(path: string): Promise<boolean> {
+    const rec = await this.store.recordByPath(path);
+    return !rec || (rec.engine === this.store.engine && rec.tier !== "bot-only");
+  }
+
   add(m: ServerMatch) {
     this.matches.set(m.id, m);
     // keep finished rounds for a while, but not forever
@@ -117,7 +130,8 @@ export class MatchServer {
     if (pending) return pending;
     if (!/^m_[0-9a-f]{8}$/.test(mid)) throw new HttpError(404, `no match ${mid}`);
     const row = await this.store.getMatch(mid);
-    if (!row || (row.status !== "over" && row.status !== "failed") || tierOf(row.kinds) === "bot-only") throw new HttpError(404, `no match ${mid}`);
+    // a round of an older engine (#88) is training data: not found, never re-simulated
+    if (!row || (row.status !== "over" && row.status !== "failed") || tierOf(row.kinds) === "bot-only" || row.engine !== this.store.engine) throw new HttpError(404, `no match ${mid}`);
     if (this.loading.has(mid)) return this.loading.get(mid)!;
     this.loadLimit.take(ip, "loads of old rounds");
     const load = (async () => {
@@ -135,9 +149,45 @@ export class MatchServer {
     this.loading.set(mid, load);
     try {
       return await load;
+    } catch (e) {
+      // stamped as this engine but it does not replay (a sim change the stamp did not catch): older from now on
+      if (e instanceof OlderEngineError) {
+        await this.store.updateMatch(mid, { engine: OLDER_ENGINE });
+        this.log(`match ${mid}: played on an older engine; kept as training data, no longer shown`);
+        throw new HttpError(404, `no match ${mid}`);
+      }
+      throw e;
     } finally {
       this.loading.delete(mid);
     }
+  }
+
+  /**
+   * The rounds from before engine stamps (#88): replay each one's record once, in the background, and stamp it with
+   * this engine if it reaches its recorded hashes, "older" if not. Until then it is not shown. Public rounds first;
+   * a pause between replays keeps the live Arena smooth. Resolves when all are done (tests await it).
+   */
+  async stampOldRounds(pauseMs = 200): Promise<{ current: number; older: number }> {
+    const out = { current: 0, older: 0 };
+    for (const row of await this.store.unstampedMatches()) {
+      const rec = row.status === "over" ? await this.store.getRecord(row.id) : null;
+      let engine: string = OLDER_ENGINE;
+      if (rec) {
+        const file = rec.path.startsWith("/records/") ? join(this.opts.outDir, rec.path.slice("/records/".length)) : join(this.opts.outDir, rec.path);
+        try {
+          const raw = JSON.parse(await readFile(file, "utf8")) as StampedRecord;
+          if (recordEngine(raw) === "current") engine = this.store.engine;
+        } catch {
+          /* no readable record: it cannot be shown either way */
+        }
+      }
+      await this.store.updateMatch(row.id, { engine });
+      if (engine === OLDER_ENGINE) out.older++;
+      else out.current++;
+      if (pauseMs > 0) await new Promise((r) => setTimeout(r, pauseMs));
+    }
+    if (out.current + out.older) this.log(`engine: ${out.current + out.older} rounds from before engine stamps checked: ${out.current} on this engine, ${out.older} older (kept as training data, not shown)`);
+    return out;
   }
 
   // ------------------------------------------------------------ HTTP

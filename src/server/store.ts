@@ -19,6 +19,7 @@ import type { DecisionMeta } from "../sim/match";
 import type { PlanUpdate } from "../sim/fight";
 import type { Decision } from "../sim/voice";
 import type { Crown, PlayedRound } from "./crown";
+import { engineStamp } from "../sim/engine";
 
 export type MatchStatus = "open" | "running" | "over" | "failed";
 
@@ -49,6 +50,12 @@ export interface MatchRow {
   winner: number | null;
   /** when spectator picks locked (#35): right before round 1's decisions were broadcast */
   picksLockedAt?: number | null;
+  /**
+   * The engine the match was played on (#88: src/sim/engine.ts): the current stamp for a new match; "older" or an
+   * older stamp once it no longer replays on this engine (kept as training data, never shown); null for a match from
+   * before stamps that has not been checked yet (not shown either until it is).
+   */
+  engine?: string | null;
 }
 
 export interface SeatRow {
@@ -129,6 +136,8 @@ export interface RecordRow {
   createdAt: number;
   /** per-seat model stats for GET /api/models (src/stats/models.ts SeatEntry[] as JSON) */
   stats: string;
+  /** the engine its match was played on (#88; read from the match, never written with the record row) */
+  engine?: string | null;
 }
 
 /** The crown as stored (#65): the last Arena round applied to it, and the crown (null before any round was played). */
@@ -163,10 +172,15 @@ export interface LatestSeatRow {
   lastRound: number;
 }
 
-export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt">>;
+export type MatchPatch = Partial<Pick<MatchRow, "status" | "startedAt" | "endedAt" | "error" | "winner" | "picksLockedAt" | "engine">>;
 export type SeatPatch = Partial<Pick<SeatRow, "leftAt" | "leftRound">>;
 
 export interface MatchStore {
+  /**
+   * The current engine's stamp (#88). Every public list and lookup (records, replays, the leaderboard's rounds and
+   * streaks) keeps to matches played on it; matches from older engines stay stored for scripts and training.
+   */
+  readonly engine: string;
   getRulesetPreset(name: string): Promise<RulesetPreset | null>;
   defaultRulesetPreset(): Promise<RulesetPreset | null>;
   listRulesetPresets(): Promise<RulesetPreset[]>;
@@ -220,6 +234,15 @@ export interface MatchStore {
    * only warm-up or featured rounds.
    */
   listRecords(limit?: number, before?: number, tier?: Exclude<RoundTier, "bot-only">): Promise<RecordRow[]>;
+  /** the record row of a public path (/records/<file>.json), any engine; null when no match saved it */
+  recordByPath(path: string): Promise<RecordRow | null>;
+  /**
+   * Every record row, every tier and every engine, newest first, each with its match's engine (#88): for scripts and
+   * training, never for a public page.
+   */
+  allRecords(): Promise<RecordRow[]>;
+  /** finished matches with no engine stamp yet (from before stamps), public tiers first, then newest first */
+  unstampedMatches(limit?: number): Promise<MatchRow[]>;
   /** the crown (#65) and the last Arena round applied to it */
   getCrown(): Promise<CrownRow>;
   /**
@@ -242,7 +265,7 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
@@ -261,7 +284,8 @@ export const SCHEMA = `
     ruleset_body TEXT NOT NULL,       -- JSON Ruleset pinned at creation: later preset edits cannot affect the match
     ruleset_preset TEXT,
     ruleset_version INTEGER,
-    picks_locked_at INTEGER           -- spectator picks locked (#35)
+    picks_locked_at INTEGER,          -- spectator picks locked (#35)
+    engine TEXT                       -- the engine stamp it was played on (#88); "older" or an older stamp: never shown
   );
   CREATE INDEX matches_status ON matches(status);
   CREATE TABLE owners (
@@ -401,6 +425,7 @@ const matchOf = (r: Row): MatchRow => ({
   error: (r.error as string | null) ?? null,
   winner: (r.winner as number | null) ?? null,
   picksLockedAt: (r.picks_locked_at as number | null) ?? null,
+  engine: (r.engine as string | null) ?? null,
 });
 
 const presetOf = (r: Row): RulesetPreset => ({
@@ -426,13 +451,23 @@ const seatOf = (r: Row): SeatRow => ({
   openingLine: (r.opening_line as string | null) ?? null,
 });
 
-const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round", picksLockedAt: "picks_locked_at" };
+const COLS: Record<string, string> = { status: "status", startedAt: "started_at", endedAt: "ended_at", error: "error", winner: "winner", leftAt: "left_at", leftRound: "left_round", picksLockedAt: "picks_locked_at", engine: "engine" };
 
 export class SqliteStore implements MatchStore {
   readonly db: Database;
+  private engineAt: string | null;
+  /** the current engine stamp, worked out on first use (the key and reset scripts never need it, nor physics) */
+  get engine(): string {
+    return (this.engineAt ??= engineStamp());
+  }
 
-  /** `path`: a file, or ":memory:". An empty database gets SCHEMA; one with another schema throws SchemaError. */
-  constructor(path: string) {
+  /**
+   * `path`: a file, or ":memory:". An empty database gets SCHEMA; one with another schema throws SchemaError, except
+   * v7, which gets the one column v8 added (#88: matches.engine, empty until checked) so its rounds are kept.
+   * `engine`: the current engine stamp (default: worked out, src/sim/engine.ts).
+   */
+  constructor(path: string, engine?: string) {
+    this.engineAt = engine ?? null;
     this.db = new Database(path, { create: true, strict: true });
     try {
       this.db.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;");
@@ -441,6 +476,12 @@ export class SqliteStore implements MatchStore {
       if (tables === 0) {
         this.db.transaction(() => {
           this.db.exec(SCHEMA);
+          this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+        })();
+      } else if (version === 7) {
+        // the only upgrade (#88): an added column, nothing rewritten; the old rounds are checked in the background
+        this.db.transaction(() => {
+          this.db.exec("ALTER TABLE matches ADD COLUMN engine TEXT");
           this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
         })();
       } else if (version !== SCHEMA_VERSION) throw new SchemaError(path, version);
@@ -491,8 +532,8 @@ export class SqliteStore implements MatchStore {
 
   async insertMatch(m: MatchRow) {
     this.db
-      .query("INSERT INTO matches (id, arena_round, seed, kinds, deadline_ms, status, created_at, started_at, ended_at, error, winner, ruleset_body, ruleset_preset, ruleset_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(m.id, m.arenaRound, m.seed, j(m.kinds), m.deadlineMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.error, m.winner, j(m.ruleset), m.preset ?? null, m.presetVersion ?? null);
+      .query("INSERT INTO matches (id, arena_round, seed, kinds, deadline_ms, status, created_at, started_at, ended_at, error, winner, ruleset_body, ruleset_preset, ruleset_version, engine) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(m.id, m.arenaRound, m.seed, j(m.kinds), m.deadlineMs, m.status, m.createdAt, m.startedAt, m.endedAt, m.error, m.winner, j(m.ruleset), m.preset ?? null, m.presetVersion ?? null, m.engine === undefined ? this.engine : m.engine);
   }
   async updateMatch(id: string, patch: MatchPatch) {
     this.patch("matches", "id = ?", [id], patch);
@@ -618,14 +659,28 @@ export class SqliteStore implements MatchStore {
     this.db.query("INSERT OR REPLACE INTO records (match_id, path, tier, seed, hashes, winner, created_at, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(r.matchId, r.path, r.tier, r.seed, j(r.hashes), r.winner, r.createdAt, r.stats);
   }
   async getRecord(matchId: string) {
-    const r = this.db.query("SELECT * FROM records WHERE match_id = ?").get(matchId) as Row | null;
+    const r = this.db.query("SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id WHERE r.match_id = ?").get(matchId) as Row | null;
     return r ? recordOf(r) : null;
   }
   async listRecords(limit = 100, before?: number, tier?: Exclude<RoundTier, "bot-only">) {
     const tiers = tier ? [tier] : ["warm-up", "featured"];
-    const where = `tier IN (${tiers.map(() => "?").join(",")})${before !== undefined ? " AND created_at < ?" : ""}`;
-    const args = [...tiers, ...(before !== undefined ? [before] : []), limit];
-    return (this.db.query(`SELECT * FROM records WHERE ${where} ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(...(args as never[])) as Row[]).map(recordOf);
+    // only rounds played on this engine (#88): older ones are training data, never listed
+    const where = `r.tier IN (${tiers.map(() => "?").join(",")}) AND m.engine = ?${before !== undefined ? " AND r.created_at < ?" : ""}`;
+    const args = [...tiers, this.engine, ...(before !== undefined ? [before] : []), limit];
+    return (this.db.query(`SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id WHERE ${where} ORDER BY r.created_at DESC, r.rowid DESC LIMIT ?`).all(...(args as never[])) as Row[]).map(recordOf);
+  }
+  async recordByPath(path: string) {
+    const r = this.db.query("SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id WHERE r.path = ?").get(path) as Row | null;
+    return r ? recordOf(r) : null;
+  }
+  async allRecords() {
+    return (this.db.query("SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id ORDER BY r.created_at DESC, r.rowid DESC").all() as Row[]).map(recordOf);
+  }
+  async unstampedMatches(limit = 1_000_000) {
+    const rows = this.db
+      .query("SELECT m.* FROM matches m LEFT JOIN records r ON r.match_id = m.id WHERE m.engine IS NULL AND m.status IN ('over','failed') ORDER BY (r.tier IS NOT NULL AND r.tier != 'bot-only') DESC, m.created_at DESC LIMIT ?")
+      .all(limit) as Row[];
+    return rows.map(matchOf);
   }
   async getCrown() {
     const r = this.db.query("SELECT * FROM crown WHERE id = 1").get() as Row;
@@ -649,12 +704,13 @@ export class SqliteStore implements MatchStore {
     return rows.map((r) => ({ arenaRound: r.arena_round as number, tier: r.tier as RoundTier, winner: r.winner as number, winnerName: (r.name as string | null) ?? null, winnerOwner: (r.owner as string | null) ?? null }));
   }
   async listStreaks() {
-    return (this.db.query("SELECT * FROM streaks ORDER BY best DESC, round").all() as Row[]).map((r) => ({ name: r.name as string, owner: r.owner as string, best: r.best as number, round: r.round as number }));
+    // a streak reached in a round of an older engine is not shown (#88); it stays stored
+    return (this.db.query("SELECT s.* FROM streaks s JOIN matches m ON m.arena_round = s.round WHERE m.engine = ? ORDER BY s.best DESC, s.round").all(this.engine) as Row[]).map((r) => ({ name: r.name as string, owner: r.owner as string, best: r.best as number, round: r.round as number }));
   }
   async agentRounds() {
     const rows = this.db
-      .query("SELECT MIN(s.name) AS name, MIN(s.owner) AS owner, r.tier, COUNT(*) AS rounds, SUM(r.winner = s.seat) AS wins FROM seats s JOIN records r ON r.match_id = s.match_id WHERE r.tier != 'bot-only' GROUP BY s.name COLLATE NOCASE, r.tier")
-      .all() as Row[];
+      .query("SELECT MIN(s.name) AS name, MIN(s.owner) AS owner, r.tier, COUNT(*) AS rounds, SUM(r.winner = s.seat) AS wins FROM seats s JOIN records r ON r.match_id = s.match_id JOIN matches m ON m.id = s.match_id WHERE r.tier != 'bot-only' AND m.engine = ? GROUP BY s.name COLLATE NOCASE, r.tier")
+      .all(this.engine) as Row[];
     return rows.map((r) => ({ name: r.name as string, owner: r.owner as string, tier: r.tier as "warm-up" | "featured", rounds: r.rounds as number, wins: r.wins as number }));
   }
   async latestSeats() {
@@ -676,4 +732,5 @@ const recordOf = (r: Row): RecordRow => ({
   winner: r.winner as number,
   createdAt: r.created_at as number,
   stats: r.stats as string,
+  engine: (r.engine as string | null) ?? null,
 });

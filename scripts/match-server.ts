@@ -117,7 +117,10 @@ const server = Bun.serve({
     if (mcp && new URL(req.url).pathname === "/mcp") return mcp.handle(req, ip);
     const res = await api.handle(req, ip);
     if (res) return res;
-    return (await serveRecord(new URL(req.url).pathname, outDir)) ?? new Response("Not found", { status: 404 });
+    const path = new URL(req.url).pathname;
+    // a round from an older engine (#88) is training data: its record is not served to the viewer
+    if (path.startsWith("/records/") && !(await api.servesRecord(path))) return new Response("Not found", { status: 404 });
+    return (await serveRecord(path, outDir)) ?? new Response("Not found", { status: 404 });
   },
 });
 
@@ -129,6 +132,8 @@ console.log(`arena: house bots in every seat no agent holds; ${api.arena.deadlin
 console.log(`storage: ${dbPath}`);
 const resumed = await api.resume();
 if (resumed.round !== null) console.log(`resumed Arena round ${resumed.round}`);
+// rounds from before engine stamps (#88): checked once in the background; until then they are not shown
+void api.stampOldRounds().catch((e) => console.log(`engine: the old rounds could not be checked: ${e instanceof Error ? e.message : String(e)}`));
 for (const sig of ["SIGINT", "SIGTERM"] as const)
   process.on(sig, () => {
     console.log(`${sig}: closing the database`);
