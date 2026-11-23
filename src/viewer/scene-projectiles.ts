@@ -1,11 +1,15 @@
-import { Graphics } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import { WEAPON_ACCENT } from "./palette";
 import type { Sim } from "../sim/sim";
 import type { Fx } from "./fx";
 import type { XformAt } from "./scene";
+import { setWorldFrame } from "./world-art";
 
 export class ProjectileViews {
   readonly graphics = new Graphics();
+  /** the plush sprites (#87): rockets, mines, the grapple hook, crossbow bolts; over the code trails and glows */
+  readonly sprites = new Container();
+  private used = 0;
   rails: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
   waves: { paths: { x: number; y: number }[][]; life: number }[] = [];
   private minePrev = new Map<number, { x: number; y: number }>();
@@ -51,8 +55,34 @@ export class ProjectileViews {
     for (const m of sim.mines) this.minePrev.set(m.id, { x: m.x, y: m.y });
   }
 
+  /**
+   * A world sprite this frame (pooled): frame `name` centered at x, y (game meters, y up), turned to point along
+   * (dx, dy); pointing left it is mirrored, so its top stays up and the light stays put.
+   */
+  private sprite(name: string, x: number, y: number, dx = 1, dy = 0, alpha = 1) {
+    let s = this.sprites.children[this.used] as Sprite | undefined;
+    if (!s) s = this.sprites.addChild(new Sprite());
+    this.used++;
+    if (!setWorldFrame(s, name)) return;
+    s.position.set(x, -y);
+    const left = dx < 0;
+    s.rotation = left ? -Math.atan2(-dy, -dx) : -Math.atan2(dy, dx);
+    if (left) s.scale.x *= -1;
+    s.alpha = alpha;
+  }
+
   render(sim: Sim, fx: Fx, dt: number, alpha: number, fxDt: number, xform: XformAt) {
     const pg = this.graphics;
+    this.used = 0;
+    try {
+      this.draw(sim, fx, dt, alpha, fxDt, xform, pg);
+    } finally {
+      const kids = this.sprites.children;
+      for (let i = 0; i < kids.length; i++) kids[i]!.visible = i < this.used && kids[i]!.visible;
+    }
+  }
+
+  private draw(sim: Sim, fx: Fx, dt: number, alpha: number, fxDt: number, xform: XformAt, pg: Graphics) {
     for (const id of this.rocketOff.keys()) if (!sim.rockets.some((r) => r.id === id)) this.rocketOff.delete(id);
     for (const id of this.mineOff.keys()) if (!sim.mines.some((m) => m.id === id)) this.mineOff.delete(id);
     for (const m of sim.mines) {
@@ -69,9 +99,8 @@ export class ProjectileViews {
       const y = -(p.y + (m.y - p.y) * alpha + off.y);
       const armed = m.armedAt >= 0 && sim.tick > m.armedAt;
       const glow = armed && sim.tick % 12 < 8;
-      if (glow) pg.circle(x, y, 0.49).fill({ color: WEAPON_ACCENT.mine, alpha: 0.28 });
-      pg.roundRect(x - 0.3, y - 0.2, 0.6, 0.4, 0.14).fill(0x584158).stroke({ color: 0x15171d, width: 0.06 });
-      pg.circle(x, y, 0.13).fill(glow ? 0xffecfa : WEAPON_ACCENT.mine);
+      if (glow) pg.circle(x, y, 0.49).fill({ color: WEAPON_ACCENT.mine, alpha: 0.4 });
+      this.sprite("mine", x, -y);
     }
     for (const r of this.rails) {
       r.life -= fxDt;
@@ -112,10 +141,8 @@ export class ProjectileViews {
       const ux = r.vx / l;
       const uy = r.vy / l;
       const L = 0.55;
-      const Wd = 0.13;
-      // body
-      pg.poly([x + ux * L, -(y + uy * L), x - ux * L + -uy * Wd, -(y - uy * L + ux * Wd), x - ux * L - -uy * Wd, -(y - uy * L - ux * Wd)]).fill(0xf2f2f2);
       pg.circle(x - ux * L, -(y - uy * L), 0.16 + Math.random() * 0.08).fill({ color: 0xffb03a, alpha: 0.95 });
+      this.sprite("rocket", x + ux * 0.05, y + uy * 0.05, ux, uy);
       if (Math.random() < 0.9) {
         fx.add({ x: x - ux * L, y: y - uy * L, vx: -ux * 2 + (Math.random() - 0.5), vy: -uy * 2 + (Math.random() - 0.5), kind: "smoke", life: 0.7, size: 0.15, size1: 0.55, color: 0x9a97a2, alpha: 0.55, drag: 2, back: true });
         fx.add({ x: x - ux * L, y: y - uy * L, vx: -ux * 5, vy: -uy * 5, life: 0.12, size: 0.16, size1: 0.02, color: 0xffd36a });
@@ -159,8 +186,8 @@ export class ProjectileViews {
       b.life -= fxDt;
       if (b.life <= 0) continue;
       const a = Math.min(1, b.life * 2);
-      pg.moveTo(b.x - b.dx * 0.55, -(b.y - b.dy * 0.55)).lineTo(b.x, -b.y).stroke({ width: 0.06, color: 0xc8ccd6, alpha: a });
-      pg.moveTo(b.x - b.dx * 0.55, -(b.y - b.dy * 0.55)).lineTo(b.x - b.dx * 0.4, -(b.y - b.dy * 0.4)).stroke({ width: 0.12, color: WEAPON_ACCENT.crossbow, alpha: a });
+      // the bolt's tip in the wall: its middle 0.25 m back along its flight
+      this.sprite("bolt", b.x - b.dx * 0.25, b.y - b.dy * 0.25, b.dx, b.dy, a);
     }
     this.bolts = this.bolts.filter((b) => b.life > 0);
     for (const b of this.lightning) {
@@ -234,7 +261,7 @@ export class ProjectileViews {
       }
       const a = Math.min(1, r.life / r.max + 0.3);
       pg.moveTo(sp.x, -(sp.y + 0.25)).lineTo(ex, -ey).stroke({ width: 0.07, color: 0xd8dce6, alpha: a });
-      pg.circle(ex, -ey, 0.13).stroke({ width: 0.05, color: 0xd8dce6, alpha: a });
+      this.sprite("hook", ex, ey, ex - sp.x, ey - (sp.y + 0.25), a);
     }
     this.ropes = this.ropes.filter((r) => r.life > 0);
     for (const z of this.zaps) {

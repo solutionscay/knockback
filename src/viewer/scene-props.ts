@@ -99,9 +99,11 @@ export class PropViews {
     const f = propFrame(e);
     if (f) {
       // the model is the default size: a ruleset that resizes a prop stretches its sprite to the body
-      const half = PROP_HALF[e.kind as keyof typeof PROP_HALF];
-      setWorldFrame(v.s, f, e.hw / half[0], e.hh / half[1]);
-      v.hi.visible = blink.blink && setWorldFrame(v.hi, f, e.hw / half[0], e.hh / half[1]);
+      // (a grenade's body is a 0.22 m circle: the toy, its lever and pin fill about that)
+      const half = e.kind === "grenade" ? [0.22 / 1.2, 0.22 / 1.2] : PROP_HALF[e.kind as keyof typeof PROP_HALF];
+      setWorldFrame(v.s, f, e.hw / half[0]!, e.hh / half[1]!);
+      v.hi.visible = blink.blink && setWorldFrame(v.hi, f, e.hw / half[0]!, e.hh / half[1]!);
+      v.hi.tint = e.kind === "grenade" ? 0xff3030 : 0xffffff;
     }
   }
 

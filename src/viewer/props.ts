@@ -34,6 +34,8 @@ export function propFrame(e: Entity): string | null {
   switch (e.kind) {
     case "steel":
       return "steel";
+    case "grenade":
+      return "grenade";
     case "block":
     case "crate":
     case "barrel":
@@ -99,12 +101,10 @@ export function drawProp(g: Graphics, e: Entity, time: number, out: { blink: boo
     case "item":
       drawPickup(g, e.itemType ?? "health", time);
       return true;
-    case "grenade": {
-      const blink = Math.floor(time * ((e.ticksLeft ?? 60) < 40 ? 16 : 6)) % 2 === 0;
-      g.circle(0, 0, w).fill(0x4b5a2a).stroke({ width: 0.04, color: 0x1d2410 });
-      g.circle(0, -w * 0.4, 0.07).fill(blink ? 0xff3030 : 0x551010);
+    case "grenade":
+      // the plush grenade flashes red, faster as its fuse runs out
+      out.blink = Math.floor(time * ((e.ticksLeft ?? 60) < 40 ? 16 : 6)) % 2 === 0;
       return true;
-    }
   }
   return false;
 }
