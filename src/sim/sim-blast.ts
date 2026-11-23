@@ -1,4 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
+import { igniteOilNear } from "./sim-liquid";
 import { type Blast } from "./constants";
 import type { Sim } from "./sim";
 import { type Entity, type ExplosionKind } from "./sim-types";
@@ -65,4 +66,5 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
   }
   // what is left standing near the blast may catch fire (#33)
   blastIgnite(sim, x, y, spec.radius, owner);
+  igniteOilNear(sim, x, y, spec.radius * sim.ruleset.fire.blastReach, owner);
 }

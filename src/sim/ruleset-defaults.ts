@@ -153,6 +153,7 @@ export const RULESET_DEFAULTS = {
     navigation: { headroomCells: 4, jumpMargin: 0.55, maxGap: 3.5, dropFall: 3 },
   },
   zone: { boundary: { ...C.ZONE, edgeInset: 1, maxSpeed: 14, shockStun: 18 }, suddenDeath: { ...C.STALEMATE, graceTicks: 20 * C.TICK_RATE } },
+  liquids: C.LIQUIDS,
   fire: { ...C.FIRE, materials: [Mat.Wood, Mat.Crumble] as readonly Mat[], props: ["crate", "barrel", "tnt", "gas"] as readonly string[] },
   builds: BUILDS,
   morale: MORALE,

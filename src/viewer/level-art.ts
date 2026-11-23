@@ -5,12 +5,14 @@
  * the chain anchor) and frees the other themes. View only.
  */
 import { Assets, Rectangle, Texture } from "pixi.js";
-import type { Theme } from "../sim/level-config";
+import { THEME_DEFS, themeUsesNature, type Theme } from "../sim/themes";
 import { LEVEL_LAYOUT, LEVEL_URLS } from "./art/level/layout";
 import { plushFormat } from "./plush-bot";
 
 interface FrameMeta { g: string; x: number; y: number; w: number; h: number; ax: number; ay: number; ppm: number }
 type Key = keyof typeof LEVEL_URLS;
+/** The atlases a theme draws from, first match wins (#94: a theme names its atlas; nature when it uses it). */
+const keysOf = (theme: Theme): Key[] => [THEME_DEFS[theme].look.atlas as Key, ...(themeUsesNature(theme) ? ["nature" as Key] : []), "common"];
 const FRAMES = LEVEL_LAYOUT.frames as unknown as Record<string, FrameMeta>;
 
 /** A loaded frame: its texture and its size in game meters (tiles anchor top-left; the anchor sprite on ax, ay). */
@@ -25,7 +27,7 @@ function load(k: Key): Promise<void> {
   let p = pending.get(k);
   if (!p) {
     const fmt = plushFormat() ?? "webp";
-    const g = k === "common" ? "level" : `level-${k}`;
+    const g = k === "common" ? "level" : `level-${String(k)}`;
     p = Assets.load<Texture>({ src: url(k), loadParser: fmt === "ktx2" ? "loadKTX2" : undefined }).then((base) => {
       const m = new Map<string, LevelFrame>();
       for (const [n, f] of Object.entries(FRAMES)) {
@@ -41,18 +43,19 @@ function load(k: Key): Promise<void> {
   return p;
 }
 
-/** A new round: load its theme (and the shared overlays), free the other themes. */
+/** A new round: load its theme's atlases (its own, nature if it uses it, the shared one), free the rest. */
 export function levelRound(theme: Theme): Promise<void> {
+  const keep = keysOf(theme);
   for (const k of [...loaded.keys()]) {
-    if (k === "common" || k === theme) continue;
+    if (keep.includes(k)) continue;
     loaded.delete(k);
     void Assets.unload(url(k));
   }
-  return Promise.all([load("common"), load(theme)]).then(() => undefined);
+  return Promise.all(keep.map(load)).then(() => undefined);
 }
 
-/** Load a theme (and the shared overlays) and keep the rest (the lab shows every theme at once). */
-export const levelLoad = (theme: Theme): Promise<void> => Promise.all([load("common"), load(theme)]).then(() => undefined);
+/** Load a theme's atlases and keep the rest (the lab shows every theme at once). */
+export const levelLoad = (theme: Theme): Promise<void> => Promise.all(keysOf(theme).map(load)).then(() => undefined);
 
 /** Wait until no level atlas is loading; true if one was. */
 export async function levelSettle(): Promise<boolean> {
@@ -61,18 +64,22 @@ export async function levelSettle(): Promise<boolean> {
   return true;
 }
 
-/** Are this theme's terrain frames (and the shared ones) loaded? */
-export const levelReady = (theme: Theme) => loaded.has(theme) && loaded.has("common");
+/** Are this theme's terrain frames loaded? */
+export const levelReady = (theme: Theme) => keysOf(theme).every((k) => loaded.has(k));
 
-/** A theme frame (c-<mat>-<v>, t-<mat>) or a shared one (k-<stage>-<v>, char-<v>, e-l, e-r, e-b, anchor), or null. */
+/** A frame from the theme's atlases (c-<mat>-<v>, t-<mat>, k-<stage>-<v>, char-<v>, e-l/r/b, anchor; #94 q-, s-), or null. */
 export function levelFrame(theme: Theme, name: string): LevelFrame | null {
-  return loaded.get(theme)?.get(name) ?? loaded.get("common")?.get(name) ?? null;
+  for (const k of keysOf(theme)) {
+    const f = loaded.get(k)?.get(name);
+    if (f) return f;
+  }
+  return null;
 }
 
 /** What is loaded: atlas names and their GPU bytes (block formats: 1 byte per pixel; WebP: 4). */
 export function levelMemory(only?: Theme): { atlases: string[]; bytes: number } {
   let bytes = 0;
-  const keys = [...loaded.keys()].filter((k) => !only || k === only || k === "common");
+  const keys = [...loaded.keys()].filter((k) => !only || keysOf(only).includes(k));
   const atlases = keys.map(String);
   for (const k of keys) {
     const [w, h] = (LEVEL_LAYOUT.sizes as unknown as Record<string, [number, number]>)[k === "common" ? "level" : `level-${k}`]!;

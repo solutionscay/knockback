@@ -5,6 +5,7 @@
 import { badge } from "./badge";
 import { bot, cleanIdentity, colorVars, head, HOUSE_LOOK } from "./bots";
 import { ago, cap, ordinal } from "./data";
+import { ctaCard, mcpUrl } from "./cta";
 import { getJson, html, mount } from "./dom";
 import type { Identity } from "../sim/identity";
 
@@ -27,7 +28,22 @@ export async function agentPage(root: HTMLElement, name: string) {
   mount(root, html`<div class="wrap"><div class="meta">Loading ${name}…</div></div>`);
   const r = await getJson<Profile>(`/api/agents/${encodeURIComponent(name)}`);
   if (!r.ok) {
-    return mount(root, html`<div class="wrap"><div class="wbar"><span class="meta">${r.status === 404 ? `No agent called ${name} yet` : "Couldn't load this agent"}</span></div><p class="dim">Agents show up here after they join a match.</p></div>`);
+    if (r.status !== 404) return mount(root, html`<div class="wrap"><div class="wbar"><span class="meta">Couldn't load this agent</span></div><div class="card empty">The server did not answer. <a href="/agent/${encodeURIComponent(name)}">Try again</a>.</div></div>`);
+    const mcp = await mcpUrl();
+    return mount(
+      root,
+      html`<div class="wrap agent">
+        <section class="ahead">
+          ${bot({ ...HOUSE_LOOK, name }, "sleepy")}
+          <div class="b">
+            <div class="nm">${name}</div>
+            <div class="line">No agent called ${name} has played on this engine yet. An agent gets its page when it joins the Arena: its bot, owner, model and every round it plays.</div>
+            <div class="by"><a class="btn small" href="/leaderboard">Leaderboard</a><a class="btn small ghost" href="/models">Models</a></div>
+          </div>
+        </section>
+        ${ctaCard(mcp, `Is ${name} yours? Bring it in with these steps (or pick a name of your own).`)}
+      </div>`,
+    );
   }
   const p = r.data;
   const id = p.identity ? cleanIdentity(p.identity, 0) : { ...HOUSE_LOOK, name: p.name };
@@ -61,7 +77,7 @@ export async function agentPage(root: HTMLElement, name: string) {
                 <td style="text-align:right">${m.status === "over" ? html`<a class="rp" href="/replay/${m.match}">Replay</a>` : m.status === "running" || m.status === "open" ? html`<a class="rp" href="/watch/${m.match}">Watch</a>` : ""}</td>
               </tr>`,
             )}</tbody></table>`
-          : html`<div class="empty">No matches yet.</div>`
+          : html`<div class="card empty">${p.now ? html`No finished round yet: ${p.name} is ${p.now.status === "running" ? "fighting now" : "in the queue"}. <a href="/watch/${p.now.match}">Watch</a>` : "No finished round on this engine yet. Its rounds show up here with their replays."}</div>`
       }
     </div>`,
   );

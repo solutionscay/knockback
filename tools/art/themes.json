@@ -1,0 +1,121 @@
+{
+ "note": "Generated from src/sim/themes.ts by scripts/themes-json.ts (#94). Do not edit.",
+ "base": {
+  "dirt": 7035461,
+  "rock": 7304320,
+  "wood": 10119740,
+  "steel": 5662078,
+  "concrete": 9080729,
+  "crumble": 11901546,
+  "bedrock": 1841702,
+  "brick": 9325114,
+  "sand": 14204806,
+  "mud": 5915440,
+  "ice": 11132143
+ },
+ "themes": {
+  "warehouse": {
+   "sky": [
+    1119522,
+    2501181
+   ],
+   "hills": [
+    1909300,
+    2435904
+   ],
+   "background": "hills",
+   "atlas": "warehouse",
+   "mat": {
+    "concrete": 8159628,
+    "steel": 5204620
+   },
+   "top": {
+    "concrete": 15254602,
+    "steel": 10467030,
+    "wood": 13145434
+   }
+  },
+  "rooftop": {
+   "sky": [
+    1448760,
+    5911888
+   ],
+   "hills": [
+    2762055,
+    3484498
+   ],
+   "background": "hills",
+   "atlas": "rooftop",
+   "mat": {
+    "concrete": 10132132
+   },
+   "top": {
+    "concrete": 13619158,
+    "brick": 12085845,
+    "wood": 13145434,
+    "steel": 11056326
+   }
+  },
+  "junkyard": {
+   "sky": [
+    1710626,
+    4864556
+   ],
+   "hills": [
+    2762272,
+    3419686
+   ],
+   "background": "hills",
+   "atlas": "junkyard",
+   "mat": {
+    "dirt": 6180152,
+    "steel": 8018504
+   },
+   "top": {
+    "dirt": 9083482,
+    "steel": 11567206,
+    "wood": 13145434
+   }
+  },
+  "construction": {
+   "sky": [
+    1317164,
+    4208202
+   ],
+   "hills": [
+    2237754,
+    2829893
+   ],
+   "background": "hills",
+   "atlas": "construction",
+   "mat": {
+    "steel": 13068842,
+    "dirt": 7363136
+   },
+   "top": {
+    "dirt": 10848858,
+    "steel": 15769680,
+    "wood": 14263648
+   }
+  },
+  "testbed": {
+   "sky": [
+    1384490,
+    3951178
+   ],
+   "hills": [
+    2042928,
+    2635322
+   ],
+   "background": "hills",
+   "atlas": "junkyard",
+   "mat": {
+    "dirt": 6180152
+   },
+   "top": {
+    "dirt": 9083482,
+    "wood": 13145434
+   }
+  }
+ }
+}

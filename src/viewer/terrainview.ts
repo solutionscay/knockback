@@ -8,14 +8,14 @@
  */
 import { Container, Sprite } from "pixi.js";
 import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, MAT_HP, type Grid } from "../sim/grid";
-import type { Theme } from "../sim/level-config";
+import { MAT_NAMES, type Theme } from "../sim/themes";
 import type { PieceCell } from "../sim/terrain";
 import { levelFrame, levelReady } from "./level-art";
 
 const CH = 16;
-const MAT_NAME = ["", "dirt", "rock", "wood", "steel", "concrete", "crumble", "bedrock", "brick"];
+const MAT_NAME: readonly string[] = MAT_NAMES;
 
-function crackStage(hp: number, mat: number): number {
+export function crackStage(hp: number, mat: number): number {
   const max = MAT_HP[mat] ?? 1;
   if (!isFinite(max)) return 0;
   const k = hp / max;
@@ -30,7 +30,7 @@ function h(cx: number, cy: number): number {
 }
 
 /** Sprites reused from one redraw to the next. */
-class Pool {
+export class Pool {
   private i = 0;
   constructor(readonly c: Container) {}
   begin() {

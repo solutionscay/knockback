@@ -8,6 +8,7 @@ import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
 import { dropCarried } from "./sim-items";
 import { fighterStats, type Build } from "./build";
+import { footing, setSlick } from "./sim-liquid";
 
 export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number, build: Build) {
   const stats = fighterStats(sim.ruleset, build);
@@ -144,14 +145,21 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     return;
   }
   const thrust = !!inp.thrust && f.power.jetpack > 0;
-  const speed = walkSpeedNow(sim.ruleset, f, thrust);
+  // #94: mud, ice, water and oil under and around the fighter
+  const foot = footing(sim, f);
+  if (sim.liquids.on) setSlick(sim, f, foot.accel < 0.5);
+  const speed = walkSpeedNow(sim.ruleset, f, thrust) * foot.speed;
   const target = clamp(inp.move, -1, 1) * speed;
   const F = sim.ruleset.combat.fighter;
-  const accel = (f.grounded ? F.groundAccel : F.airAccel) * DT * (f.power.speed > 0 ? SPEED_ACCEL_MUL : 1);
+  const accel = (f.grounded ? F.groundAccel : F.airAccel) * DT * (f.power.speed > 0 ? SPEED_ACCEL_MUL : 1) * foot.accel;
   vx += clamp(target - vx, -accel, accel);
   if (inp.jump && f.jumpCd === 0) {
-    if (f.grounded) {
-      vy = F.jumpSpeed;
+    if (foot.swim) {
+      // a swim stroke (#94): up, on its own pace
+      vy = Math.max(vy, sim.ruleset.liquids.water.strokeSpeed);
+      f.jumpCd = sim.ruleset.liquids.water.strokeTicks;
+    } else if (f.grounded) {
+      vy = F.jumpSpeed * foot.jump;
       f.jumpCd = 14;
       f.grounded = false;
       sim.events.push({ type: "jump", tick: sim.tick, fighter: f.id, air: false });
