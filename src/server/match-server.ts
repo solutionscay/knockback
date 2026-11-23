@@ -92,7 +92,14 @@ export class MatchServer {
    * yet (#88: training data, never re-simulated in a viewer). A file no match saved (an ai-match run) is served.
    */
   async servesRecord(path: string): Promise<boolean> {
-    const rec = await this.store.recordByPath(path);
+    // the same name the file server reads (it decodes the path): /records/arena%2D... is the same file as /records/arena-...
+    let name: string;
+    try {
+      name = decodeURIComponent(path.slice("/records/".length));
+    } catch {
+      return false;
+    }
+    const rec = await this.store.recordByPath(`/records/${name}`);
     return !rec || (rec.engine === this.store.engine && rec.tier !== "bot-only");
   }
 

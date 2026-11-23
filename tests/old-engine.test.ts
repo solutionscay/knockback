@@ -135,6 +135,8 @@ describe("rounds from an older engine (#88)", () => {
       const rec = raw("SELECT path FROM records WHERE match_id = ?", id)!.path as string;
       expect((await call(fresh, "GET", `/api/picks?record=${encodeURIComponent(rec)}`)).status).toBe(404);
       expect(await fresh.servesRecord(rec)).toBe(false); // GET /records/<file>.json: 404 (scripts/match-server.ts)
+      expect(await fresh.servesRecord(rec.replace("arena-", "arena%2D"))).toBe(false); // an encoded name is the same file
+      expect(await fresh.servesRecord("/records/%E0%A4%A.json")).toBe(false); // a bad encoding: refused
       expect(fresh.matches.has(id)).toBe(false); // it was never loaded (no replay ran)
     }
     expect(await fresh.servesRecord(paths.keep!)).toBe(true);
