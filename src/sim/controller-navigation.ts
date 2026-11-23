@@ -685,6 +685,13 @@ export class ControllerNavigation {
               this.takeLink(sim, nav, link);
               moveTarget = link.landX;
             }
+          } else if (link.through) {
+            // down through the jump-through platform we stand on (#100): hold down over the spot
+            moveTarget = link.takeoffX;
+            if (Math.abs(mp.x - link.takeoffX) < 0.5) {
+              input.down = true;
+              this.takeLink(sim, nav, link);
+            }
           } else moveTarget = link.landX;
         } else moveTarget = clamp(goal.x, surf.x0 + 0.4, surf.x1 - 0.4);
       } else if (me.grounded) {

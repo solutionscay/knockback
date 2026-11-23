@@ -7,7 +7,7 @@ import { type PropKind } from "./level-config";
 import { randomDrop, roomForWeapon } from "./sim-items";
 import { damagePiece } from "./sim-terrain";
 
-const PROP_FILTER = G.TERRAIN | G.FIGHTER | G.PROP | G.ITEM | G.GRENADE;
+const PROP_FILTER = G.TERRAIN | G.ONEWAY | G.FIGHTER | G.PROP | G.ITEM | G.GRENADE;
 
 export function addProp(sim: Sim, kind: PropKind, x: number, yBottom: number, spec?: { ax?: number; ay?: number; len?: number }): Entity {
   const [hw, hh] = sim.ruleset.arena.propHalf[kind];

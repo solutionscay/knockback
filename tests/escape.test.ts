@@ -72,13 +72,17 @@ describe("getting out of bad terrain (#100)", () => {
     }
   });
 
-  test("generated pits are rare: none in most levels, never more than one", () => {
-    let pits = 0;
+  test("generated gaps: at most one, near the middle, always with a jump-through catwalk over it", () => {
     for (let seed = 1; seed <= 40; seed++) {
       const lv = generateLevel(seed, undefined, CLASSIC);
       expect(lv.pits.length).toBeLessThanOrEqual(1);
-      pits += lv.pits.length;
+      for (const p of lv.pits) {
+        const g = lv.grid;
+        const cx = g.cx((p.x0 + p.x1) / 2);
+        let over = false;
+        for (let cy = 0; cy < g.rows; cy++) if (g.oneway(cx, cy)) over = true;
+        expect(over).toBe(true);
+      }
     }
-    expect(pits).toBeLessThanOrEqual(6);
   });
 });

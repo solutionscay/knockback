@@ -195,6 +195,11 @@ export class RuleEngine {
     return item === "jetpack" || isPickupWeapon(item) ? item : null;
   }
 
+  /** An active dig rule (#100): dig toward the target through soft ground when no way leads to it. */
+  digs(): boolean {
+    return this.first(["dig"]) !== null;
+  }
+
   /** The highest active swap rule's choice (#95): a weapon (when carried) or "fist", held in hand. */
   swap(): Weapon | null {
     const item = this.first(["swap"])?.rule.doItem;

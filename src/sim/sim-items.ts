@@ -111,7 +111,7 @@ export function spawnItem(sim: Sim, type: ItemType, x: number, y: number, vx = 0
     RAPIER.ColliderDesc.cuboid(sim.ruleset.pickups.item.size / 2, sim.ruleset.pickups.item.size / 2)
       .setDensity(0.5)
       .setFriction(0.9)
-      .setCollisionGroups(groups(G.ITEM, G.TERRAIN | G.PROP)),
+      .setCollisionGroups(groups(G.ITEM, G.TERRAIN | G.ONEWAY | G.PROP)),
     body,
   );
   const e: Entity = { id: sim.entityStore.allocateId(), kind: "item", body, collider, hw: sim.ruleset.pickups.item.size / 2, hh: sim.ruleset.pickups.item.size / 2, hp: 1, maxHp: 1, dead: false, born: sim.tick, itemType: type };

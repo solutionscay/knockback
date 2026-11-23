@@ -51,6 +51,8 @@ export type LiquidName = Exclude<(typeof LIQUID_NAMES)[number], "none">;
 export const F_ANCHOR = 1; // holds up whatever is connected to it (hanging platforms)
 export const F_BRIDGE = 2;
 export const F_CHARRED = 4; // burned out (#33): blackened, never catches fire again
+/** #100: a jump-through (one-way) cell: fighters jump up through it and drop down through it; it holds what lands on top */
+export const F_ONEWAY = 8;
 
 /** Materials that burn (#33): planks and rotten planks. */
 export function flammable(m: number): boolean {
@@ -106,6 +108,22 @@ export class Grid {
 
   solid(cx: number, cy: number): boolean {
     return this.inside(cx, cy) && this.mat[cy * this.cols + cx]! !== Mat.Empty;
+  }
+
+  /** A jump-through cell (#100): solid, but passable from below and by dropping. */
+  oneway(cx: number, cy: number): boolean {
+    return this.inside(cx, cy) && this.mat[cy * this.cols + cx]! !== Mat.Empty && (this.flags[cy * this.cols + cx]! & F_ONEWAY) !== 0;
+  }
+
+  /** Solid and not jump-through: what blocks a body moving through (#100). */
+  blocks(cx: number, cy: number): boolean {
+    if (!this.inside(cx, cy)) return false;
+    const i = cy * this.cols + cx;
+    return this.mat[i]! !== Mat.Empty && (this.flags[i]! & F_ONEWAY) === 0;
+  }
+
+  blocksAt(x: number, y: number) {
+    return this.blocks(this.cx(x), this.cy(y));
   }
 
   matAt(cx: number, cy: number): number {

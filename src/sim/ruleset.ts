@@ -29,7 +29,7 @@ const lists: Readonly<Record<string, readonly (string | number)[]>> = {
 };
 const signed = new Set(["hpBonus", "ringOutY", "bottom", "minHeight", "groundMin", "desperateBelow", "confidentAt"]);
 const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density", "width"]);
-const ranges = new Set(["pools", "width", "depth", "halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
+const ranges = new Set(["softDepth", "pools", "width", "depth", "halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
 const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "skyDrops", "skyDropTicks", "betweenCaches", "startWeapons", "powerStart", "holdTicks", "firstTick"]);
 const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "boltCooldown", "pulseTicks", "interval", "chargeTicks", "aimTicks", "viewStep", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
@@ -90,6 +90,7 @@ function canonical(base: unknown, value: unknown, path = ""): unknown {
     const member = /^\d+$/.test(leaf) ? parts.at(-2)! : leaf;
     const material = /\.themes\.[^.]+\.(body|surface|tower|platform|bridge|speckle\.on|speckle\.mat)(?:\.|$)/.test(path);
     if (material && (!Number.isInteger(value) || value < Mat.Dirt || value > MAT_MAX || value === Mat.Bedrock)) return fail(`expected a destructible material ID (1–6 or 8–${MAT_MAX})`);
+    if (/\.themes\.[^.]+\.stage\.frame$/.test(path) && (!Number.isInteger(value) || value < 0 || value > MAT_MAX || value === Mat.Bedrock)) return fail("expected 0 (none) or a destructible material ID");
     if (/\.themes\.[^.]+\.parapet$/.test(path) && (!Number.isInteger(value) || value < 0 || value > MAT_MAX || value === Mat.Bedrock)) return fail("expected 0 (none) or a destructible material ID");
     const whole = strictlyPositive.has(leaf) || zeroAllowed.has(leaf) || integral.test(leaf) || path.includes(".themes.") && path.includes(".props.") || /^\d+$/.test(leaf) && ranges.has(member) && !realArrays.has(member);
     if (whole && !Number.isInteger(value)) return fail("expected a whole number");
@@ -176,6 +177,7 @@ export function validateRuleset(input: unknown): Ruleset {
     require(t.ground.runs === "random" || t.ground.runs === "whole", `${at}.ground.runs`, "expected random or whole");
     require(t.physics.gravity >= 0.25 && t.physics.gravity <= 2 && t.physics.friction >= 0.1 && t.physics.friction <= 2, `${at}.physics`, "gravity expected 0.25 to 2, friction 0.1 to 2");
     require(t.speckle.chance <= 1, `${at}.speckle.chance`, "expected 0 to 1");
+    require(t.stage.oneWay <= 1 && t.stage.catwalkHeight >= 1 && t.stage.catwalkHeight <= 6, `${at}.stage`, "oneWay expected 0 to 1, catwalkHeight 1 to 6 m");
     const H = t.hazards;
     require(H.pools[1] === 0 || H.water + H.oil + H.lava + H.acid > 0, `${at}.hazards`, "pools need a liquid with positive weight");
     require(H.width[0] >= 1 && H.width[1] <= 8 && H.depth[0] >= 1 && H.depth[1] <= 6 && H.pools[1] <= 6, `${at}.hazards`, "width expected 1 to 8 meters, depth 1 to 6 cells, at most 6 pools");

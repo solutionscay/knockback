@@ -494,7 +494,10 @@ export class Controller {
     // stranded (#88): no route and nothing that reaches - dig toward the target through what is in the way
     const dig = !flying && !choice?.shot ? this.navigation.tunnel(sim, me, target) : null;
     if (dig) {
-      const w: Weapon = me.weapons.includes("hammer") ? "hammer" : me.weapons.includes("bat") ? "bat" : "fist";
+      // a dig rule (#100): digging punches through soft ground; else the heaviest swing carried
+      const digRule = this.rules.digs();
+      const w: Weapon = digRule ? "fist" : me.weapons.includes("hammer") ? "hammer" : me.weapons.includes("bat") ? "bat" : "fist";
+      input.dig = digRule;
       input.weapon = w;
       input.move = 0;
       input.jump = false;

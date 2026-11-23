@@ -6,12 +6,14 @@
  * hop onto (no step within ESCAPE.wallH), or making no progress for ESCAPE.stallTicks, it digs at the rim up and
  * ahead with ESCAPE.digWith: digging punches (Input.dig: arena.terrain.dig, a carve at arm's length; no ammo spent).
  * Not the bat or hammer, whose wide carve takes the floor under the bot too, and no blast at point blank. The swings cycle flat, steep and near straight up: a staircase. Then it climbs
- * again. It hops only onto a step, never in place. It stops once it stands at the exit's height, or after
+ * again. It hops only onto a step, never in place; in the air against a wall it wall-jumps (#100), so a narrow pit
+ * is climbed wall to wall. It stops once it stands at the exit's height, or after
  * ESCAPE.giveUpTicks (and waits ESCAPE.restTicks before trying again).
  *
  * Deterministic (no RNG); it only reads the sim. The controller hands it the round's input when it is not shooting.
  */
 import type { NavGraph } from "./nav";
+import { wallToKick } from "./sim-movement";
 import type { Sim } from "./sim";
 import type { Fighter, Input, Weapon } from "./sim-types";
 
@@ -183,6 +185,8 @@ export class Escape {
     // hop only onto a step; on open ground it walks (no hopping in place)
     if (me.grounded && me.jumpCd === 0 && wall && step) input.jump = true;
     if (!me.grounded && me.jumpCd > 0) input.jump = true; // hold: a fuller jump
+    // #100: near the top of a jump against a wall: kick off it (a narrow pit is climbed wall to wall)
+    if (!me.grounded && me.jumpCd === 0 && sim.vel(me).y < 2.5 && wallToKick(sim, me, input.move)) input.jump = true;
     return true;
   }
 

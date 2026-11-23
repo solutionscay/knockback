@@ -176,10 +176,11 @@ function swingMelee(sim: Sim, f: Fighter, weapon: MeleeWeapon, ox: number, oy: n
   const chainDamage = weapon !== "fist" ? sim.ruleset.arena.chain.batDamage : f.power.heavy > 0 ? sim.ruleset.arena.chain.heavyFistDamage : 0;
   if (chainDamage > 0 && swingChains(sim, cx, cy, spec.radius, chainDamage, f.id, weapon)) hitAny = true;
   // The swing also damages static terrain just past its hit center.
-  // a digging punch (#100) carves at arm's length, harder
+  // a digging punch (#100) carves at arm's length, harder, soft materials only
   const D = sim.ruleset.arena.terrain.dig;
+  if (dig) sim.stats.digPunches++;
   const smashed = dig
-    ? sim.terrain.carve(ox + dx * D.reach, oy + dy * D.reach, D.radius, D.damage)
+    ? sim.terrain.carve(ox + dx * D.reach, oy + dy * D.reach, D.radius, D.damage, D.soft)
     : sim.terrain.carve(cx + dx * tuning.terrainOffset, cy + dy * tuning.terrainOffset, spec.terrainRadius, spec.terrainDamage);
   if (smashed.length) {
     sim.stats.cellsDestroyed += smashed.length;
@@ -200,7 +201,7 @@ function throwGrenade(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, 
       .setAngularDamping(0.5),
   );
   const collider = sim.world.createCollider(
-    RAPIER.ColliderDesc.ball(0.22).setDensity(3).setRestitution(0.45).setFriction(0.6).setCollisionGroups(groups(G.GRENADE, G.TERRAIN | G.FIGHTER | G.PROP)),
+    RAPIER.ColliderDesc.ball(0.22).setDensity(3).setRestitution(0.45).setFriction(0.6).setCollisionGroups(groups(G.GRENADE, G.TERRAIN | G.ONEWAY | G.FIGHTER | G.PROP)),
     body,
   );
   sim.entityStore.register({ id: sim.entityStore.allocateId(), kind: "grenade", body, collider, hw: 0.22, hh: 0.22, hp: 1, maxHp: 1, dead: false, born: sim.tick, owner: f.id, ticksLeft: sim.ruleset.weapons.table.grenade.fuse });

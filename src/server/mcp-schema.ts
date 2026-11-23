@@ -31,7 +31,7 @@ function buildRuleSchema(ruleset: Ruleset) {
       who: z.string().max(24).optional().describe(`whom the trigger is about (for ${WHO_TRIGGERS.join(", ")}): anyone | enemy | target | a rival's name`),
       value: z.number().optional().describe(`a threshold for: ${valueRanges}`),
       item: z.enum(pickups as [string, ...string[]]).optional().describe("for when=holds/item_near: the trigger's item; otherwise the action's item (seek, use; swap: a weapon or fist; drop: a weapon, or none for whatever you carry)"),
-      do: z.enum(RULE_DO as unknown as [string, ...string[]]).describe("the action while the trigger holds (drop: put your weapon down once; swap: fight with that weapon or fist, keeping the other)"),
+      do: z.enum(RULE_DO as unknown as [string, ...string[]]).describe("the action while the trigger holds (drop: put your weapon down once; swap: fight with that weapon or fist, keeping the other; dig: dig toward your target through soft ground when no way leads there)"),
       do_item: z.enum(pickups as [string, ...string[]]).optional().describe("the action's item when `item` already names the trigger's item"),
       stance: z.enum(RULE_STANCES as unknown as [string, ...string[]]).optional().describe("for do=stance"),
       retaliate: z.enum(RULE_RETALIATE as unknown as [string, ...string[]]).optional().describe("for do=retaliate"),

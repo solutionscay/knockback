@@ -296,10 +296,23 @@ export const FIRE = {
 };
 
 /**
+ * Wall jump (#100): in the air, touching a wall (within `reach` m of the body's side) and pressing jump kicks off it:
+ * up at `speed`, away at `push`. Once per wall: not off the same side again before standing on something. Never in
+ * stun or within `knockTicks` of being knocked (a fighter knocked off an edge is not saved by the wall below it), and
+ * never over the void (nothing under the fighter: the arena's outer faces, a pit's sides).
+ */
+export const WALL_JUMP = { speed: 11, push: 6.5, reach: 0.14, knockTicks: 45 };
+
+/**
  * Digging (#100): a fist punch with Input.dig carves at `reach` m along the aim (the fist's own swing still lands as
  * usual), `radius` m wide, `damage` hit points at its center falling to 0 at its edge. Dirt (36) goes in one or two.
  */
-export const DIG = { reach: 0.85, radius: 0.6, damage: 60 };
+export const DIG = {
+  reach: 0.85, radius: 0.6, damage: 60,
+  /** what a digging punch breaks (the soft materials: dirt, planks, concrete, rotten planks, brick, sand, mud, ice);
+   * rock and steel (a level's hard frame) and bedrock stay: only blasts and heavy weapons wear them down */
+  soft: [1, 3, 5, 6, 8, 9, 10, 11] as readonly number[],
+};
 
 /** Crumbling cells lose this many hit points per second while stood on. */
 export const CRUMBLE_DPS = 20;
@@ -332,6 +345,8 @@ export const G = {
   PROP: 0x0004,
   ITEM: 0x0008,
   GRENADE: 0x0010,
+  /** #100: jump-through platform cells (fighters collide with them only when landing from above) */
+  ONEWAY: 0x0020,
 };
 export function groups(member: number, filter: number): number {
   return ((member & 0xffff) << 16) | (filter & 0xffff);

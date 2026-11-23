@@ -105,7 +105,7 @@ export function knockOut(sim: Sim, f: Fighter, cause: "ringout" | "hp", x: numbe
   sim.events.push({ type: "ko", tick: sim.tick, fighter: f.id, cause, by, weapon, x, y });
   // a knocked-out fighter drops its weapons: up for grabs
   if (cause === "hp") dropWeapons(sim, f, x, y);
-  f.entity.collider.setCollisionGroups(groups(G.PROP, G.TERRAIN));
+  f.entity.collider.setCollisionGroups(groups(G.PROP, G.TERRAIN | G.ONEWAY));
   f.entity.body.lockRotations(false, true);
   f.entity.body.setAngvel(f.facing * -6, true);
   if (cause === "ringout") removeFighterBody(sim, f);

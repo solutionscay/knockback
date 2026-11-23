@@ -7,7 +7,7 @@
  * its sewn edge), a tear overlay per crack stage, scorched felt when it burned out, and the bolt of a chain anchor.
  */
 import { Container, Sprite } from "pixi.js";
-import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, MAT_HP, type Grid } from "../sim/grid";
+import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, F_ONEWAY, MAT_HP, type Grid } from "../sim/grid";
 import { MAT_NAMES, type Theme } from "../sim/themes";
 import type { PieceCell } from "../sim/terrain";
 import { levelFrame, levelReady } from "./level-art";
@@ -67,7 +67,9 @@ function drawCell(p: Pool, theme: Theme, x: number, y: number, mat: number, stag
   const r = h(cx, cy);
   const k = deep ? 0.72 : 0.92 + r * 0.08;
   const c = Math.round(255 * k);
-  p.put(theme, `c-${m}-${r < 0.5 ? 0 : 1}`, x, top, (c << 16) | (c << 8) | c);
+  // #100: a jump-through cell reads lighter and a little see-through, with no piping under it (nothing to bump into)
+  const through = (flags & F_ONEWAY) !== 0;
+  p.put(theme, `c-${m}-${r < 0.5 ? 0 : 1}`, x, top, through ? 0xffffff : (c << 16) | (c << 8) | c, through ? 0.78 : 1);
   if (flags & F_CHARRED) p.put(theme, `char-${h(cy, cx) < 0.5 ? 0 : 1}`, x, top, 0xffffff, 0.88);
   if (stage) p.put(theme, `k-${stage}-${h(cx + 7, cy) < 0.5 ? 0 : 1}`, x, top);
   if (ex.left) p.put(theme, "e-l", x, top);
@@ -75,7 +77,7 @@ function drawCell(p: Pool, theme: Theme, x: number, y: number, mat: number, stag
     const f = levelFrame(theme, "e-r");
     if (f) p.put(theme, "e-r", x + CELL - f.w, top);
   }
-  if ((ex.bottom && !deep) || flags & F_BRIDGE) {
+  if (((ex.bottom && !deep) || flags & F_BRIDGE) && !through) {
     const f = levelFrame(theme, "e-b");
     if (f) p.put(theme, "e-b", x, top + CELL - f.h);
   }
@@ -117,7 +119,7 @@ export class TerrainView {
       for (let cx = 0; cx < g.cols; cx++) {
         const i = cy * g.cols + cx;
         const m = g.mat[i]!;
-        const s = m === 0 ? 0 : m * 4 + crackStage(g.hp[i]!, m) + 1 + (g.flags[i]! & F_CHARRED ? 64 : 0);
+        const s = m === 0 ? 0 : m * 4 + crackStage(g.hp[i]!, m) + 1 + (g.flags[i]! & F_CHARRED ? 64 : 0) + (g.flags[i]! & F_ONEWAY ? 128 : 0);
         if (s !== this.sig[i]) {
           this.sig[i] = s;
           const k = Math.floor(cy / CH) * this.cols + Math.floor(cx / CH);

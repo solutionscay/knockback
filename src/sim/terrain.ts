@@ -42,6 +42,8 @@ export class Terrain {
   version = 0;
   /** Static terrain collider handles (raycast hits on these are "terrain"). */
   readonly handles = new Set<number>();
+  /** #100: the jump-through ones (their contacts go through the sim's contact filter, sim-oneway.ts) */
+  readonly onewayHandles = new Set<number>();
 
   constructor(
     private readonly world: RAPIER.World,
@@ -57,6 +59,7 @@ export class Terrain {
   private buildChunk(k: number) {
     for (const c of this.colliders[k]!) {
       this.handles.delete(c.handle);
+      this.onewayHandles.delete(c.handle);
       this.world.removeCollider(c, false);
     }
     const g = this.grid;
@@ -67,7 +70,7 @@ export class Terrain {
     const x1 = Math.min(g.cols, x0 + CHUNK) - 1;
     const y1 = Math.min(g.rows, y0 + CHUNK) - 1;
     const list: RAPIER.Collider[] = [];
-    for (const r of greedyRects(x0, y0, x1, y1, (cx, cy) => g.solid(cx, cy))) {
+    for (const r of greedyRects(x0, y0, x1, y1, (cx, cy) => g.blocks(cx, cy))) {
       const c = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid((r.w * CELL) / 2, (r.h * CELL) / 2)
           .setTranslation(g.wx(r.cx) + (r.w * CELL) / 2, g.wy(r.cy) + (r.h * CELL) / 2)
@@ -77,6 +80,20 @@ export class Terrain {
       );
       list.push(c);
       this.handles.add(c.handle);
+    }
+    // #100: jump-through cells, on their own group (sim-oneway.ts says which fighters they hold)
+    for (const r of greedyRects(x0, y0, x1, y1, (cx, cy) => g.oneway(cx, cy))) {
+      const c = this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid((r.w * CELL) / 2, (r.h * CELL) / 2)
+          .setTranslation(g.wx(r.cx) + (r.w * CELL) / 2, g.wy(r.cy) + (r.h * CELL) / 2)
+          .setFriction(0.9)
+          .setCollisionGroups(groups(G.ONEWAY, 0xffff))
+          .setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS),
+        this.body,
+      );
+      list.push(c);
+      this.handles.add(c.handle);
+      this.onewayHandles.add(c.handle);
     }
     this.colliders[k] = list;
   }
@@ -134,7 +151,7 @@ export class Terrain {
    * Explosion carving: damage falls off linearly to the edge of radius r.
    * Returns centers of destroyed cells (for effects and stats).
    */
-  carve(x: number, y: number, r: number, dmg: number): { x: number; y: number; mat: number }[] {
+  carve(x: number, y: number, r: number, dmg: number, only?: readonly number[]): { x: number; y: number; mat: number }[] {
     const g = this.grid;
     const out: { x: number; y: number; mat: number }[] = [];
     const c0 = Math.max(0, g.cx(x - r));
@@ -143,7 +160,7 @@ export class Terrain {
     const r1 = Math.min(g.rows - 1, g.cy(y + r));
     for (let cy = r0; cy <= r1; cy++) {
       for (let cx = c0; cx <= c1; cx++) {
-        if (!g.solid(cx, cy)) continue;
+        if (!g.solid(cx, cy) || (only && !only.includes(g.matAt(cx, cy)))) continue;
         const px = g.wx(cx) + CELL / 2;
         const py = g.wy(cy) + CELL / 2;
         const d = Math.sqrt((px - x) * (px - x) + (py - y) * (py - y));
@@ -251,7 +268,7 @@ export function buildPieceColliders(world: RAPIER.World, body: RAPIER.RigidBody,
           .setDensity(density[m] ?? 1.5)
           .setFriction(0.8)
           .setRestitution(0.05)
-          .setCollisionGroups(groups(G.PROP, G.TERRAIN | G.FIGHTER | G.PROP | G.ITEM | G.GRENADE)),
+          .setCollisionGroups(groups(G.PROP, G.TERRAIN | G.ONEWAY | G.FIGHTER | G.PROP | G.ITEM | G.GRENADE)),
         body,
       ),
     );
