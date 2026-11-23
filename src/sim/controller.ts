@@ -304,6 +304,7 @@ export class Controller {
     if (me.alive && !me.removed && input !== NO_FIRE) {
       this.navigation.guardLiveGround(sim, me, sim.pos(me), input);
       this.navigation.guardLedge(sim, me, sim.pos(me), sim.vel(me), input);
+      this.navigation.guardLiquid(sim, me, sim.pos(me), sim.vel(me), input);
       // no idle gaps (#69): a target we can neither reach nor shoot is left for one we can
       const target = this.targetId >= 0 ? sim.fighters[this.targetId]! : null;
       if (this.navigation.watchIdle(sim, me, input, target) && target && sim.alive().length > 2 && me.surface >= 0 && target.surface >= 0 &&

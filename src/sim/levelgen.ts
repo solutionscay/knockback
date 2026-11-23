@@ -10,14 +10,15 @@
  * If a candidate fails validation (level-validate.ts) the generator retries
  * with the next attempt number (also deterministic).
  */
-import { CELL, F_ANCHOR, F_BRIDGE, Grid, Mat } from "./grid";
+import { CELL, F_ANCHOR, F_BRIDGE, Grid, Liquid, Mat } from "./grid";
 import { placeWalls, wallCorridor, type Wall } from "./level-walls";
 import { NavGraph, type Surface } from "./nav";
 import { Rng } from "./rng";
 
 import { type PropKind, type Theme } from "./level-config";
 import { validateLevel } from "./level-validate";
-import { CLASSIC, RulesetError, type Ruleset } from "./ruleset";
+import { CLASSIC, RulesetError, themedRuleset, type Ruleset } from "./ruleset";
+import { settleGrid } from "./liquid-flow";
 import { spreadSpawns } from "./level-spawns";
 
 export interface PropSpec {
@@ -43,6 +44,8 @@ export interface LevelDef {
   props: PropSpec[];
   spawns: { x: number; y: number }[];
   pits: { x0: number; x1: number }[];
+  /** #94: liquid pools: basins dug into the ground, filled to the rim (x0..x1, rim height y, depth in cells) */
+  pools?: { x0: number; x1: number; y: number; depth: number; liquid: Liquid }[];
   zoneCenter: number;
   platforms: number;
   towers: number;
@@ -59,7 +62,9 @@ export function themeFor(seed: number, ruleset: Ruleset = CLASSIC): Theme {
   return THEMES[new Rng((seed ^ 0x7e3a11) >>> 0).u32() % THEMES.length]!;
 }
 
-export function generateLevel(seed: number, maxAttempts?: number, ruleset: Ruleset = CLASSIC): LevelDef {
+export function generateLevel(seed: number, maxAttempts?: number, baseRuleset: Ruleset = CLASSIC): LevelDef {
+  // the theme's physics (#94) shape the jumps the level is built and checked for
+  const ruleset = themedRuleset(baseRuleset, themeFor(seed, baseRuleset));
   let last: LevelDef | null = null;
   let reasons: string[] = [];
   for (let attempt = 0; attempt < (maxAttempts ?? ruleset.arena.layout.attempts); attempt++) {
@@ -114,28 +119,29 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
   }
   segs.push({ x0: sx, x1: right });
   for (const s of segs) {
-    const base = theme === "rooftop" ? q1(rng.range(...L.rooftopHeight)) : q1(rng.range(...L.groundHeight));
+    const base = T.ground.heights === "roof" ? q1(rng.range(...L.rooftopHeight)) : q1(rng.range(...L.groundHeight));
     let h = base;
     let x = s.x0;
     while (x < s.x1 - 1e-6) {
-      const run = theme === "rooftop" ? s.x1 - s.x0 : rng.range(...L.groundRun);
+      const run = T.ground.runs === "whole" ? s.x1 - s.x0 : rng.range(...L.groundRun);
       const xe = Math.min(s.x1, q(x + run));
       for (let cx = cxOf(x); cx < cxOf(xe); cx++) top[cx] = h;
-      if (T.stepy || theme === "warehouse") h = Math.max(base + L.groundMin, Math.min(base + L.groundMax, h + rng.pick(L.groundStep)));
+      if (T.stepy || T.ground.steps) h = Math.max(base + L.groundMin, Math.min(base + L.groundMax, h + rng.pick(L.groundStep)));
       x = xe;
     }
   }
+  const speckle = T.speckle.chance > 0 ? T.speckle : null;
   for (let cx = 0; cx < grid.cols; cx++) {
     if (top[cx] === -Infinity) continue;
     const ty = cyOf(top[cx]!);
     for (let cy = 0; cy < ty; cy++) {
       let m: Mat = cy < L.bedrockRows ? Mat.Bedrock : cy === ty - 1 ? T.surface : T.body;
-      if (theme === "junkyard" && m === Mat.Dirt && rng.chance(L.junkRockChance)) m = Mat.Rock;
+      if (speckle && m === speckle.on && rng.chance(speckle.chance)) m = speckle.mat;
       grid.set(cx, cy, m);
     }
   }
-  // rooftop parapets
-  if (theme === "rooftop") {
+  // parapets (rooftop)
+  if (T.parapet) {
     for (const p of pits) {
       for (const [edge, dir] of [
         [cxOf(p.x0) - 1, -1],
@@ -143,10 +149,13 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
       ] as const) {
         if (edge < 0 || edge >= grid.cols || top[edge] === -Infinity || !rng.chance(L.parapetChance)) continue;
         const cy = cyOf(top[edge]!);
-        grid.set(edge + dir * 2, cy, Mat.Brick);
+        grid.set(edge + dir * 2, cy, T.parapet);
       }
     }
   }
+
+  // ------------------------------------------------------------ liquid pools (#94)
+  const pools = digPools(grid, top, pits, left, right, T.hazards, rng, cxOf, cyOf, L.bedrockRows);
 
   // ------------------------------------------------------------ overhangs + bridges
   let bridges = 0;
@@ -174,6 +183,9 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
       }
     }
   }
+
+  // sand that would not hold (an overhang over a pit) falls before anyone sees it
+  if (pools.length || T.surface === Mat.Sand || T.body === Mat.Sand) settleGrid(grid);
 
   const groundAt = (x: number) => {
     const cx = Math.max(0, Math.min(grid.cols - 1, cxOf(x)));
@@ -207,7 +219,14 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     platforms++;
   }
 
-  const walls = placeWalls(grid, top, rng.int(T.towers[0], T.towers[1]), T.tower, rng, ruleset);
+  // no wall stands over a pool: its columns have no ground top for placeWalls
+  let wallTop: readonly number[] = top;
+  if (pools.length) {
+    const t = top.slice();
+    for (const p of pools) for (let cx = cxOf(p.x0) - 1; cx <= cxOf(p.x1); cx++) if (cx >= 0 && cx < t.length) t[cx] = -Infinity;
+    wallTop = t;
+  }
+  const walls = placeWalls(grid, wallTop, rng.int(T.towers[0], T.towers[1]), T.tower, rng, ruleset);
 
   // ------------------------------------------------------------ spawns + props
   const nav = NavGraph.fromGrid(grid, 2, ruleset);
@@ -262,6 +281,7 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
       if (placed >= count) break;
       if (opts.ground && sp.s.y > L.groundCoverHeight + groundAt(sp.x)) continue;
       if (sp.s.fragile && kind !== "crate" && kind !== "barrel") continue;
+      if (sp.s.liquid) continue;
       const x0 = sp.x - halfW - 0.15;
       const x1 = sp.x + halfW + 0.15;
       const height = hh * 2 * rows + 0.2;
@@ -318,10 +338,60 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     props,
     spawns,
     pits,
+    // a level with no pools has no key (its fingerprint is as before #94)
+    ...(pools.length ? { pools } : {}),
     zoneCenter,
     platforms,
     towers: walls.length,
     walls,
     bridges,
   };
+}
+
+/**
+ * Liquid pools (#94): each a basin dug into one flat stretch of ground (its rim the same height on both sides), away
+ * from the pits, the arena's edges and the other pools, its floor above the bedrock, filled to the rim. Static until
+ * the terrain around it is carved (sim-liquid.ts lets it spill and settle). Themes with no pools draw nothing here.
+ */
+function digPools(
+  grid: Grid, top: number[], pits: { x0: number; x1: number }[], left: number, right: number, H: Ruleset["arena"]["themes"][Theme]["hazards"],
+  rng: Rng, cxOf: (x: number) => number, cyOf: (y: number) => number, bedrockRows: number,
+): NonNullable<LevelDef["pools"]> {
+  const pools: NonNullable<LevelDef["pools"]> = [];
+  if (H.pools[1] <= 0) return pools;
+  const want = rng.int(H.pools[0], H.pools[1]);
+  const kinds: [Liquid, number][] = [[Liquid.Water, H.water], [Liquid.Oil, H.oil], [Liquid.Lava, H.lava], [Liquid.Acid, H.acid]];
+  const total = kinds.reduce((a, k) => a + k[1], 0);
+  for (let i = 0; i < want * 12 && pools.length < want; i++) {
+    const w = Math.max(CELL * 2, q(rng.range(...H.width)));
+    const x0 = q(rng.range(left + 3, right - 3 - w));
+    const x1 = x0 + w;
+    const depth = rng.int(H.depth[0], H.depth[1]);
+    let pick = rng.range(0, total);
+    let liquid = Liquid.Water;
+    for (const [k, wt] of kinds) {
+      if (wt <= 0) continue;
+      liquid = k;
+      if ((pick -= wt) < 0) break;
+    }
+    const c0 = cxOf(x0);
+    const c1 = cxOf(x1) - 1;
+    const y = top[c0]!;
+    if (!Number.isFinite(y)) continue;
+    let flat = true;
+    for (let cx = c0 - 2; cx <= c1 + 2; cx++) if (top[cx] !== y) flat = false;
+    if (!flat) continue;
+    if (pits.some((p) => x0 < p.x1 + 2 && x1 > p.x0 - 2)) continue;
+    if (pools.some((p) => x0 < p.x1 + 4 && x1 > p.x0 - 4)) continue;
+    const ty = cyOf(y);
+    if (ty - depth < bedrockRows + 1) continue;
+    for (let cx = c0; cx <= c1; cx++) {
+      for (let cy = ty - depth; cy < ty; cy++) {
+        grid.clear(cx, cy);
+        grid.liq[grid.idx(cx, cy)] = liquid;
+      }
+    }
+    pools.push({ x0, x1, y, depth, liquid });
+  }
+  return pools;
 }

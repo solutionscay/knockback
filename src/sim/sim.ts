@@ -14,7 +14,8 @@ import { generateLevel, type LevelDef } from "./levelgen";
 import { type PropKind } from "./level-config";
 import { NavGraph } from "./nav";
 import { strategyBuild, type Build } from "./build";
-import { CLASSIC, type Ruleset } from "./ruleset";
+import { CLASSIC, themedRuleset, type Ruleset } from "./ruleset";
+import { LiquidState, updateLiquids } from "./sim-liquid";
 import { Rng } from "./rng";
 import { explode } from "./sim-blast";
 import { damageFighter, knockOut, removeFighterBody } from "./sim-damage";
@@ -120,10 +121,17 @@ export class Sim {
     flamePulses: 0,
   };
 
+  /** The round's ruleset: the match's, with the theme's physics applied (#94; the same object when they are 1). */
+  readonly ruleset: Ruleset;
+  /** #94: liquids, sand, mud and ice (inactive on a level with none) */
+  readonly liquids: LiquidState;
+
   /** builds: each seat's build for the round (#79); a missing one is neutral */
-  constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS, readonly ruleset: Ruleset = CLASSIC, builds: readonly (Build | undefined)[] = []) {
+  constructor(seed: number, level?: LevelDef, looks: Look[] = SEAT_LOOKS, readonly baseRuleset: Ruleset = CLASSIC, builds: readonly (Build | undefined)[] = []) {
+    const ruleset = baseRuleset;
     this.lastClashTick = ruleset.zone.suddenDeath.graceTicks > 0 ? -1 : 0;
     this.level = level ?? generateLevel(seed, undefined, ruleset);
+    this.ruleset = themedRuleset(baseRuleset, this.level.theme);
     this.grid = this.level.grid.clone();
     this.rng = new Rng(seed);
     this.skyRng = new Rng((seed ^ 0x2545f491) >>> 0);
@@ -131,6 +139,7 @@ export class Sim {
     this.world.timestep = DT;
     this.entityStore = new EntityStore(this.world);
     this.terrain = new Terrain(this.world, this.grid);
+    this.liquids = new LiquidState(this.grid, this.terrain.version);
     this.chains = buildChains(this);
     for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
@@ -273,6 +282,7 @@ export class Sim {
     updateObjects(this);
     updateChains(this);
     updateFire(this);
+    if (this.liquids.on) updateLiquids(this);
     updateLiveGround(this);
     flushTerrain(this);
 
@@ -436,6 +446,15 @@ export class Sim {
       }
     }
     for (let i = 0; i < g.flags.length; i++) if (g.flags[i]) num(i * 8 + g.flags[i]!);
+    // #94: only a level with liquids, sand, mud or ice hashes them (every other level's hash is as before)
+    if (this.liquids.on) {
+      for (let i = 0; i < g.liq.length; i++) if (g.liq[i]) num(i * 8 + g.liq[i]!);
+      for (const [i, fire] of [...this.liquids.oilFires.entries()].sort((a, b) => a[0] - b[0])) {
+        num(i);
+        num(fire.t);
+        num(fire.by);
+      }
+    }
     for (const ch of this.chains) {
       num(ch.hp);
       num(ch.piece);

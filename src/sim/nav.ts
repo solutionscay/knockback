@@ -7,7 +7,7 @@
  * same mobility (builds do not change it, #83), so one graph serves every fighter, level generation and validation.
  */
 import { CLASSIC, type Ruleset } from "./ruleset";
-import { CELL, F_BRIDGE, Mat, type Grid } from "./grid";
+import { CELL, F_BRIDGE, Liquid, Mat, type Grid } from "./grid";
 
 export interface Surface {
   id: number;
@@ -17,9 +17,16 @@ export interface Surface {
   /** Long fall (or void) just past each end: a ledge you can be knocked off. */
   dropLeft: boolean;
   dropRight: boolean;
-  /** Made of crumbling cells or a bridge: avoid standing around. */
+  /** Made of crumbling cells or a bridge, or under a liquid: avoid standing around. */
   fragile: boolean;
+  /** #94: the liquid over it (a pool's floor; a surface never mixes liquids), or Liquid.None */
+  liquid: Liquid;
 }
+
+/** #94: extra path cost of landing on a surface under each liquid: lava and acid are avoided, water and oil slow. */
+export const LIQUID_COST: readonly number[] = [0, 3, 2, 60, 60];
+/** Hurts to stand in (lava, acid). */
+export const hazardous = (l: number) => l === Liquid.Lava || l === Liquid.Acid;
 
 export interface Link {
   from: number;
@@ -69,6 +76,22 @@ export class NavGraph {
     for (let cy = 0; cy < rows; cy++) {
       let run = -1;
       let fragile = false;
+      let liquid = Liquid.None;
+      const close = (cx: number) => {
+        if (run >= 0 && cx - run >= minRun) {
+          nav.surfaces.push({
+            id: nav.surfaces.length,
+            x0: grid.wx(run),
+            x1: grid.wx(cx),
+            y: grid.wy(cy + 1),
+            dropLeft: false,
+            dropRight: false,
+            fragile: fragile || liquid !== Liquid.None,
+            liquid,
+          });
+        }
+        run = -1;
+      };
       for (let cx = 0; cx <= cols; cx++) {
         let ok = false;
         if (cx < cols && grid.solid(cx, cy)) {
@@ -79,28 +102,19 @@ export class NavGraph {
               break;
             }
         }
+        // a surface is all dry or all under one liquid: a change of liquid starts a new one
+        const wet = ok ? grid.liqAt(cx, cy + 1) : Liquid.None;
+        if (ok && run >= 0 && wet !== liquid) close(cx);
         if (ok && run < 0) {
           run = cx;
           fragile = false;
+          liquid = wet;
         }
         if (ok) {
           const i = grid.idx(cx, cy);
           if (grid.mat[i] === Mat.Crumble || grid.flags[i]! & F_BRIDGE) fragile = true;
         }
-        if (!ok && run >= 0) {
-          if (cx - run >= minRun) {
-            nav.surfaces.push({
-              id: nav.surfaces.length,
-              x0: grid.wx(run),
-              x1: grid.wx(cx),
-              y: grid.wy(cy + 1),
-              dropLeft: false,
-              dropRight: false,
-              fragile,
-            });
-          }
-          run = -1;
-        }
+        if (!ok && run >= 0) close(cx);
       }
     }
     for (const s of nav.surfaces) {
@@ -132,7 +146,7 @@ export class NavGraph {
 
   private addLink(l: Omit<Link, "cost">) {
     const dist = Math.abs(l.landX - l.takeoffX);
-    this.links.push({ ...l, cost: dist + (l.kind === "walk" ? 0 : 2.5) });
+    this.links.push({ ...l, cost: dist + (l.kind === "walk" ? 0 : 2.5) + LIQUID_COST[this.surfaces[l.to]!.liquid]! });
   }
 
   private buildLinks() {

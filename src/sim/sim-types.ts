@@ -330,7 +330,11 @@ export type SimEvent =
   | { type: "propDrop"; tick: number; entity: number; kind: EntityKind; x: number; y: number }
   | { type: "suddenDeath"; tick: number; quietTicks: number }
   /** something caught fire from a flame or a blast (#33; spreading fire is read from the state, not evented) */
-  | { type: "ignite"; tick: number; what: "cell" | "prop" | "piece"; x: number; y: number; source: string; by: number }
+  | { type: "ignite"; tick: number; what: "cell" | "prop" | "piece" | "oil"; x: number; y: number; source: string; by: number }
+  /** #94: a fighter went into a liquid (grid.ts Liquid) */
+  | { type: "splash"; tick: number; fighter: number; liquid: number; x: number; y: number }
+  /** #94: water put out a burning fighter */
+  | { type: "douse"; tick: number; fighter: number; x: number; y: number }
   /** a fighter caught fire */
   | { type: "burn"; tick: number; fighter: number; by: number; cause: string }
   /** a flamethrower ran dry and was dropped (#32) */
