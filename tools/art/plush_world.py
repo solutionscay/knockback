@@ -15,7 +15,7 @@ Groups and sprites (frame names):
   projectiles  rocket, grenade, mine, hook, bolt (pointing screen right: the viewer turns them)
   tiles        chain: one link of the platforms' chains, a seamless vertical tile (exactly one period tall)
   level        the terrain (#92): per theme, every material's cells and top edges; crack, char and edge overlays and
-               the chain anchor (plush_level.py).
+               the chain anchor (plush_level.py). Props (#92) adds the glass pane, the jump pad and the weight.
 Per frame it writes meta.json: the size in pixels, the pixels per game meter, and the anchor (the pixel of the
 model's center: the sim body's center for props, the middle for the rest).
 """
@@ -611,7 +611,10 @@ def main():
             place(G.obs, FRONT, scale=ICON_M / ext * 0.95)
             jobs.append((G.name, "pickups", G.obs, PPM["pickups"], None, None))
     if "props" in groups:
-        for fn in (prop_crate, prop_block, prop_barrel, prop_tnt, prop_gas, prop_steel):
+        import types
+        pw = types.SimpleNamespace(Group=Group, mesh=mesh, soft_box=soft_box, extrude_poly=extrude_poly, stitch_line=stitch_line, stitch_rect=stitch_rect)
+        level_props = [lambda M, f=f: f(pw, M) for f in (pl.prop_glass, pl.prop_pad, pl.prop_weight)]
+        for fn in (prop_crate, prop_block, prop_barrel, prop_tnt, prop_gas, prop_steel, *level_props):
             G = fn(M)
             place(G.obs, FRONT)
             origin = FRONT @ Vector((0, 0, 0))

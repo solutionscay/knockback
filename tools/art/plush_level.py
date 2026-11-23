@@ -1,5 +1,6 @@
 """
-The level's plush art (#92): the terrain cells per theme and their overlays. Built here, rendered by plush_world.py (the same camera and lights as the fighters and the #87 world sprites).
+The level's plush art (#92): the terrain cells per theme, their overlays, and the glass pane, jump pad and swinging
+weight. Built here, rendered by plush_world.py (the same camera and lights as the fighters and the #87 world sprites).
 
 Terrain tiles are front-facing felt slabs. Each cell is modelled once and repeated 3 x 3, so the frame (exactly one
 cell, centered) cuts through its neighbours the same way on every side; the felt's noise is periodic over one cell
@@ -15,11 +16,13 @@ Frames (group `level`, shared by every theme):
   char-<v>           burned out: scorched felt over the cell (an overlay)
   e-l, e-r, e-b      the piping on an exposed left, right or bottom side
   anchor             the bolt a hanging platform's chain is fixed to
+Props (group `props`): glass, pad, weight.
 """
 import math
 
 import bpy
 import numpy as np
+from mathutils import Matrix
 
 import plush_action as pa
 import plush_bot as pb
@@ -536,3 +539,78 @@ def level_tiles(themes=THEMES, common=True):
         T.make = lambda: None
         out.append(T)
     return out
+
+
+# ---------------------------------------------------------------- props (front space: x right, -y the front, z up)
+
+def prop_glass(pw, M):
+    """A glass pane: a tall glossy, see-through pale blue pane in a thin felt frame, two white glints. One state:
+    any hit shatters it (the shards are effects)."""
+    G = pw.Group("glass", "props")
+    hx, hz = 0.08, 0.9
+    pane = pb.glossy_mat("Glass pane", "#a8e6ff", rough=0.08, coat=1.0, spec=0.8)
+    p = [n for n in pane.node_tree.nodes if n.type == "BSDF_PRINCIPLED"][0]
+    p.inputs["Alpha"].default_value = 0.42
+    v, f = pw.soft_box((0, 0, 0), hx * 0.8, 0.03, hz * 0.97, p=6.0)
+    G.add(pw.mesh("Glass pane", v, f, pane))
+    frame = pb.fabric_mat("Glass frame", "#d8f2ff", rough=0.9, sheen=0.9, fuzz_bump=0.3, felt=0.2)
+    for z in (-1, 1):
+        v, f = pw.soft_box((0, 0, z * (hz - 0.05)), hx, 0.045, 0.05, p=4.0)
+        G.add(pw.mesh("Glass frame %d" % z, v, f, frame))
+    for sx in (-1, 1):
+        v, f = pw.soft_box((sx * (hx - 0.015), 0, 0), 0.018, 0.04, hz - 0.08, p=4.0)
+        G.add(pw.mesh("Glass side %d" % sx, v, f, frame))
+    glint = pb.emit_mat("Glass glint", "#ffffff", 1.6)
+    for k, (z, ln) in enumerate(((0.45, 0.3), (0.2, 0.18), (-0.35, 0.22))):
+        v, f = pa.tube((-0.035, -0.034, z - ln / 2), (0.035, -0.034, z + ln / 2), [(0.0, 0.008), (1.0, 0.008)], 8)
+        G.add(pw.mesh("Glass glint %d" % k, v, f, glint))
+    return G
+
+
+def prop_pad(pw, M):
+    """A jump pad: a springy green vinyl cushion on silver coils, on a black base with yellow felt chevrons."""
+    G = pw.Group("pad", "props")
+    hx, hz = 0.6, 0.15
+    v, f = pw.soft_box((0, 0, -hz + 0.05), hx, 0.22, 0.05, p=6.0)
+    base = G.add(pw.mesh("Pad base", v, f, M["black_vinyl"]))
+    for k in range(5):
+        x = -0.48 + k * 0.24
+        pts = [(x - 0.05, 0.035), (x + 0.0, 0.035), (x + 0.05, 0.0), (x + 0.0, -0.035), (x - 0.05, -0.035), (x + 0.0, 0.0)]
+        ob = G.add(pw.extrude_poly("Pad chevron %d" % k, pts, 0.01, M["felt_yellow"], 0.004))
+        ob.matrix_world = Matrix.Translation((0, -0.226, -hz + 0.05))
+    for x in (-0.36, 0.0, 0.36):
+        pts = []
+        for i in range(97):
+            t = i / 96
+            a = t * 2 * math.pi * 3.5
+            pts.append((x + math.cos(a) * 0.075, math.sin(a) * 0.075 * 0.8, -hz + 0.1 + t * 0.09))
+        N = [np.array([math.cos(i / 96 * 2 * math.pi * 3.5), math.sin(i / 96 * 2 * math.pi * 3.5), 0.0]) for i in range(97)]
+        sv, sf = pb.sweep(pts, N, pb.circle(0.011, 8), closed=False)
+        G.add(pw.mesh("Pad spring %.2f" % x, sv, sf, M["rivet"]))
+    v, f = pw.soft_box((0, 0, hz - 0.055), hx * 0.98, 0.2, 0.055, p=4.0)
+    top = G.add(pw.mesh("Pad cushion", v, f, M["green_vinyl"]))
+    bvh = pb.bvh_of(top)
+    B = pb.Builder()
+    pw.stitch_line(B, bvh, (-hx + 0.08, -0.3, hz - 0.055), (hx - 0.08, -0.3, hz - 0.055), dash=0.03, gap=0.02, width=0.012, height=0.008)
+    G.add(B.obj("Pad stitches", M["thread"]))
+    return G
+
+
+def prop_weight(pw, M):
+    """A swinging weight: a dark iron weight with a ring on top for the rope and a yellow felt label."""
+    G = pw.Group("weight", "props")
+    hx, hz = 0.5, 0.5
+    pts = [(-hx * 0.72, hz), (hx * 0.72, hz), (hx, -hz), (-hx, -hz)]
+    body = G.add(pw.extrude_poly("Weight body", pts, 0.42, M["iron"], 0.07))
+    rv, rf = pa.ring((0, 0, hz + 0.08), (0, 1, 0), 0.1, pb.circle(0.035, 12), 40)
+    G.add(pw.mesh("Weight ring", rv, rf, M["iron"]))
+    v, f = pw.soft_box((0, -0.23, -0.02), 0.24, 0.02, 0.13, p=4.0)
+    label = G.add(pw.mesh("Weight label", v, f, M["felt_yellow"]))
+    bvh = pb.bvh_of(label)
+    B = pb.Builder()
+    pw.stitch_rect(B, bvh, 0.24, 0.13, -0.3, 0.035, dash=0.022, gap=0.015, width=0.01, height=0.007)
+    G.add(B.obj("Weight label stitches", M["dark_thread"]))
+    for k, x in enumerate((-0.09, 0.0, 0.09)):
+        v, f = pw.soft_box((x, -0.255, -0.02), 0.026, 0.012, 0.07, p=3.0)
+        G.add(pw.mesh("Weight mark %d" % k, v, f, M["black_vinyl"]))
+    return G
