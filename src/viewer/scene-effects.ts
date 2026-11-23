@@ -186,7 +186,8 @@ export class SceneEffects {
         const len = Math.hypot(e.x1 - e.x0, e.y1 - e.y0) || 1;
         const dx = (e.x1 - e.x0) / len, dy = (e.y1 - e.y0) / len;
         if (e.hit !== "none") this.fx.sparks(e.x1, e.y1, -dx, -dy, WEAPON_ACCENT[e.weapon], e.weapon === "sniper" ? 12 : 4);
-        if (e.weapon === "crossbow" && e.hit !== "none" && e.hit !== "fighter") projectiles.bolts.push({ x: e.x1, y: e.y1, dx, dy, life: 2.5 });
+        // the crossbow bolt flies the shot's line (view only: the sim's shot is instant), and sticks if it hit a wall
+        if (e.weapon === "crossbow") projectiles.flyBolt(sm ? sm.x : e.x0, sm ? sm.y : e.y0, e.x1, e.y1, e.hit !== "none" && e.hit !== "fighter");
         if (e.weapon === "sniper") {
           if (e.hit === "fighter") this.float("SNIPED!", e.x1, e.y1 + 1.2, WEAPON_ACCENT.sniper, 0.8);
           camera.addShake(0.18);

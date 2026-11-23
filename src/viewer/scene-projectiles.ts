@@ -5,6 +5,10 @@ import type { Fx } from "./fx";
 import type { XformAt } from "./scene";
 import { setWorldFrame } from "./world-art";
 
+/** A crossbow bolt's drawn flight (#92): its speed and its longest time (the shot itself is instant in the sim). */
+const BOLT_SPEED = 120;
+const BOLT_FLIGHT = 0.12;
+
 export class ProjectileViews {
   readonly graphics = new Graphics();
   /** the plush sprites (#87): rockets, mines, the grapple hook, crossbow bolts; over the code trails and glows */
@@ -27,8 +31,20 @@ export class ProjectileViews {
   /** precision shots (#38): rifle tracer, sniper round, crossbow bolt (and bolts left stuck in walls) */
   shots: { x0: number; y0: number; x1: number; y1: number; life: number; weapon: "rifle" | "sniper" | "crossbow" }[] = [];
   bolts: { x: number; y: number; dx: number; dy: number; life: number }[] = [];
+  /** crossbow bolts in flight (#92): the plush bolt along the shot's line, at most BOLT_FLIGHT s; view only */
+  private flights: { x0: number; y0: number; x1: number; y1: number; t: number; dur: number; stick: boolean }[] = [];
   /** lightning bolts (#72): a jagged line, redrawn every frame so it crackles */
   lightning: { x0: number; y0: number; x1: number; y1: number; life: number }[] = [];
+  /**
+   * A crossbow bolt flies from (x0, y0) to (x1, y1). The sim's shot is instant (it hits, pins and damages on the
+   * tick it is fired), so the flight is kept short: BOLT_SPEED m/s, at most BOLT_FLIGHT s. `stick`: it stays in the
+   * wall where it lands.
+   */
+  flyBolt(x0: number, y0: number, x1: number, y1: number, stick: boolean) {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    this.flights.push({ x0, y0, x1, y1, t: 0, dur: Math.min(BOLT_FLIGHT, len / BOLT_SPEED), stick });
+  }
+
   tracer(x0: number, y0: number, x1: number, y1: number) {
     this.tracers.push({ x0, y0, x1, y1, life: 0.1 });
   }
@@ -44,6 +60,7 @@ export class ProjectileViews {
     this.waves = [];
     this.shots = [];
     this.bolts = [];
+    this.flights = [];
     this.lightning = [];
     this.minePrev.clear();
   }
@@ -182,6 +199,20 @@ export class ProjectileViews {
       }
     }
     this.shots = this.shots.filter((sh) => sh.life > 0);
+    for (const f of this.flights) {
+      f.t += fxDt;
+      const len = Math.hypot(f.x1 - f.x0, f.y1 - f.y0) || 1;
+      const dx = (f.x1 - f.x0) / len, dy = (f.y1 - f.y0) / len;
+      if (f.t >= f.dur) {
+        if (f.stick) this.bolts.push({ x: f.x1, y: f.y1, dx, dy, life: 2.5 });
+        continue;
+      }
+      const k = f.t / f.dur;
+      // its middle, a bolt's half length behind the point it has reached
+      const x = f.x0 + (f.x1 - f.x0) * k - dx * 0.25, y = f.y0 + (f.y1 - f.y0) * k - dy * 0.25;
+      this.sprite("bolt", x, y, dx, dy);
+    }
+    this.flights = this.flights.filter((f) => f.t < f.dur);
     for (const b of this.bolts) {
       b.life -= fxDt;
       if (b.life <= 0) continue;

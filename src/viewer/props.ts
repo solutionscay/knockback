@@ -1,4 +1,4 @@
-/** Placeholder drawings for props, items and weapons (y-down Graphics, meters). */
+/** The code parts of props and items (y-down Graphics, meters): pickup badges, fuses, flames; the rest is plush sprites. */
 import type { Graphics } from "pixi.js";
 import { TNT } from "../sim/constants";
 import type { Entity } from "../sim/sim-types";
@@ -29,11 +29,17 @@ export function drawPickup(g: Graphics, it: string, time: number) {
 /** The plush sprite on a pickup's badge: w-<weapon> or p-<power>. */
 export const pickupFrame = (it: string) => (it in POWER_COLOR ? "p-" : "w-") + it;
 
-/** The plush sprite of a prop and its damage state (crate-0, crate-1, crate-2, steel), or null: drawn in code. */
+/**
+ * The plush sprite of a prop and its damage state (crate-0, crate-1, crate-2; steel, glass, pad, weight have one: a
+ * glass pane shatters at the first hit, a weight's rope snaps), or null: drawn in code.
+ */
 export function propFrame(e: Entity): string | null {
   switch (e.kind) {
     case "steel":
-      return "steel";
+    case "glass":
+    case "pad":
+    case "weight":
+      return e.kind;
     case "grenade":
       return "grenade";
     case "block":
@@ -55,13 +61,15 @@ export function propFrame(e: Entity): string | null {
  */
 export function drawProp(g: Graphics, e: Entity, time: number, out: { blink: boolean } = { blink: false }): boolean {
   g.clear();
-  const w = e.hw;
   const h = e.hh;
   out.blink = false;
   switch (e.kind) {
     case "block":
     case "crate":
     case "steel":
+    case "glass":
+    case "pad":
+    case "weight":
       return false;
     case "barrel": {
       const armed = e.fuse !== undefined;
@@ -82,22 +90,6 @@ export function drawProp(g: Graphics, e: Entity, time: number, out: { blink: boo
       if (on) g.poly([-0.14, h - 0.05, 0.14, h - 0.05, 0, h + 0.5 + 0.2 * Math.sin(time * 50)]).fill(0xffb347);
       return on;
     }
-    case "glass":
-      g.rect(-w, -h, w * 2, h * 2).fill({ color: 0x9fe8ff, alpha: 0.35 }).stroke({ width: 0.04, color: 0xd8f6ff, alpha: 0.9 });
-      g.moveTo(-w * 0.4, -h * 0.6).lineTo(w * 0.5, -h * 0.75).stroke({ width: 0.025, color: 0xffffff, alpha: 0.8 });
-      g.moveTo(-w * 0.5, -h * 0.2).lineTo(w * 0.3, -h * 0.32).stroke({ width: 0.02, color: 0xffffff, alpha: 0.6 });
-      return false;
-    case "pad":
-      g.rect(-w, -h * 0.2, w * 2, h * 1.2).fill(0x1a1a1a);
-      for (let i = 0; i < 5; i++) g.poly([-w + i * 0.26, h, -w + i * 0.26 + 0.13, h, -w + i * 0.26 + 0.26, -h * 0.2, -w + i * 0.26 + 0.13, -h * 0.2]).fill(0xffd23a);
-      g.roundRect(-w, -h, w * 2, h * 0.5, 0.05).fill(0x44d06a).stroke({ width: 0.03, color: 0x1a6a30 });
-      return false;
-    case "weight":
-      g.poly([-w * 0.75, -h, w * 0.75, -h, w, h, -w, h]).fill(0x3a3e48).stroke({ width: 0.06, color: 0x15171d });
-      g.circle(0, -h - 0.08, 0.13).stroke({ width: 0.06, color: 0x8a8a96 });
-      g.rect(-0.22, -0.05, 0.44, 0.22).fill(0xe8c44a);
-      g.rect(-0.03, 0.0, 0.06, 0.12).fill(0x15171d);
-      return false;
     case "item":
       drawPickup(g, e.itemType ?? "health", time);
       return true;

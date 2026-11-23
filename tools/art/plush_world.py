@@ -14,6 +14,8 @@ Groups and sprites (frame names):
   props        crate, block, barrel, tnt, gas (each -0 intact, -1 damaged, -2 nearly broken), steel
   projectiles  rocket, grenade, mine, hook, bolt (pointing screen right: the viewer turns them)
   tiles        chain: one link of the platforms' chains, a seamless vertical tile (exactly one period tall)
+  level        the terrain (#92): per theme, every material's cells and top edges; crack, char and edge overlays and
+               the chain anchor (plush_level.py). Props (#92) adds the glass pane, the jump pad and the weight.
 Per frame it writes meta.json: the size in pixels, the pixels per game meter, and the anchor (the pixel of the
 model's center: the sim body's center for props, the middle for the rest).
 """
@@ -32,10 +34,11 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import plush_action as pa  # noqa: E402
 import plush_bot as pb  # noqa: E402
+import plush_level as pl  # noqa: E402
 
 ANGLE = pa.ANGLE
 ELEV = 0.18
-PPM = {"pickups": 100.0, "props": 80.0, "projectiles": 80.0, "tiles": 200.0}
+PPM = {"pickups": 100.0, "props": 80.0, "projectiles": 80.0, "tiles": 200.0, "level": pl.PPM}
 CHAIN_W, CHAIN_P = 0.14, 0.32  # the chain tile: its width and its period (one link) in game meters (chains.ts)
 ICON_M = 0.88  # a pickup icon fits this many game meters (the badge is 1.12 m across)
 WEAPONS = ["rocket", "bat", "rifle", "shotgun", "sniper", "crossbow", "railgun", "hammer", "flamethrower", "lightning",
@@ -528,6 +531,37 @@ def render_sprite(sc, name, obs, ppm, out_dir, anchor_world, margin_px=6):
     return {"w": W, "h": H, "ppm": ppm, "ax": round(a.x * W, 2), "ay": round((1 - a.y) * H, 2)}
 
 
+def render_level(sc, out, meta, meta_path, themes, common, only):
+    """The terrain frames (#92), one at a time: build, render, delete (they are many, and only one is ever seen).
+    Tiles are framed exactly (render_tile); their anchor is the top-left corner. `tile` says which way the frame
+    repeats (xy: a cell, x: a top or bottom edge, y: a side edge), for world_pack.py's edge padding."""
+    times = []
+    for T in pl.level_tiles(themes, common):
+        if only and T.name not in only:
+            continue
+        t = time.time()
+        T.make()
+        T.build()
+        place(T.obs, FRONT)
+        d = os.path.join(out, T.group)
+        os.makedirs(d, exist_ok=True)
+        if T.kind == "sprite":
+            fm = render_sprite(sc, T.name, T.obs, pl.PPM, d, tuple(FRONT @ Vector(T.anchor)))
+        else:
+            fm = render_tile(sc, T.name, T.obs, pl.PPM, d, T.size[0], T.size[1])
+            fm.update(ax=0, ay=0, tile={"cell": "xy", "cap": "x", "overlay": ""}.get(T.kind, "x" if T.name == "e-b" else "y"))
+        fm["group"] = T.group
+        meta["frames"][T.name if T.group == "level" else T.group[6:] + ":" + T.name] = fm
+        json.dump(meta, open(meta_path, "w"), indent=1)
+        for ob in T.obs:
+            me = ob.data
+            bpy.data.objects.remove(ob, do_unlink=True)
+            bpy.data.meshes.remove(me)
+        times.append((T.group + "/" + T.name, time.time() - t))
+        print("SPRITE %s/%s %dx%d %.1fs" % (T.group, T.name, fm["w"], fm["h"], time.time() - t), flush=True)
+    return times
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     ap = argparse.ArgumentParser()
@@ -536,6 +570,8 @@ def main():
     ap.add_argument("--only", default="", help="frame names (comma list)")
     ap.add_argument("--samples", type=int, default=32)
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--themes", default=",".join(pl.THEMES), help="level: the themes to render")
+    ap.add_argument("--no-common", action="store_true", help="level: skip the shared overlays")
     a = ap.parse_args(argv)
     t0 = time.time()
     pa.SPRITE = True
@@ -575,7 +611,10 @@ def main():
             place(G.obs, FRONT, scale=ICON_M / ext * 0.95)
             jobs.append((G.name, "pickups", G.obs, PPM["pickups"], None, None))
     if "props" in groups:
-        for fn in (prop_crate, prop_block, prop_barrel, prop_tnt, prop_gas, prop_steel):
+        import types
+        pw = types.SimpleNamespace(Group=Group, mesh=mesh, soft_box=soft_box, extrude_poly=extrude_poly, stitch_line=stitch_line, stitch_rect=stitch_rect)
+        level_props = [lambda M, f=f: f(pw, M) for f in (pl.prop_glass, pl.prop_pad, pl.prop_weight)]
+        for fn in (prop_crate, prop_block, prop_barrel, prop_tnt, prop_gas, prop_steel, *level_props):
             G = fn(M)
             place(G.obs, FRONT)
             origin = FRONT @ Vector((0, 0, 0))
@@ -627,6 +666,8 @@ def main():
         json.dump(meta, open(meta_path, "w"), indent=1)
         times.append((name, time.time() - t))
         print("SPRITE %s %dx%d %.1fs" % (name, fm["w"], fm["h"], time.time() - t), flush=True)
+    if "level" in groups:
+        times += render_level(sc, out, meta, meta_path, [t for t in a.themes.split(",") if t], not a.no_common, only)
     with open(os.path.join(a.out, "times.txt"), "a") as fh:
         for n_, dt in times:
             fh.write("%-16s %6.1f s\n" % (n_, dt))

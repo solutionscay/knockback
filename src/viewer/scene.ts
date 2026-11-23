@@ -17,6 +17,7 @@ import { ProjectileViews } from "./scene-projectiles";
 import { PropViews } from "./scene-props";
 import { ChainView } from "./chains";
 import { FireView } from "./fire";
+import { levelRound } from "./level-art";
 import { TerrainView } from "./terrainview";
 
 
@@ -146,9 +147,11 @@ export class Scene {
     this.camera.reset();
     this.celebrateId = -1;
     this.props.clearDrops();
+    this.props.theme = sim.level.theme;
     this.pal = PALETTES[sim.level.theme];
     if (this.terrainView) this.terrainView.container.destroy({ children: true });
-    this.terrainView = new TerrainView(sim.grid, this.pal);
+    void levelRound(sim.level.theme); // the theme's terrain art (the view draws once it arrives)
+    this.terrainView = new TerrainView(sim.grid, sim.level.theme);
     this.terrainLayer.addChild(this.terrainView.container);
     this.chainView?.destroy();
     this.chainView = new ChainView(sim);
@@ -299,7 +302,7 @@ export class Scene {
     this.drawZone();
     const projectiles = this.projectiles.graphics;
     projectiles.clear();
-    this.props.render(this.pal, fx, projectiles, this.time, dt, alpha, this.xform);
+    this.props.render(fx, projectiles, this.time, dt, alpha, this.xform);
     this.projectiles.render(sim, fx, dt, alpha, fxDt, this.xform);
     if (this.entrance.active) {
       this.entrance.update(this.entranceU, this.entranceDrawn, this.time, sim, this.fighters, fx, this.camera, frame, W, H);

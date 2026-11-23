@@ -1,13 +1,19 @@
 /**
- * Draws the destructible grid in 16x16-cell chunks; only chunks whose cells
- * changed (material or crack stage) are redrawn.
+ * Draws the destructible grid in 16x16-cell chunks of plush terrain sprites (#92, level-art.ts); only chunks whose
+ * cells changed (material, crack stage, burn, or a neighbour carved away) are redrawn.
+ *
+ * A cell is its material's felt tile (two variants, picked by a per-cell hash), darker deep inside the ground. On top
+ * of it: the theme's top edge where nothing is above, dark piping on any other exposed side (so a carved hole shows
+ * its sewn edge), a tear overlay per crack stage, scorched felt when it burned out, and the bolt of a chain anchor.
  */
-import { Container, Graphics } from "pixi.js";
-import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, Mat, MAT_HP, type Grid } from "../sim/grid";
+import { Container, Sprite } from "pixi.js";
+import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, MAT_HP, type Grid } from "../sim/grid";
+import type { Theme } from "../sim/level-config";
 import type { PieceCell } from "../sim/terrain";
-import { shade, type Palette } from "./palette";
+import { levelFrame, levelReady } from "./level-art";
 
 const CH = 16;
+const MAT_NAME = ["", "dirt", "rock", "wood", "steel", "concrete", "crumble", "bedrock", "brick"];
 
 function crackStage(hp: number, mat: number): number {
   const max = MAT_HP[mat] ?? 1;
@@ -16,103 +22,111 @@ function crackStage(hp: number, mat: number): number {
   return k < 0.34 ? 2 : k < 0.67 ? 1 : 0;
 }
 
-/** Cheap per-cell hash for texture variation. */
+/** Cheap per-cell hash for variation. */
 function h(cx: number, cy: number): number {
   let x = (cx * 374761393 + cy * 668265263) | 0;
   x = Math.imul(x ^ (x >>> 13), 1274126177);
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 }
 
-/** One cell at world (x, y) = bottom-left, in a y-down Graphics. */
-export function drawCell(g: Graphics, pal: Palette, x: number, y: number, mat: number, stage: number, exposedTop: boolean, exposedBottom: boolean, deep: boolean, flags: number, cx: number, cy: number) {
-  const s = CELL;
-  const top = -(y + s);
-  let col = pal.mat[mat] ?? 0x888888;
-  if (deep) col = shade(col, 0.72);
-  else col = shade(col, 0.94 + h(cx, cy) * 0.12);
-  g.rect(x, top, s, s).fill(col);
-  switch (mat) {
-    case Mat.Bedrock:
-      g.moveTo(x, top + s).lineTo(x + s, top).stroke({ width: 0.04, color: 0x2e2a3d });
-      break;
-    case Mat.Brick: {
-      const off = cy % 2 ? s / 2 : 0;
-      g.rect(x, top + s / 2 - 0.015, s, 0.03).fill({ color: 0x000000, alpha: 0.25 });
-      g.rect(x + off - 0.015, top, 0.03, s / 2).fill({ color: 0x000000, alpha: 0.25 });
-      break;
-    }
-    case Mat.Wood:
-      g.rect(x, top + s * 0.48, s, 0.03).fill({ color: 0x000000, alpha: 0.3 });
-      g.circle(x + 0.08, top + 0.12, 0.025).fill(0x2a1a0e);
-      g.circle(x + s - 0.08, top + 0.12, 0.025).fill(0x2a1a0e);
-      break;
-    case Mat.Steel:
-      g.moveTo(x, top).lineTo(x + s, top + s).moveTo(x + s, top).lineTo(x, top + s).stroke({ width: 0.035, color: shade(col, 0.6) });
-      g.circle(x + 0.07, top + 0.07, 0.025).fill(shade(col, 1.4));
-      break;
-    case Mat.Crumble:
-      g.circle(x + 0.12 + h(cx, cy) * 0.2, top + 0.2, 0.03).fill({ color: 0x000000, alpha: 0.3 });
-      g.circle(x + 0.3, top + 0.35 - h(cy, cx) * 0.1, 0.025).fill({ color: 0x000000, alpha: 0.3 });
-      break;
-    case Mat.Dirt:
-      if (h(cx, cy) > 0.6) g.circle(x + h(cy, cx) * s, top + h(cx + 1, cy) * s, 0.03).fill({ color: 0x000000, alpha: 0.2 });
-      break;
-    case Mat.Rock:
-      g.circle(x + s / 2, top + s / 2, 0.16).fill({ color: 0xffffff, alpha: 0.08 });
-      break;
-    case Mat.Concrete:
-      if ((cx + cy) % 3 === 0) g.rect(x, top, 0.025, s).fill({ color: 0x000000, alpha: 0.12 });
-      break;
+/** Sprites reused from one redraw to the next. */
+class Pool {
+  private i = 0;
+  constructor(readonly c: Container) {}
+  begin() {
+    this.i = 0;
   }
-  if (exposedTop) g.rect(x, top, s, 0.09).fill(pal.top[mat] ?? shade(col, 1.35));
-  if (exposedBottom && !deep) g.rect(x, top + s - 0.05, s, 0.05).fill({ color: 0x000000, alpha: 0.3 });
-  if (flags & F_BRIDGE) g.rect(x, top + s - 0.06, s, 0.06).fill({ color: 0x000000, alpha: 0.35 });
-  if (flags & F_CHARRED) {
-    // burned out (#33): blackened, with a few embers' worth of grain
-    g.rect(x, top, s, s).fill({ color: 0x17110d, alpha: 0.72 });
-    g.rect(x + 0.06, top + 0.14 + h(cx, cy) * 0.2, s - 0.12, 0.025).fill({ color: 0x5a3a22, alpha: 0.6 });
+  /** A sprite showing `name` with its top-left at (x, y) (y down, meters), or null if the frame isn't loaded. */
+  put(theme: Theme, name: string, x: number, y: number, tint = 0xffffff, alpha = 1): Sprite | null {
+    const f = levelFrame(theme, name);
+    if (!f) return null;
+    let s = this.c.children[this.i] as Sprite | undefined;
+    if (!s) s = this.c.addChild(new Sprite());
+    this.i++;
+    s.visible = true;
+    s.texture = f.tex;
+    s.position.set(x - f.ax, y - f.ay);
+    s.scale.set(f.w / f.tex.frame.width, f.h / f.tex.frame.height);
+    s.tint = tint;
+    s.alpha = alpha;
+    return s;
   }
-  if (stage >= 1) g.moveTo(x + 0.1, top + 0.08).lineTo(x + 0.24, top + 0.26).lineTo(x + 0.18, top + 0.42).stroke({ width: 0.035, color: 0x0b0a10, alpha: 0.85 });
-  if (stage >= 2) g.moveTo(x + 0.42, top + 0.1).lineTo(x + 0.28, top + 0.3).lineTo(x + 0.4, top + 0.46).stroke({ width: 0.035, color: 0x0b0a10, alpha: 0.85 });
+  end() {
+    const k = this.c.children;
+    for (let j = this.i; j < k.length; j++) k[j]!.visible = false;
+  }
+}
+
+interface Exposed { top: boolean; bottom: boolean; left: boolean; right: boolean }
+
+/** One cell with its bottom-left at world (x, y), drawn y-down. */
+function drawCell(p: Pool, theme: Theme, x: number, y: number, mat: number, stage: number, ex: Exposed, deep: boolean, flags: number, cx: number, cy: number) {
+  const top = -(y + CELL);
+  const m = MAT_NAME[mat];
+  if (!m) return;
+  const r = h(cx, cy);
+  const k = deep ? 0.72 : 0.92 + r * 0.08;
+  const c = Math.round(255 * k);
+  p.put(theme, `c-${m}-${r < 0.5 ? 0 : 1}`, x, top, (c << 16) | (c << 8) | c);
+  if (flags & F_CHARRED) p.put(theme, `char-${h(cy, cx) < 0.5 ? 0 : 1}`, x, top, 0xffffff, 0.88);
+  if (stage) p.put(theme, `k-${stage}-${h(cx + 7, cy) < 0.5 ? 0 : 1}`, x, top);
+  if (ex.left) p.put(theme, "e-l", x, top);
+  if (ex.right) {
+    const f = levelFrame(theme, "e-r");
+    if (f) p.put(theme, "e-r", x + CELL - f.w, top);
+  }
+  if ((ex.bottom && !deep) || flags & F_BRIDGE) {
+    const f = levelFrame(theme, "e-b");
+    if (f) p.put(theme, "e-b", x, top + CELL - f.h);
+  }
+  if (ex.top) p.put(theme, `t-${m}`, x, top);
 }
 
 export class TerrainView {
   readonly container = new Container();
-  private readonly chunks: Graphics[] = [];
+  private readonly chunks: Pool[] = [];
   private readonly sig: Uint8Array;
   private readonly cols: number;
   private readonly rows: number;
+  private ready = false;
 
   constructor(
     private readonly grid: Grid,
-    private readonly pal: Palette,
+    private readonly theme: Theme,
   ) {
     this.cols = Math.ceil(grid.cols / CH);
     this.rows = Math.ceil(grid.rows / CH);
     this.sig = new Uint8Array(grid.cols * grid.rows).fill(255);
     for (let k = 0; k < this.cols * this.rows; k++) {
-      const g = new Graphics();
-      this.container.addChild(g);
-      this.chunks.push(g);
+      const c = new Container();
+      this.container.addChild(c);
+      this.chunks.push(new Pool(c));
     }
   }
 
-  /** Redraw chunks whose cells changed since last frame. */
+  /** Redraw chunks whose cells changed since last frame (everything, once the theme's art arrives). */
   update() {
+    if (!this.ready) {
+      if (!levelReady(this.theme)) return;
+      this.ready = true;
+      this.sig.fill(255);
+    }
     const g = this.grid;
     const dirty = new Set<number>();
     for (let cy = 0; cy < g.rows; cy++) {
       for (let cx = 0; cx < g.cols; cx++) {
         const i = cy * g.cols + cx;
         const m = g.mat[i]!;
-        const s = m === Mat.Empty ? 0 : m * 4 + crackStage(g.hp[i]!, m) + 1 + (g.flags[i]! & F_CHARRED ? 64 : 0);
+        const s = m === 0 ? 0 : m * 4 + crackStage(g.hp[i]!, m) + 1 + (g.flags[i]! & F_CHARRED ? 64 : 0);
         if (s !== this.sig[i]) {
           this.sig[i] = s;
           const k = Math.floor(cy / CH) * this.cols + Math.floor(cx / CH);
           dirty.add(k);
-          // neighbors' edge highlights change too
+          // neighbours' exposed edges change too
           if (cy % CH === 0 && cy > 0) dirty.add(k - this.cols);
           if (cy % CH === CH - 1 && cy < g.rows - 1) dirty.add(k + this.cols);
+          if (cx % CH === 0 && cx > 0) dirty.add(k - 1);
+          if (cx % CH === CH - 1 && cx < g.cols - 1) dirty.add(k + 1);
         }
       }
     }
@@ -121,42 +135,43 @@ export class TerrainView {
 
   private drawChunk(k: number) {
     const g = this.grid;
-    const gr = this.chunks[k]!;
-    gr.clear();
+    const p = this.chunks[k]!;
+    p.begin();
     const kx = k % this.cols;
     const ky = Math.floor(k / this.cols);
     for (let cy = ky * CH; cy < Math.min(g.rows, ky * CH + CH); cy++) {
       for (let cx = kx * CH; cx < Math.min(g.cols, kx * CH + CH); cx++) {
         const i = cy * g.cols + cx;
         const m = g.mat[i]!;
-        if (m === Mat.Empty) continue;
+        if (m === 0) continue;
         let above = 0;
         for (let a = 1; a <= 4 && g.solid(cx, cy + a); a++) above++;
-        drawCell(gr, this.pal, g.wx(cx), g.wy(cy), m, crackStage(g.hp[i]!, m), !g.solid(cx, cy + 1), !g.solid(cx, cy - 1), above >= 4, g.flags[i]!, cx, cy);
+        const ex = { top: !g.solid(cx, cy + 1), bottom: !g.solid(cx, cy - 1), left: !g.solid(cx - 1, cy), right: !g.solid(cx + 1, cy) };
+        drawCell(p, this.theme, g.wx(cx), g.wy(cy), m, crackStage(g.hp[i]!, m), ex, above >= 4, g.flags[i]!, cx, cy);
         if (g.flags[i]! & F_ANCHOR) {
-          // anchor bolt; the chain above it is drawn by ChainView (chains.ts) up to the top of the view
-          const x = g.wx(cx) + CELL / 2;
-          const y = -(g.wy(cy) + CELL);
-          gr.circle(x, y + CELL / 2, 0.09).fill(0x2a2a30).stroke({ width: 0.03, color: 0xb0b0b8 });
+          // the anchor bolt; the chain above it is drawn by ChainView (chains.ts) up to the top of the view
+          p.put(this.theme, "anchor", g.wx(cx) + CELL / 2, -(g.wy(cy) + CELL / 2));
         }
       }
     }
+    p.end();
   }
 }
 
-/** Draw a loose piece's cells in its local frame. */
-export function drawPiece(gr: Graphics, pal: Palette, cells: PieceCell[]) {
-  gr.clear();
-  const at = new Set(cells.map((c) => c.ly * 4096 + c.lx));
-  for (const c of cells) {
-    const x = c.lx * CELL;
-    const y = c.ly * CELL;
-    drawCell(gr, pal, x, y, c.mat, crackStage(c.hp, c.mat), !at.has((c.ly + 1) * 4096 + c.lx), !at.has((c.ly - 1) * 4096 + c.lx), false, c.charred ? F_CHARRED : 0, c.lx, c.ly);
+/** Draw a loose piece's cells in its local frame (a container of sprites, reused). */
+export function drawPiece(c: Container, theme: Theme, cells: PieceCell[]) {
+  const p = new Pool(c);
+  p.begin();
+  const at = new Set(cells.map((q) => q.ly * 4096 + q.lx));
+  for (const q of cells) {
+    const ex = { top: !at.has((q.ly + 1) * 4096 + q.lx), bottom: !at.has((q.ly - 1) * 4096 + q.lx), left: !at.has(q.ly * 4096 + q.lx - 1), right: !at.has(q.ly * 4096 + q.lx + 1) };
+    drawCell(p, theme, q.lx * CELL, q.ly * CELL, q.mat, crackStage(q.hp, q.mat), ex, false, q.charred ? F_CHARRED : 0, q.lx, q.ly);
   }
+  p.end();
 }
 
-export function pieceSig(cells: PieceCell[]): string {
-  let s = "";
+export function pieceSig(theme: Theme, cells: PieceCell[]): string {
+  let s = levelReady(theme) ? "" : "-";
   for (const c of cells) s += `${c.lx},${c.ly},${crackStage(c.hp, c.mat)}${c.charred ? "c" : ""};`;
   return s;
 }

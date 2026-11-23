@@ -1,4 +1,5 @@
 import { initPlushArt, plushSettle } from "./plush-bot";
+import { levelSettle } from "./level-art";
 import { initWorldArt } from "./world-art";
 import { PickPanel } from "./picks";
 import { Application } from "pixi.js";
@@ -235,7 +236,8 @@ if (capture) {
       if (render) app.renderer.render(app.stage);
     },
     async settle() {
-      if (!(await plushSettle())) return false;
+      const art = await Promise.all([plushSettle(), levelSettle()]); // fighter sheets and the theme's terrain
+      if (!art.some(Boolean)) return false;
       game.update(0); // place the sprites that just arrived (no time passes)
       app.renderer.render(app.stage);
       return true;
