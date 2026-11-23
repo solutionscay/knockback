@@ -1,0 +1,100 @@
+/**
+ * The level-art lab page (scripts/level-lab.ts, #92): each theme's terrain at game size (1:1), built from a small
+ * grid the way the game draws it (TerrainView): its ground and every platform material, a carved hole, cells at
+ * crack stages 1 and 2, burned cells, a loose chunk and a chain anchor; then the glass pane, the jump pad and the
+ * weight, and a plush fighter for scale. ?s= screen pixels per meter (45: the View-all median at 1080p). View only.
+ */
+import { Application, Container, Sprite, Text } from "pixi.js";
+import { F_ANCHOR, F_CHARRED, Grid, Mat, MAT_HP } from "../sim/grid";
+import { LEVEL_THEMES, PROP_HALF, type Theme } from "../sim/level-config";
+import { levelLoad, levelMemory } from "./level-art";
+import { initPlushArt, loadPlushSheets, plushFormat, plushNeeds, PlushBot } from "./plush-bot";
+import { drawPiece, TerrainView } from "./terrainview";
+import { initWorldArt, setWorldFrame } from "./world-art";
+
+const q = new URLSearchParams(location.search);
+const S = Number(q.get("s") ?? "45");
+const THEMES: Theme[] = ["rooftop", "warehouse", "junkyard", "construction"];
+await initPlushArt();
+await initWorldArt();
+await loadPlushSheets(plushNeeds("balanced", "none"));
+const app = new Application();
+await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 31), antialias: true, resolution: 1, preference: "webgl" });
+document.body.appendChild(app.canvas);
+
+function label(text: string, x: number, y: number, size = 13) {
+  const t = new Text({ text, style: { fill: 0xb8c2e0, fontSize: size, fontWeight: "700", fontFamily: "system-ui" } });
+  t.position.set(x, y);
+  app.stage.addChild(t);
+}
+
+/** A 22 x 8 cell (11 x 4 m) patch: ground of the theme's body with its surface on top, a carved crater, cracked and burned
+ * cells, a column of every platform material, and a platform held by a chain anchor. */
+function patch(theme: Theme): Grid {
+  const T = LEVEL_THEMES[theme];
+  const g = new Grid(22, 8, 0, 0);
+  for (let cx = 0; cx < 22; cx++) {
+    for (let cy = 0; cy < 4; cy++) g.set(cx, cy, cy === 0 ? Mat.Bedrock : cy === 3 ? T.surface : T.body);
+  }
+  // a crater, carved
+  for (const [cx, cy] of [[5, 3], [6, 3], [7, 3], [6, 2], [5, 2], [6, 1]]) g.clear(cx!, cy!);
+  // cracks next to it: stage 1 and stage 2
+  const crack = (cx: number, cy: number, k: number) => (g.hp[g.idx(cx, cy)] = MAT_HP[g.mat[g.idx(cx, cy)]!]! * k);
+  crack(4, 3, 0.5); crack(8, 3, 0.5); crack(4, 2, 0.2); crack(7, 2, 0.2); crack(5, 1, 0.5); crack(7, 1, 0.2);
+  // burned planks
+  for (let cx = 10; cx < 13; cx++) g.set(cx, 4, Mat.Wood, cx === 11 ? F_CHARRED : 0);
+  g.flags[g.idx(10, 4)]! |= F_CHARRED;
+  // every material, a column each
+  const mats = [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Brick];
+  mats.forEach((m, i) => { g.set(14 + i, 4, m); g.set(14 + i, 5, m); });
+  crack(15, 5, 0.5); crack(17, 5, 0.2);
+  // a platform from an anchor
+  for (let cx = 1; cx < 4; cx++) g.set(cx, 7, T.platform[0]!, cx === 2 ? F_ANCHOR : 0);
+  return g;
+}
+
+function fighter(x: number, ground: number) {
+  const pl = new PlushBot(0x3fa7ff, "none", "balanced");
+  pl.update({ dt: 1 / 12, alive: true, air: false, stunned: false, vx: 0, vy: 0, weapon: "fist", aim: 0, swingT: 0, recoil: 0, hitT: 0, celebrate: false, facing: 1 });
+  const c = new Container();
+  c.addChild(pl.back.c, pl.body.c, pl.feet, pl.fist.c, pl.sleeve.c, pl.arm.c);
+  c.scale.set(S);
+  c.position.set(x, ground);
+  app.stage.addChild(c);
+}
+
+let y = 24;
+const bytes: number[] = [];
+for (const theme of THEMES) {
+  await levelLoad(theme);
+  bytes.push(levelMemory(theme).bytes);
+  const rowH = S * 7.4;
+  label(`${theme} (${S} px/m, ${plushFormat()})`, 12, y);
+  const g = patch(theme);
+  const tv = new TerrainView(g, theme);
+  tv.update();
+  const world = new Container();
+  world.addChild(tv.container);
+  // a loose chunk (a broken-off piece), turned a little
+  const piece = new Container();
+  drawPiece(piece, theme, [{ lx: 0, ly: 0, mat: LEVEL_THEMES[theme].platform[1]!, hp: 99 }, { lx: 1, ly: 0, mat: LEVEL_THEMES[theme].platform[1]!, hp: 6 }, { lx: 1, ly: 1, mat: LEVEL_THEMES[theme].platform[1]!, hp: 99 }]);
+  piece.position.set(5.6, -3.6);
+  piece.rotation = -0.25;
+  world.addChild(piece);
+  // the level props, standing on the ground
+  // (meters: the ground's top is at 2 m; the weight hangs)
+  for (const [k, x, y0] of [["glass", 10.75, 2], ["pad", 4.6, 2], ["weight", 8.3, 3.6]] as const) {
+    const s = new Sprite();
+    setWorldFrame(s, k);
+    s.position.set(x, -(y0 + PROP_HALF[k][1]));
+    world.addChild(s);
+  }
+  world.scale.set(S);
+  world.position.set(S * 1.5, y + S * 7.2);
+  app.stage.addChild(world);
+  fighter(S * 3.2, y + S * 5.2);
+  y += rowH + 8;
+}
+label(`GPU per theme (its atlas + the shared one): ${bytes.map((b) => (b / 1e6).toFixed(2) + " MB").join(", ")}`, 12, y);
+(window as unknown as { __ready: boolean; __levelBytes: number[] }).__ready = true;
+(window as unknown as { __levelBytes: number[] }).__levelBytes = bytes;

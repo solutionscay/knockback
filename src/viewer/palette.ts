@@ -1,4 +1,7 @@
-/** Placeholder palettes per theme (the art-direction task replaces these). */
+/**
+ * Palettes per theme: the sky and hills, and each material's color (the debris of broken cells). The terrain itself is
+ * plush art per theme (#92, level-art.ts; tools/art/plush_level.py holds the same colors and the top edges').
+ */
 import { contrast, fromOklch, oklch } from "../sim/color";
 import { Mat } from "../sim/grid";
 import type { Theme } from "../sim/level-config";
@@ -7,7 +10,6 @@ export interface Palette {
   sky: [number, number];
   hills: [number, number];
   mat: Record<number, number>;
-  top: Record<number, number>;
 }
 
 const BASE: Record<number, number> = {
@@ -26,25 +28,21 @@ export const PALETTES: Record<Theme, Palette> = {
     sky: [0x111522, 0x262a3d],
     hills: [0x1d2234, 0x252b40],
     mat: { ...BASE, [Mat.Concrete]: 0x7c818c, [Mat.Steel]: 0x4f6a8c },
-    top: { [Mat.Concrete]: 0xe8c44a, [Mat.Steel]: 0x9fb6d6, [Mat.Wood]: 0xc8955a },
   },
   rooftop: {
     sky: [0x161b38, 0x5a3550],
     hills: [0x2a2547, 0x352b52],
     mat: { ...BASE, [Mat.Concrete]: 0x9a9aa4 },
-    top: { [Mat.Concrete]: 0xcfcfd6, [Mat.Brick]: 0xb86a55, [Mat.Wood]: 0xc8955a, [Mat.Steel]: 0xa8b4c6 },
   },
   junkyard: {
     sky: [0x1a1a22, 0x4a3a2c],
     hills: [0x2a2620, 0x342e26],
     mat: { ...BASE, [Mat.Dirt]: 0x5e4d38, [Mat.Steel]: 0x7a5a48 },
-    top: { [Mat.Dirt]: 0x8a9a5a, [Mat.Steel]: 0xb08066, [Mat.Wood]: 0xc8955a },
   },
   construction: {
     sky: [0x14192c, 0x40364a],
     hills: [0x22253a, 0x2b2e45],
     mat: { ...BASE, [Mat.Steel]: 0xc76a2a, [Mat.Dirt]: 0x705a40 },
-    top: { [Mat.Dirt]: 0xa58a5a, [Mat.Steel]: 0xf0a050, [Mat.Wood]: 0xd9a560 },
   },
 };
 

@@ -1,12 +1,13 @@
 #!/bin/sh
-# The world's sprites (#87): pickups, props and projectiles, headless, then packed into src/viewer/art/world.
-#   tools/art/render-world.sh OUT_DIR [groups]      (groups: pickups,props,projectiles,tiles; default all)
+# The world's sprites (#87): pickups, props and projectiles, headless, then packed into src/viewer/art/world;
+# the level (#92: terrain per theme) into src/viewer/art/level.
+#   tools/art/render-world.sh OUT_DIR [groups]      (groups: pickups,props,projectiles,tiles,level; default all)
 #   tools/art/render-world.sh OUT_DIR --pack        only pack what OUT_DIR already holds
 # Machine safety: CPU only, 6 threads (KB_THREADS), nice 10, one Blender at a time.
 set -e
 cd "$(dirname "$0")/../.."
 OUT="${1:?usage: tools/art/render-world.sh OUT_DIR [groups|--pack]}"
-G="${2:-pickups,props,projectiles,tiles}"
+G="${2:-pickups,props,projectiles,tiles,level}"
 BL="${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}"
 if [ "$G" != "--pack" ]; then
   if pgrep -f "MacOS/Blender -b" >/dev/null; then echo "another headless Blender is running; wait for it" >&2; exit 2; fi

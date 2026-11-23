@@ -2,7 +2,7 @@ import { Container, Graphics, Sprite } from "pixi.js";
 import type { Sim } from "../sim/sim";
 import type { Entity } from "../sim/sim-types";
 import type { Fx } from "./fx";
-import type { Palette } from "./palette";
+import type { Theme } from "../sim/level-config";
 import { PROP_HALF } from "../sim/level-config";
 import { drawProp as drawPropShape, pickupFrame, propFrame } from "./props";
 import type { XformAt } from "./scene";
@@ -10,9 +10,10 @@ import { drawPiece, pieceSig } from "./terrainview";
 import { setWorldFrame } from "./world-art";
 
 interface PropView {
-  /** the view: the code frame (g) under the plush sprite (s) */
+  /** the view: the code frame (g) under the plush sprite (s); a loose terrain chunk's cells are sprites in `cells` */
   root: Container;
   g: Graphics;
+  cells?: Container;
   s: Sprite;
   /** the sprite again, added on top: a lit fuse's white blink (a tint can only darken) */
   hi: Sprite;
@@ -31,6 +32,8 @@ const blink = { blink: false };
 export class PropViews {
   readonly layer = new Container();
   readonly marks = new Graphics();
+  /** the level's theme (loose chunks wear its terrain art) */
+  theme: Theme = "warehouse";
   private props = new Map<number, PropView>();
   /** where a fighter's drawn hand or muzzle is (the plush bot), or null */
   muzzleOf: ((fighter: number) => { x: number; y: number } | null) | null = null;
@@ -81,13 +84,14 @@ export class PropViews {
     }
   }
 
-  private drawProp(v: PropView, pal: Palette, time: number) {
+  private drawProp(v: PropView, time: number) {
     const e = v.e;
     if (e.kind === "chunk") {
-      const sig = pieceSig(e.cells!);
+      const sig = pieceSig(this.theme, e.cells!);
       if (sig !== v.sig) {
         v.sig = sig;
-        drawPiece(v.g, pal, e.cells!);
+        if (!v.cells) v.cells = v.root.addChild(new Container());
+        drawPiece(v.cells, this.theme, e.cells!);
       }
       return;
     }
@@ -107,11 +111,11 @@ export class PropViews {
     }
   }
 
-  render(pal: Palette, fx: Fx, projG: Graphics, time: number, dt: number, alpha: number, xform: XformAt) {
+  render(fx: Fx, projG: Graphics, time: number, dt: number, alpha: number, xform: XformAt) {
     for (const v of this.props.values()) {
       const e = v.e;
       const p = xform(e, alpha);
-      this.drawProp(v, pal, time);
+      this.drawProp(v, time);
       v.root.position.set(p.x, -p.y);
       if (v.off) {
         v.off.x *= Math.exp(-dt * 14);
