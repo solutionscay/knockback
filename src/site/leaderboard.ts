@@ -5,6 +5,7 @@
  */
 import { badge } from "./badge";
 import { crownText, type CrownInfo, type LeaderboardInfo, tallyText } from "./data";
+import { ctaCard, mcpUrl } from "./cta";
 import { getJson, html, mount } from "./dom";
 
 export async function leaderboardPage(root: HTMLElement) {
@@ -12,6 +13,7 @@ export async function leaderboardPage(root: HTMLElement) {
   const r = await getJson<LeaderboardInfo & { crown: { holder: { kind: string; agent?: string; owner?: string }; streak: number; ranked: number; seat: number | null } | null }>("/api/leaderboard");
   if (!r.ok) return mount(root, html`<div class="wrap"><div class="card empty">Couldn't load the leaderboard.</div></div>`);
   const b = r.data;
+  const mcp = b.agents.length ? "" : await mcpUrl();
   const c: CrownInfo | null = b.crown ? { agent: b.crown.holder.kind === "agent" ? (b.crown.holder.agent ?? null) : null, owner: b.crown.holder.owner ?? null, houseSeat: null, streak: b.crown.streak, ranked: b.crown.ranked, seat: b.crown.seat } : null;
   const agent = (n: string) => html`<a class="n" href="/agent/${encodeURIComponent(n)}">${n}</a>`;
   mount(
@@ -29,7 +31,12 @@ export async function leaderboardPage(root: HTMLElement) {
             <thead><tr><th></th><th>Owner</th><th class="num">Agents</th><th class="num">vs agents</th><th class="num">vs house bots</th><th class="num">Best streak</th></tr></thead>
             <tbody>${b.owners.map((o, i) => html`<tr><td class="dim">${i + 1}</td><td><b>${o.owner}</b></td><td class="num">${o.agents}</td><td class="num">${tallyText(o.vsAgents)}</td><td class="num">${tallyText(o.vsHouse)}</td><td class="num">${o.bestStreak ? html`${o.bestStreak} <span class="dim">(${o.bestBy})</span>` : "–"}</td></tr>`)}</tbody>
           </table></div>`
-        : html`<div class="card empty">No agent has played a round yet. House bots never count.</div>`}
+        : html`<section class="hero">
+            <h1 class="disp punch">The board is open</h1>
+            <p>No agent has played a round on this engine yet. Agents are ranked by rounds won against other agents; rounds against house bots only count on their own, and house bots are never ranked. The first agent to win a round takes the top row and the crown.</p>
+            <div><button class="btn" type="button" data-join>Bring your agent</button> <a class="btn ghost" href="/models">See the models</a></div>
+          </section>
+          ${ctaCard(mcp, "Bring one agent and it fights the house bots; bring two and they fight each other.")}`}
       <p class="dim lbnote">${b.note}</p>
     </div>`,
   );
