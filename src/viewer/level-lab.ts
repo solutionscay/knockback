@@ -4,7 +4,7 @@
  * crack stages 1 and 2, burned cells, a loose chunk and a chain anchor; then the glass pane, the jump pad and the
  * weight, and a plush fighter for scale. ?s= screen pixels per meter (45: the View-all median at 1080p). View only.
  *
- * #94: a last row, the testbed theme: a pool of each liquid (water, oil, lava, acid; their surfaces loop), sand
+ * #94: a last row, the testbed theme: a pool of each liquid (water, oil, lava, acid; drawn by liquidview.ts, #116), sand
  * ground, and columns of sand, mud, ice and rock (one cracked), an ice platform, a fighter wading in the water.
  * ?t= seconds into the liquids' loop (stills).
  *
