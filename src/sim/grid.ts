@@ -46,10 +46,12 @@ export const enum Liquid {
   Acid = 4,
   /** #125: cave slime: thicker than water (slows more, sinks slower), floats a fighter who can swim out, glows; smothers fire */
   Slime = 5,
+  /** #127: a station's coolant: cold, glowing; floats a fighter (sinks slowly, can swim out), slows more than water, puts out fire */
+  Coolant = 6,
 }
-export const LIQUID_NAMES = ["none", "water", "oil", "lava", "acid", "slime"] as const;
-/** A liquid a fighter floats and swims in (water, slime). */
-export const swimmable = (l: number) => l === Liquid.Water || l === Liquid.Slime;
+export const LIQUID_NAMES = ["none", "water", "oil", "lava", "acid", "slime", "coolant"] as const;
+/** A liquid a fighter floats and swims in (water, slime, coolant). */
+export const swimmable = (l: number) => l === Liquid.Water || l === Liquid.Slime || l === Liquid.Coolant;
 export type LiquidName = Exclude<(typeof LIQUID_NAMES)[number], "none">;
 
 export const F_ANCHOR = 1; // holds up whatever is connected to it (hanging platforms)

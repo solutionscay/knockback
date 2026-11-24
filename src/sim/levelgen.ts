@@ -385,7 +385,7 @@ function digPools(
   const pools: NonNullable<LevelDef["pools"]> = [];
   if (H.pools[1] <= 0) return pools;
   const want = rng.int(H.pools[0], H.pools[1]);
-  const kinds: [Liquid, number][] = [[Liquid.Water, H.water], [Liquid.Oil, H.oil], [Liquid.Lava, H.lava], [Liquid.Acid, H.acid], [Liquid.Slime, H.slime]];
+  const kinds: [Liquid, number][] = [[Liquid.Water, H.water], [Liquid.Oil, H.oil], [Liquid.Lava, H.lava], [Liquid.Acid, H.acid], [Liquid.Slime, H.slime], [Liquid.Coolant, H.coolant]];
   const total = kinds.reduce((a, k) => a + k[1], 0);
   for (let i = 0; i < want * 12 && pools.length < want; i++) {
     const w = Math.max(CELL * 2, q(rng.range(...H.width)));

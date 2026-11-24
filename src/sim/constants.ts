@@ -415,6 +415,7 @@ export const LIQUIDS = {
   lava: { dps: 16, meltDps: 2.5 },
   acid: { dps: 11, meltDps: 4 },
   slime: { speedMul: 0.42, accelMul: 0.45, buoyancy: 0.9, sinkSpeed: 0.9, strokeSpeed: 5.8, strokeTicks: 18 },
+  coolant: { speedMul: 0.48, accelMul: 0.55, buoyancy: 0.88, sinkSpeed: 1.2, strokeSpeed: 5.8, strokeTicks: 16 },
   mud: { speedMul: 0.5, jumpMul: 0.8 },
   ice: { accelMul: 0.12 },
 };

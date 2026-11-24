@@ -181,7 +181,7 @@ export function validateRuleset(input: unknown): Ruleset {
     require(t.stage.topRows[0] >= 1 && t.stage.topRows[1] <= 4, `${at}.stage.topRows`, "expected 1 to 4 rows");
     require(t.stage.ceiling === 0 || t.stage.ceiling >= 10 && t.stage.ceiling <= 22 && t.stage.ceilingRock[0] >= 1 && t.stage.ceilingRock[1] <= 8 && t.stage.stalactites[1] <= 16, `${at}.stage.ceiling`, "expected 0 (none) or 10 to 22 m, with 1 to 8 rows of rock and at most 16 stalactites");
     const H = t.hazards;
-    require(H.pools[1] === 0 || H.water + H.oil + H.lava + H.acid + H.slime > 0, `${at}.hazards`, "pools need a liquid with positive weight");
+    require(H.pools[1] === 0 || H.water + H.oil + H.lava + H.acid + H.slime + H.coolant > 0, `${at}.hazards`, "pools need a liquid with positive weight");
     require(H.bankCells <= 4, `${at}.hazards.bankCells`, "expected 0 to 4 cells");
     require(H.width[0] >= 1 && H.width[1] <= 8 && H.depth[0] >= 1 && H.depth[1] <= 6 && H.pools[1] <= 6, `${at}.hazards`, "width expected 1 to 8 meters, depth 1 to 6 cells, at most 6 pools");
   }
@@ -189,6 +189,7 @@ export function validateRuleset(input: unknown): Ruleset {
   require(L.flowTicks >= 1 && L.water.speedMul > 0 && L.water.speedMul <= 1 && L.mud.speedMul > 0 && L.mud.speedMul <= 1, "liquids", "flowTicks at least 1, speed multipliers 0 to 1");
   require(L.water.sinkSpeed > 0 && L.water.strokeSpeed > 0 && L.oil.burnTicks >= 1, "liquids", "sinkSpeed, strokeSpeed and burnTicks must be positive");
   require(L.slime.speedMul > 0 && L.slime.speedMul <= 1 && L.slime.sinkSpeed > 0 && L.slime.strokeSpeed > 0, "liquids.slime", "speedMul 0 to 1, sinkSpeed and strokeSpeed positive");
+  require(L.coolant.speedMul > 0 && L.coolant.speedMul <= 1 && L.coolant.sinkSpeed > 0 && L.coolant.strokeSpeed > 0, "liquids.coolant", "speedMul 0 to 1, sinkSpeed and strokeSpeed positive");
   return r;
 }
 

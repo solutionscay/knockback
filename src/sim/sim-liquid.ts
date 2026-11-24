@@ -10,6 +10,7 @@
  * - Lava and acid hurt a fighter in them over time (lava also sets them alight) and melt the solid cells beside them
  *   (bedrock never). Lava lights oil; lava meeting water cools to rock; lava melts ice into water.
  * - Slime (#125) is thick water: it slows more and floats a fighter (who sinks slower and swims out), and smothers fire.
+ * - Coolant (#127) is cold water: it slows more and floats a fighter (who swims out), and puts out fire.
  * - Mud slows whoever stands on it; ice is slippery (applyInput reads `footing`).
  *
  * The level settles one step every `liquids.flowTicks` ticks while the terrain changed since the last step (a carve
@@ -82,7 +83,7 @@ export interface Footing {
   speed: number;
   accel: number;
   jump: number;
-  /** afloat in water or slime (a jump is a swim stroke) */
+  /** afloat in water, slime or coolant (a jump is a swim stroke) */
   swim: boolean;
 }
 const SURE: Footing = { speed: 1, accel: 1, jump: 1, swim: false };
@@ -128,6 +129,9 @@ export function footing(sim: Sim, f: Fighter): Footing {
   } else if (liquid === Liquid.Slime) {
     speed *= L.slime.speedMul;
     accel *= L.slime.accelMul;
+  } else if (liquid === Liquid.Coolant) {
+    speed *= L.coolant.speedMul;
+    accel *= L.coolant.accelMul;
   } else if (liquid === Liquid.Oil) accel *= L.oil.accelMul;
   return { speed, accel, jump, swim: swimmable(liquid) && !f.grounded };
 }
@@ -184,7 +188,7 @@ export function updateLiquids(sim: Sim) {
         sim.events.push({ type: "douse", tick: sim.tick, fighter: f.id, x: p.x, y: p.y });
       }
       // buoyancy: most of gravity cancelled, and a slow sink at most
-      const W = liquid === Liquid.Slime ? L.slime : L.water;
+      const W = liquid === Liquid.Slime ? L.slime : liquid === Liquid.Coolant ? L.coolant : L.water;
       const v = f.entity.body.linvel();
       let vy = v.y + sim.ruleset.combat.gravity * W.buoyancy * DT;
       if (vy < -W.sinkSpeed) vy = -W.sinkSpeed;
@@ -249,7 +253,7 @@ function react(sim: Sim) {
       const m = g.mat[j]!;
       const n = g.liq[j]!;
       if (swimmable(k)) {
-        // water (and slime) puts out the burning cell beside it
+        // water (and slime, and coolant) puts out the burning cell beside it
         if (m !== Mat.Empty && sim.fires.has(j)) sim.fires.delete(j);
       } else if (k === Liquid.Oil) {
         const fire = sim.fires.get(j);
