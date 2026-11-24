@@ -22,7 +22,7 @@ function needsNature(theme: Theme): boolean {
   const r = THEME_DEFS[theme].rules as ThemeRules;
   const own = (n: string) => `${THEME_DEFS[theme].look.atlas}:${n}` in FRAMES;
   const mats = [r.body, r.surface, r.tower, ...r.platform, ...r.bridge, r.speckle.chance > 0 ? r.speckle.mat : 0, r.hazards.bankCells > 0 ? Mat.Mud : 0].filter((m) => m >= Mat.Sand);
-  const liquids = (["water", "oil", "lava", "acid", "slime"] as const).filter((l) => r.hazards.pools[1] > 0 && r.hazards[l] > 0);
+  const liquids = (["water", "oil", "lava", "acid", "slime", "coolant"] as const).filter((l) => r.hazards.pools[1] > 0 && r.hazards[l] > 0);
   return mats.some((m) => !own(`c-${MAT_NAMES[m]}-0`)) || liquids.some((l) => !own(`q-${l}-0`));
 }
 /** The atlases a theme draws from, first match wins (#94: a theme names its atlas; nature when it needs it). */

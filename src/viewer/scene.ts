@@ -37,7 +37,7 @@ export class Scene {
   private sky = new Graphics();
   private hills = new Graphics();
   /** #111: the beach's backdrop sprites (sun, clouds, island, the sea strips), between the sky and the near dunes; #114 the
-   * forest's (the moon, two rows of pines); #125 the cave's (two rows of rock columns, glowing crystals) */
+   * forest's (the moon, two rows of pines); #125 the cave's (two rows of rock columns, glowing crystals); #127 space's (stars, a planet, a station, asteroids) */
   private backdrop = new Container();
   private world = new Container();
   private terrainView: TerrainView | null = null;
@@ -203,6 +203,7 @@ export class Scene {
     if (this.pal.background === "beach") return this.drawBeach(W, H);
     if (this.pal.background === "forest") return this.drawForest(W, H);
     if (this.pal.background === "cave") return this.drawCave(W, H);
+    if (this.pal.background === "space") return this.drawSpace(W, H);
     this.backdrop.visible = false;
     // hills with parallax
     const h = this.hills;
@@ -399,6 +400,53 @@ export class Scene {
     }
     row(midY + H * 0.04, k * 3.0, 0.14, this.pal.hills[1], h);
     for (let j = i; j < b.children.length; j++) b.children[j]!.visible = false;
+  }
+
+  /**
+   * #127: space. A starfield (fixed points from a seeded hash, two depths of slow parallax), a ringed planet high up, a far
+   * station, two asteroids drifting across in the `hills` tints. No ground and no horizon: nothing runs as a band
+   * behind the fighters, and the void below is the level's own abyss. Before the atlas arrives, only the stars.
+   */
+  private drawSpace(W: number, H: number) {
+    const cam = this.camera.cam;
+    const k = H / 1080;
+    const s = this.sky;
+    // stars: 220 points over a loop 1.5 screens wide, parallax 0.01 (far) and 0.03 (near)
+    const span = W * 1.5;
+    let h = 0x9e3779b1;
+    const rnd = () => ((h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0), h / 4294967296);
+    for (let i = 0; i < 220; i++) {
+      const near = i % 4 === 0;
+      const x = ((rnd() * span - cam.x * cam.s * (near ? 0.03 : 0.01)) % span + span) % span - W * 0.25;
+      const y = rnd() * H;
+      const r = (near ? 1.6 : 0.9 + rnd() * 0.6) * Math.max(1, k);
+      const tw = 0.55 + 0.45 * Math.sin(this.time * (0.6 + (i % 7) * 0.2) + i);
+      s.circle(x, y, r).fill({ color: i % 9 === 0 ? 0xffe2b8 : i % 7 === 0 ? 0xb8d4ff : 0xffffff, alpha: (near ? 0.85 : 0.55) * tw });
+    }
+    const b = this.backdrop;
+    b.visible = true;
+    const theme = this.sim.level.theme;
+    let i = 0;
+    const put = (name: string, x: number, y: number, scale: number, tint = 0xffffff, alpha = 1, rot = 0) => {
+      let sp = b.children[i] as Sprite | undefined;
+      if (!sp) sp = b.addChild(new Sprite());
+      i++;
+      if (!setLevelSprite(sp, theme, name)) return (sp.visible = false);
+      sp.scale.set(scale);
+      sp.anchor.set(0.5, 0.5);
+      sp.position.set(x, y);
+      sp.alpha = alpha;
+      sp.tint = tint;
+      sp.rotation = rot;
+      return true;
+    };
+    const wrap = (x: number, w: number) => ((x % w) + w) % w - w * 0.2;
+    put("bg-planet", W * 0.78 - cam.x * cam.s * 0.015, H * 0.2, k * 0.9, 0xb8b4cc);
+    put("bg-station", wrap(W * 0.22 - cam.x * cam.s * 0.025, W * 1.5), H * 0.3, k * 0.75, 0x9aa0b4, 0.9);
+    put("bg-rock", wrap(W * 0.55 + this.time * 5 * k - cam.x * cam.s * 0.05, W * 1.6), H * 0.12, k * 0.55, this.pal.hills[1] | 0x404040, 0.85, this.time * 0.05);
+    put("bg-rock", wrap(W * 1.1 + this.time * 3 * k - cam.x * cam.s * 0.04, W * 1.6), H * 0.42, k * 0.35, this.pal.hills[0] | 0x404040, 0.7, -this.time * 0.04);
+    for (let j = i; j < b.children.length; j++) b.children[j]!.visible = false;
+    this.hills.clear();
   }
 
   /** Called before every sim tick so render can interpolate. */

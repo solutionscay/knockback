@@ -3,8 +3,8 @@
  * Viewer only: the sim's liquids (grid.ts Liquid) keep their own physics; this is paint and motion.
  *
  * A map that adds a liquid adds its name to grid.ts LIQUID_NAMES (the sim side) and an entry here under that name.
- * Nothing else in the viewer changes. `mud` and `slime` are here ready for the maps that bring them (the forest
- * swamp); no liquid in the sim uses them yet.
+ * Nothing else in the viewer changes. `mud` is here ready for a map that brings it; no liquid in the sim uses it yet
+ * (the forest's mud is a material). `slime` is the cave's (#125), `coolant` the space map's (#127).
  */
 
 export interface LiquidLook {
@@ -51,8 +51,10 @@ export const LIQUID_LOOKS: Record<string, LiquidLook> = {
   acid: { color: 0x9cf04a, deep: 0x2f8a1e, alpha: 0.6, deepAlpha: 0.9, depthM: 1.8, foam: 0xeaffb0, foamAlpha: 0.85, foamWidth: 0.06, band: 0.3, gloss: 0.2, waveHeight: 0.035, waveSpeed: 0.7, viscosity: 0.3, glow: 0, glowAlpha: 0, caustics: 0.2, drop: 0xb6ff66, drops: 0.8 },
   // (no sim liquid yet) slow and thick: brown, opaque, barely moves, a dull crust line
   mud: { color: 0x7a5a36, deep: 0x3b2814, alpha: 0.9, deepAlpha: 0.98, depthM: 1, foam: 0xa8865a, foamAlpha: 0.6, foamWidth: 0.06, band: 0.1, gloss: 0.1, waveHeight: 0.015, waveSpeed: 0.3, viscosity: 0.85, glow: 0, glowAlpha: 0, caustics: 0, drop: 0x6b4a2a, drops: 0.5 },
-  // (no sim liquid yet) glossy and slow: bright green, a strong sheen
+  // the cave's (#125): glossy and slow: bright green, a strong sheen
   slime: { color: 0x7be06a, deep: 0x2a7a3a, alpha: 0.75, deepAlpha: 0.95, depthM: 1.4, foam: 0xd8ffc8, foamAlpha: 0.7, foamWidth: 0.06, band: 0.25, gloss: 0.9, waveHeight: 0.025, waveSpeed: 0.5, viscosity: 0.6, glow: 0, glowAlpha: 0, caustics: 0, drop: 0x8ef07a, drops: 0.7 },
+  // the space map's (#127): cold and glowing: cyan over deep blue, a soft glow, slower than water
+  coolant: { color: 0x5ae0ff, deep: 0x0e5a8a, alpha: 0.55, deepAlpha: 0.92, depthM: 1.4, foam: 0xe8fcff, foamAlpha: 0.8, foamWidth: 0.05, band: 0.45, gloss: 0.4, waveHeight: 0.035, waveSpeed: 0.75, viscosity: 0.25, glow: 0x3ad8ff, glowAlpha: 0.22, caustics: 0.3, drop: 0xc8f6ff, drops: 0.8 },
 };
 
 /** The look for a liquid name; an unknown name gets water's look (a new liquid shows before its entry exists). */
