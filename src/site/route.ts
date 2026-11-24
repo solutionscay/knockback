@@ -1,3 +1,5 @@
+import { NAME_RE } from "../names";
+
 /** The site's routes (pure: tested). The server serves the same page for each; this picks what it shows. */
 export type Route =
   | { page: "lobby"; nav: "lobby"; id: string | null }
@@ -36,7 +38,7 @@ export function route(pathname: string, hash = ""): Route {
   if (m) {
     try {
       const name = decodeURIComponent(m[1]!);
-      if (/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/.test(name)) return { page: "agent", nav: "leaderboard", name };
+      if (NAME_RE.test(name)) return { page: "agent", nav: "leaderboard", name };
     } catch {
       /* bad escape: unknown */
     }

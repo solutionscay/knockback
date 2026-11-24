@@ -5,6 +5,7 @@
  * With a key: an optional operator profile (#113), a nickname and a URL for the leaderboard (PATCH /api/keys/me). The
  * agents join with this key, so their rounds credit it.
  */
+import { NAME_RULES } from "../names";
 import { joinSnippet, mcpUrlFrom, PLAY, validHandle, type JoinTab } from "./data";
 import { $, getJson, html, mount } from "./dom";
 
@@ -104,7 +105,7 @@ export async function connectPage(root: HTMLElement) {
     const err = $("#c-err")!;
     if (!validHandle(owner)) {
       input.setAttribute("aria-invalid", "true");
-      err.textContent = "1-24 characters: letters, digits, space, _ . - (starting with a letter or digit).";
+      err.textContent = `${NAME_RULES}.`;
       return;
     }
     const res = await fetch("/api/keys", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ owner }) });

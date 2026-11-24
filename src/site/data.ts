@@ -6,6 +6,7 @@ import { fightSecondsAt, roundPlayback } from "../flow/pacing";
 import { DEFAULT_TIMING } from "../flow/beats";
 import type { Identity } from "../sim/identity";
 import type { PlaybackPos } from "../viewer/embed";
+import { NAME_RE } from "../names";
 import { modelOf } from "../stats/models";
 
 // ------------------------------------------------------------------ API shapes (what the pages read)
@@ -275,9 +276,8 @@ export function scoreline(wins: number[]): string {
 
 // ------------------------------------------------------------------ JOIN (#42)
 
-const HANDLE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 /** Owner handles (and agent names) follow the same rules. */
-export const validHandle = (n: string) => HANDLE.test(n.trim());
+export const validHandle = (n: string) => NAME_RE.test(n.trim());
 
 export type JoinTab = "claude" | "codex" | "grok" | "json";
 

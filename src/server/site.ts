@@ -28,6 +28,7 @@ import { arenaBoard } from "../stats/board";
 import { modelBoard, type BoardRound, type ModelBoard, type ModelBoardRow } from "../stats/model-board";
 import { modelOf, remoteLabel, type SeatEntry } from "../stats/models";
 import { HttpError } from "./limits";
+import { NAME_RE } from "../names";
 import type { MatchServer } from "./match-server";
 import type { Operator } from "./profile";
 import type { RecordRow, RoundTier } from "./store";
@@ -336,7 +337,6 @@ export function buildProfile(
   return { name, owner: seats[0]?.owner ?? "", identity, weapon, label, summary, catchphrase, signature: signature || catchphrase, stats, style: { stance: mode(stances), target: mode(targets), weapon: mode(weapons), build: mode(builds) }, matches, now };
 }
 
-const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 /** how many recent stored matches an agent lookup scans */
 const SCAN = 300;
 
