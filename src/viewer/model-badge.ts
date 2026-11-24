@@ -12,6 +12,7 @@
  *
  * Sizes follow the viewer's HUD unit (--u, else vh; with a px floor, readable at 720p); a page can set --mb-fs on the badge instead.
  */
+import { esc } from "../html";
 import { modelOf, PROVIDER_COLOR, PROVIDER_MARK, type ModelInfo } from "../stats/models";
 
 export type ModelBadgeSize = "xs" | "sm" | "md" | "lg" | "xl";
@@ -32,7 +33,6 @@ export const MODEL_BADGE_CSS = `
 .kb-mb.xl { --mb-fs: max(calc(3.4 * var(--u, 1vh)), 20px); }
 `;
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const info = (m: ModelInfo | string | null | undefined): ModelInfo => (m && typeof m === "object" ? m : modelOf(m ?? null));
 
 /** The badge's text for screen readers and titles: "CLAUDE HAIKU (self-reported)". */

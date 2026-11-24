@@ -4,7 +4,8 @@
  */
 import { sanitizeIdentity, generateIdentities, type Identity } from "../sim/identity";
 import { nameInk } from "../viewer/palette";
-import { hex, portraitSvg, type Mood } from "../viewer/portrait";
+import { hex } from "../html";
+import { portraitSvg, type Mood } from "../viewer/portrait";
 import { html, raw, type Raw } from "./dom";
 
 export type SiteMood = "fight" | "cocky" | "win" | "ko" | "sleepy";

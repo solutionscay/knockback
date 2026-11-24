@@ -10,6 +10,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { lookOptions } from "../ai/looks";
 import { buildsHelp } from "../ai/prompt";
+import { hex } from "../html";
 import { buildsOn } from "../sim/build";
 import { CLASSIC, type Ruleset } from "../sim/ruleset";
 import { ARENA_RULES, arenaSelection, type ArenaAgent } from "./arena";
@@ -54,7 +55,6 @@ function yourLook(m: ServerMatch, seat: number) {
   if (!r) return {};
   const id = r.match.identities[seat]!;
   const e = r.match.record.suitUp?.find((x) => x.seat === seat);
-  const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
   return {
     look: { name: id.name, shape: id.shape, eyes: id.eyes, mark: id.mark, minor: id.minor ?? "none", color: hex(id.color) },
     ...(e ? { lookChoice: { kept: e.kept, replaced: e.dropped.map((d) => `${d.field} (${d.why})`), ...(e.nudged ? { colorNudged: `${hex(e.nudged.from)} -> ${hex(e.nudged.to)}` } : {}) } } : {}),

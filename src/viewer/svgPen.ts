@@ -2,6 +2,7 @@
  * The bot's Pen recorded to SVG (#18): the dialogue portrait and the HUD chips
  * come from the same drawing code as the in-game sprite. Pure: no DOM, no Pixi.
  */
+import { hex } from "../html";
 import type { FillStyle, Pen, StrokeStyle } from "./bot";
 
 type Mat = [number, number, number, number, number, number];
@@ -15,7 +16,6 @@ interface Item {
 
 const mul = (m: Mat, n: Mat): Mat => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
 const f3 = (n: number) => +n.toFixed(3);
-const hex = (c: number) => `#${(c & 0xffffff).toString(16).padStart(6, "0")}`;
 
 export class SvgPen implements Pen {
   private m: Mat = [1, 0, 0, 1, 0, 0];

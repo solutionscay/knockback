@@ -9,7 +9,8 @@ import type { Sim } from "../sim/sim";
 import type { Strategy } from "../sim/sim-types";
 import type { Decision } from "../sim/voice";
 import { bestRule, type KoEvent, type RuleFiring } from "./callouts";
-import { hex, portraitSvg } from "./portrait";
+import { esc, hex } from "../html";
+import { portraitSvg } from "./portrait";
 import { modelBadgeHtml } from "./model-badge";
 import { buildChipHtml } from "./build-view";
 import { strategyBuild } from "../sim/build";
@@ -29,7 +30,6 @@ export interface Hud {
   dialogue: HTMLElement;
 }
 
-export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 const STANCE: Record<Strategy["stance"], string> = { rush: "RUSH", distance: "KEEP DISTANCE", cover: "TAKE COVER", item: "GRAB ITEMS", overwatch: "OVERWATCH", flank: "FLANK", hold: "HOLD THE SPOT" };
 const MOOD_LABEL: Record<MoraleState, string> = { cocky: "COCKY", confident: "CONFIDENT", rattled: "RATTLED", furious: "FURIOUS", desperate: "DESPERATE" };

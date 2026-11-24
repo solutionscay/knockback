@@ -7,6 +7,7 @@
  * only shows it. Picks never touch the match: this module only reads the
  * server's /picks answers and the stream's picks events.
  */
+import { esc, hex } from "../html";
 import type { Beat } from "../flow/beats";
 import { modelBadgeHtml } from "./model-badge";
 
@@ -32,8 +33,6 @@ interface View {
   winner?: number;
 }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const hex = (c: number) => `#${(c >>> 0 & 0xffffff).toString(16).padStart(6, "0")}`;
 const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total) : 0);
 
 /** The server's answer, checked: numbers are numbers, strings are short strings, the portrait is the server's own SVG. */

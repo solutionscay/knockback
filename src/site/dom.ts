@@ -2,6 +2,8 @@
  * Small DOM helpers for the site pages. `html` escapes every interpolated value unless it is wrapped in raw()
  * (only for markup the page builds itself, like the bot SVGs).
  */
+import { esc } from "../html";
+
 export class Raw {
   constructor(readonly s: string) {}
   toString() {
@@ -9,7 +11,6 @@ export class Raw {
   }
 }
 export const raw = (s: string) => new Raw(s);
-export const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 function part(v: unknown): string {
   if (v === null || v === undefined || v === false) return "";
