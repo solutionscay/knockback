@@ -128,7 +128,7 @@ function forestPatch(): Grid {
 
 /**
  * #125, the cave: gravel over the rock frame over bedrock, a crater, a slime pool, its materials cracked, a timber
- * jump-through ledge, and a strip of the ceiling with a stalactite hanging from it.
+ * jump-through ledge, and a strip of the ceiling with two stalactites hanging from it.
  */
 function cavePatch(): Grid {
   const g = new Grid(22, 8, 0, 0);
@@ -143,10 +143,13 @@ function cavePatch(): Grid {
   [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Crumble, Mat.Ice].forEach((m, i) => { g.set(14 + i, 4, m); g.set(14 + i, 5, m); });
   crack(14, 5, 0.5); crack(15, 5, 0.2); crack(16, 5, 0.5); crack(18, 4, 0.2);
   for (let cx = 1; cx < 6; cx++) g.set(cx, 6, Mat.Wood, F_ONEWAY);
-  // the ceiling: a row of rock, a stalactite (3 wide, then 1) under it
+  // the ceiling: a row of rock, two stalactites under it (#134: drawn round): 3 wide for two rows then a tip, and 3 wide
+  // then a mid segment (cracked) and a tip
   for (let cx = 8; cx < 22; cx++) g.set(cx, 7, Mat.Rock);
-  for (const [cx, cy] of [[19, 6], [20, 6], [21, 6], [20, 5]]) g.set(cx!, cy!, Mat.Rock);
-  crack(20, 6, 0.5);
+  for (const [cx, cy] of [[9, 6], [10, 6], [11, 6], [9, 5], [10, 5], [11, 5], [10, 4]]) g.set(cx!, cy!, Mat.Rock);
+  for (const [cx, cy] of [[19, 6], [20, 6], [21, 6], [20, 5], [20, 4]]) g.set(cx!, cy!, Mat.Rock);
+  crack(20, 6, 0.5); crack(20, 5, 0.2); crack(19, 6, 0.5);
+  g.clear(20, 3); // a dip under the second, so it hangs free (one that reaches the ground is a pillar: square cells)
   return g;
 }
 

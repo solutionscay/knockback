@@ -7,7 +7,7 @@
  * its sewn edge), a tear overlay per crack stage, scorched felt when it burned out, and the bolt of a chain anchor.
  */
 import { Container, Sprite } from "pixi.js";
-import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, F_ONEWAY, MAT_HP, type Grid } from "../sim/grid";
+import { CELL, F_ANCHOR, F_BRIDGE, F_CHARRED, F_ONEWAY, MAT_HP, Mat, type Grid } from "../sim/grid";
 import { MAT_NAMES, type Theme } from "../sim/themes";
 import type { PieceCell } from "../sim/terrain";
 import { levelFrame, levelReady } from "./level-art";
@@ -59,14 +59,32 @@ export class Pool {
 
 interface Exposed { top: boolean; bottom: boolean; left: boolean; right: boolean }
 
+/**
+ * #134: the shape of a hanging rock cell (a stalactite's, a step in a cave ceiling's underside), drawn round from the
+ * theme's st-<shape>-<crack stage> frames instead of a square cell: both sides open and rock above it, a tip (nothing
+ * under it) or a tapered mid segment (rock under it, not standing on the ground: a pillar keeps its square cells); one
+ * side and the bottom open, a shoulder flaring in from that side. Null: a square cell.
+ */
+function hangShape(ex: Exposed, above: boolean, grounded: () => boolean): string | null {
+  if (ex.left && ex.right) return !above ? null : ex.bottom ? "tip" : grounded() ? null : "mid";
+  if (ex.bottom && ex.left) return "l";
+  if (ex.bottom && ex.right) return "r";
+  return null;
+}
+
 /** One cell with its bottom-left at world (x, y), drawn y-down. */
-function drawCell(p: Pool, theme: Theme, x: number, y: number, mat: number, stage: number, ex: Exposed, deep: boolean, flags: number, cx: number, cy: number) {
+function drawCell(p: Pool, theme: Theme, x: number, y: number, mat: number, stage: number, ex: Exposed, deep: boolean, flags: number, cx: number, cy: number, shape: string | null = null) {
   const top = -(y + CELL);
   const m = MAT_NAME[mat];
   if (!m) return;
   const r = h(cx, cy);
   const k = deep ? 0.72 : 0.92 + r * 0.08;
   const c = Math.round(255 * k);
+  // #134: a round hanging-rock frame carries its own soft edges and its own tears: no square cell, piping or overlay
+  if (shape && mat === Mat.Rock && p.put(theme, `st-${shape}-${stage}`, x, top, (c << 16) | (c << 8) | c)) {
+    if (ex.top) p.put(theme, `t-${m}`, x, top);
+    return;
+  }
   // #100: a jump-through cell reads lighter and a little see-through, with no piping under it (nothing to bump into)
   const through = (flags & F_ONEWAY) !== 0;
   p.put(theme, `c-${m}-${r < 0.5 ? 0 : 1}`, x, top, through ? 0xffffff : (c << 16) | (c << 8) | c, through ? 0.78 : 1);
@@ -149,7 +167,13 @@ export class TerrainView {
         let above = 0;
         for (let a = 1; a <= 4 && g.solid(cx, cy + a); a++) above++;
         const ex = { top: !g.solid(cx, cy + 1), bottom: !g.solid(cx, cy - 1), left: !g.solid(cx - 1, cy), right: !g.solid(cx + 1, cy) };
-        drawCell(p, this.theme, g.wx(cx), g.wy(cy), m, crackStage(g.hp[i]!, m), ex, above >= 4, g.flags[i]!, cx, cy);
+        // (row 0 has nothing under it only because the grid ends there)
+        const shape = m === Mat.Rock && cy > 0 ? hangShape(ex, !ex.top, () => {
+          let d = cy;
+          while (d >= 0 && g.solid(cx, d)) d--;
+          return d < 0;
+        }) : null;
+        drawCell(p, this.theme, g.wx(cx), g.wy(cy), m, crackStage(g.hp[i]!, m), ex, above >= 4, g.flags[i]!, cx, cy, shape);
         if (g.flags[i]! & F_ANCHOR) {
           // the anchor bolt; the chain above it is drawn by ChainView (chains.ts) up to the top of the view
           p.put(this.theme, "anchor", g.wx(cx) + CELL / 2, -(g.wy(cy) + CELL / 2));
@@ -167,7 +191,9 @@ export function drawPiece(c: Container, theme: Theme, cells: PieceCell[]) {
   const at = new Set(cells.map((q) => q.ly * 4096 + q.lx));
   for (const q of cells) {
     const ex = { top: !at.has((q.ly + 1) * 4096 + q.lx), bottom: !at.has((q.ly - 1) * 4096 + q.lx), left: !at.has(q.ly * 4096 + q.lx - 1), right: !at.has(q.ly * 4096 + q.lx + 1) };
-    drawCell(p, theme, q.lx * CELL, q.ly * CELL, q.mat, crackStage(q.hp, q.mat), ex, false, q.charred ? F_CHARRED : 0, q.lx, q.ly);
+    // a falling stalactite keeps its round cells (nothing in a loose piece stands on the ground)
+    const shape = q.mat === Mat.Rock ? hangShape(ex, !ex.top, () => false) : null;
+    drawCell(p, theme, q.lx * CELL, q.ly * CELL, q.mat, crackStage(q.hp, q.mat), ex, false, q.charred ? F_CHARRED : 0, q.lx, q.ly, shape);
   }
   p.end();
 }
