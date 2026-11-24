@@ -88,8 +88,6 @@ const SWING: Record<string, { dur: number; from: number }> = { bat: { dur: 0.5, 
 const SWING_FIRES = new Set(["lightning"]);
 /** Weapons whose fire loop keeps cycling while they keep firing (the flamethrower fires every few ticks). */
 const FIRE_LOOPS = new Set(["flamethrower"]);
-/** The marks with an overlay sheet (the major marks); the cape hangs behind the body. */
-export const PLUSH_MARKS = new Set(Object.keys(PLUSH_LAYOUT.sheets).filter((n) => n.startsWith("mark-")).map((n) => n.slice(5)));
 /** The body loops every build has (a body sheet and a fist sheet each). */
 export const PLUSH_LOOPS = ["idle", "run", "punch", "launched", "jump", "flinch", "ko", "celebrate"] as const;
 type Loop = (typeof PLUSH_LOOPS)[number];

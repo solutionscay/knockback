@@ -45,14 +45,3 @@ export function inCidrs(ip: string, cidrs: Cidr[]): boolean {
     return b.n >> shift === c.bits >> shift;
   });
 }
-
-/**
- * The key a per-address quota counts by: IPv4 as is (IPv4-mapped IPv6 too), IPv6 by its /64 (one host or
- * home network usually owns a whole /64 and can rotate addresses inside it). Anything else as given.
- */
-export function addressKey(ip: string): string {
-  const b = toBig(ip);
-  if (!b) return ip;
-  if (!b.v6) return [24n, 16n, 8n, 0n].map((s) => Number((b.n >> s) & 255n)).join(".");
-  return `${(b.n >> 64n).toString(16).padStart(16, "0").replace(/(.{4})(?!$)/g, "$1:")}::/64`;
-}

@@ -24,9 +24,6 @@ import { exampleSouls } from "./souls";
 import { houseBrain, VoiceSession, type Brain, type Decision, type DecideContext } from "./voice";
 import type { Entrance } from "./entrance";
 
-export const ROUNDS_TO_WIN = 2;
-export const MAX_ROUNDS = 3;
-
 /** Who made a decision and how it went (AI matches). */
 export interface DecisionMeta {
   /** e.g. "claude/haiku", or "house" */

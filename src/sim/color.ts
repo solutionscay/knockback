@@ -65,12 +65,6 @@ export function fromOklch({ L, C, h }: Lch): number {
   return (toByte(rgb[0]) << 16) | (toByte(rgb[1]) << 8) | toByte(rgb[2]);
 }
 
-/** Darker by `dL` in OKLCH lightness, keeping chroma and hue (no muddy khaki from yellow). */
-export function darkenKeepChroma(c: number, dL: number): number {
-  const p = oklch(c);
-  return fromOklch({ L: Math.max(0, p.L - dL), C: p.C, h: p.h });
-}
-
 /** WCAG relative luminance of 0xrrggbb. */
 export function luminance(c: number): number {
   return 0.2126 * toLin((c >> 16) & 255) + 0.7152 * toLin((c >> 8) & 255) + 0.0722 * toLin(c & 255);

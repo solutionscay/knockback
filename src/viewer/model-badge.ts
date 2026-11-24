@@ -7,7 +7,6 @@
  * mark on its left is tinted. A remote agent's model is what the agent said at join.
  *
  *   modelBadgeHtml(label | ModelInfo, "lg")      -> HTML string (values escaped)
- *   modelBadgeEl(label | ModelInfo, "sm")        -> an element built with textContent (for untrusted pages)
  *   ensureModelBadgeCss()                         -> adds MODEL_BADGE_CSS to the page once (browser only)
  *
  * Sizes follow the viewer's HUD unit (--u, else vh; with a px floor, readable at 720p); a page can set --mb-fs on the badge instead.
@@ -46,25 +45,6 @@ export function modelBadgeHtml(m: ModelInfo | string | null | undefined, size: M
   const x = info(m);
   const cls = `kb-mb ${size}${x.test ? " test" : ""}`;
   return `<span class="${cls}" data-provider="${esc(x.provider)}" title="${esc(modelBadgeTitle(x))}" style="--mp:${PROVIDER_COLOR[x.provider]}"><i class="mk" aria-hidden="true">${PROVIDER_MARK[x.provider]}</i><b class="mn">${esc(x.name)}</b></span>`;
-}
-
-/** The badge as an element built with textContent (for pages that never use innerHTML on data). */
-export function modelBadgeEl(m: ModelInfo | string | null | undefined, size: ModelBadgeSize = "sm", doc: Document = document): HTMLElement {
-  const x = info(m);
-  const root = doc.createElement("span");
-  root.className = `kb-mb ${size}${x.test ? " test" : ""}`;
-  root.dataset.provider = x.provider;
-  root.title = modelBadgeTitle(x);
-  root.style.setProperty("--mp", PROVIDER_COLOR[x.provider]);
-  const mk = doc.createElement("i");
-  mk.className = "mk";
-  mk.setAttribute("aria-hidden", "true");
-  mk.textContent = PROVIDER_MARK[x.provider];
-  const mn = doc.createElement("b");
-  mn.className = "mn";
-  mn.textContent = x.name;
-  root.append(mk, mn);
-  return root;
 }
 
 /** Add the badge styles to the page once (browser only). */

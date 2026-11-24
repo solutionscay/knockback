@@ -46,7 +46,6 @@ export const enum Liquid {
   Acid = 4,
 }
 export const LIQUID_NAMES = ["none", "water", "oil", "lava", "acid"] as const;
-export type LiquidName = Exclude<(typeof LIQUID_NAMES)[number], "none">;
 
 export const F_ANCHOR = 1; // holds up whatever is connected to it (hanging platforms)
 export const F_BRIDGE = 2;

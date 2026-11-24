@@ -39,7 +39,6 @@ function buildRuleSchema(ruleset: Ruleset) {
     })
     .describe("a conditional rule");
 }
-export const ruleSchema = buildRuleSchema(CLASSIC);
 
 /** The build field (#80): ranges from the build rules; the parser checks the sum and says how to fix it. */
 function buildSchema() {

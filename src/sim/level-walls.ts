@@ -1,7 +1,6 @@
 import { CELL, Grid, Mat } from "./grid";
 import { NavGraph } from "./nav";
 import { CLASSIC, type Ruleset } from "./ruleset";
-import { WALLS } from "./level-config";
 import type { Rng } from "./rng";
 
 export interface Wall {
@@ -10,8 +9,6 @@ export interface Wall {
   y: number;
   top: number;
 }
-
-export const WALL_CLEARANCE = WALLS.clearance;
 
 /** Room for a run-up and a full jump on both sides of a generated wall. */
 export function wallCorridor(wall: Wall, x0: number, x1: number, y: number, height: number, ruleset: Ruleset = CLASSIC) {

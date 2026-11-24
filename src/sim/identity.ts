@@ -48,8 +48,6 @@ export type Shape = (typeof SHAPES)[number];
 export type Eyes = (typeof EYES)[number];
 /** A mark; "none" only as a minor mark (no second mark). */
 export type Mark = (typeof MARKS)[number] | "none";
-export type MajorMark = (typeof MAJOR_MARKS)[number];
-export type MinorMark = (typeof MINOR_MARKS)[number];
 
 export interface Identity {
   name: string;
@@ -98,9 +96,6 @@ export function generateName(rng: Rng): string {
   return n.slice(0, NAME_MAX);
 }
 
-/** How many different names the generator can make (for the report and a test). */
-export const NAME_POOL_SIZE = new Set([...NAME_WORDS, ...NAME_START.flatMap((s) => NAME_END.map((e) => (s + e).slice(0, NAME_MAX)))].filter((n) => validName(n))).size;
-
 /** A name an identity may carry: 2-12 letters, digits, spaces or dashes, starting with a letter. */
 export function validName(n: unknown): n is string {
   return typeof n === "string" && /^[A-Za-z][A-Za-z0-9 -]{1,11}$/.test(n) && !NAME_RESERVED.has(n.toLowerCase());
@@ -116,15 +111,6 @@ export function hsl(h: number, s: number, l: number): number {
   return (f(0) << 16) | (f(8) << 8) | f(4);
 }
 
-
-/** Hue in degrees (0-360) and lightness (0-1) of 0xrrggbb. */
-export function hueLight(c: number): { h: number; l: number; s: number } {
-  const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
-  let h = 0;
-  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return { h: (h * 60 + 360) % 360, l, s: d ? d / (1 - Math.abs(2 * l - 1)) : 0 };
-}
 
 /** Fighter colors in a match are at least this far apart in OKLab (perceptual, so yellow next to chartreuse counts as close) ... */
 export const MIN_COLOR_DISTANCE = 0.11;
