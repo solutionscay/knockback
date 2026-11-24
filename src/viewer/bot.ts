@@ -94,8 +94,6 @@ export interface Face {
   glow: number;
 }
 export type FaceMood = "confident" | "cocky" | "rattled" | "furious" | "desperate" | "hit" | "stun" | "win" | "ko" | "white" | "sleepy";
-export const MORALE_FACES: FaceMood[] = ["confident", "cocky", "rattled", "furious", "desperate"];
-export const ALL_FACES: FaceMood[] = [...MORALE_FACES, "hit", "stun", "ko", "win"];
 
 type Cells = [number, number][];
 /** Resting eyes, left eye in columns 1-4 (the right eye is its mirror, 10 - c). One per eye style in the identity pool. */

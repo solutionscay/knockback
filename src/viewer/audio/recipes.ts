@@ -302,5 +302,3 @@ export const SOUNDS: Record<string, SoundDef> = {
     group: "ui", max: 3, gap: 0.05, priority: 9,
   },
 };
-
-export const SOUND_NAMES = Object.keys(SOUNDS);

@@ -24,7 +24,6 @@ export interface Operator {
   url: string | null;
 }
 
-export const OPERATOR_ID_RE = /^op_[0-9a-f]{16}$/;
 export const newOperatorId = () => `op_${randomBytes(8).toString("hex")}`;
 
 export const NICKNAME_MAX = 32;

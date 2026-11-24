@@ -174,11 +174,6 @@ export function arenaInfo(raw: unknown): ArenaInfo | null {
   };
 }
 
-/** The crown's streak in words (#65): "streak 3 (2 against agents)"; a house bot's reign is not recorded (pure). */
-export function crownText(c: CrownInfo): string {
-  return `streak ${c.streak}${c.agent && c.ranked ? ` (${c.ranked} against agents)` : ""}`;
-}
-
 /** GET /api/leaderboard (#65): agents and owners by rounds, agent seats only. */
 export interface BoardRow {
   vsAgents: { rounds: number; wins: number };
@@ -213,11 +208,6 @@ export function operatorOf(v: unknown): OperatorInfo | null {
     }
   }
   return { id: o.id, nickname: o.nickname.slice(0, 32), url };
-}
-
-/** Wins and rounds as "3 / 5 · 60%"; "–" with no rounds (pure). */
-export function tallyText(t: { rounds: number; wins: number }): string {
-  return t.rounds ? `${t.wins} / ${t.rounds} · ${Math.round((t.wins / t.rounds) * 100)}%` : "–";
 }
 
 /** Who sits in each seat for the next round: an agent (and the round it enters) or a house bot (pure). */
@@ -395,13 +385,6 @@ export function reachedPos(at: PlaybackPos | null, when: PlaybackPos): boolean {
   if (at.round !== when.round) return at.round > when.round;
   if (at.phase !== when.phase) return PH[at.phase] > PH[when.phase];
   return at.phase !== "fight" || at.tick >= when.tick;
-}
-
-/** Entries viewers have reached, newest first. */
-export function visibleFeed(entries: FeedEntry[], at: PlaybackPos | null): FeedEntry[] {
-  // one entry per key: a check-in comes once per seat asked, the same moment for all
-  const seen = new Set<string>();
-  return entries.filter((e) => reachedPos(at, e.when) && !seen.has(e.key) && seen.add(e.key)).reverse();
 }
 
 // ------------------------------------------------------------------ replay timeline (/replay)

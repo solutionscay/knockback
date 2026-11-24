@@ -8,7 +8,6 @@ import { Assets, Rectangle, type Sprite, Texture } from "pixi.js";
 import { WORLD_LAYOUT, WORLD_TILES, WORLD_URLS } from "./art/world/layout";
 import { plushFormat } from "./plush-bot";
 
-export type WorldFrame = keyof typeof WORLD_LAYOUT.frames;
 type Group = keyof typeof WORLD_URLS;
 interface FrameMeta { g: string; x: number; y: number; w: number; h: number; ax: number; ay: number; ppm: number }
 const frame = (n: string) => (WORLD_LAYOUT.frames as unknown as Record<string, FrameMeta | undefined>)[n];
@@ -37,9 +36,6 @@ export function worldTile(name: keyof typeof WORLD_TILES): { texture: Texture; w
   const t = WORLD_TILES[name];
   return { texture: tiles.get(name) ?? Texture.EMPTY, w: t.w / t.ppm, h: t.h / t.ppm };
 }
-
-/** Is there a world sprite of this name (and is it loaded)? */
-export const hasWorldFrame = (name: string) => tex.has(name);
 
 /**
  * Show frame `name` on sprite `s`: its anchor on the object's center, sized in meters at the frame's own scale, times
