@@ -693,11 +693,21 @@ export class ControllerNavigation {
     // #114: afloat is never grounded, so a landing from a jump that fell short stayed the air's target: the swimmer bobbed
     // over that spot. Afloat with no link, swim for the goal instead
     else if (!this.activeLink && swimmable(sim.grid.liquidAt(mp.x, sim.feetY(me) - 0.6))) this.jumpTo = null;
-    if (surf) {
-      let plan = nav.fighterPlan(sim.grid, me.surface, mp.x);
+    // afloat (never grounded, so me.surface is still the rim it left): the pool it swims in is where it is. The flight it
+    // was on is over (a drop into the pool, or a jump that fell short into it), so it plans from the pool and swims for
+    // the way out that leads to the goal, instead of holding over the link's landing and then turning back to the rim
+    // it came from, to drop in again (#135: the pool-edge loops on the beach, forest, cave and space)
+    const pool = this.swimPool(sim, me, mp);
+    if (pool) {
+      this.activeLink = null;
+      this.jumpTo = null;
+    }
+    const from = pool ?? surf;
+    if (from) {
+      let plan = nav.fighterPlan(sim.grid, from.id, mp.x);
       // the zone is coming and no jump we can make leads into it: a risky jump beats being pushed into the pit
       const [zl, zr] = this.zoneBounds(sim);
-      if ((mp.x < zl || mp.x > zr) && !nav.surfaces.some((s) => plan.cost[s.id] !== Infinity && s.x1 > zl && s.x0 < zr)) plan = nav.plan(me.surface, mp.x);
+      if ((mp.x < zl || mp.x > zr) && !nav.surfaces.some((s) => plan.cost[s.id] !== Infinity && s.x1 > zl && s.x0 < zr)) plan = nav.plan(from.id, mp.x);
       // a target inside a ranged weapon's reach: look again soon, to back off in time (#69)
       const reach = weapon ? weaponReach(sim.ruleset, me, weapon) : undefined;
       if (reach && isRanged(sim, weapon!) && length2D(tp.x - mp.x, tp.y - mp.y) < reach.standOff * 0.6) this.nextEval = Math.min(this.nextEval, sim.tick + 8);
@@ -734,10 +744,14 @@ export class ControllerNavigation {
         this.nextEval = sim.tick;
       }
       // walked off the edge of a drop link: fly it as planned (#84)
-      if (!this.activeLink && !me.grounded && lastEdge?.kind === "drop" && lastEdge.from === me.surface) this.takeLink(sim, nav, lastEdge);
+      if (!pool && !this.activeLink && !me.grounded && lastEdge?.kind === "drop" && lastEdge.from === me.surface) this.takeLink(sim, nav, lastEdge);
       // a link in flight: its landing (the flight rule is applied below, once landing() has had its say)
       if (this.activeLink) moveTarget = this.activeLink.landX;
-      else if (!me.grounded) {
+      else if (pool) {
+        // swim for where the way out lands (the strokes lift it over that rim), or straight for a goal in this pool
+        const out = goal.surface !== pool.id ? plan.firstLink[goal.surface] : null;
+        moveTarget = out ? out.landX : goal.x;
+      } else if (!me.grounded) {
         // in the air with no jump planned (a hop, a knock, a nav rebuild): head for the landing, then the goal
         moveTarget = this.jumpTo ? this.jumpTo.x : goal.x;
       } else if (goal.surface !== me.surface) {
@@ -761,16 +775,16 @@ export class ControllerNavigation {
           } else if (link.through) {
             // down through the jump-through platform we stand on (#100): hold down over the spot; standing on a crate
             // or a block on the platform (down does nothing there, #109), the nearest clear spot on it instead
-            const at = sim.feetY(me) - surf.y > 0.3 ? this.clearDropX(sim, me, surf, link.takeoffX) : link.takeoffX;
+            const at = sim.feetY(me) - from.y > 0.3 ? this.clearDropX(sim, me, from, link.takeoffX) : link.takeoffX;
             moveTarget = at;
             if (Math.abs(mp.x - at) < 0.5) {
               input.down = true;
               this.takeLink(sim, nav, link);
             }
           } else moveTarget = link.landX;
-        } else moveTarget = clamp(goal.x, surf.x0 + 0.4, surf.x1 - 0.4);
+        } else moveTarget = clamp(goal.x, from.x0 + 0.4, from.x1 - 0.4);
       } else if (me.grounded) {
-        moveTarget = clamp(goal.x, surf.x0 + 0.35, surf.x1 - 0.35);
+        moveTarget = clamp(goal.x, from.x0 + 0.35, from.x1 - 0.35);
       }
     }
 
@@ -784,7 +798,7 @@ export class ControllerNavigation {
     }
 
     // in the air (#69): only steer where a surface can still catch us; on a link, fly it the planner's way (#84)
-    if (!me.grounded) {
+    if (!me.grounded && !pool) {
       moveTarget = this.landing(sim, me, mp, mv, moveTarget, input);
       if (this.activeLink && nav.surfaces[this.activeLink.to]) moveTarget = nav.flightAim(sim.grid, this.activeLink, mp.x, sim.feetY(me), mv.x, mv.y, moveTarget);
     }
@@ -839,6 +853,20 @@ export class ControllerNavigation {
     } else this.stuck = 0;
     this.guardLedge(sim, me, mp, mv, input);
     return surf;
+  }
+
+  /**
+   * The pool a fighter is afloat in (#135): not grounded, the body or the feet in water, slime or coolant (or bobbing just
+   * over it, as guardLiquid counts it), over the floor of a pool's nav surface. Null on dry ground or in the air.
+   */
+  private swimPool(sim: Sim, me: Fighter, mp: { x: number; y: number }): Surface | null {
+    if (me.grounded) return null;
+    const g = sim.grid;
+    const feet = sim.feetY(me);
+    if (!swimmable(g.liquidAt(mp.x, mp.y)) && !swimmable(g.liquidAt(mp.x, feet + 0.1)) && !swimmable(g.liquidAt(mp.x, feet - 0.6))) return null;
+    let best: Surface | null = null;
+    for (const s of sim.nav.surfaces) if (swimmable(s.liquid) && mp.x >= s.x0 && mp.x <= s.x1 && s.y < feet + 0.3 && (!best || s.y > best.y)) best = s;
+    return best;
   }
 
   /** Start flying `link` (a jump just pressed, or a drop just walked off), as the planner flew it (#84). */
