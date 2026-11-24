@@ -3,6 +3,7 @@
  * World units are meters with y up; the world container maps (x, y) to (x, -y).
  */
 import { Container, Graphics, Rectangle, Sprite, type Application } from "pixi.js";
+import { CELL, type Grid } from "../sim/grid";
 import type { Sim } from "../sim/sim";
 import type { Entity, SimEvent } from "../sim/sim-types";
 import type { Callout } from "./callouts";
@@ -31,6 +32,8 @@ interface Xform {
 export type XformAt = (e: Entity, alpha: number) => Xform;
 
 const ZONE_COLOR = 0xff2a4a;
+/** #133: the beach sea's horizon hangs this far (m) under the level's lowest ground, below every fighter's feet */
+const SEA_BELOW = 0.6;
 
 export class Scene {
   private sim!: Sim;
@@ -70,6 +73,8 @@ export class Scene {
   readonly camera = new SceneCamera();
   private prev = new Map<number, Xform>();
   private time = 0;
+  /** #133: the beach: the top of the level's lowest ground (m), where the sea's horizon hangs (drawBeach) */
+  private seaLevel = 0;
 
   constructor(private readonly app: Application) {
     app.stage.addChild(this.sky, this.backdrop, this.hills, this.world, this.overlay, this.effects.flashScreen);
@@ -156,6 +161,7 @@ export class Scene {
     this.props.clearDrops();
     this.props.theme = sim.level.theme;
     this.pal = PALETTES[sim.level.theme];
+    this.seaLevel = lowestGround(sim.grid);
     if (this.terrainView) this.terrainView.container.destroy({ children: true });
     void levelRound(sim.level.theme); // the theme's terrain art (the view draws once it arrives)
     this.terrainView = new TerrainView(sim.grid, sim.level.theme);
@@ -231,13 +237,19 @@ export class Scene {
 
   /**
    * #111: the beach. Below the sky: the sea from the horizon down (its color, then the plush sea strip repeated along
-   * the horizon), the sun low over it, two clouds drifting, a far island; low dunes in front. Slow parallax, as the
+   * the horizon), the sun over it, two clouds drifting, a far island; low dunes in front. Slow sideways parallax, as the
    * hills. Before the atlas arrives, only the colors.
+   *
+   * #133: the horizon sits in the world, SEA_BELOW m under the level's lowest ground (seaLevel), not at a fixed share of the
+   * screen: a fighter standing anywhere stands above the sea line, on the beach, in View all and in the close cameras
+   * alike. The sea shows past the level's ends and down its pits; the sun and clouds keep to the sky.
    */
   private drawBeach(W: number, H: number) {
     const cam = this.camera.cam;
+    const f = this.lastFrame ?? { cx: cam.x, cy: cam.y, s: cam.s };
     const k = H / 1080; // atlas pixels to screen pixels: the sea strip is 128 px tall at 1080p
-    const horizon = H * 0.56 + cam.y * cam.s * 0.08;
+    const horizon = H / 2 + (f.cy - (this.seaLevel - SEA_BELOW)) * f.s;
+    const sky = Math.min(horizon, H * 0.62); // the sun and clouds: over the sea, never under the bottom of the sky
     this.sky.rect(0, horizon, W, H - horizon).fill(this.pal.hills[0]);
     const b = this.backdrop;
     b.visible = true;
@@ -256,9 +268,9 @@ export class Scene {
       return true;
     };
     const wrap = (x: number, span: number) => ((x % span) + span) % span - span * 0.2;
-    put("bg-sun", W * 0.7 - cam.x * cam.s * 0.02, horizon - H * 0.09, k * 0.9);
-    put("bg-cloud-0", wrap(W * 0.2 + this.time * 6 * k - cam.x * cam.s * 0.05, W * 1.4), horizon - H * 0.3, k * 0.85, 0.92);
-    put("bg-cloud-1", wrap(W * 0.95 + this.time * 4 * k - cam.x * cam.s * 0.04, W * 1.4), horizon - H * 0.2, k * 0.7, 0.85);
+    put("bg-sun", W * 0.7 - cam.x * cam.s * 0.02, sky - H * 0.09, k * 0.9);
+    put("bg-cloud-0", wrap(W * 0.2 + this.time * 6 * k - cam.x * cam.s * 0.05, W * 1.4), sky - H * 0.3, k * 0.85, 0.92);
+    put("bg-cloud-1", wrap(W * 0.95 + this.time * 4 * k - cam.x * cam.s * 0.04, W * 1.4), sky - H * 0.2, k * 0.7, 0.85);
     put("bg-island", wrap(W * 0.28 - cam.x * cam.s * 0.08, W * 1.6), horizon + 10 * k, k * 0.7, 0.85, 0xb0b8c0);
     const sea = levelFrame(theme, "bg-sea");
     if (sea) {
@@ -276,7 +288,7 @@ export class Scene {
     const h = this.hills;
     h.clear();
     const ox2 = -cam.x * cam.s * 0.45;
-    const base2 = H * 0.86 + cam.y * cam.s * 0.25;
+    const base2 = horizon + H * 0.3; // under the sea strip, as far below the horizon as before
     const pts: number[] = [];
     for (let x = -200; x <= W + 200; x += 30) {
       const wx = (x - ox2) / 110;
@@ -598,6 +610,20 @@ function g3(g: Graphics, x: number, y: number, dir: 1 | -1, alpha: number) {
     .lineTo(x + 0.17 * dir, y)
     .lineTo(x - 0.2 * dir, y + 0.3)
     .stroke({ width: 0.12, color: 0xff6a7d, alpha, cap: "round", join: "round" });
+}
+
+/**
+ * The top (m) of the level's lowest ground: per column, the solid run up from the grid's bottom row (a pool's liquid
+ * counts as ground), the lowest of those tops. Columns with nothing at the bottom (pits, the void) don't count.
+ */
+function lowestGround(g: Grid): number {
+  let low = Infinity;
+  for (let cx = 0; cx < g.cols; cx++) {
+    let cy = 0;
+    while (cy < g.rows && (g.solid(cx, cy) || g.liq[cy * g.cols + cx]! > 0)) cy++;
+    if (cy > 0) low = Math.min(low, g.wy(cy - 1) + CELL);
+  }
+  return isFinite(low) ? low : 0;
 }
 
 function lerpColor(a: number, b: number, t: number): number {
