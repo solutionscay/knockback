@@ -8,6 +8,8 @@ import { ALL_THEMES, MAT_NAMES, THEME_DEFS, themeMatColors, type MatName, type T
 export interface Palette {
   sky: [number, number];
   hills: [number, number];
+  /** the backdrop (#111: "beach" draws the sun, clouds, island and sea from the theme's atlas) */
+  background: "hills" | "beach";
   /** Mat ID -> color */
   mat: Record<number, number>;
 }
@@ -19,7 +21,7 @@ function palette(t: Theme): Palette {
   MAT_NAMES.forEach((n, id) => {
     if (n) mat[id] = colors[n as MatName];
   });
-  return { sky: [...look.sky] as [number, number], hills: [...look.hills] as [number, number], mat };
+  return { sky: [...look.sky] as [number, number], hills: [...look.hills] as [number, number], background: look.background, mat };
 }
 
 export const PALETTES: Record<Theme, Palette> = Object.fromEntries(ALL_THEMES.map((t) => [t, palette(t)])) as Record<Theme, Palette>;

@@ -23,13 +23,14 @@ const GOLDEN_MATCH_SEED = 7;
 const GOLDEN = {
   // #95: the weapon economy (few, spread-out weapons, one slot plus fists, ammo on every weapon, bots that re-arm)
   // #100: the stage (a gap with a catwalk, jump-through platforms, soft over hard ground, wall jump); bots climb or dig out
-  fight: "37bc82cd",
-  fightWithUpdate: "75504571",
-  closeQuarters: "770dea9c",
+  // #111: the beach in the rotation (match seeds pick from five themes); bots afloat swim for a rim
+  fight: "90d82e91",
+  fightWithUpdate: "03f3642a",
+  closeQuarters: "0ddbf3ae",
   // house bots play their souls' builds (#80)
-  match: ["5e759f76", "a2e21b72"],
+  match: ["0966d719",  "83b35ac0"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["bc41d8c5", "86b1c8e4"],
+  neutralMatch: ["355f5fea",  "52954c21",  "8f4e012f"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

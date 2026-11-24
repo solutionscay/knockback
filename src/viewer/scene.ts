@@ -2,7 +2,7 @@
  * The PixiJS scene: terrain, props, fighters, effects, camera, health bars.
  * World units are meters with y up; the world container maps (x, y) to (x, -y).
  */
-import { Container, Graphics, Rectangle, type Application } from "pixi.js";
+import { Container, Graphics, Rectangle, Sprite, type Application } from "pixi.js";
 import type { Sim } from "../sim/sim";
 import type { Entity, SimEvent } from "../sim/sim-types";
 import type { Callout } from "./callouts";
@@ -17,7 +17,7 @@ import { ProjectileViews } from "./scene-projectiles";
 import { PropViews } from "./scene-props";
 import { ChainView } from "./chains";
 import { FireView } from "./fire";
-import { levelRound } from "./level-art";
+import { levelFrame, levelRound, setLevelSprite } from "./level-art";
 import { TerrainView } from "./terrainview";
 import { LiquidView } from "./liquidview";
 
@@ -36,6 +36,8 @@ export class Scene {
   private sim!: Sim;
   private sky = new Graphics();
   private hills = new Graphics();
+  /** #111: the beach's backdrop sprites (sun, clouds, island, the sea strips), between the sky and the near dunes */
+  private backdrop = new Container();
   private world = new Container();
   private terrainView: TerrainView | null = null;
   /** #94: the liquids, in front of the fighters */
@@ -69,7 +71,7 @@ export class Scene {
   private time = 0;
 
   constructor(private readonly app: Application) {
-    app.stage.addChild(this.sky, this.hills, this.world, this.overlay, this.effects.flashScreen);
+    app.stage.addChild(this.sky, this.backdrop, this.hills, this.world, this.overlay, this.effects.flashScreen);
     this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.liquidLayer, this.entrance.layer, this.projectiles.graphics, this.projectiles.sprites, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
     this.projectiles.muzzleOf = (id) => this.fighters.muzzle(id); // rockets, mines, the grapple line leave the plush hand
@@ -194,10 +196,12 @@ export class Scene {
       const c = lerpColor(this.pal.sky[0], this.pal.sky[1], t);
       s.rect(0, (H * i) / n, W, H / n + 1).fill(c);
     }
+    const cam = this.camera.cam;
+    if (this.pal.background === "beach") return this.drawBeach(W, H);
+    this.backdrop.visible = false;
     // hills with parallax
     const h = this.hills;
     h.clear();
-    const cam = this.camera.cam;
     const par = 0.25;
     const base = H * 0.62 + cam.y * cam.s * 0.15;
     const ox = -cam.x * cam.s * par;
@@ -217,6 +221,63 @@ export class Scene {
     }
     pts2.push(W + 200, H, -200, H);
     h.poly(pts2).fill(this.pal.hills[0]);
+  }
+
+  /**
+   * #111: the beach. Below the sky: the sea from the horizon down (its color, then the plush sea strip repeated along
+   * the horizon), the sun low over it, two clouds drifting, a far island; low dunes in front. Slow parallax, as the
+   * hills. Before the atlas arrives, only the colors.
+   */
+  private drawBeach(W: number, H: number) {
+    const cam = this.camera.cam;
+    const k = H / 1080; // atlas pixels to screen pixels: the sea strip is 128 px tall at 1080p
+    const horizon = H * 0.56 + cam.y * cam.s * 0.08;
+    this.sky.rect(0, horizon, W, H - horizon).fill(this.pal.hills[0]);
+    const b = this.backdrop;
+    b.visible = true;
+    const theme = this.sim.level.theme;
+    let i = 0;
+    const put = (name: string, x: number, y: number, scale = k, alpha = 1, tint = 0xffffff) => {
+      let s = b.children[i] as Sprite | undefined;
+      if (!s) s = b.addChild(new Sprite());
+      i++;
+      if (!setLevelSprite(s, theme, name)) return (s.visible = false);
+      s.scale.set(scale);
+      s.anchor.set(0.5, 1);
+      s.position.set(x, y);
+      s.alpha = alpha;
+      s.tint = tint;
+      return true;
+    };
+    const wrap = (x: number, span: number) => ((x % span) + span) % span - span * 0.2;
+    put("bg-sun", W * 0.7 - cam.x * cam.s * 0.02, horizon - H * 0.09, k * 0.9);
+    put("bg-cloud-0", wrap(W * 0.2 + this.time * 6 * k - cam.x * cam.s * 0.05, W * 1.4), horizon - H * 0.3, k * 0.85, 0.92);
+    put("bg-cloud-1", wrap(W * 0.95 + this.time * 4 * k - cam.x * cam.s * 0.04, W * 1.4), horizon - H * 0.2, k * 0.7, 0.85);
+    put("bg-island", wrap(W * 0.28 - cam.x * cam.s * 0.08, W * 1.6), horizon + 10 * k, k * 0.7, 0.85, 0xb0b8c0);
+    const sea = levelFrame(theme, "bg-sea");
+    if (sea) {
+      const tw = sea.tex.frame.width * k;
+      const ox = ((-cam.x * cam.s * 0.12) % tw + tw) % tw - tw;
+      for (let x = ox; x < W + 1; x += tw) {
+        // darker than the tide pools in front, so the level's water reads as the level's
+        put("bg-sea", x + tw / 2, horizon + sea.tex.frame.height * k - 2 * k, k, 1, 0xa0aab4);
+        const s = b.children[i - 1] as Sprite;
+        s.width = tw + 1; // no hairline between the strips
+      }
+    }
+    for (let j = i; j < b.children.length; j++) b.children[j]!.visible = false;
+    // the near dunes
+    const h = this.hills;
+    h.clear();
+    const ox2 = -cam.x * cam.s * 0.45;
+    const base2 = H * 0.86 + cam.y * cam.s * 0.25;
+    const pts: number[] = [];
+    for (let x = -200; x <= W + 200; x += 30) {
+      const wx = (x - ox2) / 110;
+      pts.push(x, base2 - (Math.sin(wx * 1.1 + 2) * 26 + Math.sin(wx * 2.7) * 9 + 30) * this.ui);
+    }
+    pts.push(W + 200, H, -200, H);
+    h.poly(pts).fill(this.pal.hills[1]);
   }
 
   /** Called before every sim tick so render can interpolate. */

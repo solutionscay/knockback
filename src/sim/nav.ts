@@ -26,7 +26,7 @@ export interface Surface {
 }
 
 /** #94: extra path cost of landing on a surface under each liquid: lava and acid are avoided, water and oil slow. */
-export const LIQUID_COST: readonly number[] = [0, 3, 2, 60, 60];
+export const LIQUID_COST: readonly number[] = [0, 10, 2, 60, 60];
 /** Hurts to stand in (lava, acid). */
 export const hazardous = (l: number) => l === Liquid.Lava || l === Liquid.Acid;
 

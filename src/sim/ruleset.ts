@@ -29,7 +29,7 @@ const lists: Readonly<Record<string, readonly (string | number)[]>> = {
 };
 const signed = new Set(["hpBonus", "ringOutY", "bottom", "minHeight", "groundMin", "desperateBelow", "confidentAt"]);
 const realArrays = new Set(["edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "platformLength", "platformHeights", "weightLength", "heights", "hitPoints", "density", "width"]);
-const ranges = new Set(["softDepth", "pools", "width", "depth", "halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
+const ranges = new Set(["softDepth", "topRows", "pools", "width", "depth", "halfWidth", "edgeInset", "mainPitWidth", "extraPitWidth", "groundHeight", "rooftopHeight", "groundRun", "overhangCells", "platformLength", "coverStacks", "coverColumns", "coverRows", "weightLength", "widthCells", "extraPits", "towers", "platforms"]);
 const zeroAllowed = new Set(["nearSpawn", "middle", "high", "maxLooseWeapons", "groundCoverStacks", "minimumCover", "minimumProps", "minimumPlatforms", "skyDrops", "skyDropTicks", "betweenCaches", "startWeapons", "powerStart", "holdTicks", "firstTick"]);
 const strictlyPositive = new Set(["ammo", "pellets", "cooldown", "boltCooldown", "pulseTicks", "interval", "chargeTicks", "aimTicks", "viewStep", "step", "propEvery", "dropEvery", "shockEvery", "everyTicks", "peekEvery", "pressFlip", "flankPeriod", "barrelPairDivisor", "attempts", "maxRounds", "winsToTake", "fightTicks", "finishTicks"]);
 const fractions = /(?:chance|^crumble$|retention|^(?:regular|cracked)Hp)$/i;
@@ -178,6 +178,7 @@ export function validateRuleset(input: unknown): Ruleset {
     require(t.physics.gravity >= 0.25 && t.physics.gravity <= 2 && t.physics.friction >= 0.1 && t.physics.friction <= 2, `${at}.physics`, "gravity expected 0.25 to 2, friction 0.1 to 2");
     require(t.speckle.chance <= 1, `${at}.speckle.chance`, "expected 0 to 1");
     require(t.stage.oneWay <= 1 && t.stage.catwalkHeight >= 1 && t.stage.catwalkHeight <= 6, `${at}.stage`, "oneWay expected 0 to 1, catwalkHeight 1 to 6 m");
+    require(t.stage.topRows[0] >= 1 && t.stage.topRows[1] <= 4, `${at}.stage.topRows`, "expected 1 to 4 rows");
     const H = t.hazards;
     require(H.pools[1] === 0 || H.water + H.oil + H.lava + H.acid > 0, `${at}.hazards`, "pools need a liquid with positive weight");
     require(H.width[0] >= 1 && H.width[1] <= 8 && H.depth[0] >= 1 && H.depth[1] <= 6 && H.pools[1] <= 6, `${at}.hazards`, "width expected 1 to 8 meters, depth 1 to 6 cells, at most 6 pools");
