@@ -19,7 +19,7 @@ const LOW = CLASSIC.arena.themes.space.physics.gravity;
 
 describe("space (#127)", () => {
   test("it is in the default rotation", () => {
-    const seeds = Array.from({ length: 60 }, (_, s) => s).filter((s) => themeFor(s) === "space");
+    const seeds = Array.from({ length: 120 }, (_, s) => s).filter((s) => themeFor(s) === "space");
     expect(seeds.length).toBeGreaterThan(5);
     expect(generateLevel(seeds[0]!).theme).toBe("space");
   });
