@@ -31,9 +31,10 @@ const GOLDEN = {
   // on mud asks for what mud allows, a swimmer's splash re-arms after 45 ticks
   // #125: the cave in the rotation as well (match seeds pick from seven themes)
   // #127: space in the rotation as well (match seeds pick from eight themes; its rounds play low gravity)
-  fight: "cdc2f213",
-  fightWithUpdate: "b57c201f",
-  closeQuarters: "f7c21089",
+  // #135: a swimmer plans from the pool it is in and swims for the way out (fight 1001 is a forest round, with a creek)
+  fight: "5b45284e",
+  fightWithUpdate: "55fb2e75",
+  closeQuarters: "5be44550",
   // house bots play their souls' builds (#80)
   match: ["2d4610c7", "dc7ee96c", "45beb234"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
