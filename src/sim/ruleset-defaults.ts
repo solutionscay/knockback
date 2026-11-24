@@ -139,8 +139,8 @@ export const RULESET_DEFAULTS = {
   pickups: {
     enabled: POWER_LIST as readonly (typeof POWER_LIST)[number][],
     // #95: one weapon between each pair of neighbouring spawns and one power weapon (high or exposed), no sky drops,
-    // rarer drops
-    item: C.ITEM, power: C.POWER, armory: { ...CLOSE_ARMORY, minGap: 6, crateWeaponChance: 0.3, spread: { ...CLOSE_ARMORY.spread, enabled: true, betweenCaches: 1, skyDrops: 0, powerStart: 1 } },
+    // rarer drops; #109: one more start weapon at a spread-out spot
+    item: C.ITEM, power: C.POWER, armory: { ...CLOSE_ARMORY, minGap: 6, crateWeaponChance: 0.3, spread: { ...CLOSE_ARMORY.spread, enabled: true, betweenCaches: 1, skyDrops: 0, powerStart: 1, startWeapons: 1 } },
     supply: { ...C.SUPPLY, firstTick: 8 * C.TICK_RATE, itemHeight: 16, propEvery: 2, tntChance: 0.3, propHeight: 15, extraBarrelHeight: 16.4, barrelOffset: 0.75, avoidDistance: 7 },
     spots: WEAPON_SPOTS,
     weights: { health: 3, shield: 2.5, speed: 2, heavy: 1.5, damage: 2, jump: 2, jetpack: 2 },

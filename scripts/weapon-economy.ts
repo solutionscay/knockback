@@ -15,6 +15,7 @@ import { exampleSouls, initPhysics, Match } from "../src/sim";
 import { CLASSIC, resolveRuleset, type Ruleset } from "../src/sim/ruleset";
 import { isPickupWeapon } from "../src/sim/sim-types";
 import { StuckDetector } from "../src/stats/stuck";
+import { IdleBareTracker } from "../src/stats/idle-bare";
 
 interface FighterRow {
   aliveTicks: number;
@@ -31,6 +32,12 @@ interface FighterRow {
   swapped?: number;
   stuckTicks: number;
   episodes: number;
+  /** bare-handed and standing still out of a fight (src/stats/idle-bare.ts): ticks and spells */
+  idleTicks?: number;
+  idleSpells?: number;
+  /** jetpack pickups, and knocked out by a ring-out after one */
+  jetpacks?: number;
+  ringoutAfterJet?: number;
 }
 interface RoundRow {
   seed: number;
@@ -39,6 +46,9 @@ interface RoundRow {
   /** fighter damage to other fighters by cause class */
   dmg: { weapon: number; fist: number; other: number };
   kos: { weapon: number; fist: number; other: number };
+  /** knockouts by ring-out and by health */
+  ringouts?: number;
+  hpKos?: number;
   /** loose weapons on the floor, summed over sampled ticks, and the peak */
   looseSum: number;
   looseSamples: number;
@@ -71,6 +81,7 @@ function runSims(count: number, first: number, override: Record<string, unknown>
     const fight = m.fight!;
     const sim = fight.sim;
     const det = new StuckDetector(fight);
+    const idle = new IdleBareTracker(fight);
     const row: RoundRow = {
       seed, ticks: 0, theme: sim.level.theme, dmg: { weapon: 0, fist: 0, other: 0 }, kos: { weapon: 0, fist: 0, other: 0 },
       looseSum: 0, looseSamples: 0, loosePeak: 0, nnSum: 0, nnCount: 0, nnClose: 0, startWeapons: -1,
@@ -79,7 +90,15 @@ function runSims(count: number, first: number, override: Record<string, unknown>
     const prev = m.onEvent;
     m.onEvent = (e) => {
       det.event(e);
+      idle.event(e);
       prev?.(e);
+      if (e.type === "ko") {
+        if (e.cause === "ringout") row.ringouts = (row.ringouts ?? 0) + 1;
+        else row.hpKos = (row.hpKos ?? 0) + 1;
+        const f = row.fighters[e.fighter]!;
+        if (e.cause === "ringout" && (f.jetpacks ?? 0) > 0) f.ringoutAfterJet = (f.ringoutAfterJet ?? 0) + 1;
+      }
+      if (e.type === "pickup" && e.item === "jetpack") row.fighters[e.fighter]!.jetpacks = (row.fighters[e.fighter]!.jetpacks ?? 0) + 1;
       if (e.type === "hit" && e.source >= 0 && e.source !== e.target) row.dmg[classOf(e.cause)] += e.damage;
       if (e.type === "ko" && e.by >= 0 && e.by !== e.fighter) row.kos[classOf(e.weapon)]++;
       if (e.type === "pickup" && isPickupWeapon(e.item)) {
@@ -98,6 +117,7 @@ function runSims(count: number, first: number, override: Record<string, unknown>
     let carried = sim.fighters.map(() => [] as string[]);
     while (!m.step()) {
       det.tick();
+      idle.tick();
       const now = sim.fighters.map((f) => f.weapons.filter((w) => w !== "fist") as string[]);
       for (const f of sim.fighters) if (f.alive && !picked.has(f.id)) row.fighters[f.id]!.empties += carried[f.id]!.filter((w) => !now[f.id]!.includes(w)).length;
       carried = now;
@@ -129,6 +149,12 @@ function runSims(count: number, first: number, override: Record<string, unknown>
       }
     }
     det.finish();
+    idle.finish();
+    for (const sp of idle.spells) {
+      const f = row.fighters[sp.fighter]!;
+      f.idleTicks = (f.idleTicks ?? 0) + sp.end - sp.start;
+      f.idleSpells = (f.idleSpells ?? 0) + 1;
+    }
     m.onEvent = prev;
     row.ticks = sim.tick;
     for (const e of det.episodes) {
@@ -185,6 +211,12 @@ function summary(rows: RoundRow[]) {
     stuckPerMin: sum(fr.map((f) => f.episodes)) / (alive / 3600),
     stuckShare: (100 * sum(fr.map((f) => f.stuckTicks))) / alive,
     frStuck: (100 * fr.filter((f) => f.episodes > 0).length) / fr.length,
+    idleShare: (100 * sum(fr.map((f) => f.idleTicks ?? 0))) / alive,
+    idlePerMin: sum(fr.map((f) => f.idleSpells ?? 0)) / (alive / 3600),
+    ringout: (100 * sum(rows.map((r) => r.ringouts ?? 0))) / Math.max(1, sum(rows.map((r) => (r.ringouts ?? 0) + (r.hpKos ?? 0)))),
+    jetFr: (100 * fr.filter((f) => (f.jetpacks ?? 0) > 0).length) / fr.length,
+    jetRingout: (100 * fr.filter((f) => (f.ringoutAfterJet ?? 0) > 0).length) / Math.max(1, fr.filter((f) => (f.jetpacks ?? 0) > 0).length),
+    ringoutNoJet: (100 * sum(rows.map((r) => r.ringouts ?? 0)) - 100 * sum(fr.map((f) => f.ringoutAfterJet ?? 0))) / Math.max(1, fr.filter((f) => !(f.jetpacks ?? 0)).length),
   };
 }
 
@@ -217,6 +249,12 @@ const LABELS: [keyof ReturnType<typeof summary>, string, number, string][] = [
   ["stuckPerMin", "stuck episodes per alive minute (#88)", 3, ""],
   ["stuckShare", "stuck time (#88)", 2, "%"],
   ["frStuck", "fighter-rounds with a stuck episode", 1, "%"],
+  ["idleShare", "bare-handed and standing still, out of a fight (2 s+)", 2, "%"],
+  ["idlePerMin", "  spells per alive minute", 3, ""],
+  ["ringout", "ring-out share of knockouts", 1, "%"],
+  ["jetFr", "fighter-rounds with a jetpack pickup", 1, "%"],
+  ["jetRingout", "  of them rung out after the pickup", 1, "%"],
+  ["ringoutNoJet", "fighter-rounds without one that were rung out", 1, "%"],
 ];
 
 function report(specs: string[]) {

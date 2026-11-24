@@ -25,8 +25,10 @@ export const PATIENCE = { calmTicks: 330, stuckTicks: 110, avoidTicks: 300, digT
  * re-arm; a weapon given up on (giveUpTicks) is tried again after rearmSkipTicks, not skipTicks. One slot: a fighter
  * that has fired nothing for noShotTicks with its target within noShotReach (a rocket in a rival's face) closes in
  * with fists until it lands one. saveShotsReach: low on ammo, a rival this close is fought with fists (the last shots kept for range).
+ * fightReach (#109): bare-handed, a rival this close (or a fight in the last half second) is fought with fists; else a
+ * weapon comes first, whatever the stance.
  */
-export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, jetpackLimit: 11, giveUpTicks: 100, skipTicks: 420, seekLimit: 60, lowAmmoShare: 0.25, rearmLimit: 40, dropIdleTicks: 480, saveShotsReach: 1.3, rearmSkipTicks: 150, noShotTicks: 240, noShotReach: 4.5 };
+export const PICKUP = { unarmedLimit: 70, upgradeLimit: 14, itemStanceLimit: 34, rankCost: 3, healthBelowHp: 50, healthLimit: 16, jetpackLimit: 11, giveUpTicks: 100, skipTicks: 420, seekLimit: 60, lowAmmoShare: 0.25, rearmLimit: 40, dropIdleTicks: 480, saveShotsReach: 1.3, rearmSkipTicks: 150, noShotTicks: 240, noShotReach: 4.5, fightReach: 3 };
 
 export const WALL_PURSUIT = { routeTicks: 48, attackTicks: 88, retargetTicks: 175, flankTicks: 174, flankPeriod: 150, flankFor: 85 };
 export const RULE_EVAL = { everyTicks: 12, minOnTicks: 60, minOffTicks: 60, ledgeM: 2, barrelM: 3, chaseTicks: 180, hitTicks: 180, itemCost: 12 };

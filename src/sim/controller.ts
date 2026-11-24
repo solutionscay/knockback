@@ -324,7 +324,8 @@ export class Controller {
       this.navigation.guardLiquid(sim, me, sim.pos(me), sim.vel(me), input);
       this.escape.intoZone(sim, me, input);
       const tf = this.targetId >= 0 ? sim.fighters[this.targetId] : undefined;
-      this.escape.breakHops(sim, me, input, tf && tf.alive && !tf.removed ? sim.pos(tf).x : null);
+      // hopping in place on the way somewhere (#109): that way is blocked; with a plan around it, no walk-and-dig
+      if (this.escape.breakHops(sim, me, input, tf && tf.alive && !tf.removed ? sim.pos(tf).x : null) && this.navigation.hopsBlocked(sim, me)) this.escape.endBreak(sim);
       // no idle gaps (#69): a target we can neither reach nor shoot is left for one we can
       const target = this.targetId >= 0 ? sim.fighters[this.targetId]! : null;
       if (this.navigation.watchIdle(sim, me, input, target) && target && sim.alive().length > 2 && me.surface >= 0 && target.surface >= 0 &&
@@ -492,7 +493,9 @@ export class Controller {
     // trapped in a pocket (#100): climb or dig out toward open floor, unless there is a shot to take from here
     if (!flying && !choice?.shot && this.escape.act(sim, me, input)) return input;
     // stranded (#88): no route and nothing that reaches - dig toward the target through what is in the way
-    const dig = !flying && !choice?.shot ? this.navigation.tunnel(sim, me, target) : null;
+    // ...unless bare-handed with a weapon to go for (#109): the weapon first
+    const forWeapon = me.weapons[1] === "fist" && this.navigation.goal?.item !== undefined;
+    const dig = !flying && !choice?.shot && !forWeapon ? this.navigation.tunnel(sim, me, target) : null;
     if (dig) {
       // a dig rule (#100): digging punches through soft ground; else the heaviest swing carried
       const digRule = this.rules.digs();

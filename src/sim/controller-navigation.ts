@@ -120,6 +120,20 @@ export class ControllerNavigation {
     this.nextEval = sim.tick;
   }
 
+  /**
+   * Hopped in place on the way to a weapon, bare-handed (#109: a jump turned back by a ceiling, three times): that way
+   * is blocked here; plan around it. True when it is newly marked (false: it already was, or not that case).
+   */
+  hopsBlocked(sim: Sim, me: Fighter): boolean {
+    const g = this.goal;
+    // only on the way to a weapon, bare-handed: the pickup is skipped and another way (or weapon) is planned
+    if (!g || g.item === undefined || me.weapons[1] !== "fist" || me.surface < 0) return false;
+    const to = this.activeLink?.landX ?? g.x;
+    const n = this.blockers.length;
+    this.blockWay(sim, me, to >= sim.pos(me).x ? 1 : -1);
+    return this.blockers.length > n;
+  }
+
   /** Is surface `sid` one to stay off now? (matched by place, so a nav rebuild keeps it) */
   private isBad(sim: Sim, sid: number): boolean {
     const s = sim.nav.surfaces[sid];
@@ -303,18 +317,25 @@ export class ControllerNavigation {
     const zonePenalty = (x: number) => (x < zl ? 40 + (zl - x) * 6 : x > zr ? 40 + (x - zr) * 6 : 0);
     // #94: a pool floor costs its liquid (lava and acid: never a place to stand)
     const fragilePenalty = (s: number) => (nav.surfaces[s]?.fragile ? 3 : 0) + LIQUID_COST[nav.surfaces[s]?.liquid ?? 0]! + (this.isBad(sim, s) ? 30 : 0);
-    if (flank) {
-      // Step around the obstruction at a different x before trying to breach again.
-      const x = tp.x + flank * 4.5;
-      return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - x) + Math.abs(py + 0.84 - tp.y) * 0.8 + zonePenalty(px) + fragilePenalty(sid));
-    }
-    if (crossingWall) {
-      const to = nav.surfaces[target.surface];
-      if (to && plan.cost[to.id] !== Infinity && !this.isBad(sim, to.id) && !this.wayBlocked(sim, me, plan, to.id, tp.x)) {
-        return { surface: to.id, x: clamp(tp.x, to.x0 + 0.35, to.x1 - 0.35) };
+    const wallGoal = (): Goal | null => {
+      if (flank) {
+        // Step around the obstruction at a different x before trying to breach again.
+        const x = tp.x + flank * 4.5;
+        return this.bestPoint(sim, plan, (px, py, sid) => Math.abs(px - x) + Math.abs(py + 0.84 - tp.y) * 0.8 + zonePenalty(px) + fragilePenalty(sid));
       }
-      return this.bestPoint(sim, plan, (x, y, sid) => Math.abs(x - tp.x) + Math.abs(y + 0.84 - tp.y) + zonePenalty(x) + fragilePenalty(sid));
-    }
+      if (crossingWall) {
+        const to = nav.surfaces[target.surface];
+        if (to && plan.cost[to.id] !== Infinity && !this.isBad(sim, to.id) && !this.wayBlocked(sim, me, plan, to.id, tp.x)) {
+          return { surface: to.id, x: clamp(tp.x, to.x0 + 0.35, to.x1 - 0.35) };
+        }
+        return this.bestPoint(sim, plan, (x, y, sid) => Math.abs(x - tp.x) + Math.abs(y + 0.84 - tp.y) + zonePenalty(x) + fragilePenalty(sid));
+      }
+      return null;
+    };
+    // bare-handed and not in a fight up close (#109): a weapon first, whatever the stance, the wall or the flank
+    const armUp = me.weapons.every((w) => w === "fist") && !this.inCloseFight(sim, me);
+    const around = armUp ? null : wallGoal();
+    if (around) return around;
     let stance = this.controller.stanceNow(sim);
     // overwatch and distance want a weapon that fights from range; without one they keep away and go for one (#69)
     const ranged = me.weapons.some((w) => isRanged(sim, w));
@@ -394,6 +415,13 @@ export class ControllerNavigation {
         return best;
       }
       this.chase = null;
+      if (armUp) {
+        const around = wallGoal();
+        if (around) return around;
+        // no weapon it can get to, and no rival it can get to either (or a stance that keeps away): not a wait at the
+        // lip nearest the rival, but the open middle of its own ground, where the next supply drop lands for it (#109)
+        if (stranded || hangBack) return this.supplySpot(sim, plan, zonePenalty, fragilePenalty);
+      }
       if (stance === "item") stance = close ? "rush" : "distance";
       if (!armed && !hangBack) stance = "rush"; // nothing to grab: scrap with fists
     }
@@ -585,6 +613,46 @@ export class ControllerNavigation {
     });
   }
 
+  /** A rival within tactics.pickup.fightReach, or a fight (damage dealt or taken) in the last half second (#109). */
+  private inCloseFight(sim: Sim, me: Fighter): boolean {
+    if (sim.tick - this.controller.lastFight < 30) return true;
+    const p = sim.pos(me);
+    const reach = sim.ruleset.tactics.pickup.fightReach;
+    return sim.fighters.some((o) => o.id !== me.id && o.alive && !o.removed && length2D(sim.pos(o).x - p.x, sim.pos(o).y - p.y) < reach);
+  }
+
+  /**
+   * Where a bare-handed fighter cut off from every weapon waits (#109): open ground of its own, toward the middle of
+   * the zone, off the lips of drops and out from under roofs: where a supply drop for it can land (weapon-spots.ts).
+   */
+  private supplySpot(sim: Sim, plan: ReturnType<NavGraph["plan"]>, zonePenalty: (x: number) => number, fragilePenalty: (s: number) => number): Goal {
+    const nav = sim.nav;
+    const edge = sim.ruleset.pickups.spots.edgeGap;
+    const size = sim.ruleset.pickups.item.size;
+    return this.bestPoint(sim, plan, (px, py, sid) => {
+      const s = nav.surfaces[sid]!;
+      const lip = (s.dropLeft && px - s.x0 < edge) || (s.dropRight && s.x1 - px < edge) ? 6 : 0;
+      const roof = sim.grid.solidAt(px, py + size) ? 4 : 0;
+      return Math.abs(px - sim.zone.center) * 0.3 + lip + roof + zonePenalty(px) + fragilePenalty(sid);
+    });
+  }
+
+  /**
+   * The nearest x on jump-through platform `surf` to `x` with nothing standing on it (#109): a prop on the platform
+   * is solid, so holding down on top of it never drops through. `x` itself when it is clear (or nothing is).
+   */
+  private clearDropX(sim: Sim, me: Fighter, surf: Surface, x: number): number {
+    // the whole body's width clear (a fighter half over a crate still stands on it)
+    const clear = (cx: number) => [-0.55, 0, 0.55].every((dx) => {
+      const hit = sim.raycast(cx + dx, surf.y + 2, 0, -1, 1.9, me.entity.collider);
+      return !hit || !hit.entity || hit.entity.kind === "fighter" || hit.entity.kind === "item";
+    });
+    for (let d = 0; d <= surf.x1 - surf.x0; d += 0.5) {
+      for (const cx of [x - d, x + d]) if (cx >= surf.x0 + 0.4 && cx <= surf.x1 - 0.4 && clear(cx)) return cx;
+    }
+    return x;
+  }
+
   private bestPoint(sim: Sim, plan: ReturnType<NavGraph["plan"]>, score: (x: number, y: number, s: number, i: number) => number): Goal {
     let best: Goal | null = null;
     let bs = Infinity;
@@ -686,9 +754,11 @@ export class ControllerNavigation {
               moveTarget = link.landX;
             }
           } else if (link.through) {
-            // down through the jump-through platform we stand on (#100): hold down over the spot
-            moveTarget = link.takeoffX;
-            if (Math.abs(mp.x - link.takeoffX) < 0.5) {
+            // down through the jump-through platform we stand on (#100): hold down over the spot; standing on a crate
+            // or a block on the platform (down does nothing there, #109), the nearest clear spot on it instead
+            const at = sim.feetY(me) - surf.y > 0.3 ? this.clearDropX(sim, me, surf, link.takeoffX) : link.takeoffX;
+            moveTarget = at;
+            if (Math.abs(mp.x - at) < 0.5) {
               input.down = true;
               this.takeLink(sim, nav, link);
             }

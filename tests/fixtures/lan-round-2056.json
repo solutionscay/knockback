@@ -1,0 +1,2880 @@
+{
+  "ruleset": {
+    "combat": {
+      "gravity": 20,
+      "fighter": {
+        "radius": 0.42,
+        "halfHeight": 0.42,
+        "maxHp": 100,
+        "walkSpeed": 6.2,
+        "groundAccel": 70,
+        "airAccel": 28,
+        "jumpSpeed": 12,
+        "kbGrowth": 2.5,
+        "impactThreshold": 13,
+        "impactDamagePerMs": 0.55,
+        "ringOutY": -10,
+        "ringOutMargin": 6
+      },
+      "launch": {
+        "maxUpSpeed": 15,
+        "stackRetention": 0.5,
+        "ceilingAbove": 5,
+        "ceilingDrag": 4
+      },
+      "density": 2.2,
+      "swapTicks": 10,
+      "wallJump": {
+        "speed": 11,
+        "push": 6.5,
+        "reach": 0.14,
+        "knockTicks": 45
+      },
+      "blastCarveScale": 1.12,
+      "attributionTicks": 120
+    },
+    "weapons": {
+      "enabled": [
+        "rocket",
+        "shotgun",
+        "bat",
+        "grenade",
+        "grapple",
+        "flamethrower",
+        "mine",
+        "railgun",
+        "hammer",
+        "rifle",
+        "sniper",
+        "crossbow",
+        "lightning"
+      ],
+      "table": {
+        "mine": {
+          "ammo": 3,
+          "cooldown": 98,
+          "speed": 14,
+          "gravity": 20,
+          "throwLift": 0.6,
+          "armTicks": 24,
+          "fuse": 165,
+          "proximity": 1.45,
+          "range": 9,
+          "radius": 2.8,
+          "damage": 10,
+          "knockback": 12.5,
+          "blockDamage": 41,
+          "terrainDamage": 105
+        },
+        "railgun": {
+          "ammo": 3,
+          "chargeTicks": 40,
+          "cooldown": 157,
+          "range": 27,
+          "minRange": 3,
+          "terrainPenetration": 0.85,
+          "terrainDamage": 48,
+          "propDamage": 22,
+          "damage": 13,
+          "knockback": 11.5,
+          "lift": 0.38
+        },
+        "hammer": {
+          "ammo": 6,
+          "cooldown": 57,
+          "range": 4,
+          "damage": 8.5,
+          "knockback": 12,
+          "lift": 5,
+          "groundStep": 0.55,
+          "feetReach": 0.85,
+          "terrainRadius": 1.5,
+          "terrainDamage": 98,
+          "propDamage": 30
+        },
+        "rocket": {
+          "ammo": 8,
+          "cooldown": 155,
+          "speed": 19,
+          "gravity": 7,
+          "radius": 2.7,
+          "damage": 10,
+          "knockback": 9,
+          "blockDamage": 34,
+          "terrainDamage": 95,
+          "minRange": 1.5,
+          "maxLife": 240
+        },
+        "shotgun": {
+          "ammo": 12,
+          "cooldown": 46,
+          "range": 7.5,
+          "pellets": 6,
+          "pelletDamage": 1,
+          "pelletKnock": 2.3,
+          "pelletBlockDamage": 5,
+          "pelletTerrainDamage": 11,
+          "pelletImpulse": 1.6,
+          "spread": 0.16,
+          "jitter": 0.03
+        },
+        "bat": {
+          "ammo": 8,
+          "cooldown": 38,
+          "reach": 0.95,
+          "radius": 0.95,
+          "damage": 7,
+          "knockback": 11.8,
+          "lift": 0.75,
+          "propImpulse": 9,
+          "terrainRadius": 1.3,
+          "terrainDamage": 75
+        },
+        "grenade": {
+          "ammo": 8,
+          "cooldown": 130,
+          "speed": 13,
+          "fuse": 85,
+          "radius": 3,
+          "damage": 8,
+          "knockback": 12,
+          "blockDamage": 40,
+          "terrainDamage": 105
+        },
+        "fist": {
+          "cooldown": 24,
+          "reach": 0.7,
+          "radius": 0.7,
+          "damage": 3.5,
+          "knockback": 6.5,
+          "lift": 0.45,
+          "propImpulse": 3,
+          "terrainRadius": 0.65,
+          "terrainDamage": 24
+        },
+        "flamethrower": {
+          "ammo": 60,
+          "cooldown": 4,
+          "range": 3.8,
+          "damage": 0.9,
+          "push": 1.6,
+          "igniteChance": 0.45,
+          "chainDamage": 1.2,
+          "spreadScale": 1
+        },
+        "rifle": {
+          "ammo": 16,
+          "cooldown": 22,
+          "range": 24,
+          "damage": 3.4,
+          "knockback": 3,
+          "lift": 0.18,
+          "propDamage": 6,
+          "terrainDamage": 9
+        },
+        "sniper": {
+          "ammo": 4,
+          "aimTicks": 36,
+          "cooldown": 100,
+          "range": 42,
+          "minRange": 4,
+          "damage": 15,
+          "knockback": 13,
+          "lift": 0.3,
+          "propDamage": 24,
+          "terrainDamage": 30
+        },
+        "crossbow": {
+          "ammo": 6,
+          "cooldown": 72,
+          "range": 28,
+          "damage": 6,
+          "knockback": 10,
+          "lift": 0.32,
+          "pinReach": 1.1,
+          "pinTicks": 40,
+          "propDamage": 14,
+          "terrainDamage": 16
+        },
+        "lightning": {
+          "ammo": 3,
+          "cooldown": 34,
+          "reach": 0.85,
+          "radius": 0.8,
+          "damage": 7.5,
+          "knockback": 10.5,
+          "lift": 0.6,
+          "propImpulse": 6,
+          "terrainRadius": 1,
+          "terrainDamage": 55,
+          "range": 12,
+          "boltMinRange": 2.4,
+          "boltCooldown": 70,
+          "boltDamage": 5,
+          "boltKnockback": 4,
+          "boltLift": 0.3,
+          "boltPropDamage": 14,
+          "boltTerrainDamage": 12,
+          "groundWidth": 3,
+          "groundDrop": 2.5,
+          "groundStep": 0.55,
+          "groundTicks": 180,
+          "feetReach": 0.4,
+          "pulseTicks": 20,
+          "pulseDamage": 1.5,
+          "stunTicks": 16,
+          "stunGap": 50
+        },
+        "grapple": {
+          "ammo": 8,
+          "cooldown": 110,
+          "range": 15,
+          "pull": 15,
+          "lift": 5,
+          "damage": 2,
+          "stun": 26
+        }
+      },
+      "accuracy": {
+        "stillSpeed": 0.6,
+        "coverMul": 0.5,
+        "rifle": {
+          "still": 0.012,
+          "move": 0.07,
+          "air": 0.12,
+          "jet": 0.16
+        },
+        "sniper": {
+          "still": 0.003,
+          "move": 0.11,
+          "air": 0.2,
+          "jet": 0.25
+        },
+        "crossbow": {
+          "still": 0.008,
+          "move": 0.08,
+          "air": 0.14,
+          "jet": 0.18
+        }
+      },
+      "melee": {
+        "bat": {
+          "propDamage": 15,
+          "propMassCap": 4,
+          "terrainOffset": 0.3
+        },
+        "fist": {
+          "propDamage": 4,
+          "propMassCap": 3,
+          "terrainOffset": 0.2
+        },
+        "lightning": {
+          "propDamage": 12,
+          "propMassCap": 4,
+          "terrainOffset": 0.25
+        }
+      }
+    },
+    "pickups": {
+      "enabled": [
+        "health",
+        "shield",
+        "speed",
+        "heavy",
+        "damage",
+        "jump",
+        "jetpack"
+      ],
+      "item": {
+        "size": 0.5,
+        "pickupRange": 1.1,
+        "healAmount": 35,
+        "reachBelow": 0.6
+      },
+      "power": {
+        "shield": {
+          "ticks": 420,
+          "hits": 3,
+          "damageMul": 0.15,
+          "kbMul": 0.25
+        },
+        "speed": {
+          "ticks": 480,
+          "mul": 1.45
+        },
+        "heavy": {
+          "ticks": 600,
+          "kbMul": 0.5,
+          "speedMul": 0.82,
+          "densityMul": 3
+        },
+        "damage": {
+          "ticks": 480,
+          "mul": 2,
+          "kbMul": 1.25
+        },
+        "jump": {
+          "ticks": 720
+        },
+        "jetpack": {
+          "fuelTicks": 90,
+          "thrust": 44,
+          "riseSpeed": 9,
+          "speedMul": 1.35,
+          "ceiling": 4,
+          "fade": 1.5
+        }
+      },
+      "armory": {
+        "nearSpawn": 1,
+        "spawnOffset": 3.5,
+        "middle": 3,
+        "minGap": 6,
+        "high": 1,
+        "jetpackOffset": 1.2,
+        "crateWeaponChance": 0.3,
+        "pickupGraceTicks": 45,
+        "spread": {
+          "enabled": true,
+          "betweenCaches": 1,
+          "cacheMaxRise": 2,
+          "skyDrops": 0,
+          "skyDropTicks": 30,
+          "minSpawnDistance": 9,
+          "preferLocalTicks": 420,
+          "otherQuarterCost": 26,
+          "powerWeapons": [
+            "railgun",
+            "sniper"
+          ],
+          "powerMinDistance": 10,
+          "powerMinHeight": 4,
+          "startWeapons": 0,
+          "powerStart": 1
+        }
+      },
+      "supply": {
+        "firstTick": 480,
+        "interval": 480,
+        "weaponChance": 0.5,
+        "maxLooseWeapons": 3,
+        "itemHeight": 16,
+        "propEvery": 2,
+        "tntChance": 0.3,
+        "propHeight": 15,
+        "extraBarrelHeight": 16.4,
+        "barrelOffset": 0.75,
+        "avoidDistance": 7
+      },
+      "spots": {
+        "itemGap": 9,
+        "fighterGap": 6,
+        "recentGap": 6,
+        "recentTicks": 720,
+        "zoneAhead": 480,
+        "relax": 0.7,
+        "highRise": 2.5,
+        "startSpawnGap": 5,
+        "edgeGap": 1.5,
+        "raceChoices": 4,
+        "outsideTicks": 240
+      },
+      "weights": {
+        "health": 3,
+        "shield": 2.5,
+        "speed": 2,
+        "heavy": 1.5,
+        "damage": 2,
+        "jump": 2,
+        "jetpack": 2
+      }
+    },
+    "arena": {
+      "layout": {
+        "halfWidth": [
+          28,
+          38
+        ],
+        "rows": 64,
+        "bottom": -8,
+        "top": 13,
+        "attempts": 30,
+        "edgeInset": [
+          1.5,
+          4
+        ],
+        "mainPitWidth": [
+          3.5,
+          6
+        ],
+        "mainPitWindow": 5,
+        "extraPitWidth": [
+          3.5,
+          5.5
+        ],
+        "extraPitOffset": 11,
+        "pitEdgeMargin": 6,
+        "pitSpacing": 7,
+        "groundHeight": [
+          -0.5,
+          1
+        ],
+        "rooftopHeight": [
+          -1,
+          3.5
+        ],
+        "groundRun": [
+          3,
+          7
+        ],
+        "groundStep": [
+          -1,
+          0,
+          0,
+          1
+        ],
+        "groundMin": -1,
+        "groundMax": 2,
+        "bedrockRows": 2,
+        "junkRockChance": 0.12,
+        "parapetChance": 0.5,
+        "bridgeCenter": 6,
+        "bridgeHeightGap": 1,
+        "bridgeCenterChance": 0.85,
+        "bridgeChance": 0.5,
+        "bridgeMaxWidth": 7,
+        "overhangChance": 0.4,
+        "overhangCells": [
+          2,
+          4
+        ],
+        "overhangGap": 3,
+        "platformAttempts": 160,
+        "platformLength": [
+          3,
+          7
+        ],
+        "platformHeights": [
+          3,
+          3,
+          3.5,
+          5.5,
+          6,
+          8,
+          8.5,
+          10.5
+        ],
+        "thickPlatformChance": 0.25,
+        "platformXClearCells": 2,
+        "platformYClearCells": 4,
+        "coverStacks": [
+          3,
+          5
+        ],
+        "groundCoverStacks": 3,
+        "coverColumns": [
+          1,
+          2
+        ],
+        "coverRows": [
+          1,
+          2
+        ],
+        "propEdgeInset": 0.8,
+        "propClearance": 0.3,
+        "blockApproach": 0.75,
+        "groundCoverHeight": 2.5,
+        "barrelPairDivisor": 3,
+        "weightAttempts": 200,
+        "weightMinAnchorY": 3,
+        "weightFloorClearCells": 10,
+        "weightSpawnGap": 2,
+        "weightLength": [
+          1.5,
+          2.5
+        ],
+        "zonePitReach": 12,
+        "zoneCenterJitter": 4,
+        "minimumCover": 6,
+        "minimumProps": 18,
+        "minimumPlatforms": 7,
+        "centerDropReach": 16
+      },
+      "enabledThemes": [
+        "warehouse",
+        "rooftop",
+        "junkyard",
+        "construction"
+      ],
+      "themes": {
+        "warehouse": {
+          "body": 5,
+          "surface": 5,
+          "platform": [
+            4,
+            3,
+            3
+          ],
+          "tower": 4,
+          "bridge": [
+            4,
+            3
+          ],
+          "pitChance": 0.7,
+          "extraPits": [
+            0,
+            0
+          ],
+          "towers": [
+            2,
+            3
+          ],
+          "platforms": [
+            11,
+            15
+          ],
+          "crumble": 0.08,
+          "props": {
+            "crate": [
+              6,
+              9
+            ],
+            "steel": [
+              2,
+              4
+            ],
+            "barrel": [
+              4,
+              6
+            ],
+            "gas": [
+              2,
+              4
+            ],
+            "glass": [
+              1,
+              3
+            ],
+            "weight": [
+              1,
+              3
+            ],
+            "pad": [
+              1,
+              2
+            ],
+            "tnt": [
+              0,
+              1
+            ]
+          },
+          "stepy": false,
+          "ground": {
+            "heights": "ground",
+            "runs": "random",
+            "steps": true
+          },
+          "speckle": {
+            "on": 1,
+            "mat": 2,
+            "chance": 0
+          },
+          "parapet": 0,
+          "hazards": {
+            "pools": [
+              0,
+              0
+            ],
+            "width": [
+              2.5,
+              4
+            ],
+            "depth": [
+              2,
+              3
+            ],
+            "water": 0,
+            "oil": 0,
+            "lava": 0,
+            "acid": 0
+          },
+          "physics": {
+            "gravity": 1,
+            "friction": 1
+          },
+          "stage": {
+            "oneWay": 0.75,
+            "catwalk": true,
+            "catwalkHeight": 2.5,
+            "frame": 4,
+            "softDepth": [
+              3,
+              4
+            ]
+          }
+        },
+        "rooftop": {
+          "body": 8,
+          "surface": 5,
+          "platform": [
+            5,
+            3,
+            4
+          ],
+          "tower": 8,
+          "bridge": [
+            3,
+            3,
+            4
+          ],
+          "pitChance": 0.9,
+          "extraPits": [
+            0,
+            0
+          ],
+          "towers": [
+            1,
+            2
+          ],
+          "platforms": [
+            10,
+            14
+          ],
+          "crumble": 0.12,
+          "props": {
+            "glass": [
+              4,
+              6
+            ],
+            "gas": [
+              2,
+              3
+            ],
+            "barrel": [
+              3,
+              5
+            ],
+            "crate": [
+              3,
+              5
+            ],
+            "pad": [
+              2,
+              3
+            ],
+            "tnt": [
+              1,
+              2
+            ],
+            "weight": [
+              1,
+              2
+            ],
+            "steel": [
+              1,
+              2
+            ]
+          },
+          "stepy": false,
+          "ground": {
+            "heights": "roof",
+            "runs": "random",
+            "steps": true
+          },
+          "speckle": {
+            "on": 1,
+            "mat": 2,
+            "chance": 0
+          },
+          "parapet": 8,
+          "hazards": {
+            "pools": [
+              0,
+              0
+            ],
+            "width": [
+              2.5,
+              4
+            ],
+            "depth": [
+              2,
+              3
+            ],
+            "water": 0,
+            "oil": 0,
+            "lava": 0,
+            "acid": 0
+          },
+          "physics": {
+            "gravity": 1,
+            "friction": 1
+          },
+          "stage": {
+            "oneWay": 0.75,
+            "catwalk": true,
+            "catwalkHeight": 2.5,
+            "frame": 4,
+            "softDepth": [
+              3,
+              4
+            ]
+          }
+        },
+        "junkyard": {
+          "body": 1,
+          "surface": 1,
+          "platform": [
+            4,
+            3,
+            4
+          ],
+          "tower": 4,
+          "bridge": [
+            3,
+            4
+          ],
+          "pitChance": 0.65,
+          "extraPits": [
+            0,
+            0
+          ],
+          "towers": [
+            1,
+            2
+          ],
+          "platforms": [
+            10,
+            13
+          ],
+          "crumble": 0.15,
+          "props": {
+            "barrel": [
+              7,
+              10
+            ],
+            "steel": [
+              3,
+              5
+            ],
+            "tnt": [
+              1,
+              3
+            ],
+            "crate": [
+              3,
+              5
+            ],
+            "gas": [
+              1,
+              3
+            ],
+            "pad": [
+              1,
+              2
+            ],
+            "glass": [
+              0,
+              1
+            ],
+            "weight": [
+              0,
+              1
+            ]
+          },
+          "stepy": true,
+          "ground": {
+            "heights": "ground",
+            "runs": "random",
+            "steps": true
+          },
+          "speckle": {
+            "on": 1,
+            "mat": 2,
+            "chance": 0.12
+          },
+          "parapet": 0,
+          "hazards": {
+            "pools": [
+              0,
+              0
+            ],
+            "width": [
+              2.5,
+              4
+            ],
+            "depth": [
+              2,
+              3
+            ],
+            "water": 0,
+            "oil": 0,
+            "lava": 0,
+            "acid": 0
+          },
+          "physics": {
+            "gravity": 1,
+            "friction": 1
+          },
+          "stage": {
+            "oneWay": 0.75,
+            "catwalk": true,
+            "catwalkHeight": 2.5,
+            "frame": 2,
+            "softDepth": [
+              3,
+              4
+            ]
+          }
+        },
+        "construction": {
+          "body": 1,
+          "surface": 1,
+          "platform": [
+            4,
+            3,
+            6
+          ],
+          "tower": 4,
+          "bridge": [
+            4,
+            3
+          ],
+          "pitChance": 0.7,
+          "extraPits": [
+            0,
+            0
+          ],
+          "towers": [
+            2,
+            3
+          ],
+          "platforms": [
+            11,
+            15
+          ],
+          "crumble": 0.22,
+          "props": {
+            "tnt": [
+              2,
+              4
+            ],
+            "weight": [
+              2,
+              3
+            ],
+            "crate": [
+              3,
+              5
+            ],
+            "barrel": [
+              3,
+              5
+            ],
+            "gas": [
+              1,
+              3
+            ],
+            "steel": [
+              1,
+              3
+            ],
+            "pad": [
+              1,
+              2
+            ],
+            "glass": [
+              0,
+              2
+            ]
+          },
+          "stepy": true,
+          "ground": {
+            "heights": "ground",
+            "runs": "random",
+            "steps": true
+          },
+          "speckle": {
+            "on": 1,
+            "mat": 2,
+            "chance": 0
+          },
+          "parapet": 0,
+          "hazards": {
+            "pools": [
+              0,
+              0
+            ],
+            "width": [
+              2.5,
+              4
+            ],
+            "depth": [
+              2,
+              3
+            ],
+            "water": 0,
+            "oil": 0,
+            "lava": 0,
+            "acid": 0
+          },
+          "physics": {
+            "gravity": 1,
+            "friction": 1
+          },
+          "stage": {
+            "oneWay": 0.75,
+            "catwalk": true,
+            "catwalkHeight": 2.5,
+            "frame": 2,
+            "softDepth": [
+              3,
+              4
+            ]
+          }
+        },
+        "testbed": {
+          "body": 1,
+          "surface": 9,
+          "platform": [
+            11,
+            10,
+            2,
+            3
+          ],
+          "tower": 2,
+          "bridge": [
+            11,
+            3
+          ],
+          "pitChance": 0.6,
+          "extraPits": [
+            0,
+            0
+          ],
+          "towers": [
+            1,
+            2
+          ],
+          "platforms": [
+            11,
+            14
+          ],
+          "crumble": 0.1,
+          "props": {
+            "barrel": [
+              4,
+              6
+            ],
+            "steel": [
+              2,
+              4
+            ],
+            "tnt": [
+              1,
+              2
+            ],
+            "crate": [
+              3,
+              5
+            ],
+            "gas": [
+              1,
+              3
+            ],
+            "pad": [
+              1,
+              2
+            ],
+            "glass": [
+              0,
+              1
+            ],
+            "weight": [
+              0,
+              1
+            ]
+          },
+          "stepy": false,
+          "ground": {
+            "heights": "ground",
+            "runs": "random",
+            "steps": true
+          },
+          "speckle": {
+            "on": 1,
+            "mat": 2,
+            "chance": 0.15
+          },
+          "parapet": 0,
+          "hazards": {
+            "pools": [
+              2,
+              3
+            ],
+            "width": [
+              2.5,
+              4
+            ],
+            "depth": [
+              2,
+              3
+            ],
+            "water": 3,
+            "oil": 2,
+            "lava": 1,
+            "acid": 1
+          },
+          "physics": {
+            "gravity": 1,
+            "friction": 1
+          },
+          "stage": {
+            "oneWay": 0.75,
+            "catwalk": true,
+            "catwalkHeight": 2.5,
+            "frame": 2,
+            "softDepth": [
+              3,
+              4
+            ]
+          }
+        }
+      },
+      "spawns": {
+        "centerWindow": 12,
+        "minSurfaceWidth": 2.5,
+        "ledgeMargin": 1.2,
+        "minXGap": 3.5,
+        "minYGap": 2,
+        "bodyClearance": 0.7,
+        "propClearance": 1.4,
+        "minHeight": -1.5,
+        "maxSpread": 150,
+        "minDropMargin": 1,
+        "spread": {
+          "enabled": true,
+          "jitter": 0.16,
+          "innerOutset": 0,
+          "outerOutset": 0.18,
+          "minDistance": 14,
+          "zoneMargin": 2,
+          "heightDifference": 1.5,
+          "ledgeHeight": 1.5
+        }
+      },
+      "walls": {
+        "approach": 1.5,
+        "clearance": 5.5,
+        "attemptsPerWall": 50,
+        "widthCells": [
+          1,
+          3
+        ],
+        "heights": [
+          1.5,
+          2
+        ],
+        "spacing": 5,
+        "crackedHp": 0.3,
+        "regularHp": 0.65
+      },
+      "propHalf": {
+        "block": [
+          0.45,
+          0.45
+        ],
+        "crate": [
+          0.4,
+          0.4
+        ],
+        "barrel": [
+          0.34,
+          0.5
+        ],
+        "gas": [
+          0.22,
+          0.55
+        ],
+        "tnt": [
+          0.4,
+          0.3
+        ],
+        "steel": [
+          0.5,
+          0.5
+        ],
+        "glass": [
+          0.08,
+          0.9
+        ],
+        "pad": [
+          0.6,
+          0.15
+        ],
+        "weight": [
+          0.5,
+          0.5
+        ]
+      },
+      "chain": {
+        "hp": 40,
+        "length": 6,
+        "reachAbove": 40,
+        "hitRadius": 0.15,
+        "batDamage": 20,
+        "heavyFistDamage": 6,
+        "heavyMinMass": 4,
+        "heavyMinSpeed": 6,
+        "heavyPerUnit": 1.2
+      },
+      "props": {
+        "barrel": {
+          "hp": 12,
+          "radius": 3.7,
+          "damage": 8,
+          "knockback": 14,
+          "blockDamage": 55,
+          "terrainDamage": 135,
+          "fuseMin": 6,
+          "fuseMax": 20
+        },
+        "block": {
+          "hp": 24,
+          "density": 1.4
+        },
+        "crate": {
+          "hp": 14,
+          "density": 0.6,
+          "dropChance": 0.9
+        },
+        "crush": {
+          "minSpeed": 5,
+          "minMass": 4,
+          "perUnit": 1.4,
+          "max": 30
+        },
+        "gas": {
+          "hp": 8,
+          "thrustTicks": 85,
+          "thrust": 30,
+          "radius": 2.4,
+          "damage": 7,
+          "knockback": 10,
+          "blockDamage": 40,
+          "terrainDamage": 85
+        },
+        "glass": {
+          "hp": 1,
+          "shatterSpeed": 8
+        },
+        "pad": {
+          "launch": 17.5,
+          "cooldown": 20,
+          "density": 6
+        },
+        "steel": {
+          "density": 7
+        },
+        "tnt": {
+          "hp": 6,
+          "fuse": 150,
+          "chainFuse": 40,
+          "radius": 4.6,
+          "damage": 16,
+          "knockback": 16,
+          "blockDamage": 90,
+          "terrainDamage": 220
+        },
+        "weight": {
+          "density": 7,
+          "ropeHp": 30
+        }
+      },
+      "terrain": {
+        "hitPoints": [
+          0,
+          36,
+          70,
+          20,
+          85,
+          40,
+          24,
+          0,
+          32,
+          12,
+          30,
+          16
+        ],
+        "density": [
+          0,
+          1.6,
+          2.4,
+          0.7,
+          3.2,
+          2.2,
+          0.8,
+          3,
+          1.9,
+          1.5,
+          1.8,
+          0.9
+        ],
+        "crumbleDps": 20,
+        "debris": {
+          "smallCells": 2,
+          "smallTicks": 360
+        },
+        "dig": {
+          "reach": 0.85,
+          "radius": 0.6,
+          "damage": 60,
+          "soft": [
+            1,
+            3,
+            5,
+            6,
+            8,
+            9,
+            10,
+            11
+          ]
+        }
+      },
+      "navigation": {
+        "headroomCells": 4,
+        "jumpMargin": 0.55,
+        "maxGap": 3.5,
+        "dropFall": 3
+      }
+    },
+    "zone": {
+      "boundary": {
+        "endHalf": 4.5,
+        "holdTicks": 600,
+        "shrinkEndTicks": 4800,
+        "pushSpeed": 4.5,
+        "pushSpeedPerMeter": 1.5,
+        "pushAccel": 34,
+        "pushPerMeter": 10,
+        "shockAfter": 120,
+        "shockEvery": 90,
+        "shockX": 9,
+        "shockY": 13,
+        "shockDamage": 4,
+        "edgeInset": 1,
+        "maxSpeed": 14,
+        "shockStun": 18
+      },
+      "suddenDeath": {
+        "quietTicks": 420,
+        "shrinkPerSec": 2.4,
+        "endHalf": 2.5,
+        "dropEvery": 180,
+        "shockAfter": 60,
+        "shockEvery": 40,
+        "shockDamage": 8,
+        "graceTicks": 1200
+      }
+    },
+    "liquids": {
+      "flowTicks": 6,
+      "water": {
+        "speedMul": 0.55,
+        "accelMul": 0.6,
+        "buoyancy": 0.85,
+        "sinkSpeed": 1.5,
+        "strokeSpeed": 5.8,
+        "strokeTicks": 16
+      },
+      "oil": {
+        "accelMul": 0.18,
+        "burnTicks": 210,
+        "spreadTicks": 12,
+        "dps": 9
+      },
+      "lava": {
+        "dps": 16,
+        "meltDps": 2.5
+      },
+      "acid": {
+        "dps": 11,
+        "meltDps": 4
+      },
+      "mud": {
+        "speedMul": 0.5,
+        "jumpMul": 0.8
+      },
+      "ice": {
+        "accelMul": 0.12
+      }
+    },
+    "fire": {
+      "step": 6,
+      "burnMin": 25,
+      "burnMax": 45,
+      "cellDamage": 0.5,
+      "spread": 0.09,
+      "propDamage": 0.5,
+      "propReach": 0.7,
+      "chainDamage": 1.6,
+      "blastReach": 1.3,
+      "blastChance": 0.45,
+      "fighterTicks": 150,
+      "fighterDps": 4,
+      "touch": 0.25,
+      "feetChance": 0.12,
+      "materials": [
+        3,
+        6
+      ],
+      "props": [
+        "crate",
+        "barrel",
+        "tnt",
+        "gas"
+      ]
+    },
+    "builds": {
+      "health": {
+        "hpBonus": [
+          -16,
+          -8,
+          0,
+          8,
+          16
+        ]
+      },
+      "weight": {
+        "knockback": [
+          1.45,
+          1.2,
+          1,
+          0.7,
+          0.5
+        ],
+        "density": [
+          0.8,
+          0.9,
+          1,
+          1.12,
+          1.25
+        ]
+      },
+      "power": {
+        "mul": [
+          0.84,
+          0.92,
+          1,
+          1.08,
+          1.16
+        ]
+      },
+      "caps": {
+        "knockbackTaken": 0.4,
+        "density": 3.5,
+        "damage": 2.2,
+        "knockbackDealt": 1.4
+      }
+    },
+    "morale": {
+      "aim": {
+        "cocky": {
+          "aim": 1.12
+        },
+        "confident": {
+          "aim": 0.94
+        },
+        "rattled": {
+          "aim": 1.3
+        },
+        "furious": {
+          "aim": 1.15
+        },
+        "desperate": {
+          "aim": 0.92
+        }
+      },
+      "furiousAt": 50,
+      "desperateBelow": -20,
+      "cockyAt": 45,
+      "confidentAt": 0,
+      "scoreRetention": 0.8,
+      "angerRetention": 0.5,
+      "grudgeAnger": 20,
+      "win": 30,
+      "streak": 12,
+      "comeback": 15,
+      "highHealth": 70,
+      "highHealthBonus": 8,
+      "loss": 8,
+      "knockout": 10,
+      "firstOut": 26,
+      "out": 18,
+      "knockoutAnger": 15,
+      "surviveHealthCenter": 50,
+      "surviveHealthWeight": 0.2,
+      "humiliation": 14,
+      "selfAnger": 12,
+      "rivalAnger": 40,
+      "scoreLimit": 100,
+      "angerLimit": 100
+    },
+    "round": {
+      "maxRounds": 1,
+      "winsToTake": 1,
+      "fightTicks": 5400,
+      "finishTicks": 90
+    },
+    "tactics": {
+      "weapons": {
+        "enabled": true,
+        "readyMarginTicks": 4,
+        "aimHeight": 0.25,
+        "wallSampleDepth": 0.15,
+        "wallAdvance": 0.6,
+        "lobCheckStep": 0.12,
+        "rushGap": 1.1,
+        "terrainPenalty": 3,
+        "reach": {
+          "fist": {
+            "min": 0,
+            "max": 1.45,
+            "maxDy": 1.3,
+            "standOff": 1.1
+          },
+          "bat": {
+            "min": 0,
+            "max": 1.95,
+            "maxDy": 1.6,
+            "standOff": 1.4
+          },
+          "hammer": {
+            "min": 0,
+            "max": 4,
+            "maxDy": 1.4,
+            "standOff": 2.2
+          },
+          "shotgun": {
+            "min": 0,
+            "max": 6.9,
+            "maxDy": 0,
+            "standOff": 4.5
+          },
+          "rocket": {
+            "min": 3,
+            "max": 34,
+            "maxDy": 0,
+            "standOff": 12
+          },
+          "grenade": {
+            "min": 3,
+            "max": 14,
+            "maxDy": 0,
+            "standOff": 9
+          },
+          "grapple": {
+            "min": 3.5,
+            "max": 14,
+            "maxDy": 0,
+            "standOff": 8
+          },
+          "mine": {
+            "min": 2.8,
+            "max": 9,
+            "maxDy": 0,
+            "standOff": 5
+          },
+          "railgun": {
+            "min": 3,
+            "max": 27,
+            "maxDy": 0,
+            "standOff": 12
+          },
+          "flamethrower": {
+            "min": 0,
+            "max": 3.5,
+            "maxDy": 0,
+            "standOff": 2.6
+          },
+          "rifle": {
+            "min": 0,
+            "max": 24,
+            "maxDy": 0,
+            "standOff": 12
+          },
+          "sniper": {
+            "min": 4,
+            "max": 42,
+            "maxDy": 0,
+            "standOff": 20
+          },
+          "crossbow": {
+            "min": 1.5,
+            "max": 28,
+            "maxDy": 0,
+            "standOff": 11
+          },
+          "lightning": {
+            "min": 3,
+            "max": 11.5,
+            "maxDy": 0,
+            "standOff": 6.5,
+            "slash": 1.6,
+            "slashDy": 1.4,
+            "slashStandOff": 1.2
+          }
+        }
+      },
+      "stances": {
+        "longGuns": [
+          "railgun",
+          "rifle",
+          "sniper",
+          "crossbow"
+        ],
+        "openRange": 42,
+        "map": {
+          "coverReach": 1.5,
+          "coverMinHeight": 1,
+          "highRise": 2.5,
+          "localSpan": 10,
+          "viewRange": 34,
+          "viewStep": 2
+        },
+        "cover": {
+          "reach": 2.5,
+          "peekEvery": 240,
+          "peekFor": 60,
+          "coverBonus": 3,
+          "spotRange": 24,
+          "rangeWeight": 0.15
+        },
+        "overwatch": {
+          "riseWeight": 1.2,
+          "maxRise": 8,
+          "viewWeight": 9,
+          "reachWeight": 0.35,
+          "longGunLimit": 40,
+          "holdTicks": 240,
+          "calmTicks": 660
+        },
+        "flank": {
+          "gap": 3.5,
+          "corridorPenalty": 7,
+          "behindBonus": 4,
+          "giveUpTicks": 420
+        },
+        "hold": {
+          "radius": 3.5,
+          "leash": 9,
+          "riseWeight": 0.8,
+          "coverBonus": 3,
+          "itemBonus": 5,
+          "homeWeight": 0.25,
+          "calmTicks": 600
+        }
+      },
+      "aimNoise": 0.07,
+      "patience": {
+        "calmTicks": 330,
+        "stuckTicks": 110,
+        "avoidTicks": 300,
+        "digTicks": 90,
+        "linkTicks": 100,
+        "unreachTicks": 180,
+        "skipTicks": 360,
+        "breachAfter": 90,
+        "breachRange": 12,
+        "pressAfter": 240,
+        "pressFlip": 180
+      },
+      "pickup": {
+        "unarmedLimit": 70,
+        "upgradeLimit": 14,
+        "itemStanceLimit": 34,
+        "rankCost": 3,
+        "healthBelowHp": 50,
+        "healthLimit": 16,
+        "jetpackLimit": 11,
+        "giveUpTicks": 100,
+        "skipTicks": 420,
+        "seekLimit": 60,
+        "lowAmmoShare": 0.25,
+        "rearmLimit": 40,
+        "dropIdleTicks": 480,
+        "saveShotsReach": 1.3,
+        "rearmSkipTicks": 150,
+        "noShotTicks": 240,
+        "noShotReach": 4.5
+      },
+      "wall": {
+        "routeTicks": 48,
+        "attackTicks": 88,
+        "retargetTicks": 175,
+        "flankTicks": 174,
+        "flankPeriod": 150,
+        "flankFor": 85
+      },
+      "ruleEval": {
+        "everyTicks": 12,
+        "minOnTicks": 60,
+        "minOffTicks": 60,
+        "ledgeM": 2,
+        "barrelM": 3,
+        "chaseTicks": 180,
+        "hitTicks": 180,
+        "itemCost": 12
+      },
+      "reflex": {
+        "windowTicks": 240,
+        "hits": 3,
+        "glanceTicks": 50,
+        "fightTicks": 180,
+        "switchTicks": 600
+      }
+    }
+  },
+  "preset": "Classic",
+  "presetVersion": 3,
+  "seed": 1258669904,
+  "souls": [
+    {
+      "id": "brawler",
+      "temperament": "cocky",
+      "voice": "brash",
+      "values": [
+        "never backs down",
+        "holds grudges",
+        "loves a ring-out",
+        "goes for the biggest threat"
+      ],
+      "weapons": [
+        "bat",
+        "grapple",
+        "shotgun"
+      ],
+      "stance": "rush",
+      "target": "strongest",
+      "retaliate": "attacker",
+      "build": {
+        "health": -2,
+        "weight": 1,
+        "power": 1
+      },
+      "catchphrase": "Batter up.",
+      "body": "# The brawler\n\nA barrel-chested brawler with a chipped-tooth grin. Loud, hot-headed, never admits a mistake. Would rather lose swinging than win hiding.\n\n**How they talk:** short punchy bursts, boxing talk, the odd ALL-CAPS shout, and they call themselves by their own name when worked up. Trash talk, never cruel. Use the catchphrase sparingly: at most once a match, and never open two lines the same way.\n\n**What they value in a fight:** getting in close and launching people off the level. They grab the first bat or hook they see, and a shotgun will do. They never back down, and they hold grudges: whoever shot them in the back is next. They hate being picked at from far away.",
+      "lines": [
+        [
+          "intro",
+          "*",
+          "{me}'s here. Somebody call a doctor. Not for me."
+        ],
+        [
+          "intro",
+          [
+            "cocky"
+          ],
+          "Four of us walk in. One walks out. It's me. Saves time."
+        ],
+        [
+          "intro",
+          [
+            "cocky"
+          ],
+          "I already wrote my victory speech. It's just the word {ME}."
+        ],
+        [
+          "intro",
+          [
+            "confident"
+          ],
+          "Hook 'em, whack 'em, wave goodbye. Easy."
+        ],
+        [
+          "intro",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "Nobody's laughing. I SAID nobody's laughing."
+        ],
+        [
+          "win:flawless",
+          "*",
+          "Not a scratch. Somebody check if I even broke a sweat. I didn't."
+        ],
+        [
+          "win:flawless",
+          "*",
+          "That's called a clean sheet, pal. Frame it."
+        ],
+        [
+          "win:comeback",
+          "*",
+          "Knock {me} down, {me} gets UP. Write that on my statue."
+        ],
+        [
+          "win:multi",
+          "*",
+          "Two for the price of one. Line 'em up, I got more swings."
+        ],
+        [
+          "win",
+          "*",
+          "ROUND TO {ME}! Ring the bell, ring it LOUDER."
+        ],
+        [
+          "win",
+          [
+            "cocky"
+          ],
+          "That's one. Start warming up your excuses."
+        ],
+        [
+          "win",
+          "*",
+          "You see that? That's what a fist with a bat looks like."
+        ],
+        [
+          "hum:own",
+          "*",
+          "Who taught that rocket to turn around?! RIGGED."
+        ],
+        [
+          "hum:bat",
+          "*",
+          "Hit with a BAT? That's MY thing, {killer}! Get your own thing!"
+        ],
+        [
+          "hum:hook",
+          "*",
+          "Reeled me in like a fish. {killer}, you're on my LIST."
+        ],
+        [
+          "hum:crush",
+          "*",
+          "Something fell on me. {me} didn't fall. Something fell ON {me}."
+        ],
+        [
+          "hum:barrel",
+          "*",
+          "A barrel. {killer} set off a BARREL. Fight me like a person!"
+        ],
+        [
+          "kod",
+          [
+            "furious"
+          ],
+          "{killer}. You. Me. Next round. Bring a helmet."
+        ],
+        [
+          "kod",
+          [
+            "furious"
+          ],
+          "That was a lucky {weapon}, {killer}. Luck runs out. I DON'T."
+        ],
+        [
+          "kod",
+          "*",
+          "I slipped. Everybody saw me slip. That doesn't count."
+        ],
+        [
+          "kod",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "Okay. Okay okay okay. {me}'s just warming up. Shut up."
+        ],
+        [
+          "multi",
+          "*",
+          "Two knockouts and I DIDN'T win? Count again."
+        ],
+        [
+          "ko",
+          "*",
+          "Bye bye, {victim}! Send me a postcard from the pit."
+        ],
+        [
+          "ko",
+          "*",
+          "{victim} flew so far they need a passport."
+        ],
+        [
+          "survived",
+          "*",
+          "Still standing. Still mad. Still {me}."
+        ],
+        [
+          "mp:for",
+          "*",
+          "One more round and I'm buying a bigger belt."
+        ],
+        [
+          "mp:against",
+          "*",
+          "{winner} thinks it's over. It's over when {me} SAYS it's over."
+        ],
+        [
+          "mp:against",
+          [
+            "desperate"
+          ],
+          "Okay, deep breaths. {me} doesn't need deep breaths. {ME} IS FINE."
+        ],
+        [
+          "decider",
+          "*",
+          "Round three. My favorite number is three. It's also one. It's whatever wins."
+        ],
+        [
+          "state",
+          [
+            "cocky"
+          ],
+          "Honestly, I'm bored. Somebody try harder."
+        ],
+        [
+          "state",
+          [
+            "confident"
+          ],
+          "Ring the bell, I'm hungry."
+        ],
+        [
+          "state",
+          [
+            "rattled"
+          ],
+          "My ears are ringing and I like it. Mostly."
+        ],
+        [
+          "state",
+          [
+            "furious"
+          ],
+          "No more Mister Nice {me}. There was never a Mister Nice {me}."
+        ],
+        [
+          "state",
+          [
+            "furious"
+          ],
+          "{grudge}, I'm coming for you and I'm bringing the bat."
+        ],
+        [
+          "state",
+          [
+            "desperate"
+          ],
+          "All in. All of it. Every swing I got."
+        ]
+      ]
+    },
+    {
+      "id": "sniper",
+      "temperament": "confident",
+      "voice": "smug",
+      "values": [
+        "keeps their distance",
+        "takes the high ground",
+        "picks off the strongest",
+        "blames the wind"
+      ],
+      "weapons": [
+        "sniper",
+        "rifle",
+        "rocket"
+      ],
+      "stance": "overwatch",
+      "target": "strongest",
+      "retaliate": "turn",
+      "build": {
+        "health": -1,
+        "weight": -1,
+        "power": 2
+      },
+      "catchphrase": "Geometry, darling.",
+      "body": "# The sniper\n\nA tall, tidy sniper who fusses with their scope like a monocle. Smug, precise, condescending.\n\n**How they talk:** elegant, dry, one sentence. Calls people \"darling\" or \"amateur\", quotes percentages, blames the wind when they miss. Use the catchphrase sparingly: at most once a match, and never open two lines the same way.\n\n**What they value in a fight:** distance and height. They race for the sniper rifle (a rifle will do), climb to the highest perch with a view and pick off whoever wanders into the open; a rocket when the long guns are gone. They pick off the strongest or the leader. When someone keeps sneaking up on them they turn and deal with it, complaining all the while, then go back to the plan.",
+      "lines": [
+        [
+          "intro",
+          "*",
+          "I've calculated my odds. You won't like them."
+        ],
+        [
+          "intro",
+          [
+            "cocky",
+            "confident"
+          ],
+          "Please stand very still. It's kinder for everyone."
+        ],
+        [
+          "intro",
+          [
+            "confident"
+          ],
+          "Distance is a gentleman's weapon. I brought plenty."
+        ],
+        [
+          "intro",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "Ahem. The wind is unusually hostile today."
+        ],
+        [
+          "win:flawless",
+          "*",
+          "Untouched. As the textbooks predicted."
+        ],
+        [
+          "win:flawless",
+          "*",
+          "I'd say good game, but I make it a rule never to lie."
+        ],
+        [
+          "win:comeback",
+          "*",
+          "A temporary statistical anomaly, now corrected."
+        ],
+        [
+          "win:multi",
+          "*",
+          "Two clean trajectories. Do try to keep up, darlings."
+        ],
+        [
+          "win",
+          "*",
+          "Round to {me}. I did warn you about the geometry."
+        ],
+        [
+          "win",
+          [
+            "cocky"
+          ],
+          "Shall I explain what happened? Slowly?"
+        ],
+        [
+          "hum:own",
+          "*",
+          "My own rocket. The wind did that. Write that down: the wind."
+        ],
+        [
+          "hum:bat",
+          "*",
+          "Struck with a stick. By {killer}. How tragically primitive."
+        ],
+        [
+          "hum:hook",
+          "*",
+          "Dragged off a ledge by {killer}. Undignified. Unforgivable."
+        ],
+        [
+          "hum:crush",
+          "*",
+          "Flattened by architecture. I'll be filing a complaint."
+        ],
+        [
+          "hum:barrel",
+          "*",
+          "Undone by a barrel, of all things. {killer}, that was crude."
+        ],
+        [
+          "kod",
+          "*",
+          "A lucky {weapon} from {killer}. Even a broken clock, darling."
+        ],
+        [
+          "kod",
+          [
+            "furious"
+          ],
+          "{killer}. I'm recalibrating. You won't enjoy round two."
+        ],
+        [
+          "kod",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "I'm... adjusting my figures. That's all this is."
+        ],
+        [
+          "multi",
+          "*",
+          "Two knockouts and no trophy. Where is the justice."
+        ],
+        [
+          "ko",
+          "*",
+          "Nice bat, {victim}. Shame about your aim."
+        ],
+        [
+          "ko",
+          "*",
+          "{victim} never saw it coming. They rarely do."
+        ],
+        [
+          "survived",
+          "*",
+          "I simply chose not to be hit. You should all try it."
+        ],
+        [
+          "mp:for",
+          "*",
+          "One more round. I've already chosen my podium angle."
+        ],
+        [
+          "mp:against",
+          "*",
+          "{winner} is ahead? Enjoy the view from up there, briefly."
+        ],
+        [
+          "mp:against",
+          [
+            "desperate"
+          ],
+          "Very well. No more elegance. Only results."
+        ],
+        [
+          "decider",
+          "*",
+          "The decider. How deliciously dramatic. I'll keep it brief."
+        ],
+        [
+          "state",
+          [
+            "cocky"
+          ],
+          "I could do this blindfolded. Perhaps I will."
+        ],
+        [
+          "state",
+          [
+            "confident"
+          ],
+          "Range finder on. Patience set to infinite."
+        ],
+        [
+          "state",
+          [
+            "rattled"
+          ],
+          "Everyone is so... close. Why is everyone so close?"
+        ],
+        [
+          "state",
+          [
+            "furious"
+          ],
+          "{grudge}, I've stopped being polite. I was being polite."
+        ],
+        [
+          "state",
+          [
+            "desperate"
+          ],
+          "Fine. FINE. I'll get my gloves dirty."
+        ]
+      ]
+    },
+    {
+      "id": "rat",
+      "temperament": "nervous",
+      "voice": "nervous",
+      "values": [
+        "talks big plays scared",
+        "hides behind cover",
+        "grabs every power-up",
+        "bites back when cornered"
+      ],
+      "weapons": [
+        "grenade",
+        "rocket",
+        "shotgun"
+      ],
+      "stance": "cover",
+      "target": "nearest",
+      "retaliate": "turn",
+      "build": {
+        "health": 2,
+        "weight": -1,
+        "power": -1
+      },
+      "catchphrase": "Sorry! Sorry. Not sorry.",
+      "body": "# The rat\n\nA small, twitchy scrapper with a helmet two sizes too big and a lucky charm for everything. Nervous, rambling, superstitious, secretly the crowd's favorite. Surprised every time they win.\n\n**How they talk:** jittery, sweet, funny, one sentence. Apologizes a lot, talks to their lucky charms and to the crowd. Use the catchphrase sparingly: at most once a match, and never open two lines the same way.\n\n**What they value in a fight:** staying alive. They hide behind cover and lob grenades around corners, scoop up every power-up, and let the big ones wear each other out. They talk big and play scared. Corner them and they finally bite back; when they are desperate, they get reckless.",
+      "lines": [
+        [
+          "intro",
+          "*",
+          "Hi! Hello! Please don't hit me first. Or at all. Thanks."
+        ],
+        [
+          "intro",
+          [
+            "rattled"
+          ],
+          "I brought grenades. And snacks. Mostly grenades."
+        ],
+        [
+          "intro",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "Lucky foot? Check. Helmet? Check. Will to live? ...Check-ish."
+        ],
+        [
+          "intro",
+          [
+            "confident",
+            "cocky"
+          ],
+          "The fans are chanting my name. I think. It sounds like '{ME}'."
+        ],
+        [
+          "win:flawless",
+          "*",
+          "I won? I WON? And nobody even touched me! Is that allowed?"
+        ],
+        [
+          "win:flawless",
+          "*",
+          "Mom, if you're watching: I hid behind a box the whole time and it WORKED."
+        ],
+        [
+          "win:comeback",
+          "*",
+          "The comeback rat! Somebody print shirts!"
+        ],
+        [
+          "win:multi",
+          "*",
+          "Two knockouts? Me? I'm so sorry. I'm so happy. I'm so sorry."
+        ],
+        [
+          "win",
+          "*",
+          "Did... did everyone else just fall over? Thank you, rabbit foot."
+        ],
+        [
+          "win",
+          "*",
+          "That's for every time somebody called me 'the green one'."
+        ],
+        [
+          "hum:own",
+          "*",
+          "I hit myself with my OWN grenade. Again. Don't tell the fans."
+        ],
+        [
+          "hum:bat",
+          "*",
+          "{killer} hit me with a bat and I went SO far. Is the ground still there?"
+        ],
+        [
+          "hum:hook",
+          "*",
+          "{killer} hooked me off a ledge! I was hiding! Hiding is SAFE!"
+        ],
+        [
+          "hum:crush",
+          "*",
+          "Something heavy fell on me. I'd like to go home now."
+        ],
+        [
+          "hum:barrel",
+          "*",
+          "A barrel. Of course it was a barrel. {killer}, why are you like this?"
+        ],
+        [
+          "kod",
+          "*",
+          "{killer} got me with {weapon}. I knew this would happen. I said so."
+        ],
+        [
+          "kod",
+          [
+            "furious"
+          ],
+          "Okay, {killer}. The rat bites back now. Squeak."
+        ],
+        [
+          "kod",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "I'm fine. I'm fine! That's my 'I'm fine' face. It looks like this."
+        ],
+        [
+          "multi",
+          "*",
+          "I knocked out two people and still lost? Is there a sad-trophy?"
+        ],
+        [
+          "ko",
+          "*",
+          "Sorry, {victim}! Sorry! ...That was kind of great, though."
+        ],
+        [
+          "ko",
+          "*",
+          "{victim} stepped on my grenade. Technically their fault."
+        ],
+        [
+          "survived",
+          "*",
+          "Still alive! That's basically a win for me. Right? RIGHT?"
+        ],
+        [
+          "mp:for",
+          "*",
+          "One more round and the rat takes the cheese. Oh no, I'm nervous."
+        ],
+        [
+          "mp:against",
+          "*",
+          "{winner} is so close to winning. Can I just... hide until it's over?"
+        ],
+        [
+          "mp:against",
+          [
+            "desperate"
+          ],
+          "Okay, rabbit foot. This is the big one. Please work. PLEASE."
+        ],
+        [
+          "decider",
+          "*",
+          "Round three. I'm going to throw up. Or win. Maybe both."
+        ],
+        [
+          "state",
+          [
+            "cocky"
+          ],
+          "Am I... good at this? The crowd thinks so. I think so!"
+        ],
+        [
+          "state",
+          [
+            "confident"
+          ],
+          "Grenades armed. Courage... loading."
+        ],
+        [
+          "state",
+          [
+            "rattled"
+          ],
+          "Everyone is so big and loud. I'll be behind that crate."
+        ],
+        [
+          "state",
+          [
+            "furious"
+          ],
+          "{grudge} made the rat ANGRY. Nobody's ever seen an angry rat."
+        ],
+        [
+          "state",
+          [
+            "desperate"
+          ],
+          "No more hiding. Okay, a little hiding. Then no more hiding."
+        ]
+      ]
+    },
+    {
+      "id": "vulture",
+      "temperament": "confident",
+      "voice": "sly",
+      "values": [
+        "goes for the weakest",
+        "patient",
+        "finishes off the wounded",
+        "hates being someone else's meal"
+      ],
+      "weapons": [
+        "grapple",
+        "bat",
+        "shotgun"
+      ],
+      "stance": "flank",
+      "target": "weakest",
+      "retaliate": "turn",
+      "build": {
+        "health": -1,
+        "weight": 0,
+        "power": 1
+      },
+      "catchphrase": "Thanks for softening them up.",
+      "body": "# The vulture\n\nA scavenger with rings on every finger and all the time in the world. Patient, purring, gloating.\n\n**How they talk:** smug and sly, one sentence, bird and hunting talk. Calls the others \"snack\" or \"leftovers\" and thanks them for doing the hard work. Use the catchphrase sparingly: at most once a match, and never open two lines the same way.\n\n**What they value in a fight:** timing. They circle round behind, wait for someone to get weak, then hook them off a ledge or finish them with a bat. They go for the weakest every time. But they hate being somebody else's meal: if someone keeps shooting them in the back, they turn on them.",
+      "lines": [
+        [
+          "intro",
+          "*",
+          "Go on, fight each other. I'll be right here. Circling."
+        ],
+        [
+          "intro",
+          [
+            "cocky",
+            "confident"
+          ],
+          "I love a crowd. So many leftovers."
+        ],
+        [
+          "intro",
+          [
+            "confident"
+          ],
+          "You do the hitting. I'll do the winning."
+        ],
+        [
+          "intro",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "Hm. Everyone looks healthy. How inconvenient."
+        ],
+        [
+          "win:flawless",
+          "*",
+          "Barely lifted a talon. Thank you all for your hard work."
+        ],
+        [
+          "win:flawless",
+          "*",
+          "You softened each other up so nicely. I'm touched."
+        ],
+        [
+          "win:comeback",
+          "*",
+          "Vultures don't mind waiting. Patience, darlings, patience."
+        ],
+        [
+          "win:multi",
+          "*",
+          "Two little snacks, one after the other. Delicious."
+        ],
+        [
+          "win",
+          "*",
+          "The last one standing is the one who waited. Me."
+        ],
+        [
+          "win",
+          [
+            "cocky"
+          ],
+          "Crown fits. Crown always fits."
+        ],
+        [
+          "hum:own",
+          "*",
+          "My own rocket. Embarrassing. Nobody saw that. Nobody."
+        ],
+        [
+          "hum:bat",
+          "*",
+          "Batted off the edge by {killer}. Brutish. I'll remember the brute."
+        ],
+        [
+          "hum:hook",
+          "*",
+          "Hooked off a ledge? By {killer}? That's MY move, you thief."
+        ],
+        [
+          "hum:crush",
+          "*",
+          "Crushed under a heap. Me. The scavenger, scavenged."
+        ],
+        [
+          "hum:barrel",
+          "*",
+          "Blown up by {killer}'s barrel. Cheap. I adore cheap, just not on me."
+        ],
+        [
+          "kod",
+          "*",
+          "{killer} got lucky with {weapon}. Lucky birds get eaten too."
+        ],
+        [
+          "kod",
+          [
+            "furious"
+          ],
+          "{killer}. I'm done circling. I'm diving."
+        ],
+        [
+          "kod",
+          [
+            "rattled",
+            "desperate"
+          ],
+          "Fine. I'll pick at whatever's left. There's always something left."
+        ],
+        [
+          "multi",
+          "*",
+          "Two knockouts and still no crown. Someone stole my meal."
+        ],
+        [
+          "ko",
+          "*",
+          "Off the ledge you go, {victim}. Wave to the fishes."
+        ],
+        [
+          "ko",
+          "*",
+          "{victim} looked tired. I helped them lie down."
+        ],
+        [
+          "survived",
+          "*",
+          "Still here. Vultures outlive everything. Eventually."
+        ],
+        [
+          "mp:for",
+          "*",
+          "One more and the crown is mine. I can smell it."
+        ],
+        [
+          "mp:against",
+          "*",
+          "{winner} is ahead? Then {winner} is the biggest meal on the table."
+        ],
+        [
+          "mp:against",
+          [
+            "desperate"
+          ],
+          "No more waiting. Even vultures get hungry."
+        ],
+        [
+          "decider",
+          "*",
+          "Round three. Everyone's tired. My favorite kind of everyone."
+        ],
+        [
+          "state",
+          [
+            "cocky"
+          ],
+          "I could circle all day. I might."
+        ],
+        [
+          "state",
+          [
+            "confident"
+          ],
+          "Find the weakest, hook them, keep the change."
+        ],
+        [
+          "state",
+          [
+            "rattled"
+          ],
+          "Everyone's so... full of health. Disgusting."
+        ],
+        [
+          "state",
+          [
+            "furious"
+          ],
+          "{grudge}, I'm skipping the circling. Straight to dessert."
+        ],
+        [
+          "state",
+          [
+            "desperate"
+          ],
+          "Every scrap matters now. Every single scrap."
+        ]
+      ]
+    }
+  ],
+  "identities": [
+    {
+      "name": "Romo",
+      "shape": "keystone",
+      "eyes": "tall",
+      "mark": "sprout",
+      "minor": "none",
+      "color": 7199458
+    },
+    {
+      "name": "Kixbo",
+      "shape": "cloud",
+      "eyes": "wide",
+      "mark": "catears",
+      "minor": "none",
+      "color": 14917508
+    },
+    {
+      "name": "Vexly",
+      "shape": "mushroom",
+      "eyes": "visor",
+      "mark": "bow",
+      "minor": "none",
+      "color": 5431650
+    },
+    {
+      "name": "Gubzo",
+      "shape": "pill",
+      "eyes": "dots",
+      "mark": "beanie",
+      "minor": "none",
+      "color": 14661102
+    }
+  ],
+  "rounds": [
+    {
+      "physicsSeed": 802340978,
+      "phase": "intro",
+      "strategies": [
+        {
+          "target": "strongest",
+          "stance": "rush",
+          "weapons": [
+            "bat",
+            "grapple",
+            "shotgun"
+          ],
+          "retaliate": "attacker",
+          "rules": [
+            {
+              "when": "chasing_me",
+              "who": "enemy",
+              "do": "target",
+              "label": "turn on the chaser"
+            },
+            {
+              "when": "near_ledge",
+              "who": "enemy",
+              "do": "use",
+              "doItem": "bat",
+              "label": "bat them off"
+            }
+          ],
+          "build": {
+            "health": -2,
+            "weight": 1,
+            "power": 1
+          },
+          "line": "Four of us walk in. One walks out. It's me. Saves time."
+        },
+        {
+          "target": "strongest",
+          "stance": "overwatch",
+          "weapons": [
+            "sniper",
+            "rifle",
+            "rocket"
+          ],
+          "retaliate": "turn",
+          "build": {
+            "health": -1,
+            "weight": -1,
+            "power": 2
+          },
+          "line": "Please stand very still. It's kinder for everyone."
+        },
+        {
+          "target": "nearest",
+          "stance": "cover",
+          "weapons": [
+            "grenade",
+            "rocket",
+            "shotgun"
+          ],
+          "retaliate": "turn",
+          "rules": [
+            {
+              "when": "my_health_below",
+              "value": 40,
+              "do": "seek",
+              "doItem": "health",
+              "label": "patch up"
+            },
+            {
+              "when": "near_barrel",
+              "who": "enemy",
+              "do": "use",
+              "doItem": "grenade",
+              "label": "light the barrel"
+            }
+          ],
+          "build": {
+            "health": 2,
+            "weight": -1,
+            "power": -1
+          },
+          "line": "I brought grenades. And snacks. Mostly grenades."
+        },
+        {
+          "target": "weakest",
+          "stance": "flank",
+          "weapons": [
+            "grapple",
+            "bat",
+            "shotgun"
+          ],
+          "retaliate": "turn",
+          "rules": [
+            {
+              "when": "health_below",
+              "who": "enemy",
+              "value": 30,
+              "do": "target",
+              "label": "finish the wounded"
+            },
+            {
+              "when": "near_ledge",
+              "who": "enemy",
+              "do": "use",
+              "doItem": "grapple",
+              "label": "hook them off"
+            }
+          ],
+          "build": {
+            "health": -1,
+            "weight": 0,
+            "power": 1
+          },
+          "line": "You do the hitting. I'll do the winning."
+        }
+      ],
+      "lines": [
+        "Four of us walk in. One walks out. It's me. Saves time.",
+        "Please stand very still. It's kinder for everyone.",
+        "I brought grenades. And snacks. Mostly grenades.",
+        "You do the hitting. I'll do the winning."
+      ],
+      "fight": {
+        "seed": 802340978,
+        "level": {
+          "theme": "warehouse",
+          "attempt": 3,
+          "width": 74
+        },
+        "strategies": [
+          {
+            "target": "strongest",
+            "stance": "rush",
+            "weapons": [
+              "bat",
+              "grapple",
+              "shotgun"
+            ],
+            "retaliate": "attacker",
+            "rules": [
+              {
+                "when": "chasing_me",
+                "who": "enemy",
+                "do": "target",
+                "label": "turn on the chaser"
+              },
+              {
+                "when": "near_ledge",
+                "who": "enemy",
+                "do": "use",
+                "doItem": "bat",
+                "label": "bat them off"
+              }
+            ],
+            "build": {
+              "health": -2,
+              "weight": 1,
+              "power": 1
+            },
+            "line": "Four of us walk in. One walks out. It's me. Saves time."
+          },
+          {
+            "target": "strongest",
+            "stance": "overwatch",
+            "weapons": [
+              "sniper",
+              "rifle",
+              "rocket"
+            ],
+            "retaliate": "turn",
+            "build": {
+              "health": -1,
+              "weight": -1,
+              "power": 2
+            },
+            "line": "Please stand very still. It's kinder for everyone."
+          },
+          {
+            "target": "nearest",
+            "stance": "cover",
+            "weapons": [
+              "grenade",
+              "rocket",
+              "shotgun"
+            ],
+            "retaliate": "turn",
+            "rules": [
+              {
+                "when": "my_health_below",
+                "value": 40,
+                "do": "seek",
+                "doItem": "health",
+                "label": "patch up"
+              },
+              {
+                "when": "near_barrel",
+                "who": "enemy",
+                "do": "use",
+                "doItem": "grenade",
+                "label": "light the barrel"
+              }
+            ],
+            "build": {
+              "health": 2,
+              "weight": -1,
+              "power": -1
+            },
+            "line": "I brought grenades. And snacks. Mostly grenades."
+          },
+          {
+            "target": "weakest",
+            "stance": "flank",
+            "weapons": [
+              "grapple",
+              "bat",
+              "shotgun"
+            ],
+            "retaliate": "turn",
+            "rules": [
+              {
+                "when": "health_below",
+                "who": "enemy",
+                "value": 30,
+                "do": "target",
+                "label": "finish the wounded"
+              },
+              {
+                "when": "near_ledge",
+                "who": "enemy",
+                "do": "use",
+                "doItem": "grapple",
+                "label": "hook them off"
+              }
+            ],
+            "build": {
+              "health": -1,
+              "weight": 0,
+              "power": 1
+            },
+            "line": "You do the hitting. I'll do the winning."
+          }
+        ],
+        "updates": [],
+        "checkpoints": [
+          "d0048581",
+          "e58f72cf",
+          "ff19273a",
+          "1cc3faf8",
+          "a7389236",
+          "4a16b4de",
+          "e38b57ad",
+          "48bfd1ed",
+          "c7d9658f"
+        ],
+        "finalHash": "c7d9658f",
+        "ticks": 5400
+      },
+      "winner": 2,
+      "meta": [
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        },
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        },
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        },
+        {
+          "provider": "house",
+          "ms": 0,
+          "outcome": "house"
+        }
+      ]
+    }
+  ],
+  "winner": 2,
+  "wins": [
+    0,
+    0,
+    1,
+    0
+  ],
+  "engine": "e-50abfa20",
+  "labels": [
+    "house",
+    "house",
+    "house",
+    "house"
+  ],
+  "lineup": [
+    "house",
+    "house",
+    "house",
+    "house"
+  ],
+  "totalMs": 118141,
+  "fightStats": {
+    "rounds": [
+      {
+        "seconds": 90,
+        "seats": [
+          {
+            "kos": 1,
+            "ringouts": 1,
+            "damage": 40.4,
+            "taken": 13.8,
+            "alive": 90
+          },
+          {
+            "kos": 0,
+            "ringouts": 0,
+            "damage": 34.8,
+            "taken": 50.3,
+            "alive": 41.4
+          },
+          {
+            "kos": 1,
+            "ringouts": 1,
+            "damage": 24.4,
+            "taken": 24.7,
+            "alive": 90
+          },
+          {
+            "kos": 0,
+            "ringouts": 0,
+            "damage": 27,
+            "taken": 59.1,
+            "alive": 25.2
+          }
+        ]
+      }
+    ]
+  }
+}
