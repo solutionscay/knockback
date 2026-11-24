@@ -41,8 +41,8 @@ export function validateLevel(lv: LevelDef, ruleset: Ruleset = CLASSIC): Validat
   if (cover < L.minimumCover) reasons.push(`cover ${cover}`);
   if (lv.props.length < L.minimumProps) reasons.push(`props ${lv.props.length}`);
   if (lv.platforms < L.minimumPlatforms) reasons.push(`platforms ${lv.platforms}`);
-  // camera fit: nothing solid above L.top
-  for (let cy = g.cy(L.top + 0.01); cy < g.rows; cy++) for (let cx = 0; cx < g.cols; cx++) if (g.solid(cx, cy)) {
+  // camera fit: nothing solid above L.top (#125: a cave's ceiling starts at it: everything above is the ceiling)
+  if (!ruleset.arena.themes[lv.theme].stage.ceiling) for (let cy = g.cy(L.top + 0.01); cy < g.rows; cy++) for (let cx = 0; cx < g.cols; cx++) if (g.solid(cx, cy)) {
     reasons.push("too tall");
     cy = g.rows;
     break;

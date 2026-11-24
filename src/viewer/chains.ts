@@ -52,8 +52,11 @@ export class ChainView {
   /** bolts and pivot rings, drawn in front of the platforms (scene.ts layers it above the props) */
   readonly front = new Graphics();
   private chains: ChainSprites[] = [];
+  /** #125: the level has a ceiling (a cave): chains end where they meet it */
+  private readonly ceiling: boolean;
 
   constructor(private readonly sim: Sim) {
+    this.ceiling = (sim.ruleset.arena.themes[sim.level.theme]?.stage.ceiling ?? 0) > 0;
     // one plush link per tile (#87, tools/art/plush_world.py): 0.14 m wide, a link every 0.32 m
     const tile = worldTile("chain");
     const sprite = () => {
@@ -89,9 +92,22 @@ export class ChainView {
     s.tilePosition.y = 0;
   }
 
+  /**
+   * #125: where a chain hung at x from y meets the cave's ceiling (the first solid cell above), or `top` (no ceiling, as
+   * on every other map: the chain runs on up out of the view).
+   */
+  private roof(x: number, y: number, top: number): number {
+    const sim = this.sim;
+    if (!this.ceiling) return top;
+    const g = sim.grid;
+    const cx = g.cx(x);
+    for (let cy = Math.max(0, g.cy(y) + 1); cy < g.rows; cy++) if (g.solid(cx, cy)) return Math.min(top, g.wy(cy));
+    return top;
+  }
+
   update(frame: CameraFrame, W: number, H: number, alpha = 1, xform?: XformAt) {
     const sim = this.sim;
-    const top = ChainView.viewTop(frame, W, H);
+    const view = ChainView.viewTop(frame, W, H);
     const g = this.front;
     g.clear();
     const pose = (e: Entity) => (xform ? xform(e, alpha) : { ...e.body.translation(), a: e.body.rotation() });
@@ -103,7 +119,8 @@ export class ChainView {
       if (!ch.broken && ch.piece < 0) {
         // static platform: one straight chain from the anchor (its bolt is part of the terrain drawing)
         const a = chainAttach(sim, ch);
-        if (top > a.y) ChainView.lay(c.up, a.x, a.y, a.x, Math.ceil((top - a.y) / LINK_H) * LINK_H + a.y);
+        const top = this.roof(a.x, a.y, view);
+        if (top > a.y) ChainView.lay(c.up, a.x, a.y, a.x, top === view ? Math.ceil((top - a.y) / LINK_H) * LINK_H + a.y : top);
         else c.up.visible = false;
         continue;
       }
@@ -118,7 +135,7 @@ export class ChainView {
         const p = pose(e);
         const a = onPiece(p, (cell.lx + 0.5) * CELL, (cell.ly + 1) * CELL);
         ChainView.lay(c.low, ch.px, ch.py, a.x, a.y);
-        ChainView.lay(c.up, ch.px, ch.py, ch.px, Math.max(ch.py, top));
+        ChainView.lay(c.up, ch.px, ch.py, ch.px, Math.max(ch.py, this.roof(ch.px, ch.py, view)));
         const b = onPiece(p, (cell.lx + 0.5) * CELL, (cell.ly + 0.5) * CELL);
         g.circle(b.x, -b.y, 0.09).fill(0x2a2a30).stroke({ width: 0.03, color: 0xb0b0b8 });
         g.circle(ch.px, -ch.py, 0.08).stroke({ width: 0.035, color: 0x8a8a96 });
@@ -128,6 +145,7 @@ export class ChainView {
       const t = Math.max(0, now - ch.brokenTick) / 60;
       const endY = ch.breakY + 0.5 * (1 - Math.exp(-t * 9));
       const hinge = endY + DANGLE;
+      const top = this.roof(ch.px, hinge, view);
       if (top > hinge) ChainView.lay(c.up, ch.px, hinge, ch.px, Math.max(hinge, top));
       else c.up.visible = false;
       const sway = 0.5 * Math.exp(-t * 0.9) * Math.sin(t * 4.2 + ch.id);

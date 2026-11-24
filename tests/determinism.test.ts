@@ -29,13 +29,14 @@ const GOLDEN = {
   // lodged in its line of sight
   // #114: the forest in the rotation (match seeds pick from six themes); a stale landing no longer steers a swimmer, a run-up
   // on mud asks for what mud allows, a swimmer's splash re-arms after 45 ticks
+  // #125: the cave in the rotation as well (match seeds pick from seven themes)
   fight: "b4f79ad7",
   fightWithUpdate: "15b87cb9",
   closeQuarters: "38c66ba0",
   // house bots play their souls' builds (#80)
-  match: ["9fc581ee", "a92df55a", "db5e2591"],
+  match: ["bb8d28e4", "6b33fd85"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["44774354", "671c41ac", "fdf6fc31"],
+  neutralMatch: ["5680316c", "98b06175", "cc215c40"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

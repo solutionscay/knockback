@@ -44,8 +44,13 @@ export const enum Liquid {
   Lava = 3,
   /** damage over time, melts the terrain beside it (cold: lights nothing) */
   Acid = 4,
+  /** #125: cave slime: thicker than water (slows more, sinks slower), floats a fighter who can swim out, glows; smothers fire */
+  Slime = 5,
 }
-export const LIQUID_NAMES = ["none", "water", "oil", "lava", "acid"] as const;
+export const LIQUID_NAMES = ["none", "water", "oil", "lava", "acid", "slime"] as const;
+/** A liquid a fighter floats and swims in (water, slime). */
+export const swimmable = (l: number) => l === Liquid.Water || l === Liquid.Slime;
+export type LiquidName = Exclude<(typeof LIQUID_NAMES)[number], "none">;
 
 export const F_ANCHOR = 1; // holds up whatever is connected to it (hanging platforms)
 export const F_BRIDGE = 2;

@@ -8,8 +8,8 @@ import { ALL_THEMES, MAT_NAMES, THEME_DEFS, themeMatColors, type MatName, type T
 export interface Palette {
   sky: [number, number];
   hills: [number, number];
-  /** the backdrop (#111: "beach" draws the sun, clouds, island and sea from the theme's atlas; #114: "forest" a moon and pines) */
-  background: "hills" | "beach" | "forest";
+  /** the backdrop (#111: "beach" draws the sun, clouds, island and sea from the theme's atlas; #114: "forest" a moon and pines; #125: "cave" rock columns) */
+  background: "hills" | "beach" | "forest" | "cave";
   /** Mat ID -> color */
   mat: Record<number, number>;
 }

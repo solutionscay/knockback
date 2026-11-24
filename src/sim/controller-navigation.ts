@@ -1,6 +1,6 @@
 import { arenaQuarter } from "./level-spawns";
 import type { Controller } from "./controller";
-import { Liquid } from "./grid";
+import { swimmable } from "./grid";
 import { hazardous, LIQUID_COST, runUp, type Link, type NavGraph, type Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
@@ -692,7 +692,7 @@ export class ControllerNavigation {
     if (me.grounded && me.jumpCd === 0) this.jumpTo = null;
     // #114: afloat is never grounded, so a landing from a jump that fell short stayed the air's target: the swimmer bobbed
     // over that spot. Afloat with no link, swim for the goal instead
-    else if (!this.activeLink && sim.grid.liquidAt(mp.x, sim.feetY(me) - 0.6) === Liquid.Water) this.jumpTo = null;
+    else if (!this.activeLink && swimmable(sim.grid.liquidAt(mp.x, sim.feetY(me) - 0.6))) this.jumpTo = null;
     if (surf) {
       let plan = nav.fighterPlan(sim.grid, me.surface, mp.x);
       // the zone is coming and no jump we can make leads into it: a risky jump beats being pushed into the pit
@@ -888,9 +888,9 @@ export class ControllerNavigation {
     const feet = sim.feetY(me);
     const atBody = g.liquidAt(mp.x, mp.y);
     const atFeet = g.liquidAt(mp.x, feet + 0.1);
-    const wet = atBody === Liquid.Water || atFeet === Liquid.Water;
+    const wet = swimmable(atBody) || swimmable(atFeet);
     // #111: bobbing just above the water between strokes counts as afloat too
-    const above = !me.grounded && !wet && g.liquidAt(mp.x, feet - 0.6) === Liquid.Water;
+    const above = !me.grounded && !wet && swimmable(g.liquidAt(mp.x, feet - 0.6));
     if (!me.grounded && (wet || above)) {
       if (wet && mv.y < 1) input.jump = true;
       // #111: afloat is airborne, and the air steers only on a link: with none, swim toward the goal's side (the

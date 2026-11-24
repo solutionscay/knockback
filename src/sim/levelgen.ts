@@ -54,6 +54,10 @@ export interface LevelDef {
 }
 
 const q = (v: number) => Math.round(v * 2) / 2; // to the cell grid
+/** #125: a platform's top stays this far under a cave ceiling (a fighter stands and jumps on it) */
+const CEILING_CLEAR = 4;
+/** #125: a stalactite's tip hangs this far over anything under it (walls, platforms, the ground; a fighter's jump) */
+const STALACTITE_CLEAR = 4.5;
 const q1 = (v: number) => Math.round(v);
 
 /** Theme for a seed (stable across generator attempts). */
@@ -199,6 +203,9 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     }
   }
 
+  // ------------------------------------------------------------ the cave's ceiling (#125)
+  const ceiling = T.stage.ceiling > 0 ? buildCeiling(grid, T.stage, rng, cyOf) : 0;
+
   // sand that would not hold (an overhang over a pit) falls before anyone sees it
   if (pools.length || T.surface === Mat.Sand || T.body === Mat.Sand) settleGrid(grid);
 
@@ -225,7 +232,7 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     const thick = rng.chance(L.thickPlatformChance) ? 2 : 1;
     const cyTop = cyOf(y) - 1;
     const cyBot = cyTop - thick + 1;
-    if (y > L.top || !clear(cx0, cyBot, cx1, cyTop)) continue;
+    if (y > L.top || (ceiling && y > ceiling - CEILING_CLEAR) || !clear(cx0, cyBot, cx1, cyTop)) continue;
     const m = rng.chance(T.crumble) ? Mat.Crumble : rng.pick(T.platform);
     // #100: most single-row hanging platforms are jump-through; the thick ones stay solid (cover)
     const through = T.stage.oneWay > 0 && thick === 1 && rng.chance(T.stage.oneWay) ? F_ONEWAY : 0;
@@ -244,6 +251,7 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     wallTop = t;
   }
   const walls = placeWalls(grid, wallTop, rng.int(T.towers[0], T.towers[1]), T.tower, rng, ruleset);
+  if (ceiling) hangStalactites(grid, T.stage.stalactites, rng);
 
   // ------------------------------------------------------------ spawns + props
   const nav = NavGraph.fromGrid(grid, 2, ruleset);
@@ -377,7 +385,7 @@ function digPools(
   const pools: NonNullable<LevelDef["pools"]> = [];
   if (H.pools[1] <= 0) return pools;
   const want = rng.int(H.pools[0], H.pools[1]);
-  const kinds: [Liquid, number][] = [[Liquid.Water, H.water], [Liquid.Oil, H.oil], [Liquid.Lava, H.lava], [Liquid.Acid, H.acid]];
+  const kinds: [Liquid, number][] = [[Liquid.Water, H.water], [Liquid.Oil, H.oil], [Liquid.Lava, H.lava], [Liquid.Acid, H.acid], [Liquid.Slime, H.slime]];
   const total = kinds.reduce((a, k) => a + k[1], 0);
   for (let i = 0; i < want * 12 && pools.length < want; i++) {
     const w = Math.max(CELL * 2, q(rng.range(...H.width)));
@@ -419,4 +427,59 @@ function digPools(
     pools.push({ x0, x1, y, depth, liquid });
   }
   return pools;
+}
+
+/**
+ * The cave's ceiling (#125): from `stage.ceiling` m up to the grid's top, rock (carvable) for its lowest rows and bedrock
+ * above (it holds up the rock and whatever hangs from it). The underside steps up and down a cell or two in runs, never
+ * under `stage.ceiling`. Returns the lowest underside (m).
+ */
+function buildCeiling(grid: Grid, stage: Ruleset["arena"]["themes"][Theme]["stage"], rng: Rng, cyOf: (y: number) => number): number {
+  const base = cyOf(stage.ceiling);
+  const rock = rng.int(stage.ceilingRock[0], stage.ceilingRock[1]);
+  let lift = 0;
+  for (let cx = 0; cx < grid.cols; ) {
+    const run = rng.int(3, 9);
+    for (let k = 0; k < run && cx < grid.cols; k++, cx++) {
+      const low = base + lift;
+      for (let cy = low; cy < grid.rows; cy++) grid.set(cx, cy, cy < low + rock ? Mat.Rock : Mat.Bedrock);
+    }
+    lift = rng.int(0, 2);
+  }
+  return stage.ceiling;
+}
+
+/**
+ * Stalactites (#125): rock spikes hung from the ceiling's underside, 2 to 5 cells long, 3 cells wide at the root and 1 at
+ * the tip, each STALACTITE_CLEAR m over anything under it and apart from the others. Blasting the rock that holds one
+ * drops it (terrain support: it is no longer connected to the bedrock).
+ */
+function hangStalactites(grid: Grid, count: readonly [number, number], rng: Rng) {
+  const want = rng.int(count[0], count[1]);
+  const clear = Math.round(STALACTITE_CLEAR / CELL);
+  const taken: number[] = [];
+  let hung = 0;
+  for (let i = 0; i < want * 10 && hung < want; i++) {
+    const cx = rng.int(3, grid.cols - 4);
+    const len = rng.int(2, 5);
+    if (taken.some((t) => Math.abs(t - cx) < 6)) continue;
+    // the underside over the three columns: the lowest empty cell under the ceiling
+    let root = grid.rows;
+    for (let x = cx - 1; x <= cx + 1; x++) {
+      let cy = grid.rows - 1;
+      while (cy > 0 && grid.solid(x, cy)) cy--;
+      root = Math.min(root, cy);
+    }
+    const tip = root - len + 1;
+    if (!grid.emptyRect(cx - 2, tip - clear, cx + 2, root)) continue;
+    for (let k = 0; k < len; k++) {
+      const cy = root - k;
+      const half = k < Math.ceil(len / 2) ? 1 : 0;
+      for (let x = cx - half; x <= cx + half; x++) grid.set(x, cy, Mat.Rock);
+    }
+    // fill the step between the root row and an underside a cell higher over a side column
+    for (let x = cx - 1; x <= cx + 1; x++) for (let cy = root + 1; cy < grid.rows && !grid.solid(x, cy); cy++) grid.set(x, cy, Mat.Rock);
+    taken.push(cx);
+    hung++;
+  }
 }

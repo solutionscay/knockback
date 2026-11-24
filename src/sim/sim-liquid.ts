@@ -9,6 +9,7 @@
  *   `oil.burnTicks` is used up (gone).
  * - Lava and acid hurt a fighter in them over time (lava also sets them alight) and melt the solid cells beside them
  *   (bedrock never). Lava lights oil; lava meeting water cools to rock; lava melts ice into water.
+ * - Slime (#125) is thick water: it slows more and floats a fighter (who sinks slower and swims out), and smothers fire.
  * - Mud slows whoever stands on it; ice is slippery (applyInput reads `footing`).
  *
  * The level settles one step every `liquids.flowTicks` ticks while the terrain changed since the last step (a carve
@@ -17,7 +18,7 @@
  */
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { DT } from "./constants";
-import { CELL, Grid, Liquid, Mat } from "./grid";
+import { CELL, Grid, Liquid, Mat, swimmable } from "./grid";
 import { flowStep } from "./liquid-flow";
 import type { Sim } from "./sim";
 import { igniteCell, igniteFighter } from "./sim-ignite";
@@ -81,7 +82,7 @@ export interface Footing {
   speed: number;
   accel: number;
   jump: number;
-  /** afloat in water (a jump is a swim stroke) */
+  /** afloat in water or slime (a jump is a swim stroke) */
   swim: boolean;
 }
 const SURE: Footing = { speed: 1, accel: 1, jump: 1, swim: false };
@@ -124,8 +125,11 @@ export function footing(sim: Sim, f: Fighter): Footing {
   if (liquid === Liquid.Water) {
     speed *= L.water.speedMul;
     accel *= L.water.accelMul;
+  } else if (liquid === Liquid.Slime) {
+    speed *= L.slime.speedMul;
+    accel *= L.slime.accelMul;
   } else if (liquid === Liquid.Oil) accel *= L.oil.accelMul;
-  return { speed, accel, jump, swim: liquid === Liquid.Water && !f.grounded };
+  return { speed, accel, jump, swim: swimmable(liquid) && !f.grounded };
 }
 
 const N4: readonly [number, number][] = [
@@ -174,15 +178,16 @@ export function updateLiquids(sim: Sim) {
       }
       sim.liquids.inside[f.id] = liquid;
     }
-    if (liquid === Liquid.Water) {
+    if (swimmable(liquid)) {
       if (f.burning > 0) {
         f.burning = 0;
         sim.events.push({ type: "douse", tick: sim.tick, fighter: f.id, x: p.x, y: p.y });
       }
       // buoyancy: most of gravity cancelled, and a slow sink at most
+      const W = liquid === Liquid.Slime ? L.slime : L.water;
       const v = f.entity.body.linvel();
-      let vy = v.y + sim.ruleset.combat.gravity * L.water.buoyancy * DT;
-      if (vy < -L.water.sinkSpeed) vy = -L.water.sinkSpeed;
+      let vy = v.y + sim.ruleset.combat.gravity * W.buoyancy * DT;
+      if (vy < -W.sinkSpeed) vy = -W.sinkSpeed;
       f.entity.body.setLinvel({ x: v.x, y: vy }, true);
     } else if (liquid === Liquid.Oil) {
       if (f.burning > 0) igniteOil(sim, g.cx(p.x), g.cy(sim.feetY(f) + 0.15), f.burnBy);
@@ -221,7 +226,7 @@ export function updateLiquids(sim: Sim) {
     const t = e.body.translation();
     const at = g.liquidAt(t.x, t.y - e.hh + 0.1);
     if (!at) continue;
-    if (e.burn && at === Liquid.Water) e.burn = 0;
+    if (e.burn && swimmable(at)) e.burn = 0;
     else if (e.burn && at === Liquid.Oil) igniteOil(sim, g.cx(t.x), g.cy(t.y - e.hh + 0.1), e.burnBy ?? -1);
   }
 }
@@ -243,8 +248,8 @@ function react(sim: Sim) {
       const j = g.idx(nx, ny);
       const m = g.mat[j]!;
       const n = g.liq[j]!;
-      if (k === Liquid.Water) {
-        // water puts out the burning cell beside it
+      if (swimmable(k)) {
+        // water (and slime) puts out the burning cell beside it
         if (m !== Mat.Empty && sim.fires.has(j)) sim.fires.delete(j);
       } else if (k === Liquid.Oil) {
         const fire = sim.fires.get(j);

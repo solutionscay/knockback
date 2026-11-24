@@ -176,13 +176,28 @@ function dropX(sim: Sim, rng: Rng = sim.rng): number {
 }
 
 /**
+ * #125: the height a drop falls from at x under a cave's ceiling: just under it, and under a stalactite there (its
+ * width clear). On an open map (no ceiling) it is `y` itself.
+ */
+export function underRoof(sim: Sim, x: number, y: number, hw = 0.4): number {
+  const roof = sim.ruleset.arena.themes[sim.level.theme].stage.ceiling;
+  if (!roof || y < roof - 0.8) return y;
+  const g = sim.grid;
+  let h = roof - 0.8;
+  while (h > roof - 8 && (g.solidAt(x - hw, h + 0.5) || g.solidAt(x, h + 0.5) || g.solidAt(x + hw, h + 0.5))) h -= 0.25;
+  return h;
+}
+
+/**
  * A weapon falls in at a spread-out spot (#95, weapon-spots.ts): from the sky, or from just under whatever is above
  * the spot. Without a spot it falls from the sky at a clear column (the old way).
  */
 function dropWeapon(sim: Sim, rng: Rng, weapon: Weapon): Entity {
   const top = sim.ruleset.pickups.supply.itemHeight;
   const p = weaponSpot(sim, rng);
-  return p ? sim.spawnItem(weapon, p.x, dropHeight(sim, p, top)) : sim.spawnItem(weapon, dropX(sim, rng), top);
+  if (p) return sim.spawnItem(weapon, p.x, dropHeight(sim, p, top));
+  const x = dropX(sim, rng);
+  return sim.spawnItem(weapon, x, underRoof(sim, x, top));
 }
 
 /**
@@ -209,15 +224,23 @@ export function supplyDrop(sim: Sim, n: number) {
     makeRoomForWeapon(sim);
     sim.spawnItem(item, spot.x, dropHeight(sim, spot, supply.itemHeight));
   } else if (isPickupWeapon(item)) dropWeapon(sim, sim.rng, item);
-  else sim.spawnItem(item, dropX(sim), supply.itemHeight);
+  else {
+    const x = dropX(sim);
+    sim.spawnItem(item, x, underRoof(sim, x, supply.itemHeight));
+  }
   if (n % supply.propEvery === 0) {
     const x = dropX(sim);
     const tnt = sim.rng.chance(supply.tntChance);
-    const a = sim.addProp(tnt ? "tnt" : "barrel", x, supply.propHeight);
-    sim.events.push({ type: "propDrop", tick: sim.tick, entity: a.id, kind: a.kind, x, y: supply.propHeight });
+    // #125: under a cave's ceiling, the pair falls from just under it, the second barrel beside the first and lower
+    const roofed = underRoof(sim, x, supply.propHeight, 1.2);
+    // (the prop's bottom: a barrel stands 1 m, its top where a pickup's middle would be)
+    const ya = roofed === supply.propHeight ? roofed : roofed - 1;
+    const a = sim.addProp(tnt ? "tnt" : "barrel", x, ya);
+    sim.events.push({ type: "propDrop", tick: sim.tick, entity: a.id, kind: a.kind, x, y: ya });
     if (!tnt) {
-      const b = sim.addProp("barrel", x + (sim.rng.chance(0.5) ? supply.barrelOffset : -supply.barrelOffset), supply.extraBarrelHeight);
-      sim.events.push({ type: "propDrop", tick: sim.tick, entity: b.id, kind: b.kind, x, y: supply.extraBarrelHeight });
+      const yb = ya === supply.propHeight ? supply.extraBarrelHeight : ya - 0.6;
+      const b = sim.addProp("barrel", x + (sim.rng.chance(0.5) ? supply.barrelOffset : -supply.barrelOffset), yb);
+      sim.events.push({ type: "propDrop", tick: sim.tick, entity: b.id, kind: b.kind, x, y: yb });
     }
     sim.stats.propsDropped += tnt ? 1 : 2;
   }
