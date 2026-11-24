@@ -1909,3 +1909,53 @@ body.embed:has(#celebrate.show) #lineup {
   font-style: normal;
   opacity: 0.45;
 }
+
+/* the site's stage on a phone (about 360 px wide): four chips in one row get some 66 px each and cut their text.
+   Compact chips instead: two on each side of the clock, one above the other; the portrait, the weapon and its ammo,
+   and the build (the plan line is left out) */
+@media (max-width: 520px) and (min-aspect-ratio: 1/1) {
+  body.embed #lineup.fight {
+    grid-template-columns: minmax(0, 1fr) var(--clock-lane) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    row-gap: 4px;
+    column-gap: 4px;
+  }
+  body.embed #lineup.fight .chip {
+    grid-column: 1;
+    justify-self: start;
+    max-width: 100%;
+    padding: 2px 8px 2px 3px;
+    gap: 4px;
+  }
+  body.embed #lineup.fight .chip:nth-child(2) {
+    grid-row: 2;
+  }
+  body.embed #lineup.fight .chip:nth-child(3),
+  body.embed #lineup.fight .chip:nth-child(4) {
+    grid-column: 3;
+    justify-self: end;
+  }
+  body.embed #lineup.fight .chip:nth-child(3) {
+    grid-row: 1;
+  }
+  body.embed #lineup.fight .chip:nth-child(4) {
+    grid-row: 2;
+  }
+  body.embed #lineup.fight .chip svg {
+    width: 16px;
+    height: 19px;
+  }
+  body.embed #lineup.fight .chip .nm {
+    grid-template-columns: auto;
+    grid-template-areas: "a" "k";
+    row-gap: 1px;
+    overflow: visible;
+  }
+  body.embed #lineup.fight .chip .slot {
+    justify-self: start;
+    font-size: 11px;
+  }
+  body.embed #lineup.fight .chip .plan {
+    display: none;
+  }
+}

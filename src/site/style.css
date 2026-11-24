@@ -226,6 +226,14 @@ pre.snip { margin: 0; padding: 12px 64px 12px 12px; background: #000; border-rad
 .pc-chg { margin: 6px 0 0; color: var(--dim); }
 .pc-chg b { color: var(--ci, var(--c)); font: 900 11px/1 var(--display); }
 .pc-chg q { color: var(--ink); }
+/* wide screens: the open card sits on the arena's right edge (the plan slot shares the stage's grid cell), so it is
+   in view without a scroll and the fight's centre stays clear; on narrower screens it stays under the seats */
+@media (min-width: 1100px) {
+  .lobby, .lobby > .main { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .lobby .stage, .lobby .planslot { grid-row: 2; grid-column: 1; }
+  .lobby .planslot { justify-self: end; align-self: center; width: 320px; margin: 0 14px 0 0; position: relative; z-index: 2; }
+  .lobby .plancard { max-width: none; background: #12151fe8; box-shadow: 0 6px 0 #00000080; }
+}
 
 /* #85: the plush portraits on the cards (site/bots.ts head(): the portrait's bust) */
 .bh { display: inline-block; flex: none; width: 26px; height: 26px; margin: -6px 6px -6px 0; vertical-align: middle; }

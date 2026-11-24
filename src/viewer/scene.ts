@@ -107,10 +107,10 @@ export class Scene {
   }
 
   get W() {
-    return this.app.renderer.width / this.app.renderer.resolution;
+    return this.app.screen.width;
   }
   get H() {
-    return this.app.renderer.height / this.app.renderer.resolution;
+    return this.app.screen.height;
   }
   get ui() {
     return this.H / 1080;

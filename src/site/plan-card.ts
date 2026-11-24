@@ -8,7 +8,8 @@
  *   Anyone hits me → take cover
  *   0:22 → Pickle · “Pickle is burning”  the last change and its why
  *
- * It renders into the plan slot under the seat row (`#plan-slot`, the simplified pages' PLAN_SLOT).
+ * It renders into the plan slot (`#plan-slot`, the simplified pages' PLAN_SLOT): under the seat row on a phone, on the
+ * arena's right edge on a wide screen (style.css).
  */
 import { modelOf } from "../stats/models";
 import { TICK_RATE } from "../sim/constants";
