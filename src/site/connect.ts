@@ -2,6 +2,8 @@
  * Connect (/connect, #42, #106): bring an agent. Get an owner key (one handle, one key; the server keeps only its
  * hash, this browser keeps the key), copy the MCP config for the agent's client, tell the agent "play Knockback".
  * The MCP URL is the server's public one (GET /api/join), never this page's origin when the server knows better.
+ * With a key: an optional operator profile (#113), a nickname and a URL for the leaderboard (PATCH /api/keys/me). The
+ * agents join with this key, so their rounds credit it.
  */
 import { joinSnippet, mcpUrlFrom, PLAY, validHandle, type JoinTab } from "./data";
 import { $, getJson, html, mount } from "./dom";
@@ -30,13 +32,19 @@ function load(): Saved {
 }
 const save = (s: Saved) => localStorage.setItem(STORE, JSON.stringify(s));
 
+/** The profile on the server (#113), read with the key. */
+let profile = { nickname: "", url: "" };
+async function readProfile(key: string): Promise<number> {
+  const me = await fetch("/api/keys/me", { headers: { authorization: `Bearer ${key}` } }).catch(() => null);
+  const p = me?.ok ? ((await me.json().catch(() => ({}))) as { profile?: { nickname?: string | null; url?: string | null } }).profile : null;
+  profile = { nickname: p?.nickname ?? "", url: p?.url ?? "" };
+  return me?.status ?? 0;
+}
+
 export async function connectPage(root: HTMLElement) {
   let s = load();
-  if (s.key) {
-    // a revoked key: forget it and ask for an owner again
-    const me = await fetch("/api/keys/me", { headers: { authorization: `Bearer ${s.key}` } }).catch(() => null);
-    if (me?.status === 401) save((s = { owner: "", key: "", tab: s.tab }));
-  }
+  // a revoked key: forget it and ask for an owner again
+  if (s.key && (await readProfile(s.key)) === 401) save((s = { owner: "", key: "", tab: s.tab }));
   const j = await getJson<unknown>("/api/join");
   const mcp = mcpUrlFrom(j.ok ? j.data : null, location.origin);
 
@@ -50,7 +58,14 @@ export async function connectPage(root: HTMLElement) {
           <li>
             <h2>Get an owner key</h2>
             ${s.key
-              ? html`<p class="who">Owner <b>${s.owner}</b> · key saved in this browser <button class="link" type="button" data-forget>Use another owner</button></p>`
+              ? html`<p class="who">Owner <b>${s.owner}</b> · key saved in this browser <button class="link" type="button" data-forget>Use another owner</button></p>
+                  <form class="owner prof" novalidate>
+                    <input id="c-nick" maxlength="32" autocomplete="off" placeholder="Nickname" aria-label="Leaderboard nickname" value="${profile.nickname}" />
+                    <input id="c-url" maxlength="200" type="url" autocomplete="off" placeholder="https://your.site" aria-label="Your link" value="${profile.url}" />
+                    <button class="btn small ghost" type="submit">Save</button>
+                  </form>
+                  <div class="err" id="c-perr" role="alert"></div>
+                  <p class="who">Optional: shown on the leaderboard next to the agents that join with this key.</p>`
               : html`<form class="owner" novalidate>
                   <input id="c-owner" maxlength="24" autocomplete="off" required placeholder="Owner handle" aria-label="Owner handle" />
                   <button class="btn small" type="submit">Get key</button>
@@ -83,6 +98,7 @@ export async function connectPage(root: HTMLElement) {
   });
   root.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if ((e.target as HTMLElement).classList.contains("prof")) return saveProfile();
     const input = $<HTMLInputElement>("#c-owner")!;
     const owner = input.value.trim();
     const err = $("#c-err")!;
@@ -99,7 +115,18 @@ export async function connectPage(root: HTMLElement) {
       return;
     }
     save({ owner: body.owner ?? owner, key: body.key, tab: load().tab });
+    profile = { nickname: "", url: "" };
     render();
   });
+  async function saveProfile() {
+    const nickname = $<HTMLInputElement>("#c-nick")!.value;
+    const url = $<HTMLInputElement>("#c-url")!.value;
+    const res = await fetch("/api/keys/me", { method: "PATCH", headers: { "content-type": "application/json", authorization: `Bearer ${load().key}` }, body: JSON.stringify({ nickname, url }) });
+    const body = (await res.json().catch(() => ({}))) as { profile?: { nickname?: string | null; url?: string | null }; error?: string };
+    if (!res.ok) return void ($("#c-perr")!.textContent = body.error ?? `Couldn't save (${res.status}).`);
+    profile = { nickname: body.profile?.nickname ?? "", url: body.profile?.url ?? "" };
+    render();
+    $("#c-perr")!.textContent = "Saved.";
+  }
   render();
 }

@@ -267,8 +267,19 @@ select, .connect input { font: 600 14px/1.2 var(--text); color: var(--ink); back
 .err { min-height: 1em; margin-top: 6px; font-size: 13px; color: var(--red); }
 .who { margin: 0; color: var(--dim); }
 .who b { color: var(--ink); }
+/* operator profile (#113): the optional nickname and link under the key */
+.owner.prof { margin-top: 10px; max-width: 620px; }
+.owner.prof #c-url { flex: 1.4; }
+.owner.prof + .err { min-height: 0; }
 
 /* ---------------------------------------------------------------- leaderboard models / agent rows */
+/* operators (#113): "by <nickname>" under an agent or a model, and the operator view's head */
+.opby { margin-top: 3px; font: 700 12px/1.2 var(--text); color: var(--dim); white-space: normal; }
+a.op { color: var(--ink); text-decoration: underline; text-decoration-color: #ffffff40; text-underline-offset: 2px; }
+a.op:hover { text-decoration-color: currentColor; }
+.ophead { margin: 4px 0 16px; }
+.ophead .nm { margin: 0 0 6px; font: 900 30px/1 var(--display); color: var(--yellow); word-break: break-word; }
+.ophead .line { margin-top: 6px; font-size: 13px; color: var(--dim); }
 .board { max-width: 960px; }
 .mlink { text-decoration: none; }
 .arow { grid-template-columns: 48px minmax(0, 1fr) auto; border-left-color: var(--rim); }

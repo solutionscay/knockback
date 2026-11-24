@@ -20,6 +20,13 @@ import type { PlanUpdate } from "../sim/fight";
 import type { Decision } from "../sim/voice";
 import type { Crown, PlayedRound } from "./crown";
 import { engineStamp } from "../sim/engine";
+import { newOperatorId, type Operator } from "./profile";
+
+/** The profile fields an owner sets (#113); undefined leaves a field as it is, null clears it. */
+export interface ProfilePatch {
+  nickname?: string | null;
+  url?: string | null;
+}
 
 export type MatchStatus = "open" | "running" | "over" | "failed";
 
@@ -201,8 +208,14 @@ export interface MatchStore {
   updateSeat(matchId: string, seat: number, patch: SeatPatch): Promise<void>;
   /** the owner of a key (sha256 hex) that is not revoked, or null */
   ownerOfKey(keyHash: string): Promise<string | null>;
-  /** a new owner handle with its first key; false when the handle is taken */
-  createOwner(handle: string, keyHash: string): Promise<boolean>;
+  /** a new owner handle with its first key (and a new profile id, #113); false when the handle is taken */
+  createOwner(handle: string, keyHash: string, profile?: ProfilePatch): Promise<boolean>;
+  /** an owner's profile (#113): its stable id, nickname and URL; null when there is no such owner */
+  profileOf(handle: string): Promise<{ id: string; handle: string; nickname: string | null; url: string | null } | null>;
+  /** set or clear an owner's profile fields (undefined: leave as is) */
+  setProfile(handle: string, patch: ProfilePatch): Promise<void>;
+  /** the owners that set a nickname, with their agent names: their presence on the site */
+  operators(): Promise<(Operator & { handle: string; agents: string[] })[]>;
   /** revoke one key (true when it was live) */
   revokeKey(keyHash: string): Promise<boolean>;
   /** revoke every live key of an owner; returns how many */
@@ -267,7 +280,7 @@ export interface MatchStore {
  * The schema version of SCHEMA. A database with any other version (or with tables from before the single schema) is
  * refused at startup: pre-alpha, there is no upgrade code. Bump it with any change to SCHEMA; reset with bun run db:reset.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /** The one schema: the current model. Plain SQLite: D1 runs the same SQL. */
 export const SCHEMA = `
@@ -292,8 +305,12 @@ export const SCHEMA = `
   CREATE INDEX matches_status ON matches(status);
   CREATE TABLE owners (
     handle TEXT PRIMARY KEY COLLATE NOCASE,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    id TEXT NOT NULL DEFAULT '',      -- the operator profile's stable id (#113, op_...): a later login attaches here
+    nickname TEXT,                    -- profile (#113): shown on the site, never in an agent's prompt
+    url TEXT                          -- profile (#113): http(s) only
   );
+  CREATE UNIQUE INDEX owners_id ON owners(id);
   CREATE TABLE owner_keys (
     key_hash TEXT PRIMARY KEY,         -- sha256 hex of the MCP key; the key itself is never stored
     owner TEXT NOT NULL COLLATE NOCASE REFERENCES owners(handle) ON DELETE CASCADE,
@@ -465,7 +482,8 @@ export class SqliteStore implements MatchStore {
 
   /**
    * `path`: a file, or ":memory:". An empty database gets SCHEMA; one with another schema throws SchemaError, except
-   * v7, which gets the one column v8 added (#88: matches.engine, empty until checked) so its rounds are kept.
+   * v7 and v8, which get the columns added since (#88: matches.engine, empty until checked; #113: the owner profile,
+   * a new id per owner), so their rounds, owners and keys are kept.
    * `engine`: the current engine stamp (default: worked out, src/sim/engine.ts).
    */
   constructor(path: string, engine?: string) {
@@ -480,10 +498,16 @@ export class SqliteStore implements MatchStore {
           this.db.exec(SCHEMA);
           this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
         })();
-      } else if (version === 7) {
-        // the only upgrade (#88): an added column, nothing rewritten; the old rounds are checked in the background
+      } else if (version === 7 || version === 8) {
+        // the only upgrades, added columns, nothing rewritten: v8 (#88) matches.engine (the old rounds are checked in
+        // the background); v9 (#113) the owner profile: owners keep their handles and keys, each gets a new id
         this.db.transaction(() => {
-          this.db.exec("ALTER TABLE matches ADD COLUMN engine TEXT");
+          if (version === 7) this.db.exec("ALTER TABLE matches ADD COLUMN engine TEXT");
+          this.db.exec("ALTER TABLE owners ADD COLUMN id TEXT NOT NULL DEFAULT ''");
+          this.db.exec("ALTER TABLE owners ADD COLUMN nickname TEXT");
+          this.db.exec("ALTER TABLE owners ADD COLUMN url TEXT");
+          for (const r of this.db.query("SELECT handle FROM owners").all() as Row[]) this.db.query("UPDATE owners SET id = ? WHERE handle = ?").run(newOperatorId(), r.handle as string);
+          this.db.exec("CREATE UNIQUE INDEX owners_id ON owners(id)");
           this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
         })();
       } else if (version !== SCHEMA_VERSION) throw new SchemaError(path, version);
@@ -561,11 +585,11 @@ export class SqliteStore implements MatchStore {
     const r = this.db.query("SELECT owner FROM owner_keys WHERE key_hash = ? AND revoked_at IS NULL").get(keyHash) as Row | null;
     return r ? (r.owner as string) : null;
   }
-  async createOwner(handle: string, keyHash: string) {
+  async createOwner(handle: string, keyHash: string, profile: ProfilePatch = {}) {
     return this.db.transaction(() => {
       if (this.db.query("SELECT 1 FROM owners WHERE handle = ?").get(handle)) return false;
       const now = Date.now();
-      this.db.query("INSERT INTO owners (handle, created_at) VALUES (?, ?)").run(handle, now);
+      this.db.query("INSERT INTO owners (handle, created_at, id, nickname, url) VALUES (?, ?, ?, ?, ?)").run(handle, now, newOperatorId(), profile.nickname ?? null, profile.url ?? null);
       this.db.query("INSERT INTO owner_keys (key_hash, owner, created_at) VALUES (?, ?, ?)").run(keyHash, handle, now);
       return true;
     })();
@@ -594,6 +618,25 @@ export class SqliteStore implements MatchStore {
       this.db.query("INSERT INTO agents (name, owner, created_at) VALUES (?, ?, ?)").run(name, o.handle as string, Date.now());
       return o.handle as string;
     })();
+  }
+  async profileOf(handle: string) {
+    const r = this.db.query("SELECT handle, id, nickname, url FROM owners WHERE handle = ?").get(handle) as Row | null;
+    return r ? { id: r.id as string, handle: r.handle as string, nickname: (r.nickname as string | null) ?? null, url: (r.url as string | null) ?? null } : null;
+  }
+  async setProfile(handle: string, patch: ProfilePatch) {
+    if (patch.nickname !== undefined) this.db.query("UPDATE owners SET nickname = ? WHERE handle = ?").run(patch.nickname, handle);
+    if (patch.url !== undefined) this.db.query("UPDATE owners SET url = ? WHERE handle = ?").run(patch.url, handle);
+  }
+  async operators() {
+    const rows = this.db.query("SELECT o.handle, o.id, o.nickname, o.url, a.name FROM owners o LEFT JOIN agents a ON a.owner = o.handle WHERE o.nickname IS NOT NULL ORDER BY o.handle, a.created_at").all() as Row[];
+    const by = new Map<string, Operator & { handle: string; agents: string[] }>();
+    for (const r of rows) {
+      const k = (r.handle as string).toLowerCase();
+      const o = by.get(k) ?? { handle: r.handle as string, id: r.id as string, nickname: r.nickname as string, url: (r.url as string | null) ?? null, agents: [] };
+      if (r.name) o.agents.push(r.name as string);
+      by.set(k, o);
+    }
+    return [...by.values()];
   }
   async listAgents(owner: string) {
     return (this.db.query("SELECT name FROM agents WHERE owner = ? ORDER BY created_at").all(owner) as Row[]).map((r) => r.name as string);

@@ -38,7 +38,7 @@ describe("owner keys over HTTP", () => {
     expect(r.data.key).toMatch(/^kbk_[0-9a-f]{32}$/);
     expect((await call("POST", "/api/keys", { body: { owner: "ada" } })).status).toBe(409); // taken, ignoring case
     expect((await call("POST", "/api/keys", { body: { owner: "" } })).status).toBe(400);
-    expect((await call("GET", "/api/keys/me", { key: r.data.key })).data).toEqual({ owner: "Ada", agents: [] });
+    expect((await call("GET", "/api/keys/me", { key: r.data.key })).data).toMatchObject({ owner: "Ada", agents: [], profile: { nickname: null, url: null } });
   });
 
   test("a join needs the key in the Authorization header", async () => {
