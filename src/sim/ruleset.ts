@@ -190,13 +190,14 @@ export function validateRuleset(input: unknown): Ruleset {
 }
 
 export const CLASSIC = validateRuleset({});
-/** Close Quarters: tight spawns and drops, no launch cap, full stacking, no ceilings, no tactical reach. */
+/** Close Quarters: tight spawns and drops, no launch cap, full stacking, no ceilings, no tactical reach. Its supply keeps
+ * the #95 pace (a drop every 8 s, 3 weapons in play) when Classic's goes up (#109). */
 export const CLOSE_QUARTERS = validateRuleset({
   combat: { launch: { maxUpSpeed: 36_000, stackRetention: 1, ceilingAbove: 0, ceilingDrag: 0 } },
   arena: { spawns: CLOSE_SPAWNS },
   zone: { suddenDeath: { graceTicks: 0 } },
   tactics: { weapons: { enabled: false } },
-  pickups: { armory: CLOSE_ARMORY, supply: { avoidDistance: 0, firstTick: SUPPLY.firstTick }, power: { jetpack: { ceiling: 36_000 } } },
+  pickups: { armory: CLOSE_ARMORY, supply: { avoidDistance: 0, firstTick: SUPPLY.firstTick, interval: 480, weaponChance: 0.5, maxLooseWeapons: 3 }, power: { jetpack: { ceiling: 36_000 } } },
 });
 
 const prepared = new WeakSet<object>([CLASSIC, CLOSE_QUARTERS]);

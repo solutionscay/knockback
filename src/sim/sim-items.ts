@@ -4,7 +4,7 @@ import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
 import { ordinaryWeapons, stockSpreadArmory } from "./spread-armory";
 import type { Sim } from "./sim";
 import { hasAmmo, isPickupWeapon, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
-import { dropHeight, liveWeapons, looseWeapons, weaponSpot } from "./weapon-spots";
+import { cutOff, dropHeight, liveWeapons, looseWeapons, makeRoomForWeapon, weaponSpot } from "./weapon-spots";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
 
@@ -198,9 +198,17 @@ export function supplyDrop(sim: Sim, n: number) {
   const supply = sim.ruleset.pickups.supply;
   // no weapon in play and someone bare-handed: this drop is a weapon (#95: fewer weapons, never none)
   const starved = liveWeapons(sim) === 0 && sim.alive().some((f) => f.weapons[1] === "fist");
-  const wc = !roomForWeapon(sim) ? 0 : starved ? 1 : supply.weaponChance;
+  // a bare-handed fighter that can get to none of the weapons in play (#109): when its own ground has a spot, this drop
+  // is a weapon there, past the cap (the oldest loose weapon makes way at twice the cap). One fighter's ground per
+  // drop, taking turns: two cut off on separate islands share no spot
+  const stranded = supply.cutOffDrops ? cutOff(sim) : [];
+  const spot = stranded.length ? weaponSpot(sim, sim.rng, null, [], [stranded[n % stranded.length]!]) : null;
+  const wc = spot ? 1 : !roomForWeapon(sim) ? 0 : starved ? 1 : supply.weaponChance;
   const item = randomDrop(sim, wc);
-  if (isPickupWeapon(item)) dropWeapon(sim, sim.rng, item);
+  if (isPickupWeapon(item) && spot) {
+    makeRoomForWeapon(sim);
+    sim.spawnItem(item, spot.x, dropHeight(sim, spot, supply.itemHeight));
+  } else if (isPickupWeapon(item)) dropWeapon(sim, sim.rng, item);
   else sim.spawnItem(item, dropX(sim), supply.itemHeight);
   if (n % supply.propEvery === 0) {
     const x = dropX(sim);

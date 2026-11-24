@@ -1,16 +1,15 @@
 /**
  * The Lobby (/lobby, #22, #64, #106): the Arena live is the page. The real viewer on the Arena's stream (every round,
- * back to back), one line over it (the round and its clock), the four fighters under it (seats.ts) and the next round in
+ * back to back), one line over it (the round; the fight's clock is the stage's own, #109), the four fighters under it (seats.ts) and the next round in
  * one quiet line. /watch/:id is the same view on one round.
  * Data: the stream; GET /api/queue every 3 s (who plays each seat, the next round); /api/matches/:id for /watch/:id.
  */
-import { arenaInfo, clock, feedEntries, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type MatchInfo } from "./data";
+import { arenaInfo, feedEntries, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type MatchInfo } from "./data";
 import { cleanIdentity } from "./bots";
 import { $, every, getJson, html, mount, raw } from "./dom";
 import { PLAN_SLOT, renderSeats } from "./seats";
 import { Stage } from "./stage";
 import type { Identity } from "../sim/identity";
-import { TICK_RATE } from "../sim/constants";
 
 interface Lineup {
   match: string;
@@ -77,7 +76,8 @@ export function lobbyPage(root: HTMLElement, id: string | null) {
     }
     const p = stage.pos;
     const round = lineup?.round || info?.arenaRound;
-    const when = winner >= 0 || p?.done ? "Final" : p?.phase === "fight" ? clock(Math.floor(p.tick / TICK_RATE)) : p?.phase === "plan" ? "Plans" : p?.phase === "end" ? "Round over" : "";
+    // one clock (#109): the fight's time left is on the stage; the header only names the phase around it
+    const when = winner >= 0 || p?.done ? "Final" : p?.phase === "plan" ? "Plans" : p?.phase === "end" ? "Round over" : "";
     $("#l-meta")!.textContent = !lineup ? "Connecting…" : ["Live", round ? `Round ${round}` : "", when].filter(Boolean).join(" · ");
     const replay = $<HTMLAnchorElement>("#l-replay")!;
     replay.hidden = !(id && winner >= 0);

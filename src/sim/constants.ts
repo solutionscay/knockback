@@ -332,7 +332,7 @@ export const POWER = {
   damage: { ticks: 8 * 60, mul: 2, kbMul: 1.25 },
   jump: { ticks: 12 * 60 },
   /** ceiling: meters above the highest platform where thrust has faded out (#41); fade: meters below it where thrust starts to fade */
-  jetpack: { fuelTicks: 90, thrust: 44, riseSpeed: 9, speedMul: 1.35, ceiling: 4, fade: 1.5 },
+  jetpack: { fuelTicks: 180, thrust: 44, riseSpeed: 9, speedMul: 1.35, ceiling: 4, fade: 1.5 },
 };
 
 /** Loose terrain pieces this small are cleared after this long (keeps body count down). */
@@ -383,9 +383,12 @@ export const STALEMATE = { quietTicks: 7 * TICK_RATE, shrinkPerSec: 2.4, endHalf
 /**
  * Supply drops: every interval an item (sometimes a weapon) inside the zone, barrels every other drop. With
  * maxLooseWeapons or more weapons on the floor (start weapons, drops, dropped and knocked-out fighters' weapons) the
- * drop is a power-up instead, and crates and sudden death drop no weapon (#95).
+ * drop is a power-up instead, and crates and sudden death drop no weapon (#95). cutOffDrops (#109): a bare-handed
+ * fighter that can get to none of the weapons in play gets a weapon on its side at the next drop, past the cap.
+ * #109: a drop every 6 s (was 8), a weapon 60% of the time (was 50%), up to 4 weapons in play (was 3); Close
+ * Quarters keeps 8 s, 50% and 3.
  */
-export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 8 * TICK_RATE, weaponChance: 0.5, maxLooseWeapons: 3 };
+export const SUPPLY = { firstTick: 4 * TICK_RATE, interval: 6 * TICK_RATE, weaponChance: 0.6, maxLooseWeapons: 4, cutOffDrops: true };
 
 /**
  * Weapons waiting in the arena when a round starts. Everyone starts with

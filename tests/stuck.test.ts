@@ -42,5 +42,6 @@ describe("stuck and aimless (#88)", () => {
     }
     expect(stuck / alive).toBeLessThan(0.015);
     expect(longest).toBeLessThanOrEqual(10 * 60);
-  });
+    // 16 whole rounds of physics: bunfig's limit does not reach this test (it timed out at bun's 5 s default under load)
+  }, 60_000);
 });

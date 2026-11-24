@@ -111,10 +111,18 @@ export function walkSpeedNow(ruleset: Ruleset, f: Fighter, thrust = false): numb
   return speed;
 }
 
+/** Down rays (x offsets, m) of the ground check: the middle three, then the outer ones (#109). */
+const GROUND_RAYS = [-0.28, 0, 0.28, -0.31, 0.31, -0.35, 0.35, -0.39, 0.39];
 export function checkGrounded(sim: Sim, f: Fighter): boolean {
   const p = f.entity.body.translation();
-  const reach = sim.ruleset.combat.fighter.halfHeight + sim.ruleset.combat.fighter.radius + 0.12;
-  for (const ox of [-0.28, 0, 0.28]) {
+  const { halfHeight: hh, radius: r } = sim.ruleset.combat.fighter;
+  // #109: the outer rays (most of the radius out) reach only to the capsule's rounded bottom there: a body resting on
+  // a corner just past the middle rays (a block's edge under a low roof) stood wedged, never grounded, unable to jump.
+  // Only for a body at rest: one falling past a ledge's corner still slides off it
+  const resting = Math.abs(f.entity.body.linvel().y) < 0.5;
+  for (const ox of GROUND_RAYS) {
+    if (Math.abs(ox) > 0.3 && !resting) break; // a body falling past a corner is not standing on it
+    const reach = Math.abs(ox) > 0.3 ? hh + Math.sqrt(Math.max(0, r * r - ox * ox)) + 0.08 : hh + r + 0.12;
     const ray = new RAPIER.Ray({ x: p.x + ox, y: p.y }, { x: 0, y: -1 });
     // #100: jump-through platforms count as ground only while they hold the fighter
     const hit = sim.world.castRay(ray, reach, true, undefined, groups(0xffff, G.TERRAIN | G.PROP | G.FIGHTER | (sim.oneWayLand[f.id] ? G.ONEWAY : 0)), f.entity.collider);

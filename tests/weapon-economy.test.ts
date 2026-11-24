@@ -175,19 +175,19 @@ describe("where weapons land", () => {
     for (const f of s.sim.fighters) for (const q of loose) expect(Math.hypot(s.sim.pos(f).x - q.x, s.sim.pos(f).y - 0.84 - q.y)).toBeGreaterThanOrEqual(cfg.fighterGap - 1);
   });
 
-  test("Classic starts with four weapons, apart, and keeps the floor to a few", () => {
+  test("Classic starts with five weapons, apart, and keeps the floor to a few", () => {
     const souls = exampleSouls();
     for (let seed = 1; seed <= 6; seed++) {
       const m = new Match(seed, { souls, ruleset: { ...CLASSIC, round: { ...CLASSIC.round, maxRounds: 1, winsToTake: 1 } } });
       m.prepareRound();
       const sim = m.fight!.sim;
       const start = looseWeapons(sim);
-      expect(start.length).toBe(4);
+      expect(start.length).toBe(5); // #109: a fifth at a spread-out spot
       for (let i = 0; i < start.length; i++) for (let j = i + 1; j < start.length; j++) expect(Math.hypot(start[i]!.x - start[j]!.x, start[i]!.y - start[j]!.y)).toBeGreaterThan(3);
       let peak = 0;
       while (!m.step()) if (sim.tick % 60 === 0 && sim.suddenDeath < 0) peak = Math.max(peak, looseWeapons(sim).length);
-      // the supply cap is 3 in play; dropped and knocked-out fighters' weapons come on top
-      expect(peak).toBeLessThanOrEqual(8);
+      // the supply cap is 4 in play (#109); dropped and knocked-out fighters' weapons come on top
+      expect(peak).toBeLessThanOrEqual(10);
     }
   });
 });

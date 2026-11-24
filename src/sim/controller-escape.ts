@@ -219,15 +219,15 @@ export class Escape {
   /**
    * The hop-breaker, on the final input: a bot that has hopped `hops` times in hopTicks without moving hopBox m sideways
    * (a jump turned back by a ceiling, a shot taken mid-air) stops jumping for breakTicks and walks toward its target
-   * (the zone's middle when outside it), digging a wall in front with digWith.
+   * (the zone's middle when outside it), digging a wall in front with digWith. True on the tick it trips.
    */
-  breakHops(sim: Sim, me: Fighter, input: Input, targetX: number | null) {
-    if (!me.alive) return;
+  breakHops(sim: Sim, me: Fighter, input: Input, targetX: number | null): boolean {
+    if (!me.alive) return false;
     const p = sim.pos(me);
     if (sim.tick < this.breakUntil) {
       input.jump = false;
       input.thrust = false;
-      if (input.fire) return; // a shot it is taking stays
+      if (input.fire) return false; // a shot it is taking stays
       input.move = this.breakDir;
       const g = sim.grid;
       const ahead = g.cx(p.x + this.breakDir * 0.7);
@@ -235,7 +235,7 @@ export class Escape {
       if (me.grounded && (g.solid(ahead, g.cy(feet + 0.3)) || g.solid(ahead, g.cy(feet + 1.2)))) {
         this.dig(sim, me, input, this.breakDir, { x: p.x + this.breakDir * 3, y: feet }, feet);
       }
-      return;
+      return false;
     }
     if (input.jump && me.grounded && me.jumpCd === 0) {
       this.jumps.push({ t: sim.tick, x: p.x });
@@ -253,9 +253,16 @@ export class Escape {
           this.jumps = [];
           this.breaks++;
           input.jump = false;
+          return true;
         }
       }
     }
+    return false;
+  }
+
+  /** The hop-breaker's walk is not needed (#109: the controller planned around the way the hops were going). */
+  endBreak(sim: Sim) {
+    this.breakUntil = sim.tick;
   }
 
   private stop(sim: Sim, rest: number): false {

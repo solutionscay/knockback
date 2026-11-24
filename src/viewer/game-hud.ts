@@ -212,9 +212,11 @@ export function renderDialogueLine(el: HTMLElement, line: string, elapsed: numbe
   return n;
 }
 
+/** The fight's one clock: the time left (#109). A one-round match (every Arena round) has no round number to show. */
 export function renderRoundClock(el: HTMLElement, match: Match, tick: number) {
   const left = Math.max(0, (match.ruleset.round.fightTicks - tick) / TICK_RATE);
-  const txt = `<span class="r">ROUND ${match.round}</span>${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${pipsHtml(match, "small")}`;
+  const round = match.ruleset.round.maxRounds > 1 ? `<span class="r">ROUND ${match.round}</span>` : "";
+  const txt = `${round}${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${pipsHtml(match, "small")}`;
   if (el.innerHTML !== txt) el.innerHTML = txt;
   el.className = left < 10 ? "show low" : "show";
 }

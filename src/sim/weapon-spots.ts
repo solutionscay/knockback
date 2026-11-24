@@ -54,6 +54,22 @@ export function needy(sim: Sim, f: Fighter): boolean {
   return Number.isFinite(d) && sim.ruleset.tactics.weapons.reach[w].max < d;
 }
 
+/**
+ * Bare-handed fighters that can get to no loose weapon in play (#109): every one is across a gap they cannot jump, or
+ * out of the zone. The cap on loose weapons counts weapons the others reach, so without this a fighter cut off on its
+ * own ground waits there, fists only, until sudden death.
+ */
+export function cutOff(sim: Sim): Fighter[] {
+  const nav = sim.nav;
+  const z = sim.zone;
+  const loose = looseWeapons(sim).filter((p) => Math.abs(p.x - z.center) <= z.half + 2).map((p) => nav.surfaceAt(p.x, p.y + 0.3, 0.2));
+  return sim.alive().filter((f) => {
+    if (f.removed || f.weapons[1] !== "fist" || f.surface < 0 || f.surface >= nav.surfaces.length) return false;
+    const plan = nav.fighterPlan(sim.grid, f.surface, sim.pos(f).x);
+    return !loose.some((s) => s && plan.cost[s.id] !== Infinity);
+  });
+}
+
 /** Where a weapon was picked up within the last recentTicks (older ones are dropped from the list). */
 function recentPickups(sim: Sim): Point[] {
   const keep = sim.ruleset.pickups.spots.recentTicks;
@@ -85,13 +101,25 @@ function reachCounts(sim: Sim, origins: number[]): number[] {
   return counts;
 }
 
+/** Per surface, how many of the fighters' own plans (fighterPlan) reach it. */
+function planCounts(sim: Sim, fighters: readonly Fighter[]): number[] {
+  const counts = sim.nav.surfaces.map(() => 0);
+  for (const f of fighters) {
+    const plan = sim.nav.fighterPlan(sim.grid, f.surface, sim.pos(f).x);
+    plan.cost.forEach((c, i) => {
+      if (c !== Infinity) counts[i]!++;
+    });
+  }
+  return counts;
+}
+
 const nearest = (p: Point, others: readonly Point[]) => others.reduce((d, q) => Math.min(d, Math.hypot(p.x - q.x, p.y - q.y)), Infinity);
 
 /**
  * A spot for a new weapon, or null when the arena has no ground for it. `spawns`: the round start (the spawns stand in
  * for fighters, every spawn must reach the spot); `placed`: weapons placed in the same batch, not yet in the world.
  */
-export function weaponSpot(sim: Sim, rng: Rng, spawns: readonly Point[] | null = null, placed: readonly Point[] = []): Point | null {
+export function weaponSpot(sim: Sim, rng: Rng, spawns: readonly Point[] | null = null, placed: readonly Point[] = [], forWho: readonly Fighter[] | null = null): Point | null {
   const cfg = sim.ruleset.pickups.spots;
   const nav = sim.nav;
   const z = sim.zone;
@@ -104,14 +132,16 @@ export function weaponSpot(sim: Sim, rng: Rng, spawns: readonly Point[] | null =
   // reachable by as many fighters as possible; mid-round, by as many of the needy ones (bare-handed, or carrying
   // nothing that reaches the nearest rival)
   const known = (f: Fighter) => f.surface >= 0 && f.surface < nav.surfaces.length;
-  const bareOnes = spawns ? [] : sim.alive().filter((f) => known(f) && needy(sim, f));
+  const bareOnes = spawns ? [] : forWho ? forWho.filter(known) : sim.alive().filter((f) => known(f) && needy(sim, f));
   const origins = spawns
     ? spawns.flatMap((p) => {
       const s = nav.surfaceAt(p.x, p.y + 0.05);
       return s ? [s.id] : [];
     })
     : (bareOnes.length ? bareOnes : sim.alive().filter(known)).map((f) => f.surface);
-  const counts = origins.length ? reachCounts(sim, origins) : null;
+  // a drop for given fighters (#109: cut off from every weapon): ground each one's own plan reaches (the jumps it can
+  // make), not the nav graph's round trips
+  const counts = forWho?.length ? planCounts(sim, bareOnes) : origins.length ? reachCounts(sim, origins) : null;
   // inside the zone (a meter in from its edge); a narrow zone with nothing reachable inside widens to its edge, then
   // a little past it (fighters at bay on the ledges either side of a sudden-death zone)
   const half0 = Math.min(z.half, sim.zoneHalfAhead(cfg.zoneAhead));
@@ -162,7 +192,7 @@ export function weaponSpot(sim: Sim, rng: Rng, spawns: readonly Point[] | null =
   const open = areas.filter((a) => (occupancy.get(a) ?? 0) === fewest);
   // mid-round, a race (#95): in the emptiest areas, the spot the bare-handed fighters reach at about the same time
   // (as near to them as the gaps allow), one of the closest few at random
-  const bare = spawns ? [] : sim.alive().filter((f) => needy(sim, f)).map((f) => sim.pos(f));
+  const bare = spawns ? [] : (forWho ?? sim.alive().filter((f) => needy(sim, f))).map((f) => sim.pos(f));
   if (bare.length) {
     const race = (p: Point) => {
       const d = bare.map((q) => Math.hypot(p.x - q.x, p.y - q.y)).sort((a, b) => a - b);
