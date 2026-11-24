@@ -8,6 +8,7 @@ import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
 import { RANGED_STANDOFF, weaponReach } from "./controller-weapons";
 import { onLiveGround } from "./sim-lightning";
 import { lowOnAmmo } from "./sim-items";
+import { footing } from "./sim-liquid";
 import { walkSpeedNow } from "./sim-movement";
 import { SPEED_ACCEL_MUL } from "./constants";
 import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } from "./tactical";
@@ -689,6 +690,9 @@ export class ControllerNavigation {
     this.edgeLink = null;
     if (me.grounded) this.foothold = { x: mp.x, y: sim.feetY(me) };
     if (me.grounded && me.jumpCd === 0) this.jumpTo = null;
+    // #114: afloat is never grounded, so a landing from a jump that fell short stayed the air's target: the swimmer bobbed
+    // over that spot. Afloat with no link, swim for the goal instead
+    else if (!this.activeLink && sim.grid.liquidAt(mp.x, sim.feetY(me) - 0.6) === Liquid.Water) this.jumpTo = null;
     if (surf) {
       let plan = nav.fighterPlan(sim.grid, me.surface, mp.x);
       // the zone is coming and no jump we can make leads into it: a risky jump beats being pushed into the pit
@@ -748,7 +752,8 @@ export class ControllerNavigation {
               const ahead = (mp.x - link.takeoffX) * dir;
               moveTarget = ahead > 0.4 ? link.takeoffX - dir * 1.2 : ahead > -2.5 ? link.landX : link.takeoffX;
             }
-            if (Math.abs(mp.x - link.takeoffX) < 0.4 && (!runUp(nav, link) || mv.x * Math.sign(link.landX - link.takeoffX) > sim.ruleset.combat.fighter.walkSpeed * 0.7)) {
+            // #114: on mud (half speed) the run-up never reaches 0.7 of a walk: ask 0.7 of the speed the footing allows
+            if (Math.abs(mp.x - link.takeoffX) < 0.4 && (!runUp(nav, link) || mv.x * Math.sign(link.landX - link.takeoffX) > sim.ruleset.combat.fighter.walkSpeed * 0.7 * footing(sim, me).speed)) {
               input.jump = true;
               this.takeLink(sim, nav, link);
               moveTarget = link.landX;

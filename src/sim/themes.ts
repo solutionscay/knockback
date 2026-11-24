@@ -21,6 +21,11 @@ export interface Hazards {
   oil: number;
   lava: number;
   acid: number;
+  /**
+   * #114: a muddy creek. 0: none. Otherwise mud lines each basin's walls (one cell thick, not its floor) and tops this
+   * many ground cells on each side of it (the banks): mud slows whoever stands on it. No RNG draw either way.
+   */
+  bankCells: number;
 }
 
 export interface ThemeRules {
@@ -71,9 +76,11 @@ export interface ThemeLook {
   hills: [number, number];
   /**
    * the backdrop drawn behind the level: "hills" (two rows of code-drawn hills), "beach" (#111: the sun, clouds and the
-   * sea on the horizon from the theme's atlas, `hills` the sea's fallback color and the near dunes)
+   * sea on the horizon from the theme's atlas, `hills` the sea's fallback color and the near dunes), "forest" (#114: a moon
+   * and two rows of pine silhouettes from the atlas, darker than the level; `hills` the far and near rows' colors, the
+   * pines tinted to match so the fill below each row and its trees are one mass)
    */
-  background: "hills" | "beach";
+  background: "hills" | "beach" | "forest";
   /** material colors (debris; the art bakes the same), over the base colors */
   mat: Partial<Record<MatName, number>>;
   /** the top edge's color per material (default: the material 35% lighter) */
@@ -105,7 +112,7 @@ export const BASE_MAT: Record<MatName, number> = {
   ice: 0xa9dcef,
 };
 
-const NO_HAZARDS: Hazards = { pools: [0, 0], width: [2.5, 4], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0 };
+const NO_HAZARDS: Hazards = { pools: [0, 0], width: [2.5, 4], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0 };
 const EARTH = { gravity: 1, friction: 1 };
 const NO_SPECKLE = { on: Mat.Dirt, mat: Mat.Rock, chance: 0 };
 
@@ -176,7 +183,7 @@ export const THEME_DEFS = {
       pitChance: 0.6, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.1,
       props: { barrel: [4, 6], steel: [2, 4], tnt: [1, 2], crate: [3, 5], gas: [1, 3], pad: [1, 2], glass: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.15 }, parapet: 0,
-      hazards: { pools: [2, 3], width: [2.5, 4], depth: [2, 3], water: 3, oil: 2, lava: 1, acid: 1 }, physics: EARTH,
+      hazards: { pools: [2, 3], width: [2.5, 4], depth: [2, 3], water: 3, oil: 2, lava: 1, acid: 1, bankCells: 0 }, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1] },
     },
     look: {
@@ -198,7 +205,7 @@ export const THEME_DEFS = {
       pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.12,
       props: { crate: [4, 6], barrel: [4, 6], gas: [1, 2], pad: [1, 2], tnt: [0, 1], steel: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.06 }, parapet: 0,
-      hazards: { pools: [1, 2], width: [3, 5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0 }, physics: EARTH,
+      hazards: { pools: [1, 2], width: [3, 5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0, bankCells: 0 }, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [4, 5], topRows: [2, 2] },
     },
     look: {
@@ -207,13 +214,36 @@ export const THEME_DEFS = {
       top: { sand: 0xf4e3b4, dirt: 0xc2a271, rock: 0x6f8a52, wood: 0xc2a77e, crumble: 0xb39c78 }, atlas: "beach",
     },
   },
+  /**
+   * The forest (#114), the second of the new maps. Forest soil over a rock frame, bedrock under. Muddy creeks: water
+   * pools lined with mud (the floor, the walls and two cells of bank each side), so the banks slow a fighter and the
+   * water slows, puts out fire and is swum out of. The walls are tree trunks (wood: they burn), the jump-through
+   * platforms are branches and leafy canopy (crumbling planks in the forest's art: the canopy gives way fast and burns),
+   * the catwalk over the central gap a log bridge; stones in the soil. Cover blocks, crates and barrels wear the
+   * forest's skins (a stacked log pile, a tree stump, a beehive; the same props). Physics as on every map.
+   */
+  forest: {
+    rules: {
+      body: Mat.Dirt, surface: Mat.Dirt, platform: [Mat.Wood, Mat.Wood, Mat.Wood, Mat.Rock], tower: Mat.Wood, bridge: [Mat.Wood],
+      pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.2,
+      props: { crate: [4, 6], steel: [1, 3], barrel: [3, 5], gas: [1, 2], pad: [1, 2], tnt: [0, 1], weight: [0, 1] },
+      stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.08 }, parapet: 0,
+      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0, bankCells: 2 }, physics: EARTH,
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1] },
+    },
+    look: {
+      sky: [0x0e1a26, 0x5a6f5c], hills: [0x112017, 0x0c1610], background: "forest",
+      mat: { dirt: 0x5a4632, rock: 0x6c7068, wood: 0x6e5038, crumble: 0x4f7a3a, mud: 0x3a2a1e, bedrock: 0x1a1c20 },
+      top: { dirt: 0x5f8a3a, rock: 0x5f7e46, wood: 0x8c6a4a, crumble: 0x6f9e4a, mud: 0x7a5c3c }, atlas: "forest",
+    },
+  },
 } satisfies Record<string, ThemeDef>;
 
 export type Theme = keyof typeof THEME_DEFS;
 /** Every theme a ruleset may enable. */
 export const ALL_THEMES = Object.keys(THEME_DEFS) as Theme[];
 /** The default rotation. */
-export const THEMES: readonly Theme[] = ["warehouse", "rooftop", "junkyard", "construction", "beach"];
+export const THEMES: readonly Theme[] = ["warehouse", "rooftop", "junkyard", "construction", "beach", "forest"];
 
 /** A theme's material colors, base colors filled in. */
 export function themeMatColors(t: Theme): Record<MatName, number> {
