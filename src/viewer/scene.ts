@@ -492,8 +492,16 @@ export class Scene {
     this.effects.float(text, x, y, color, scale);
   }
 
+  /** where the page's fight HUD ends (screen px from the canvas top): callouts stay below it (#132) */
+  calloutTop = 0;
+
   setCallouts(list: Callout[], now: number) {
     this.calloutViews.setCallouts(list, now);
+  }
+
+  /** The canvas's top edge on the page (px), to measure the HTML HUD against. */
+  canvasTop(): number {
+    return this.app.canvas.getBoundingClientRect().top;
   }
 
   /** Start an agent's entrance (#66): the house bot `evicted` (none: nobody to kick) stands in the seat. */
@@ -549,7 +557,7 @@ export class Scene {
     }
     this.fighters.render(sim, fx, this.camera, frame, W, H, this.time, dt, alpha, fxDt, this.xform);
     this.props.drawDropMarks(sim, this.time, alpha, this.xform);
-    this.calloutViews.render(sim, this.fighters, W, this.ui);
+    this.calloutViews.render(sim, this.fighters, W, this.ui, this.calloutTop);
     this.effects.render(frame, W, H, dt, this.ui);
   }
 
