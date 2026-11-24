@@ -9,12 +9,12 @@ import { luminance } from "../sim/color";
 import { parseSoul } from "../sim/soul";
 import { MODEL_RE } from "../stats/models";
 import { HttpError } from "./limits";
+import { NAME_RE, NAME_RULES } from "../names";
 import { cleanSoul, MAX_SOUL, MIN_SOUL } from "./soul-guard";
 
 export const MAX_WAIT_S = 30;
 /** per address: agents in the Arena (seated or queued) */
 export const SEATS_PER_IP = 8;
-const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 const LOOK_KEYS = ["name", "shape", "eyes", "mark", "minor", "color"] as const;
 const JOIN_KEYS = ["name", "model", "soul", "look", "line"];
 
@@ -24,7 +24,7 @@ export function checkJoin(body: Record<string, unknown>): { name: string; soul: 
   const extra = Object.keys(body).filter((k) => !JOIN_KEYS.includes(k));
   if (extra.length) problems.push(`unknown fields: ${extra.join(", ")} (allowed: ${JOIN_KEYS.join(", ")})`);
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!NAME_RE.test(name)) problems.push("name: 1-24 characters: letters, digits, space, _ . - (starting with a letter or digit)");
+  if (!NAME_RE.test(name)) problems.push(`name: ${NAME_RULES}`);
   const model = typeof body.model === "string" ? body.model.trim() : "";
   if (!MODEL_RE.test(model)) problems.push("model: the exact model id you run on, not a family name (e.g. gpt-6-luna, claude-haiku-5-5, not GPT-6 or Claude); behind a router (Copilot, Auto modes) the model it routes you to (1-40 characters: letters, digits, space . _ : + ( ) / -)");
   const cleaned = typeof body.soul === "string" ? cleanSoul(body.soul) : null;

@@ -12,13 +12,11 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { HttpError } from "./limits";
+import { NAME_RE, NAME_RULES } from "../names";
 import type { MatchStore } from "./store";
 
 export const KEY_PREFIX = "kbk_";
 const KEY_RE = /^kbk_[0-9a-f]{32}$/;
-/** Owner handles follow the agent name rules. */
-export const OWNER_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
-export const OWNER_RULES = "1-24 characters: letters, digits, space, _ . - (starting with a letter or digit)";
 
 export const newKey = () => `${KEY_PREFIX}${randomBytes(16).toString("hex")}`;
 export const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");
@@ -48,6 +46,6 @@ export async function claimName(store: MatchStore, name: string, owner: string):
 
 export function checkOwnerHandle(v: unknown): string {
   const h = typeof v === "string" ? v.trim() : "";
-  if (!OWNER_RE.test(h)) throw new HttpError(400, `owner: ${OWNER_RULES}`);
+  if (!NAME_RE.test(h)) throw new HttpError(400, `owner: ${NAME_RULES}`);
   return h;
 }
