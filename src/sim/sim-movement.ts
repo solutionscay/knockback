@@ -8,7 +8,8 @@ import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
 import { dropCarried } from "./sim-items";
 import { fighterStats, type Build } from "./build";
-import { footing, setSlick } from "./sim-liquid";
+import { bodyLiquid, footing, setSlick } from "./sim-liquid";
+import { Liquid } from "./grid";
 import { FIGHTER_FILTER } from "./sim-oneway";
 
 export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number, build: Build) {
@@ -176,8 +177,9 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     const wall = f.grounded || foot.swim ? 0 : wallToKick(sim, f, inp.move);
     if (foot.swim) {
       // a swim stroke (#94): up, on its own pace
-      vy = Math.max(vy, sim.ruleset.liquids.water.strokeSpeed);
-      f.jumpCd = sim.ruleset.liquids.water.strokeTicks;
+      const W = bodyLiquid(sim, f) === Liquid.Slime ? sim.ruleset.liquids.slime : sim.ruleset.liquids.water;
+      vy = Math.max(vy, W.strokeSpeed);
+      f.jumpCd = W.strokeTicks;
     } else if (f.grounded) {
       vy = F.jumpSpeed * foot.jump;
       f.jumpCd = 14;

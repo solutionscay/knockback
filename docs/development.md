@@ -5,7 +5,7 @@ The local viewer, tests, the other scripts and the source layout.
 ## The local viewer
 
 The local viewer (`bun run dev`) plays house-bot matches with the Classic ruleset: **best of 3 rounds** on a
-freshly generated, almost fully destructible level (themes: warehouse, rooftop, junkyard, construction, beach, forest), four fighters
+freshly generated, almost fully destructible level (themes: warehouse, rooftop, junkyard, construction, beach, forest, cave), four fighters
 with the same body and speed, each choosing a build (health, weight, power) per round. How a fighter thinks comes from
 its **soul file** (`souls/*.md`: attitude, voice, what it values); swap a soul and the fighter plays differently. The
 four example souls are the brawler, the sniper, the rat and the vulture. Souls have no names or looks: every match

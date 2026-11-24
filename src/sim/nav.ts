@@ -25,8 +25,8 @@ export interface Surface {
   oneWay: boolean;
 }
 
-/** #94: extra path cost of landing on a surface under each liquid: lava and acid are avoided, water and oil slow. */
-export const LIQUID_COST: readonly number[] = [0, 10, 2, 60, 60];
+/** #94: extra path cost of landing on a surface under each liquid: lava and acid are avoided, water, oil and slime slow. */
+export const LIQUID_COST: readonly number[] = [0, 10, 2, 60, 60, 12];
 /** Hurts to stand in (lava, acid). */
 export const hazardous = (l: number) => l === Liquid.Lava || l === Liquid.Acid;
 
@@ -103,7 +103,8 @@ export class NavGraph {
         if (cx < cols && grid.solid(cx, cy)) {
           ok = true;
           for (let k = 1; k <= headroomCells; k++)
-            if (grid.solid(cx, cy + k)) {
+            // #125: past the grid's top is no headroom (a cave ceiling reaches the top row: nothing stands on it)
+            if (cy + k >= rows || grid.solid(cx, cy + k)) {
               ok = false;
               break;
             }
