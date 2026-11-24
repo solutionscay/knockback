@@ -21,6 +21,7 @@ Frames (group `level-nature`, #94: loaded with any theme that uses them):
   q-<liquid>-<v>         a cell full of water, oil, lava or acid, variant v (0, 1)
   s-<liquid>-<f>         the liquid's top cell (its surface, in the top part of the cell), loop frame f (0-7)
 Frames (group `level-beach`, #111): the beach's terrain, overlays, water, prop skins and backdrop (plush_beach.py).
+Frames (group `level-forest`, #114): the forest's terrain, overlays, creek water, prop skins and backdrop (plush_forest.py).
 Props (group `props`): glass, pad, weight.
 
 The palettes come from tools/art/themes.json, written from src/sim/themes.ts (`bun scripts/themes-json.ts`).
@@ -525,6 +526,9 @@ def level_tiles(themes=THEMES, common=True):
     if "beach" in themes:  # #111: the beach's own atlas (plush_beach.py)
         import plush_beach
         out += plush_beach.beach_tiles()
+    if "forest" in themes:  # #114: the forest's own atlas (plush_forest.py)
+        import plush_forest
+        out += plush_forest.forest_tiles()
     for th in [t for t in themes if t in THEMES]:
         mcol, tcol = theme_colors(th)
         for m in MATS:

@@ -267,7 +267,7 @@ export function themeTopColors(t: Theme): Record<MatName, number> {
 /** Does a theme use the #94 materials or liquids (and so the "nature" atlas)? */
 export function themeUsesNature(t: Theme): boolean {
   const r: ThemeRules = THEME_DEFS[t].rules as ThemeRules;
-  const mats = [r.body, r.surface, r.tower, ...r.platform, ...r.bridge, r.speckle.chance > 0 ? r.speckle.mat : 0, r.parapet];
+  const mats = [r.body, r.surface, r.tower, ...r.platform, ...r.bridge, r.speckle.chance > 0 ? r.speckle.mat : 0, r.parapet, r.hazards.bankCells > 0 ? Mat.Mud : 0];
   return r.hazards.pools[1] > 0 || mats.some((m) => m >= Mat.Sand);
 }
 

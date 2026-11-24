@@ -36,7 +36,8 @@ export class Scene {
   private sim!: Sim;
   private sky = new Graphics();
   private hills = new Graphics();
-  /** #111: the beach's backdrop sprites (sun, clouds, island, the sea strips), between the sky and the near dunes */
+  /** #111: the beach's backdrop sprites (sun, clouds, island, the sea strips), between the sky and the near dunes; #114 the
+   * forest's (the moon, two rows of pines) */
   private backdrop = new Container();
   private world = new Container();
   private terrainView: TerrainView | null = null;
@@ -200,6 +201,7 @@ export class Scene {
     }
     const cam = this.camera.cam;
     if (this.pal.background === "beach") return this.drawBeach(W, H);
+    if (this.pal.background === "forest") return this.drawForest(W, H);
     this.backdrop.visible = false;
     // hills with parallax
     const h = this.hills;
@@ -280,6 +282,59 @@ export class Scene {
     }
     pts.push(W + 200, H, -200, H);
     h.poly(pts).fill(this.pal.hills[1]);
+  }
+
+  /**
+   * #114: the forest. The moon high in the sky, then two rows of the plush pine strip repeated sideways (far: smaller,
+   * slower; near: larger, darker), low on the screen, each filled below in its own trees' color so the row and the fill
+   * are one dark mass with only the treetops for an edge: no flat band (the lesson of the beach's sea), nothing that
+   * reads as the creek's water or as ground. Before the atlas arrives, only the colors.
+   */
+  private drawForest(W: number, H: number) {
+    const cam = this.camera.cam;
+    const k = H / 1080;
+    const b = this.backdrop;
+    b.visible = true;
+    const theme = this.sim.level.theme;
+    let i = 0;
+    const put = (name: string, x: number, y: number, scale: number, tint = 0xffffff) => {
+      let s = b.children[i] as Sprite | undefined;
+      if (!s) s = b.addChild(new Sprite());
+      i++;
+      if (!setLevelSprite(s, theme, name)) return (s.visible = false);
+      s.scale.set(scale);
+      s.anchor.set(0.5, 1);
+      s.position.set(x, y);
+      s.alpha = 1;
+      s.tint = tint;
+      return true;
+    };
+    put("bg-moon", W * 0.74 - cam.x * cam.s * 0.02, H * 0.24, k * 0.7, 0xc8ccbb);
+    const pines = levelFrame(theme, "bg-pines");
+    const row = (base: number, scale: number, par: number, tint: number) => {
+      if (!pines) return;
+      const tw = pines.tex.frame.width * scale;
+      const ox = ((-cam.x * cam.s * par) % tw + tw) % tw - tw;
+      for (let x = ox; x < W + 1; x += tw) {
+        put("bg-pines", x + tw / 2, base + 1, scale, tint);
+        (b.children[i - 1] as Sprite).width = tw + 1;
+      }
+    };
+    // the pine felt renders about 0x1c3024: these tints bring it to hills[0] and hills[1], the fills below the rows
+    const tint = (c: number) => {
+      const ch = (sh: number, base: number) => Math.min(255, Math.round((((c >> sh) & 255) / base) * 255));
+      return (ch(16, 0x1c) << 16) | (ch(8, 0x30) << 8) | ch(0, 0x24);
+    };
+    const far = H * 0.74 + cam.y * cam.s * 0.08;
+    const near = H * 0.88 + cam.y * cam.s * 0.16;
+    // the fills start under the lowest boughs (32 atlas px up), so no sky shows between the trunks
+    this.sky.rect(0, far - 32 * k * 0.8, W, H).fill(this.pal.hills[0]);
+    row(far, k * 0.8, 0.08, tint(this.pal.hills[0]));
+    row(near, k * 1.15, 0.16, tint(this.pal.hills[1]));
+    for (let j = i; j < b.children.length; j++) b.children[j]!.visible = false;
+    const h = this.hills;
+    h.clear();
+    h.rect(0, near - 32 * k * 1.15, W, H).fill(this.pal.hills[1]);
   }
 
   /** Called before every sim tick so render can interpolate. */
