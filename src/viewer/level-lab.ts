@@ -27,13 +27,13 @@ import { initWorldArt, setWorldFrame } from "./world-art";
 
 const q = new URLSearchParams(location.search);
 const S = Number(q.get("s") ?? "45");
-const THEMES: Theme[] = ["rooftop", "warehouse", "junkyard", "construction", "testbed", "beach", "forest", "cave"];
+const THEMES: Theme[] = ["rooftop", "warehouse", "junkyard", "construction", "testbed", "beach", "forest", "cave", "space"];
 const T0 = Number(q.get("t") ?? "0");
 await initPlushArt();
 await initWorldArt();
 await loadPlushSheets(plushNeeds("balanced", "none"));
 const app = new Application();
-await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 73), antialias: true, resolution: 1, preference: "webgl" });
+await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 81), antialias: true, resolution: 1, preference: "webgl" });
 document.body.appendChild(app.canvas);
 
 function label(text: string, x: number, y: number, size = 13) {
@@ -149,6 +149,26 @@ function cavePatch(): Grid {
   crack(20, 6, 0.5);
   return g;
 }
+
+/**
+ * #127, space: regolith (ice chunks in it) over the asteroid rock over bedrock, a crater, a coolant pool, its materials
+ * cracked, a steel jump-through catwalk.
+ */
+function spacePatch(): Grid {
+  const g = new Grid(22, 8, 0, 0);
+  for (let cx = 0; cx < 22; cx++) for (let cy = 0; cy < 4; cy++) g.set(cx, cy, cy === 0 ? Mat.Bedrock : cy === 1 ? Mat.Rock : cx % 7 === 3 && cy === 3 ? Mat.Ice : Mat.Dirt);
+  for (const [cx, cy] of [[5, 3], [6, 3], [7, 3], [6, 2], [5, 2]]) g.clear(cx!, cy!);
+  const crack = (cx: number, cy: number, k: number) => (g.hp[g.idx(cx, cy)] = MAT_HP[g.mat[g.idx(cx, cy)]!]! * k);
+  crack(4, 3, 0.5); crack(8, 3, 0.2); crack(4, 2, 0.2); crack(7, 2, 0.5); crack(6, 1, 0.5);
+  for (let cx = 9; cx <= 12; cx++) for (let cy = 2; cy < 4; cy++) {
+    g.clear(cx, cy);
+    g.liq[g.idx(cx, cy)] = Liquid.Coolant;
+  }
+  [Mat.Dirt, Mat.Rock, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Ice].forEach((m, i) => { g.set(14 + i, 4, m); g.set(14 + i, 5, m); });
+  crack(14, 5, 0.5); crack(15, 5, 0.2); crack(16, 5, 0.5); crack(17, 4, 0.2); crack(19, 5, 0.5);
+  for (let cx = 1; cx < 6; cx++) g.set(cx, 7, Mat.Steel, F_ONEWAY | (cx === 1 || cx === 5 ? F_ANCHOR : 0));
+  return g;
+}
 const liquidViews: LiquidView[] = [];
 
 function fighter(x: number, ground: number) {
@@ -168,27 +188,28 @@ for (const theme of THEMES) {
   bytes.push(levelMemory(theme).bytes);
   const rowH = S * 7.4;
   label(`${theme} (${S} px/m, ${plushFormat()})`, 12, y);
-  const g = theme === "testbed" ? proving() : theme === "beach" ? beachPatch() : theme === "forest" ? forestPatch() : theme === "cave" ? cavePatch() : patch(theme);
+  const g = theme === "testbed" ? proving() : theme === "beach" ? beachPatch() : theme === "forest" ? forestPatch() : theme === "cave" ? cavePatch() : theme === "space" ? spacePatch() : patch(theme);
   const tv = new TerrainView(g, theme);
   tv.update();
   const world = new Container();
   world.addChild(tv.container);
-  if (theme === "testbed" || theme === "beach" || theme === "forest" || theme === "cave") {
+  if (theme === "testbed" || theme === "beach" || theme === "forest" || theme === "cave" || theme === "space") {
     const lv = new LiquidView(g, theme);
     lv.update(T0);
     liquidViews.push(lv);
     world.scale.set(S);
     world.position.set(S * 1.5, y + S * 7.2);
     app.stage.addChild(world);
-    fighter(theme === "beach" ? S * 7.0 : theme === "forest" ? S * 7.5 : theme === "cave" ? S * 7.0 : S * 2.9, y + S * 5.2 + S * 1.0);
+    fighter(theme === "beach" ? S * 7.0 : theme === "forest" ? S * 7.5 : theme === "cave" || theme === "space" ? S * 7.0 : S * 2.9, y + S * 5.2 + S * 1.0);
     world.addChild(lv.container);
     app.stage.addChild(world); // the liquid in front of the wading fighter
     y += rowH + 8;
-    if (theme === "beach" || theme === "forest" || theme === "cave") {
+    if (theme === "beach" || theme === "forest" || theme === "cave" || theme === "space") {
       // its prop skins, three damage states each, standing on a line (the same props: crate, barrel, block)
       label(theme === "beach" ? "beach prop skins: driftwood crate, buoy (the explosive barrel), driftwood logs (cover); damage 0, 1, 2"
         : theme === "forest" ? "forest prop skins: tree stump (the crate), beehive (the explosive barrel), log pile (cover); damage 0, 1, 2"
-        : "cave prop skins: mine cart (crate), crystal cluster (the explosive barrel), boulders (cover); damage 0, 1, 2", 12, y);
+        : theme === "cave" ? "cave prop skins: mine cart (crate), crystal cluster (the explosive barrel), boulders (cover); damage 0, 1, 2"
+        : "space prop skins: cargo pod (crate), fuel canister (the explosive barrel), hull plates (cover); damage 0, 1, 2", 12, y);
       const row = new Container();
       let x = 0.8;
       for (const [k, w] of [["crate", 0.8], ["barrel", 0.68], ["block", 0.9]] as const) {

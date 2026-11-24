@@ -23,6 +23,7 @@ Frames (group `level-nature`, #94: loaded with any theme that uses them):
 Frames (group `level-beach`, #111): the beach's terrain, overlays, water, prop skins and backdrop (plush_beach.py).
 Frames (group `level-forest`, #114): the forest's terrain, overlays, creek water, prop skins and backdrop (plush_forest.py).
 Frames (group `level-cave`, #125): the cave's terrain, overlays, slime, prop skins and backdrop (plush_cave.py).
+Frames (group `level-space`, #127): the space map's terrain, overlays, coolant, prop skins and backdrop (plush_space.py).
 Props (group `props`): glass, pad, weight.
 
 The palettes come from tools/art/themes.json, written from src/sim/themes.ts (`bun scripts/themes-json.ts`).
@@ -533,6 +534,9 @@ def level_tiles(themes=THEMES, common=True):
     if "cave" in themes:  # #125: the cave's own atlas (plush_cave.py)
         import plush_cave
         out += plush_cave.cave_tiles()
+    if "space" in themes:  # #127: the space map's own atlas (plush_space.py)
+        import plush_space
+        out += plush_space.space_tiles()
     for th in [t for t in themes if t in THEMES]:
         mcol, tcol = theme_colors(th)
         for m in MATS:

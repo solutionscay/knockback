@@ -28,6 +28,8 @@ export interface Hazards {
   bankCells: number;
   /** #125: cave slime (thick, glowing water: a fighter floats and swims out) */
   slime: number;
+  /** #127: a station's coolant (cold, glowing water: a fighter floats and swims out) */
+  coolant: number;
 }
 
 export interface ThemeRules {
@@ -87,9 +89,10 @@ export interface ThemeLook {
    * sea on the horizon from the theme's atlas, `hills` the sea's fallback color and the near dunes), "forest" (#114: a moon
    * and two rows of pine silhouettes from the atlas, darker than the level; `hills` the far and near rows' colors, the
    * pines tinted to match so the fill below each row and its trees are one mass), "cave" (#125: the cave's back wall: rock
-   * columns in the two `hills` colors and glowing crystals from the theme's atlas)
+   * columns in the two `hills` colors and glowing crystals from the theme's atlas), "space" (#127: a starfield, a ringed
+   * planet and a far station from the theme's atlas; `hills` tint the drifting asteroids; no ground)
    */
-  background: "hills" | "beach" | "forest" | "cave";
+  background: "hills" | "beach" | "forest" | "cave" | "space";
   /** material colors (debris; the art bakes the same), over the base colors */
   mat: Partial<Record<MatName, number>>;
   /** the top edge's color per material (default: the material 35% lighter) */
@@ -121,7 +124,7 @@ export const BASE_MAT: Record<MatName, number> = {
   ice: 0xa9dcef,
 };
 
-const NO_HAZARDS: Hazards = { pools: [0, 0], width: [2.5, 4], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0 };
+const NO_HAZARDS: Hazards = { pools: [0, 0], width: [2.5, 4], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0, coolant: 0 };
 const EARTH = { gravity: 1, friction: 1 };
 const NO_SPECKLE = { on: Mat.Dirt, mat: Mat.Rock, chance: 0 };
 
@@ -192,7 +195,7 @@ export const THEME_DEFS = {
       pitChance: 0.6, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.1,
       props: { barrel: [4, 6], steel: [2, 4], tnt: [1, 2], crate: [3, 5], gas: [1, 3], pad: [1, 2], glass: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.15 }, parapet: 0,
-      hazards: { pools: [2, 3], width: [2.5, 4], depth: [2, 3], water: 3, oil: 2, lava: 1, acid: 1, bankCells: 0, slime: 0 }, physics: EARTH,
+      hazards: { pools: [2, 3], width: [2.5, 4], depth: [2, 3], water: 3, oil: 2, lava: 1, acid: 1, bankCells: 0, slime: 0, coolant: 0 }, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1], ceiling: 0, ceilingRock: [0, 0], stalactites: [0, 0] },
     },
     look: {
@@ -214,7 +217,7 @@ export const THEME_DEFS = {
       pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.12,
       props: { crate: [4, 6], barrel: [4, 6], gas: [1, 2], pad: [1, 2], tnt: [0, 1], steel: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.06 }, parapet: 0,
-      hazards: { pools: [1, 2], width: [3, 5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0 }, physics: EARTH,
+      hazards: { pools: [1, 2], width: [3, 5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0, coolant: 0 }, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [4, 5], topRows: [2, 2], ceiling: 0, ceilingRock: [0, 0], stalactites: [0, 0] },
     },
     look: {
@@ -237,7 +240,7 @@ export const THEME_DEFS = {
       pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.2,
       props: { crate: [4, 6], steel: [1, 3], barrel: [3, 5], gas: [1, 2], pad: [1, 2], tnt: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.08 }, parapet: 0,
-      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0, bankCells: 2, slime: 0 }, physics: EARTH,
+      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0, bankCells: 2, slime: 0, coolant: 0 }, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1], ceiling: 0, ceilingRock: [0, 0], stalactites: [0, 0] },
     },
     look: {
@@ -260,7 +263,7 @@ export const THEME_DEFS = {
       pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [10, 13], crumble: 0.12,
       props: { crate: [4, 6], barrel: [3, 5], steel: [1, 3], gas: [1, 2], pad: [1, 2], tnt: [1, 2], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.1 }, parapet: 0,
-      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 1 }, physics: EARTH,
+      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 1, coolant: 0 }, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1], ceiling: 13, ceilingRock: [3, 4], stalactites: [5, 8] },
     },
     look: {
@@ -269,13 +272,36 @@ export const THEME_DEFS = {
       top: { dirt: 0x6e6252, rock: 0x77809a, wood: 0xa88052, crumble: 0x8e7350, ice: 0xdaf4ff }, atlas: "cave",
     },
   },
+  /**
+   * Space (#127): an asteroid station. Grey regolith over a dark asteroid-rock frame, bedrock under, chunks of ice in the
+   * regolith (where one tops the floor it is slippery and shatters). Steel girders, hull panels and ice ledges as
+   * jump-through platforms, rusted grating as the crumbling ones, a steel catwalk over the central gap, steel bulkheads
+   * as walls, the void below. Pools of coolant (cold, glowing: slower than water, a fighter floats and swims out, it puts
+   * out fire) fill dips in the floor. Low gravity (physics.gravity): higher jumps, longer flights. Crates, barrels and
+   * cover blocks wear the station's skins (cargo pods, fuel canisters, stacked hull plates; the same props).
+   */
+  space: {
+    rules: {
+      body: Mat.Dirt, surface: Mat.Dirt, platform: [Mat.Steel, Mat.Steel, Mat.Concrete, Mat.Ice], tower: Mat.Steel, bridge: [Mat.Steel],
+      pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.1,
+      props: { crate: [4, 6], barrel: [3, 5], steel: [2, 3], gas: [1, 2], pad: [1, 2], glass: [0, 1], tnt: [0, 1], weight: [0, 1] },
+      stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Ice, chance: 0.08 }, parapet: 0,
+      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0, coolant: 1 }, physics: { gravity: 0.85, friction: 1 },
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1], ceiling: 0, ceilingRock: [0, 0], stalactites: [0, 0] },
+    },
+    look: {
+      sky: [0x03040a, 0x0b1022], hills: [0x2a2838, 0x353246], background: "space",
+      mat: { dirt: 0x6e6a74, rock: 0x4c4856, steel: 0x7c8aa0, concrete: 0x9aa0ac, crumble: 0x8a6a4e, ice: 0xb4e2f2, bedrock: 0x141420 },
+      top: { dirt: 0x8e8a96, rock: 0x6c687a, steel: 0xe8c44a, concrete: 0xd0d6e0, crumble: 0xb08a62, ice: 0xe6f8ff }, atlas: "space",
+    },
+  },
 } satisfies Record<string, ThemeDef>;
 
 export type Theme = keyof typeof THEME_DEFS;
 /** Every theme a ruleset may enable. */
 export const ALL_THEMES = Object.keys(THEME_DEFS) as Theme[];
 /** The default rotation. */
-export const THEMES: readonly Theme[] = ["warehouse", "rooftop", "junkyard", "construction", "beach", "forest", "cave"];
+export const THEMES: readonly Theme[] = ["warehouse", "rooftop", "junkyard", "construction", "beach", "forest", "cave", "space"];
 
 /** A theme's material colors, base colors filled in. */
 export function themeMatColors(t: Theme): Record<MatName, number> {

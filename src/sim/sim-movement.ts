@@ -177,7 +177,7 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     const wall = f.grounded || foot.swim ? 0 : wallToKick(sim, f, inp.move);
     if (foot.swim) {
       // a swim stroke (#94): up, on its own pace
-      const W = bodyLiquid(sim, f) === Liquid.Slime ? sim.ruleset.liquids.slime : sim.ruleset.liquids.water;
+      const BL = bodyLiquid(sim, f), W = BL === Liquid.Slime ? sim.ruleset.liquids.slime : BL === Liquid.Coolant ? sim.ruleset.liquids.coolant : sim.ruleset.liquids.water;
       vy = Math.max(vy, W.strokeSpeed);
       f.jumpCd = W.strokeTicks;
     } else if (f.grounded) {

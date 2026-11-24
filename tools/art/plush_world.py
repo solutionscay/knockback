@@ -570,7 +570,7 @@ def main():
     ap.add_argument("--only", default="", help="frame names (comma list)")
     ap.add_argument("--samples", type=int, default=32)
     ap.add_argument("--quick", action="store_true")
-    ap.add_argument("--themes", default=",".join(pl.THEMES + ["beach", "forest", "cave"]), help="level: the themes to render (nature: the #94 materials and liquids; beach: #111; forest: #114; cave: #125)")
+    ap.add_argument("--themes", default=",".join(pl.THEMES + ["beach", "forest", "cave", "space"]), help="level: the themes to render (nature: the #94 materials and liquids; beach: #111; forest: #114; cave: #125; space: #127)")
     ap.add_argument("--no-common", action="store_true", help="level: skip the shared overlays")
     a = ap.parse_args(argv)
     t0 = time.time()
@@ -675,6 +675,8 @@ def main():
         plush_forest.PW = plush_beach.PW
         import plush_cave  # #125: the same for the cave's
         plush_cave.PW = plush_beach.PW
+        import plush_space  # #127: the same for the space map's
+        plush_space.PW = plush_beach.PW
         times += render_level(sc, out, meta, meta_path, [t for t in a.themes.split(",") if t], not a.no_common, only)
     with open(os.path.join(a.out, "times.txt"), "a") as fh:
         for n_, dt in times:

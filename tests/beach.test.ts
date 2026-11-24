@@ -16,7 +16,7 @@ const BEACH: Ruleset = validateRuleset({ arena: { enabledThemes: ["beach"] }, ro
 
 describe("beach (#111)", () => {
   test("it is in the default rotation", () => {
-    const seeds = Array.from({ length: 60 }, (_, s) => s).filter((s) => themeFor(s) === "beach");
+    const seeds = Array.from({ length: 120 }, (_, s) => s).filter((s) => themeFor(s) === "beach");
     expect(seeds.length).toBeGreaterThan(5);
     expect(generateLevel(seeds[0]!).theme).toBe("beach");
   });
