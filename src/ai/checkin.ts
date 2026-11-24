@@ -358,8 +358,9 @@ export function parseCheckin(text: string, me: number, names: string[], current:
   if (o.keep === true && !given.length) return { kind: "keep", ...extra };
   if (!given.length) return o.keep === undefined && !line ? { kind: "invalid", problems: ["neither keep nor plan fields"] } : { kind: "keep", ...extra };
   const cur = planOf(current, names);
-  // models often list power-ups (shield, jetpack) as weapons: drop those, keep the weapons (none left: weapons unchanged)
-  const ws = Array.isArray(o.weapons) ? o.weapons.filter((w) => typeof w === "string" && validatePlan({ weapons: [w], target: "nearest", stance: "rush" }, me, names).strategy) : o.weapons;
+  // models often list power-ups (shield, jetpack) or weapons this ruleset turns off as weapons: drop those, keep the
+  // weapons the match allows (none left: weapons unchanged)
+  const ws = Array.isArray(o.weapons) ? o.weapons.filter((w) => typeof w === "string" && validatePlan({ weapons: [w], target: "nearest", stance: "rush" }, me, names, ruleset).strategy) : o.weapons;
   const merged = {
     weapons: Array.isArray(ws) && !ws.length ? current.weapons : (ws ?? current.weapons),
     target: o.target ?? cur.target,
