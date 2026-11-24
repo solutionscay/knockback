@@ -37,6 +37,17 @@ describe("space (#127)", () => {
     expect(m.fight!.sim.ruleset.combat.gravity).toBeCloseTo(CLASSIC.combat.gravity * LOW, 6);
   });
 
+  test("sudden death comes after a shorter lull on the space map only (#137: low gravity stretches every lull)", () => {
+    const quiet = CLASSIC.arena.themes.space.physics.quiet;
+    expect(quiet).toBeLessThan(1);
+    expect(themedRuleset(CLASSIC, "space").zone.suddenDeath.quietTicks).toBe(Math.round(CLASSIC.zone.suddenDeath.quietTicks * quiet));
+    for (const t of ["warehouse", "rooftop", "junkyard", "construction", "beach", "forest", "cave"] as const) expect(CLASSIC.arena.themes[t].physics.quiet).toBe(1);
+    const m = new Match(9, { souls: exampleSouls(), ruleset: SPACE });
+    m.prepareRound();
+    expect(m.fight!.sim.ruleset.zone.suddenDeath.quietTicks).toBe(Math.round(CLASSIC.zone.suddenDeath.quietTicks * quiet));
+    expect(() => validateRuleset({ arena: { themes: { space: { physics: { quiet: 3 } } } } })).toThrow("quiet");
+  });
+
   test("levels: regolith over the rock frame, ice in it, coolant pools, steel and ice jump-through ledges", () => {
     let pools = 0, oneWay = 0, ice = 0, steel = 0;
     for (let seed = 1; seed <= 12; seed++) {

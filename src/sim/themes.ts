@@ -62,8 +62,12 @@ export interface ThemeRules {
   /** a low wall at pit edges (layout.parapetChance), or 0 */
   parapet: number;
   hazards: Hazards;
-  /** multipliers: gravity (the fall and the jump), friction (how fast a fighter changes speed on the ground) */
-  physics: { gravity: number; friction: number };
+  /**
+   * multipliers: gravity (the fall and the jump), friction (how fast a fighter changes speed on the ground), quiet (how
+   * long the fight may go without damage before sudden death: zone.suddenDeath.quietTicks; space's longer flights
+   * stretch every lull, #137)
+   */
+  physics: { gravity: number; friction: number; quiet: number };
   /**
    * #100 stage design. oneWay: the chance a hanging platform is jump-through (2-row platforms stay solid: cover).
    * catwalk: a gap's crossing is a hanging jump-through catwalk catwalkHeight m above the lower rim (instead of a bridge
@@ -125,7 +129,7 @@ export const BASE_MAT: Record<MatName, number> = {
 };
 
 const NO_HAZARDS: Hazards = { pools: [0, 0], width: [2.5, 4], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0, coolant: 0 };
-const EARTH = { gravity: 1, friction: 1 };
+const EARTH = { gravity: 1, friction: 1, quiet: 1 };
 const NO_SPECKLE = { on: Mat.Dirt, mat: Mat.Rock, chance: 0 };
 
 export const THEME_DEFS = {
@@ -277,7 +281,8 @@ export const THEME_DEFS = {
    * regolith (where one tops the floor it is slippery and shatters). Steel girders, hull panels and ice ledges as
    * jump-through platforms, rusted grating as the crumbling ones, a steel catwalk over the central gap, steel bulkheads
    * as walls, the void below. Pools of coolant (cold, glowing: slower than water, a fighter floats and swims out, it puts
-   * out fire) fill dips in the floor. Low gravity (physics.gravity): higher jumps, longer flights. Crates, barrels and
+   * out fire) fill dips in the floor. Low gravity (physics.gravity): higher jumps, longer flights; sudden death comes
+   * after a shorter lull (physics.quiet 0.8: 5.6 s, not 7), so its rounds last as long as the other maps'. Crates, barrels and
    * cover blocks wear the station's skins (cargo pods, fuel canisters, stacked hull plates; the same props).
    */
   space: {
@@ -286,7 +291,7 @@ export const THEME_DEFS = {
       pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.1,
       props: { crate: [4, 6], barrel: [3, 5], steel: [2, 3], gas: [1, 2], pad: [1, 2], glass: [0, 1], tnt: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Ice, chance: 0.08 }, parapet: 0,
-      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0, coolant: 1 }, physics: { gravity: 0.85, friction: 1 },
+      hazards: { pools: [1, 2], width: [3, 4.5], depth: [2, 3], water: 0, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0, coolant: 1 }, physics: { gravity: 0.85, friction: 1, quiet: 0.8 },
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1], ceiling: 0, ceilingRock: [0, 0], stalactites: [0, 0] },
     },
     look: {

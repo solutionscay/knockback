@@ -175,7 +175,7 @@ export function validateRuleset(input: unknown): Ruleset {
     const at = `arena.themes.${name}`;
     require(t.ground.heights === "ground" || t.ground.heights === "roof", `${at}.ground.heights`, "expected ground or roof");
     require(t.ground.runs === "random" || t.ground.runs === "whole", `${at}.ground.runs`, "expected random or whole");
-    require(t.physics.gravity >= 0.25 && t.physics.gravity <= 2 && t.physics.friction >= 0.1 && t.physics.friction <= 2, `${at}.physics`, "gravity expected 0.25 to 2, friction 0.1 to 2");
+    require(t.physics.gravity >= 0.25 && t.physics.gravity <= 2 && t.physics.friction >= 0.1 && t.physics.friction <= 2 && t.physics.quiet >= 0.25 && t.physics.quiet <= 2, `${at}.physics`, "gravity expected 0.25 to 2, friction 0.1 to 2, quiet 0.25 to 2");
     require(t.speckle.chance <= 1, `${at}.speckle.chance`, "expected 0 to 1");
     require(t.stage.oneWay <= 1 && t.stage.catwalkHeight >= 1 && t.stage.catwalkHeight <= 6, `${at}.stage`, "oneWay expected 0 to 1, catwalkHeight 1 to 6 m");
     require(t.stage.topRows[0] >= 1 && t.stage.topRows[1] <= 4, `${at}.stage.topRows`, "expected 1 to 4 rows");
@@ -228,17 +228,22 @@ export function allowedWeapon(ruleset: Ruleset, weapon: unknown): weapon is Excl
 
 /**
  * The ruleset a round on `theme` plays (#94): the theme's physics applied (gravity scales `combat.gravity`, friction
- * scales the fighters' ground acceleration). With both at 1 (every current theme) it is the ruleset itself.
+ * scales the fighters' ground acceleration, quiet scales `zone.suddenDeath.quietTicks`, #137). With all three at 1
+ * (every theme but space) it is the ruleset itself.
  */
 export function themedRuleset(r: Ruleset, theme: string): Ruleset {
   const t = (r.arena.themes as Record<string, Ruleset["arena"]["themes"]["warehouse"] | undefined>)[theme];
-  if (!t || (t.physics.gravity === 1 && t.physics.friction === 1)) return r;
+  if (!t || (t.physics.gravity === 1 && t.physics.friction === 1 && t.physics.quiet === 1)) return r;
   return Object.freeze({
     ...r,
     combat: Object.freeze({
       ...r.combat,
       gravity: r.combat.gravity * t.physics.gravity,
       fighter: Object.freeze({ ...r.combat.fighter, groundAccel: r.combat.fighter.groundAccel * t.physics.friction }),
+    }),
+    zone: Object.freeze({
+      ...r.zone,
+      suddenDeath: Object.freeze({ ...r.zone.suddenDeath, quietTicks: Math.round(r.zone.suddenDeath.quietTicks * t.physics.quiet) }),
     }),
   });
 }
