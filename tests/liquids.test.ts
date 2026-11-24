@@ -172,9 +172,9 @@ describe("themes as data", () => {
     expect(readFileSync(join(import.meta.dir, "..", "tools", "art", "themes.json"), "utf8")).toBe(themesJson());
   });
 
-  test("every theme is a valid ruleset theme, and the default rotation is the four", () => {
+  test("every theme is a valid ruleset theme, and the default rotation is the four plus the beach (#111)", () => {
     expect(validateRuleset({ arena: { enabledThemes: ALL_THEMES } }).arena.enabledThemes).toEqual(ALL_THEMES);
-    expect(CLASSIC.arena.enabledThemes).toEqual(["warehouse", "rooftop", "junkyard", "construction"]);
+    expect(CLASSIC.arena.enabledThemes).toEqual(["warehouse", "rooftop", "junkyard", "construction", "beach"]);
   });
 
   test("a ruleset saved before the #94 materials (8 hit points) still loads", () => {

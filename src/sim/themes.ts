@@ -59,17 +59,21 @@ export interface ThemeRules {
    * #100 stage design. oneWay: the chance a hanging platform is jump-through (2-row platforms stay solid: cover).
    * catwalk: a gap's crossing is a hanging jump-through catwalk catwalkHeight m above the lower rim (instead of a bridge
    * at ground level), so a knocked fighter can still fall in. frame: the hard material under the ground's soft top
-   * (softDepth rows of `body`, its top row `surface`); 0: the whole ground is `body`.
+   * (softDepth rows of `body`, its top row `surface`); 0: the whole ground is `body`. topRows (#111): how many rows of
+   * `surface` top the ground (1 in the first themes; the beach's dry sand is 2 deep over its wet sand).
    */
-  stage: { oneWay: number; catwalk: boolean; catwalkHeight: number; frame: number; softDepth: [number, number] };
+  stage: { oneWay: number; catwalk: boolean; catwalkHeight: number; frame: number; softDepth: [number, number]; topRows: [number, number] };
 }
 
 export interface ThemeLook {
   /** the sky gradient (top, horizon) and the two hill rows (far, near) */
   sky: [number, number];
   hills: [number, number];
-  /** the backdrop drawn behind the level */
-  background: "hills";
+  /**
+   * the backdrop drawn behind the level: "hills" (two rows of code-drawn hills), "beach" (#111: the sun, clouds and the
+   * sea on the horizon from the theme's atlas, `hills` the sea's fallback color and the near dunes)
+   */
+  background: "hills" | "beach";
   /** material colors (debris; the art bakes the same), over the base colors */
   mat: Partial<Record<MatName, number>>;
   /** the top edge's color per material (default: the material 35% lighter) */
@@ -113,7 +117,7 @@ export const THEME_DEFS = {
       props: { crate: [6, 9], steel: [2, 4], barrel: [4, 6], gas: [2, 4], glass: [1, 3], weight: [1, 3], pad: [1, 2], tnt: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: NO_SPECKLE, parapet: 0,
       hazards: NO_HAZARDS, physics: EARTH,
-      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Steel, softDepth: [3, 4] },
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Steel, softDepth: [3, 4], topRows: [1, 1] },
     },
     look: {
       sky: [0x111522, 0x262a3d], hills: [0x1d2234, 0x252b40], background: "hills",
@@ -127,7 +131,7 @@ export const THEME_DEFS = {
       props: { glass: [4, 6], gas: [2, 3], barrel: [3, 5], crate: [3, 5], pad: [2, 3], tnt: [1, 2], weight: [1, 2], steel: [1, 2] },
       stepy: false, ground: { heights: "roof", runs: "random", steps: true }, speckle: NO_SPECKLE, parapet: Mat.Brick,
       hazards: NO_HAZARDS, physics: EARTH,
-      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Steel, softDepth: [3, 4] },
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Steel, softDepth: [3, 4], topRows: [1, 1] },
     },
     look: {
       sky: [0x161b38, 0x5a3550], hills: [0x2a2547, 0x352b52], background: "hills",
@@ -141,7 +145,7 @@ export const THEME_DEFS = {
       props: { barrel: [7, 10], steel: [3, 5], tnt: [1, 3], crate: [3, 5], gas: [1, 3], pad: [1, 2], glass: [0, 1], weight: [0, 1] },
       stepy: true, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.12 }, parapet: 0,
       hazards: NO_HAZARDS, physics: EARTH,
-      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4] },
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1] },
     },
     look: {
       sky: [0x1a1a22, 0x4a3a2c], hills: [0x2a2620, 0x342e26], background: "hills",
@@ -155,7 +159,7 @@ export const THEME_DEFS = {
       props: { tnt: [2, 4], weight: [2, 3], crate: [3, 5], barrel: [3, 5], gas: [1, 3], steel: [1, 3], pad: [1, 2], glass: [0, 2] },
       stepy: true, ground: { heights: "ground", runs: "random", steps: true }, speckle: NO_SPECKLE, parapet: 0,
       hazards: NO_HAZARDS, physics: EARTH,
-      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4] },
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1] },
     },
     look: {
       sky: [0x14192c, 0x40364a], hills: [0x22253a, 0x2b2e45], background: "hills",
@@ -173,11 +177,34 @@ export const THEME_DEFS = {
       props: { barrel: [4, 6], steel: [2, 4], tnt: [1, 2], crate: [3, 5], gas: [1, 3], pad: [1, 2], glass: [0, 1], weight: [0, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.15 }, parapet: 0,
       hazards: { pools: [2, 3], width: [2.5, 4], depth: [2, 3], water: 3, oil: 2, lava: 1, acid: 1 }, physics: EARTH,
-      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4] },
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1] },
     },
     look: {
       sky: [0x15202a, 0x3c4a4a], hills: [0x1f2c30, 0x28363a], background: "hills",
       mat: { dirt: 0x5e4d38 }, top: { dirt: 0x8a9a5a, wood: 0xc8955a }, atlas: "junkyard",
+    },
+  },
+  /**
+   * The beach (#111), the first of the new maps. Dry sand on top (2 rows: it falls into a hole dug under it), wet sand
+   * below (dirt, in the beach's colors: it holds its shape), a rock frame, bedrock. Tide pools of water fill dips in the
+   * sand: they slow a fighter and put out fire, and a fighter swims out (no instant death). The jump-through platforms
+   * are boardwalk planks (a pier over the central gap), the walls and the scatter in the wet sand are rock, and cover
+   * blocks, crates and barrels wear the beach's skins (driftwood logs, driftwood crates, buoys; the same props).
+   * Physics as on every map.
+   */
+  beach: {
+    rules: {
+      body: Mat.Dirt, surface: Mat.Sand, platform: [Mat.Wood, Mat.Wood, Mat.Wood, Mat.Rock], tower: Mat.Rock, bridge: [Mat.Wood],
+      pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.12,
+      props: { crate: [4, 6], barrel: [4, 6], gas: [1, 2], pad: [1, 2], tnt: [0, 1], steel: [0, 1], weight: [0, 1] },
+      stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.06 }, parapet: 0,
+      hazards: { pools: [1, 2], width: [3, 5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0 }, physics: EARTH,
+      stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [4, 5], topRows: [2, 2] },
+    },
+    look: {
+      sky: [0x1d3a66, 0xe59a6a], hills: [0x184e62, 0x3e3a3c], background: "beach",
+      mat: { sand: 0xe2c48a, dirt: 0xa5865a, rock: 0x7a6e66, wood: 0x8e7658, crumble: 0x9a8566, bedrock: 0x221f2a },
+      top: { sand: 0xf4e3b4, dirt: 0xc2a271, rock: 0x6f8a52, wood: 0xc2a77e, crumble: 0xb39c78 }, atlas: "beach",
     },
   },
 } satisfies Record<string, ThemeDef>;
@@ -186,7 +213,7 @@ export type Theme = keyof typeof THEME_DEFS;
 /** Every theme a ruleset may enable. */
 export const ALL_THEMES = Object.keys(THEME_DEFS) as Theme[];
 /** The default rotation. */
-export const THEMES: readonly Theme[] = ["warehouse", "rooftop", "junkyard", "construction"];
+export const THEMES: readonly Theme[] = ["warehouse", "rooftop", "junkyard", "construction", "beach"];
 
 /** A theme's material colors, base colors filled in. */
 export function themeMatColors(t: Theme): Record<MatName, number> {

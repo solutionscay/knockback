@@ -18,9 +18,9 @@ beforeAll(async () => {
 
 const F = CLASSIC.combat.fighter;
 /** The level data these seeds were picked with (before #100: more pits, flat roofs, bridges, no jump-through platforms,
- * no hard frame): the same seeds, the same levels. */
+ * no hard frame, and the four themes before the beach, #111): the same seeds, the same levels. */
 const OLD_STAGE = { oneWay: 0, catwalk: false, frame: 0 };
-const PITTED = resolveRuleset({ arena: { themes: {
+const PITTED = resolveRuleset({ arena: { enabledThemes: ["warehouse", "rooftop", "junkyard", "construction"], themes: {
   warehouse: { pitChance: 0.6, extraPits: [0, 1], stage: OLD_STAGE },
   rooftop: { pitChance: 0.85, extraPits: [1, 2], ground: { heights: "roof", runs: "whole", steps: false }, stage: OLD_STAGE },
   junkyard: { pitChance: 0.55, extraPits: [0, 1], stage: OLD_STAGE }, construction: { pitChance: 0.6, extraPits: [0, 1], stage: OLD_STAGE },

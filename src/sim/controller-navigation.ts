@@ -813,8 +813,14 @@ export class ControllerNavigation {
     const feet = sim.feetY(me);
     const atBody = g.liquidAt(mp.x, mp.y);
     const atFeet = g.liquidAt(mp.x, feet + 0.1);
-    if (!me.grounded && (atBody === Liquid.Water || atFeet === Liquid.Water)) {
-      if (mv.y < 1) input.jump = true;
+    const wet = atBody === Liquid.Water || atFeet === Liquid.Water;
+    // #111: bobbing just above the water between strokes counts as afloat too
+    const above = !me.grounded && !wet && g.liquidAt(mp.x, feet - 0.6) === Liquid.Water;
+    if (!me.grounded && (wet || above)) {
+      if (wet && mv.y < 1) input.jump = true;
+      // #111: afloat is airborne, and the air steers only on a link: with none, swim toward the goal's side (the
+      // strokes lift it over that rim)
+      if (input.move === 0 && !this.activeLink && this.goal && Math.abs(this.goal.x - mp.x) > 0.3) input.move = this.goal.x > mp.x ? 1 : -1;
       return;
     }
     if (me.grounded && (hazardous(atFeet) || hazardous(atBody))) {

@@ -133,11 +133,13 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
   const speckle = T.speckle.chance > 0 ? T.speckle : null;
   // #100: soft over hard: softDepth rows of the theme's ground on a hard frame (its color tells what breaks)
   const soft = T.stage.frame ? rng.int(T.stage.softDepth[0], T.stage.softDepth[1]) : Infinity;
+  // #111: rows of surface on top (one in the first themes: no draw, so their levels are as before)
+  const topRows = T.stage.topRows[1] > 1 ? rng.int(T.stage.topRows[0], T.stage.topRows[1]) : 1;
   for (let cx = 0; cx < grid.cols; cx++) {
     if (top[cx] === -Infinity) continue;
     const ty = cyOf(top[cx]!);
     for (let cy = 0; cy < ty; cy++) {
-      let m: Mat = cy < L.bedrockRows ? Mat.Bedrock : cy === ty - 1 ? T.surface : cy < ty - soft ? (T.stage.frame as Mat) : T.body;
+      let m: Mat = cy < L.bedrockRows ? Mat.Bedrock : cy >= ty - topRows ? T.surface : cy < ty - soft ? (T.stage.frame as Mat) : T.body;
       if (speckle && m === speckle.on && rng.chance(speckle.chance)) m = speckle.mat;
       grid.set(cx, cy, m);
     }
