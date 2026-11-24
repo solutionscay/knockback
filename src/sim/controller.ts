@@ -25,6 +25,8 @@ const CLOSE_WEAPONS: readonly Weapon[] = ["bat", "hammer", "flamethrower", "ligh
 
 
 const NO_FIRE: Input = { ...NO_INPUT };
+/** a chunk this close in the line of sight is lodged on the fighter (#88), within a punch */
+const LODGED_REACH = 1.2;
 
 
 export class Controller {
@@ -480,6 +482,19 @@ export class Controller {
       return aimAndFire(sim, me, mp, input, "sniper", sight, false, this.aimNoise);
     }
     this.noLos = los ? 0 : this.noLos + 1;
+    // a broken-off chunk lodged against me, in the line to the target (#88: a fallen pillar wedged at a pit's lip
+    // blocks every shot and the way on, 45 s of pacing): break it with the heaviest swing carried, along that line
+    const lodged = !los && sight.sight?.entity?.kind === "chunk" && sight.sight.dist < LODGED_REACH;
+    if (lodged && !choice?.shot && !flying && me.stun === 0) {
+      const w: Weapon = me.weapons.includes("hammer") ? "hammer" : me.weapons.includes("bat") ? "bat" : "fist";
+      const l = length2D(dx0, dy0) || 1;
+      input.weapon = w;
+      if (w === "hammer") input.jump = false;
+      input.aimX = dx0 / l;
+      input.aimY = dy0 / l;
+      input.fire = (sim.weapon(me) === w || w === "fist") && me.swap === 0 && me.cooldown[w] === 0;
+      return input;
+    }
     // a target with no path and no line of sight for long: pick someone else for a while
     const tSurf = target.surface;
     const reachable = surf && tSurf >= 0 ? sim.nav.fighterPlan(sim.grid, me.surface, mp.x).cost[tSurf] !== Infinity : true;
