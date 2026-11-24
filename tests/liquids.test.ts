@@ -13,7 +13,7 @@ import { CELL, CLASSIC, Grid, initPhysics, Mat, Match, NO_INPUT, Sim, exampleSou
 import { Liquid } from "../src/sim/grid";
 import { NavGraph } from "../src/sim/nav";
 import { validateRuleset, type Ruleset } from "../src/sim/ruleset";
-import { igniteFighter } from "../src/sim/sim-ignite";
+import { igniteCell, igniteFighter } from "../src/sim/sim-ignite";
 import { ALL_THEMES, themesJson } from "../src/sim/themes";
 
 beforeAll(async () => {
@@ -89,6 +89,26 @@ describe("liquids", () => {
     run(60, () => (high = Math.max(high, sim.feetY(f))));
     inputs[0] = NO_INPUT;
     expect(high).toBeGreaterThan(low + 0.6);
+  });
+
+  test("one dousing, one douse: a swimmer beside a fire does not catch again (#131: water, slime, coolant)", () => {
+    for (const l of [Liquid.Water, Liquid.Slime, Liquid.Coolant]) {
+      const { sim, g, run, put, events } = scene();
+      for (let i = 0; i < g.liq.length; i++) if (g.liq[i] === Liquid.Water) g.liq[i] = l;
+      // a lit wooden rim on the basin's left wall, touching the swimmer
+      for (let cy = 4; cy < 9; cy++) {
+        g.set(9, cy, Mat.Wood);
+        igniteCell(sim, 9, cy, -1, "test");
+      }
+      const f = put(0, g.wx(10) + 0.35, 1.5);
+      igniteFighter(sim, f, -1, "test");
+      let lit = 0;
+      run(120, () => (lit += sim.fires.size > 0 ? 1 : 0));
+      expect(lit).toBeGreaterThan(60); // the rim burned beside the swimmer for most of it
+      expect(events.filter((e) => e.type === "douse" && e.fighter === 0).length).toBe(1);
+      expect(events.filter((e) => e.type === "burn" && e.fighter === 0).length).toBe(1);
+      expect(f.burning).toBe(0);
+    }
   });
 
   test("oil: a blast lights it, it burns fighters over it, then it is used up", () => {
