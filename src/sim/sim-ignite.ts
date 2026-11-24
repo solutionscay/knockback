@@ -4,7 +4,7 @@
  * Every chance is drawn from the Sim's seeded RNG, in a fixed order. The burning itself is in sim-fire.ts.
  */
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
-import { CELL, F_CHARRED } from "./grid";
+import { CELL, F_CHARRED, swimmable } from "./grid";
 import { CLASSIC, type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
 import { light } from "./sim-objects";
@@ -96,9 +96,17 @@ export function igniteEntityAt(sim: Sim, e: Entity, x: number, y: number, by: nu
   } else igniteProp(sim, e, by, source);
 }
 
-/** Set a fighter on fire (or keep them burning). */
+/**
+ * Set a fighter on fire (or keep them burning). A fighter in water, slime or coolant does not catch: the liquid puts
+ * the fire out on the same tick, so a swimmer beside a fire or in a flame was lit and doused again and again (#131:
+ * repeated "burn" and "douse" events, two or more DOUSED labels). Same test as sim-liquid's bodyLiquid.
+ */
 export function igniteFighter(sim: Sim, f: Fighter, by: number, cause: string) {
   if (!f.alive) return;
+  if (sim.liquids.on) {
+    const p = f.entity.body.translation();
+    if (swimmable(sim.grid.liquidAt(p.x, p.y) || sim.grid.liquidAt(p.x, sim.feetY(f) + 0.15))) return;
+  }
   const was = f.burning > 0;
   if (!was) {
     sim.stats.fightersIgnited++;
