@@ -20,7 +20,7 @@ import { portraitSvg } from "../viewer/portrait";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
 import { HttpError } from "./limits";
 import { LiveStream } from "./live";
-import type { MatchRuleset } from "./match-rulesets";
+import { storedRuleset, type MatchRuleset } from "./match-rulesets";
 import type { MatchServer } from "./match-server";
 import { PICK_THROTTLE_MS, PickBook, soulOpeningLine } from "./picks";
 import { checkinSchema, planSchema, RemoteSeat } from "./remote";
@@ -111,6 +111,16 @@ export class ServerMatch {
     this.tier = tierOf(kinds);
     this.createdAt = createdAt;
     this.done = new Promise((resolve) => (this.settle = resolve));
+  }
+
+  /** A match rebuilt from its stored row: its seats, its picks and when it started (resume, and loading an old round). */
+  static async fromRow(row: MatchRow, server: MatchServer): Promise<ServerMatch> {
+    const m = new ServerMatch(row.id, row.arenaRound, row.seed, row.kinds as SeatKind[], row.deadlineMs, server, row.createdAt, storedRuleset(row));
+    for (const s of await server.store.listSeats(row.id)) m.restoreSeat(s);
+    m.picks.load(await server.store.listPicks(row.id));
+    m.picks.lockedAt = row.picksLockedAt ?? null;
+    m.startedAtMs = row.startedAt;
+    return m;
   }
 
   /** Wake every long poll on this match. */

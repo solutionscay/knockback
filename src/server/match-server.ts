@@ -16,9 +16,8 @@ import { dedupe, headToHead, leaderboard, type SeatEntry } from "../stats/models
 import { Arena, type ArenaOptions } from "./arena";
 import { errorResponse, HttpError, json, RateLimiter } from "./limits";
 import { apiRoute, health } from "./match-routes";
-import { storedRuleset } from "./match-rulesets";
 import { PICK_MIN_WINDOW_MS, PICKS_PER_ADDRESS } from "./picks";
-import { ServerMatch, tierOf, type SeatKind } from "./server-match";
+import { ServerMatch, tierOf } from "./server-match";
 import { SqliteStore, type MatchStore } from "./store";
 
 /** GET /api/models reads at most this many of the newest records */
@@ -143,11 +142,7 @@ export class MatchServer {
     if (this.loading.has(mid)) return this.loading.get(mid)!;
     this.loadLimit.take(ip, "loads of old rounds");
     const load = (async () => {
-      const loaded = new ServerMatch(row.id, row.arenaRound, row.seed, row.kinds as SeatKind[], row.deadlineMs, this, row.createdAt, storedRuleset(row));
-      for (const s of await this.store.listSeats(row.id)) loaded.restoreSeat(s);
-      loaded.picks.load(await this.store.listPicks(row.id));
-      loaded.picks.lockedAt = row.picksLockedAt ?? null;
-      loaded.startedAtMs = row.startedAt;
+      const loaded = await ServerMatch.fromRow(row, this);
       const rec = await this.store.getRecord(mid);
       if (row.status === "over" && !rec) throw new HttpError(404, `no saved record for match ${mid}`);
       await loaded.loadFinished(row, await this.store.listRounds(mid), rec?.path ?? null);
