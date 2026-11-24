@@ -3,8 +3,8 @@ import type { Match } from "../sim/match";
 import type { Fighter, SimEvent, Strategy } from "../sim/sim-types";
 import type { Decision } from "../sim/voice";
 import { CALLOUT, CalloutManager, planChangeText, ruleTagText, targetText, type KoEvent, type RuleFiring } from "./callouts";
-import { esc } from "./game-hud";
-import { hex, portraitSvg } from "./portrait";
+import { esc, hex } from "../html";
+import { portraitSvg } from "./portrait";
 import { modelBadgeHtml } from "./model-badge";
 import { buildTagHtml } from "./build-view";
 

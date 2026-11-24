@@ -19,8 +19,6 @@ import { SvgPen } from "./svgPen";
 
 export type Mood = "fight" | "win" | MoraleState | "hit" | "stun" | "ko";
 
-export const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
-
 type Pt = readonly number[];
 type M6 = [number, number, number, number, number, number]; // a b c d e f: x' = a x + c y + e, y' = b x + d y + f
 const PPM = PORTRAIT.ppm;

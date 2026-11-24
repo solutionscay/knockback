@@ -22,7 +22,8 @@ import type { Identity } from "../sim/identity";
 import { matchIdentities, type MatchRecord } from "../sim/match";
 import { parseSoul } from "../sim/soul";
 import type { Weapon } from "../sim/sim-types";
-import { hex, portraitSvg, type Mood } from "../viewer/portrait";
+import { esc, hex } from "../html";
+import { portraitSvg, type Mood } from "../viewer/portrait";
 import { arenaBoard } from "../stats/board";
 import { modelBoard, type BoardRound, type ModelBoard, type ModelBoardRow } from "../stats/model-board";
 import { modelOf, remoteLabel, type SeatEntry } from "../stats/models";
@@ -489,7 +490,6 @@ export async function modelsBoardOf(server: MatchServer, fresh = false): Promise
 
 // ------------------------------------------------------------------ share card
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 /** place a portrait SVG at x,y with size w,h inside another SVG */
 const placeSvg = (svg: string, x: number, y: number, w: number, h: number) => svg.replace("<svg ", `<svg x="${x}" y="${y}" width="${w}" height="${h}" `);
 
