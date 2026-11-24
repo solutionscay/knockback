@@ -4,7 +4,8 @@
  * that names the field and the bad value, and only that field.
  */
 import { describe, expect, test } from "bun:test";
-import { parseAnswer } from "../src/ai/parse";
+import { CHECKIN, parseCheckin } from "../src/ai/checkin";
+import { parseAnswer, validatePlan } from "../src/ai/parse";
 import { resolveRuleset } from "../src/sim/ruleset";
 
 const NAMES = ["Rex", "Moth", "Pike", "Vex"];
@@ -86,4 +87,30 @@ describe("plan parser", () => {
       expect(p.ruleProblems![0]).toStartWith("rule 1");
       expect(p.ruleProblems![0]).toContain(says);
     });
+});
+
+// #129: a check-in's weapons are filtered against the match's ruleset, not Classic
+describe("check-in weapons follow the match's ruleset", () => {
+  const ruleset = resolveRuleset({ weapons: { enabled: ["bat", "shotgun"] } });
+  const current = validatePlan({ weapons: ["bat"], target: "nearest", stance: "rush" }, ME, NAMES, ruleset).strategy!;
+  const checkin = (o: Record<string, unknown>) => parseCheckin(JSON.stringify(o), ME, NAMES, current, CHECKIN, ruleset);
+
+  test("a weapon the ruleset allows is kept", () => {
+    const a = checkin({ weapons: ["shotgun"] });
+    expect(a.kind).toBe("update");
+    if (a.kind === "update") expect(a.strategy.weapons).toEqual(["shotgun"]);
+  });
+
+  test("a weapon the ruleset turns off is dropped like a power-up; the rest of the check-in applies", () => {
+    const a = checkin({ weapons: ["shotgun", "rocket", "shield"] });
+    expect(a.kind).toBe("update");
+    if (a.kind === "update") expect(a.strategy.weapons).toEqual(["shotgun"]);
+    const b = checkin({ weapons: ["rocket"], stance: "cover" });
+    expect(b.kind).toBe("update");
+    if (b.kind === "update") expect(b.strategy).toMatchObject({ weapons: ["bat"], stance: "cover" });
+  });
+
+  test("only turned-off weapons: the weapons stay as they were", () => {
+    expect(checkin({ weapons: ["rocket"] }).kind).toBe("keep");
+  });
 });
