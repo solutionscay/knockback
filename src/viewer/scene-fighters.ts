@@ -53,6 +53,8 @@ interface FighterView {
 }
 
 export class FighterViews {
+  /** #116: the liquids, for the wobble of a fighter under a surface */
+  liquid: { submerged(x: number, y: number): number } | null = null;
   readonly layer = new Container();
   readonly barsG = new Graphics();
   private fighters: FighterView[] = [];
@@ -190,6 +192,9 @@ export class FighterViews {
       const air = (!f.grounded && f.alive) || (!!off && off.dy > 0.05);
       v.root.position.set(p.x, -p.y - hop);
       v.root.rotation = rot;
+      // #116: under a liquid's surface, the fighter wobbles gently (seen through the moving surface)
+      const sub = f.alive && this.liquid ? this.liquid.submerged(p.x, p.y) : 0;
+      v.root.skew.x = sub > 0.3 ? Math.sin(time * 4.5 + f.id * 1.7) * 0.07 * Math.min(1, (sub - 0.3) * 2) : 0;
       if (this.celebrateId === f.id) {
         if (hop < 0.08) {
           v.sx = 1.25;

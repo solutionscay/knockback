@@ -33,6 +33,8 @@ interface PropView {
 const blink = { blink: false };
 
 export class PropViews {
+  /** #116: the liquids, for things floating at a surface to bob with it */
+  liquid: { bob(x: number, y: number, hh: number): { dy: number; rot: number } } | null = null;
   readonly layer = new Container();
   readonly marks = new Graphics();
   /** the level's theme (loose chunks wear its terrain art) */
@@ -131,6 +133,12 @@ export class PropViews {
         v.root.position.set(p.x + v.off.x, -(p.y + v.off.y));
       }
       v.root.rotation = -p.a;
+      if (this.liquid && e.kind !== "item") {
+        // #116: at a liquid's surface it rides the waves (visual only)
+        const b = this.liquid.bob(p.x, p.y, e.hh);
+        v.root.position.y -= b.dy;
+        v.root.rotation -= b.rot;
+      }
       if (e.kind === "barrel" && e.fuse !== undefined) v.root.scale.set(1 + 0.12 * Math.sin(time * 60));
       if (e.kind === "item") {
         // a pickup stays upright (its badge is round) and bobs gently, so it stands apart from crates and barrels

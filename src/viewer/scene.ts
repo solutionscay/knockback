@@ -162,6 +162,8 @@ export class Scene {
     if (this.liquidView) this.liquidView.container.destroy({ children: true });
     this.liquidView = new LiquidView(sim.grid, sim.level.theme);
     this.liquidLayer.addChild(this.liquidView.container);
+    this.fighters.liquid = this.liquidView;
+    this.props.liquid = this.liquidView;
     this.chainView?.destroy();
     this.chainView = new ChainView(sim);
     this.chainLayer.addChild(this.chainView.container);
@@ -311,6 +313,7 @@ export class Scene {
   }
 
   onEvent(e: SimEvent) {
+    this.liquidView?.event(e);
     this.effects.onEvent(e, this.sim, this.pal, this.camera, this.fighters, this.props, this.projectiles);
   }
 
@@ -360,7 +363,7 @@ export class Scene {
     const fx = this.effects.fx;
     this.props.sync(sim);
     this.terrainView?.update();
-    this.liquidView?.update(this.time);
+    this.liquidView?.update(this.time, sim);
     fx.update(fxDt);
     this.fireView.emit(sim, fx, fxDt, alpha, this.xform);
 
