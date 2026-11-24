@@ -570,7 +570,7 @@ def main():
     ap.add_argument("--only", default="", help="frame names (comma list)")
     ap.add_argument("--samples", type=int, default=32)
     ap.add_argument("--quick", action="store_true")
-    ap.add_argument("--themes", default=",".join(pl.THEMES), help="level: the themes to render")
+    ap.add_argument("--themes", default=",".join(pl.THEMES + ["beach"]), help="level: the themes to render (nature: the #94 materials and liquids; beach: #111)")
     ap.add_argument("--no-common", action="store_true", help="level: skip the shared overlays")
     a = ap.parse_args(argv)
     t0 = time.time()
@@ -667,6 +667,10 @@ def main():
         times.append((name, time.time() - t))
         print("SPRITE %s %dx%d %.1fs" % (name, fm["w"], fm["h"], time.time() - t), flush=True)
     if "level" in groups:
+        import types
+        import plush_beach  # #111: its prop skins are built like the world props
+        plush_beach.PW = types.SimpleNamespace(Group=Group, mesh=mesh, soft_box=soft_box, extrude_poly=extrude_poly, stitch_line=stitch_line,
+                                               stitch_rect=stitch_rect, damage_objects=damage_objects, M=M)
         times += render_level(sc, out, meta, meta_path, [t for t in a.themes.split(",") if t], not a.no_common, only)
     with open(os.path.join(a.out, "times.txt"), "a") as fh:
         for n_, dt in times:

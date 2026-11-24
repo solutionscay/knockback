@@ -4,16 +4,29 @@
  * block format, else WebP). Per match: a round loads its theme's atlas and the shared one (cracks, char, edge piping,
  * the chain anchor) and frees the other themes. View only.
  */
-import { Assets, Rectangle, Texture } from "pixi.js";
-import { THEME_DEFS, themeUsesNature, type Theme } from "../sim/themes";
+import { Assets, Rectangle, type Sprite, Texture } from "pixi.js";
+import { Mat } from "../sim/grid";
+import { MAT_NAMES, THEME_DEFS, themeUsesNature, type Theme, type ThemeRules } from "../sim/themes";
 import { LEVEL_LAYOUT, LEVEL_URLS } from "./art/level/layout";
 import { plushFormat } from "./plush-bot";
 
 interface FrameMeta { g: string; x: number; y: number; w: number; h: number; ax: number; ay: number; ppm: number }
 type Key = keyof typeof LEVEL_URLS;
-/** The atlases a theme draws from, first match wins (#94: a theme names its atlas; nature when it uses it). */
-const keysOf = (theme: Theme): Key[] => [THEME_DEFS[theme].look.atlas as Key, ...(themeUsesNature(theme) ? ["nature" as Key] : []), "common"];
 const FRAMES = LEVEL_LAYOUT.frames as unknown as Record<string, FrameMeta>;
+/**
+ * Does the theme need the nature atlas? Only for a #94 material or liquid its own atlas does not draw (#111: the
+ * beach draws its own sand and water, so a beach match does not load nature).
+ */
+function needsNature(theme: Theme): boolean {
+  if (!themeUsesNature(theme)) return false;
+  const r = THEME_DEFS[theme].rules as ThemeRules;
+  const own = (n: string) => `${THEME_DEFS[theme].look.atlas}:${n}` in FRAMES;
+  const mats = [r.body, r.surface, r.tower, ...r.platform, ...r.bridge, r.speckle.chance > 0 ? r.speckle.mat : 0].filter((m) => m >= Mat.Sand);
+  const liquids = (["water", "oil", "lava", "acid"] as const).filter((l) => r.hazards.pools[1] > 0 && r.hazards[l] > 0);
+  return mats.some((m) => !own(`c-${MAT_NAMES[m]}-0`)) || liquids.some((l) => !own(`q-${l}-0`));
+}
+/** The atlases a theme draws from, first match wins (#94: a theme names its atlas; nature when it needs it). */
+const keysOf = (theme: Theme): Key[] => [THEME_DEFS[theme].look.atlas as Key, ...(needsNature(theme) ? ["nature" as Key] : []), "common"];
 
 /** A loaded frame: its texture and its size in game meters (tiles anchor top-left; the anchor sprite on ax, ay). */
 export interface LevelFrame { tex: Texture; w: number; h: number; ax: number; ay: number }
@@ -74,6 +87,20 @@ export function levelFrame(theme: Theme, name: string): LevelFrame | null {
     if (f) return f;
   }
   return null;
+}
+
+/**
+ * #111: show a sprite frame from the theme's atlas (a prop skin p-<prop>-<state>, a backdrop piece bg-*) on `s`: its
+ * anchor on the frame's anchor, sized in meters times kx, ky. False (s untouched) if the theme has no such frame.
+ */
+export function setLevelSprite(s: Sprite, theme: Theme, name: string, kx = 1, ky = kx): boolean {
+  const f = levelFrame(theme, name);
+  if (!f) return false;
+  s.visible = true;
+  if (s.texture !== f.tex) s.texture = f.tex;
+  s.anchor.set(f.ax / f.w, f.ay / f.h);
+  s.scale.set((kx * f.w) / f.tex.frame.width, (ky * f.h) / f.tex.frame.height);
+  return true;
 }
 
 /** What is loaded: atlas names and their GPU bytes (block formats: 1 byte per pixel; WebP: 4). */

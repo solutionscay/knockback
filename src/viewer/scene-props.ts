@@ -8,6 +8,7 @@ import { drawProp as drawPropShape, pickupFrame, propFrame } from "./props";
 import type { XformAt } from "./scene";
 import { drawPiece, pieceSig } from "./terrainview";
 import { setWorldFrame } from "./world-art";
+import { levelReady, setLevelSprite } from "./level-art";
 
 interface PropView {
   /** the view: the code frame (g) under the plush sprite (s); a loose terrain chunk's cells are sprites in `cells` */
@@ -25,6 +26,8 @@ interface PropView {
   every: boolean;
   flash: number;
   squash: number;
+  /** #111: the theme's atlas was loaded when the sprite was last set (its prop skins replace the world sprites) */
+  skin: boolean;
 }
 
 const blink = { blink: false };
@@ -74,7 +77,7 @@ export class PropViews {
       hi.blendMode = "add";
       root.addChild(g, s, hi);
       this.layer.addChild(root);
-      const v: PropView = { root, g, s, hi, e, hp: -1, sig: "", every: true, flash: 0, squash: 0 };
+      const v: PropView = { root, g, s, hi, e, hp: -1, sig: "", every: true, flash: 0, squash: 0, skin: false };
       if (e.kind === "grenade" && e.owner !== undefined && sim.tick - e.born < 3) {
         const m = this.muzzleOf?.(e.owner);
         const q = e.body.translation();
@@ -95,7 +98,9 @@ export class PropViews {
       }
       return;
     }
-    if (!v.every && v.hp === e.hp) return;
+    const skin = levelReady(this.theme);
+    if (!v.every && v.hp === e.hp && v.skin === skin) return;
+    v.skin = skin;
     if (v.hp >= 0 && v.hp !== e.hp) v.flash = 0.1;
     v.hp = e.hp;
     v.every = drawPropShape(v.g, e, time, blink);
@@ -105,8 +110,11 @@ export class PropViews {
       // the model is the default size: a ruleset that resizes a prop stretches its sprite to the body
       // (a grenade's body is a 0.22 m circle: the toy, its lever and pin fill about that)
       const half = e.kind === "grenade" ? [0.22 / 1.2, 0.22 / 1.2] : PROP_HALF[e.kind as keyof typeof PROP_HALF];
-      setWorldFrame(v.s, f, e.hw / half[0]!, e.hh / half[1]!);
-      v.hi.visible = blink.blink && setWorldFrame(v.hi, f, e.hw / half[0]!, e.hh / half[1]!);
+      // #111: a theme may skin a prop (the beach's driftwood crate, buoy, log bundle): its atlas first, then the world's
+      const kx = e.hw / half[0]!, ky = e.hh / half[1]!;
+      const set = (s: Sprite) => setLevelSprite(s, this.theme, `p-${f}`, kx, ky) || setWorldFrame(s, f, kx, ky);
+      set(v.s);
+      v.hi.visible = blink.blink && set(v.hi);
       v.hi.tint = e.kind === "grenade" ? 0xff3030 : 0xffffff;
     }
   }

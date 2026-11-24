@@ -7,25 +7,29 @@
  * #94: a last row, the testbed theme: a pool of each liquid (water, oil, lava, acid; their surfaces loop), sand
  * ground, and columns of sand, mud, ice and rock (one cracked), an ice platform, a fighter wading in the water.
  * ?t= seconds into the liquids' loop (stills).
+ *
+ * #111: the beach row: dry sand over wet sand over the rock frame, a carved crater, a tide pool with a fighter wading,
+ * a column of each beach material (cracked at stages 1 and 2), a boardwalk platform; under it, its prop skins (driftwood
+ * crate, buoy, driftwood logs) at their three damage states.
  */
 import { Application, Container, Sprite, Text } from "pixi.js";
-import { F_ANCHOR, F_CHARRED, Grid, Liquid, Mat, MAT_HP } from "../sim/grid";
+import { F_ANCHOR, F_CHARRED, F_ONEWAY, Grid, Liquid, Mat, MAT_HP } from "../sim/grid";
 import { LiquidView } from "./liquidview";
 import { LEVEL_THEMES, PROP_HALF, type Theme } from "../sim/level-config";
-import { levelLoad, levelMemory } from "./level-art";
+import { levelLoad, levelMemory, setLevelSprite } from "./level-art";
 import { initPlushArt, loadPlushSheets, plushFormat, plushNeeds, PlushBot } from "./plush-bot";
 import { drawPiece, TerrainView } from "./terrainview";
 import { initWorldArt, setWorldFrame } from "./world-art";
 
 const q = new URLSearchParams(location.search);
 const S = Number(q.get("s") ?? "45");
-const THEMES: Theme[] = ["rooftop", "warehouse", "junkyard", "construction", "testbed"];
+const THEMES: Theme[] = ["rooftop", "warehouse", "junkyard", "construction", "testbed", "beach"];
 const T0 = Number(q.get("t") ?? "0");
 await initPlushArt();
 await initWorldArt();
 await loadPlushSheets(plushNeeds("balanced", "none"));
 const app = new Application();
-await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 39), antialias: true, resolution: 1, preference: "webgl" });
+await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 54), antialias: true, resolution: 1, preference: "webgl" });
 document.body.appendChild(app.canvas);
 
 function label(text: string, x: number, y: number, size = 13) {
@@ -80,6 +84,22 @@ function proving(): Grid {
   for (let cx = 1; cx < 4; cx++) g.set(cx, 6, Mat.Mud);
   return g;
 }
+/** #111, the beach: sand over wet sand over rock, a crater, a tide pool, its materials cracked, a boardwalk. */
+function beachPatch(): Grid {
+  const g = new Grid(22, 8, 0, 0);
+  for (let cx = 0; cx < 22; cx++) for (let cy = 0; cy < 4; cy++) g.set(cx, cy, cy === 0 ? Mat.Bedrock : cy === 1 ? Mat.Rock : cy === 2 ? (cx % 6 === 4 ? Mat.Sand : Mat.Dirt) : Mat.Sand);
+  for (const [cx, cy] of [[5, 3], [6, 3], [7, 3], [6, 2], [5, 2]]) g.clear(cx!, cy!);
+  const crack = (cx: number, cy: number, k: number) => (g.hp[g.idx(cx, cy)] = MAT_HP[g.mat[g.idx(cx, cy)]!]! * k);
+  crack(4, 3, 0.5); crack(8, 3, 0.2); crack(4, 2, 0.2); crack(7, 2, 0.5); crack(6, 1, 0.5);
+  for (let cx = 9; cx <= 12; cx++) for (let cy = 2; cy < 4; cy++) {
+    g.clear(cx, cy);
+    g.liq[g.idx(cx, cy)] = Liquid.Water;
+  }
+  [Mat.Sand, Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Crumble].forEach((m, i) => { g.set(15 + i, 4, m); g.set(15 + i, 5, m); });
+  crack(15, 5, 0.5); crack(16, 5, 0.2); crack(17, 5, 0.5); crack(18, 4, 0.2);
+  for (let cx = 1; cx < 6; cx++) g.set(cx, 7, Mat.Wood, F_ONEWAY | (cx === 1 || cx === 5 ? F_ANCHOR : 0));
+  return g;
+}
 const liquidViews: LiquidView[] = [];
 
 function fighter(x: number, ground: number) {
@@ -99,22 +119,41 @@ for (const theme of THEMES) {
   bytes.push(levelMemory(theme).bytes);
   const rowH = S * 7.4;
   label(`${theme} (${S} px/m, ${plushFormat()})`, 12, y);
-  const g = theme === "testbed" ? proving() : patch(theme);
+  const g = theme === "testbed" ? proving() : theme === "beach" ? beachPatch() : patch(theme);
   const tv = new TerrainView(g, theme);
   tv.update();
   const world = new Container();
   world.addChild(tv.container);
-  if (theme === "testbed") {
+  if (theme === "testbed" || theme === "beach") {
     const lv = new LiquidView(g, theme);
     lv.update(T0);
     liquidViews.push(lv);
     world.scale.set(S);
     world.position.set(S * 1.5, y + S * 7.2);
     app.stage.addChild(world);
-    fighter(S * 2.9, y + S * 5.2 + S * 1.0);
+    fighter(theme === "beach" ? S * 7.0 : S * 2.9, y + S * 5.2 + S * 1.0);
     world.addChild(lv.container);
     app.stage.addChild(world); // the liquid in front of the wading fighter
     y += rowH + 8;
+    if (theme === "beach") {
+      // its prop skins, three damage states each, standing on a line (the same props: crate, barrel, block)
+      label("beach prop skins: driftwood crate, buoy (the explosive barrel), driftwood logs (cover); damage 0, 1, 2", 12, y);
+      const row = new Container();
+      let x = 0.8;
+      for (const [k, w] of [["crate", 0.8], ["barrel", 0.68], ["block", 0.9]] as const) {
+        for (let st = 0; st < 3; st++) {
+          const sp = new Sprite();
+          setLevelSprite(sp, "beach", `p-${k}-${st}`);
+          sp.position.set(x + w / 2, -PROP_HALF[k][1]);
+          row.addChild(sp);
+          x += w + 0.35;
+        }
+      }
+      row.scale.set(S);
+      row.position.set(S * 0.5, y + S * 2.6);
+      app.stage.addChild(row);
+      y += S * 3 + 8;
+    }
     continue;
   }
   // a loose chunk (a broken-off piece), turned a little
