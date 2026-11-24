@@ -4,21 +4,21 @@ import type { PieceCell } from "./terrain";
 import type { Build, FighterStats } from "./build";
 import { generateIdentities, type Look } from "./identity";
 
-/** "fist" is what everyone starts with; the rest are picked up in the arena. */
-const PICKUP_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow", "lightning"] as const;
-export type Weapon = (typeof PICKUP_WEAPONS)[number] | "fist";
-export const WEAPON_LIST: readonly Weapon[] = PICKUP_WEAPONS;
 /**
  * Weapons whose ammo runs out (#95: every pickup weapon but the lightning sword): empty, they are thrown away and the
  * fighter is back to fists. Shots, throws, slams or hits (the bat counts hits on fighters); the flamethrower counts
  * pulses of fuel.
  */
 export const LIMITED_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
+/** "fist" is what everyone starts with; the rest are picked up in the arena. Keep the order: code walks this list. */
+const PICKUP_WEAPONS = [...LIMITED_WEAPONS, "lightning"] as const;
+export type Weapon = (typeof PICKUP_WEAPONS)[number] | "fist";
+export const WEAPON_LIST: readonly Weapon[] = PICKUP_WEAPONS;
 /**
  * Weapons that carry a count from pickup to pickup (it goes with the item when dropped): the limited weapons, and
- * the lightning sword's bolts (#72), which run out while the sword stays.
+ * the lightning sword's bolts (#72), which run out while the sword stays. That is every pickup weapon.
  */
-export const AMMO_WEAPONS = [...LIMITED_WEAPONS, "lightning"] as const;
+export const AMMO_WEAPONS = PICKUP_WEAPONS;
 export type AmmoWeapon = (typeof AMMO_WEAPONS)[number];
 export function hasAmmo(weapon: Weapon): weapon is AmmoWeapon {
   return (AMMO_WEAPONS as readonly Weapon[]).includes(weapon);
