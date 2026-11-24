@@ -185,9 +185,33 @@ export interface BoardRow {
   bestStreak: number;
 }
 export interface LeaderboardInfo {
-  agents: (BoardRow & { name: string; owner: string; label: string })[];
-  owners: (BoardRow & { owner: string; agents: number; bestBy: string | null })[];
+  agents: (BoardRow & { name: string; owner: string; label: string; operator?: unknown })[];
+  owners: (BoardRow & { owner: string; agents: number; bestBy: string | null; operator?: unknown })[];
   note: string;
+}
+
+/** An operator profile as the site shows it (#113): a nickname and a URL. */
+export interface OperatorInfo {
+  id: string;
+  nickname: string;
+  url: string | null;
+}
+
+/** An operator from the API, or null. Checked again here: the URL is kept only when it is plain http(s) (pure). */
+export function operatorOf(v: unknown): OperatorInfo | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.id !== "string" || !/^op_[0-9a-f]{16}$/.test(o.id) || typeof o.nickname !== "string" || !o.nickname) return null;
+  let url: string | null = null;
+  if (typeof o.url === "string") {
+    try {
+      const u = new URL(o.url);
+      if (u.protocol === "http:" || u.protocol === "https:") url = u.href;
+    } catch {
+      url = null;
+    }
+  }
+  return { id: o.id, nickname: o.nickname.slice(0, 32), url };
 }
 
 /** Wins and rounds as "3 / 5 · 60%"; "–" with no rounds (pure). */

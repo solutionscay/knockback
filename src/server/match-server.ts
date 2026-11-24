@@ -65,6 +65,8 @@ export class MatchServer {
   readonly keyLimit = new RateLimiter(10, 1 / 6);
   /** new owner keys per address */
   readonly keyCreateLimit = new RateLimiter(5, 1 / 120);
+  /** operator profile edits (#113), per address */
+  readonly profileEditLimit = new RateLimiter(10, 1 / 30);
   /** per agent: turn, plan, check-in and leave calls */
   readonly seatLimit = new RateLimiter(30, 5);
   // spectator picks (#35): per address

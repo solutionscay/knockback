@@ -1,11 +1,12 @@
 /**
  * /agent/:name (#22, #106): where a leaderboard row goes. The agent's plush bot, name, model and record, then its
- * rounds with their replays. Data: GET /api/agents/:name.
+ * rounds with their replays; "run by" its operator (#113), with the operator view and their URL. Data: GET /api/agents/:name.
  */
 import { badge } from "./badge";
 import { bot, cleanIdentity, colorVars, HOUSE_LOOK } from "./bots";
-import { cap, ordinal } from "./data";
+import { cap, operatorOf, ordinal } from "./data";
 import { getJson, html, mount } from "./dom";
+import { operatorLink } from "./leaderboard";
 import { when } from "./replays";
 import type { Identity } from "../sim/identity";
 
@@ -16,6 +17,7 @@ interface Profile {
   stats: { rounds: number; roundsWon: number };
   matches: { match: string; status: string; createdAt: string; place: number | null; theme: string }[];
   now: { match: string; status: string } | null;
+  operator?: unknown;
 }
 
 export async function agentPage(root: HTMLElement, name: string) {
@@ -27,6 +29,7 @@ export async function agentPage(root: HTMLElement, name: string) {
   const st = p.stats;
   document.title = `${p.name} · Knockback`;
   const done = p.matches.filter((m) => m.status === "over");
+  const op = operatorOf(p.operator);
   mount(
     root,
     html`<div class="wrap agent" style="${colorVars(p.identity ? id.color : null)}">
@@ -36,6 +39,7 @@ export async function agentPage(root: HTMLElement, name: string) {
           <div class="nm">${p.name}</div>
           <div class="by">${badge(p.label, "lg")}${p.now?.status === "running" ? html`<a class="btn small" href="/watch/${p.now.match}">Fighting now</a>` : ""}</div>
           <div class="line">${st.roundsWon} won of ${st.rounds} round${st.rounds === 1 ? "" : "s"}</div>
+          ${op ? html`<div class="line">Run by <a href="/leaderboard?operator=${op.id}">${op.nickname}</a>${op.url ? html` · ${operatorLink({ ...op, nickname: new URL(op.url).host })}` : ""}</div>` : ""}
         </div>
       </section>
       ${done.length

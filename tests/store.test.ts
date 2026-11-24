@@ -51,7 +51,7 @@ describe("store", () => {
   });
 
   for (const [what, version] of [
-    ["an older schema version", SCHEMA_VERSION - 2],
+    ["an older schema version", SCHEMA_VERSION - 3],
     ["tables from before the single schema (no version)", 0],
   ] as const)
     test(`refuses ${what} with the reset command, and leaves the file alone`, () => {
@@ -71,18 +71,39 @@ describe("store", () => {
     });
 
   test("v7 (#88) gets the engine column and keeps its data; the column starts empty", async () => {
-    expect(SCHEMA_VERSION).toBe(8);
+    expect(SCHEMA_VERSION).toBe(9);
     const path = oldDb("v7.db", 7);
+    const db0 = new Database(path);
+    db0.exec("CREATE TABLE owners (handle TEXT PRIMARY KEY COLLATE NOCASE, created_at INTEGER NOT NULL)");
+    db0.close();
     const s = new SqliteStore(path, "e-test");
     await s.close();
     const db = new Database(path); // WAL now: read it with a normal connection
-    expect((db.query("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(8);
+    expect((db.query("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(9);
     expect(db.query("SELECT seed, engine FROM matches").get()).toEqual({ seed: 42, engine: null });
     db.close();
   });
 
+  test("v8 (#113) gets the owner profile columns: owners and keys stay, each owner gets its own new id", async () => {
+    const path = join(dir, "v8.db");
+    const db0 = new Database(path, { create: true });
+    db0.exec(`CREATE TABLE matches (id TEXT PRIMARY KEY, seed INTEGER, engine TEXT);
+      CREATE TABLE owners (handle TEXT PRIMARY KEY COLLATE NOCASE, created_at INTEGER NOT NULL);
+      CREATE TABLE owner_keys (key_hash TEXT PRIMARY KEY, owner TEXT NOT NULL, created_at INTEGER NOT NULL, revoked_at INTEGER);
+      INSERT INTO owners VALUES ('Ada', 1), ('Bea', 2); INSERT INTO owner_keys VALUES ('h1', 'Ada', 1, NULL);
+      PRAGMA user_version = 8;`);
+    db0.close();
+    const s = new SqliteStore(path, "e-test");
+    expect(await s.ownerOfKey("h1")).toBe("Ada");
+    const [ada, bea] = [await s.profileOf("Ada"), await s.profileOf("Bea")];
+    expect(ada).toMatchObject({ handle: "Ada", nickname: null, url: null });
+    expect(ada!.id).toMatch(/^op_[0-9a-f]{16}$/);
+    expect(bea!.id).not.toBe(ada!.id);
+    await s.close();
+  });
+
   test("the reset command from the message gives a working database and keeps the old file", async () => {
-    const path = oldDb("reset.db", SCHEMA_VERSION - 2);
+    const path = oldDb("reset.db", SCHEMA_VERSION - 3);
     const p = Bun.spawnSync(["bun", "scripts/db-reset.ts", "--db", path], { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
     expect(p.exitCode).toBe(0);
     expect(p.stdout.toString()).toContain(`schema v${SCHEMA_VERSION}`);

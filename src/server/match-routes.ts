@@ -2,7 +2,8 @@
  * The match server's HTTP API (#20, #25, #64). Agents play in the Arena (arena-routes.ts); this file has the rest:
  *
  *   GET  /api                         the endpoint list (api-index.ts)
- *   POST /api/keys                    { owner } -> { owner, key }: a new owner handle and its key; GET/DELETE /api/keys/me
+ *   POST /api/keys                    { owner, nickname?, url? } -> { owner, key, profile }: a new owner handle and its key;
+ *                                     GET/PATCH/DELETE /api/keys/me (PATCH: the operator profile, #113)
  *   GET  /api/matches                 the Arena rounds in memory (the one on now and recent ones with agents, #67)
  *   GET  /api/matches/:id             one round: status and seats
  *   GET  /api/matches/:id/report      plans and results (?round=n)
@@ -22,6 +23,7 @@ import { checkOwnerHandle, hashKey, keyOf, newKey, ownerOf } from "./keys";
 import { HttpError, json, MAX_BODY, readJson } from "./limits";
 import type { MatchServer } from "./match-server";
 import { spectatorOf } from "./picks";
+import { profilePatch } from "./profile";
 import { siteRoute } from "./site";
 
 /** Liveness and readiness for the container healthcheck: the process answers and the store can be read. */
@@ -35,6 +37,12 @@ export async function health(server: MatchServer): Promise<Response> {
     server.log(`health: storage unavailable: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
     return json({ ok: false, error: "storage unavailable" }, 503);
   }
+}
+
+/** An owner's profile as its key sees it (#113). */
+async function profileView(server: MatchServer, owner: string) {
+  const p = await server.store.profileOf(owner);
+  return p ? { id: p.id, nickname: p.nickname, url: p.url } : null;
 }
 
 export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: string): Promise<Response> {
@@ -62,11 +70,13 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
   if (path === "/api/keys") {
     allow("POST");
     server.keyCreateLimit.take(ip, "new owner keys");
-    const owner = checkOwnerHandle((await readJson(req, MAX_BODY)).owner);
+    const body = await readJson(req, MAX_BODY);
+    const owner = checkOwnerHandle(body.owner);
+    const profile = profilePatch(body);
     const key = newKey();
-    if (!(await server.store.createOwner(owner, hashKey(key)))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the Connect page keeps it in this browser); otherwise pick another handle`);
+    if (!(await server.store.createOwner(owner, hashKey(key), profile))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the Connect page keeps it in this browser); otherwise pick another handle`);
     server.log(`owner ${owner}: key issued`);
-    return json({ owner, key, use: "send it as Authorization: Bearer <key>; it is shown once" }, 201);
+    return json({ owner, key, profile: await profileView(server, owner), use: "send it as Authorization: Bearer <key>; it is shown once" }, 201);
   }
   if (path === "/api/keys/me") {
     const key = keyOf(req);
@@ -77,8 +87,14 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
       server.log(`owner ${owner}: a key was revoked`);
       return json({ revoked: true, owner });
     }
-    allow("GET");
-    return json({ owner, agents: await server.store.listAgents(owner) });
+    if (method === "PATCH") {
+      // the operator profile (#113): nickname and URL, set or cleared with the key
+      server.profileEditLimit.take(ip, "profile edits");
+      await server.store.setProfile(owner, profilePatch(await readJson(req, MAX_BODY)));
+      return json({ owner, profile: await profileView(server, owner) });
+    }
+    if (method !== "GET") throw new HttpError(405, `use GET, PATCH or DELETE for ${path}`, undefined, { allow: "GET, PATCH, DELETE" });
+    return json({ owner, agents: await server.store.listAgents(owner), profile: await profileView(server, owner) });
   }
   if (path === "/api/looks") {
     // the suit-up options (#19): shapes, eyes, marks with a line each, the name and palette rules

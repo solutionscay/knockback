@@ -24,10 +24,11 @@ import { parseSoul } from "../sim/soul";
 import type { Weapon } from "../sim/sim-types";
 import { hex, portraitSvg, type Mood } from "../viewer/portrait";
 import { arenaBoard } from "../stats/board";
-import { modelBoard, type BoardRound, type ModelBoard } from "../stats/model-board";
+import { modelBoard, type BoardRound, type ModelBoard, type ModelBoardRow } from "../stats/model-board";
 import { modelOf, remoteLabel, type SeatEntry } from "../stats/models";
 import { HttpError } from "./limits";
 import type { MatchServer } from "./match-server";
+import type { Operator } from "./profile";
 import type { RecordRow, RoundTier } from "./store";
 
 /** The tiers the public sees (#67): a bot-only round is never shown after it is over. */
@@ -339,7 +340,7 @@ const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,23}$/;
 const SCAN = 300;
 
 /** An agent's profile, from the seats in storage (newest SCAN matches) and the matches in memory. */
-export async function agentProfile(server: MatchServer, name: string): Promise<AgentProfile> {
+export async function agentProfile(server: MatchServer, name: string): Promise<AgentProfile & { operator: Operator | null }> {
   if (!NAME_RE.test(name)) throw new HttpError(400, "agent names are 1-24 characters: letters, digits, space, _ . -");
   const want = name.toLowerCase();
   const rows = (await server.store.listMatches()).slice(0, SCAN);
@@ -375,17 +376,38 @@ export async function agentProfile(server: MatchServer, name: string): Promise<A
       if (sum) replays.set(s.match, sum);
     }),
   );
-  return buildProfile(shown, seats, replays);
+  const operator = (await operatorsOf(server)).byAgent.get(want) ?? null;
+  return { ...buildProfile(shown, seats, replays), operator };
+}
+
+// ------------------------------------------------------------------ operators (#113)
+
+/**
+ * The operators on the site: owners that set a nickname, by owner handle and by agent name (lower case). Only the
+ * public fields (id, nickname, URL) leave here; read paths for the site pages only, never a prompt's.
+ */
+export async function operatorsOf(server: MatchServer) {
+  const byOwner = new Map<string, Operator>();
+  const byAgent = new Map<string, Operator>();
+  for (const o of await server.store.operators()) {
+    const op = { id: o.id, nickname: o.nickname, url: o.url };
+    byOwner.set(o.handle.toLowerCase(), op);
+    for (const a of o.agents) byAgent.set(a.toLowerCase(), op);
+  }
+  return { byOwner, byAgent };
 }
 
 // ------------------------------------------------------------------ leaderboard (#65)
 
 /** The Arena leaderboard: agents and owners by rounds (agent seats only), best streaks, and the crown now. */
 export async function leaderboardOf(server: MatchServer) {
-  const [rounds, latest, streaks] = await Promise.all([server.store.agentRounds(), server.store.latestSeats(), server.store.listStreaks()]);
+  const [rounds, latest, streaks, ops] = await Promise.all([server.store.agentRounds(), server.store.latestSeats(), server.store.listStreaks(), operatorsOf(server)]);
   const labels = new Map(latest.map((s) => [s.name.toLowerCase(), remoteLabel(s.name, s.model)]));
+  const board = arenaBoard(rounds, labels, streaks);
   return {
-    ...arenaBoard(rounds, labels, streaks),
+    // the operator (#113) next to each agent and owner that has one
+    agents: board.agents.map((a) => ({ ...a, operator: ops.byOwner.get(a.owner.toLowerCase()) ?? null })),
+    owners: board.owners.map((o) => ({ ...o, operator: ops.byOwner.get(o.owner.toLowerCase()) ?? null })),
     crown: server.arena.crownView(),
     note: "Rounds, agent seats only: against agents = rounds with 2 or more agents (the ranking); against house bots = an agent alone with house bots. Best streak: crown defences in rounds with 2 or more agents.",
   };
@@ -432,7 +454,7 @@ export function boardRound(sum: ReplaySummary, stats: string, tier: BoardRound["
 const boards = new WeakMap<MatchServer, { at: number; board: ModelBoard }>();
 
 /** The models board, rebuilt at most every 20 s (rounds take longer than that at broadcast pace); `fresh` rebuilds now. */
-export async function modelsBoardOf(server: MatchServer, fresh = false): Promise<ModelBoard & { note: string }> {
+export async function modelsBoardOf(server: MatchServer, fresh = false): Promise<Omit<ModelBoard, "rows"> & { rows: (ModelBoardRow & { operators: Operator[] })[]; note: string }> {
   let c = boards.get(server);
   if (fresh || !c || Date.now() - c.at >= 20_000) {
     const read = async (rows: RecordRow[]) =>
@@ -455,8 +477,12 @@ export async function modelsBoardOf(server: MatchServer, fresh = false): Promise
     c = { at: Date.now(), board: modelBoard(pub, streaks, joined) };
     boards.set(server, c);
   }
+  // the operators (#113) who run each model's agents: read each time (a profile edit shows at once; one small query)
+  const ops = (await operatorsOf(server)).byAgent;
+  const opsOf = (names: string[]) => [...new Map(names.flatMap((n) => (ops.has(n.toLowerCase()) ? [[ops.get(n.toLowerCase())!.id, ops.get(n.toLowerCase())!] as const] : []))).values()];
   return {
     ...c.board,
+    rows: c.board.rows.map((r) => ({ ...r, operators: opsOf(r.agents.map((a) => a.name)) })),
     note: "Rounds on this engine only. Models are what each agent said it runs when it joined (self-reported, nobody checks). A round is a whole fight: last fighter standing wins, so chance is 25% with 4 fighters. K/D: knockouts dealt per knockout taken. Best streak: the longest crown streak of the model's agents.",
   };
 }
