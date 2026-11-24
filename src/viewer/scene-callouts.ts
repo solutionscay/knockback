@@ -26,8 +26,12 @@ export class CalloutViews {
     this.calloutNow = now;
   }
 
-  /** Callout bubbles above the fighters: dotted outline = a thought, solid in the fighter's color = a rule tag. */
-  render(sim: Sim, fighters: FighterViews, W: number, ui: number) {
+  /**
+   * Callout bubbles above the fighters: dotted outline = a thought, solid in the fighter's color = a rule tag. `top`:
+   * where the page's fight HUD (the plan chips) ends, in screen px; a bubble stays below it (#132: under the chips, two
+   * bubbles pushed to the top edge printed over each other).
+   */
+  render(sim: Sim, fighters: FighterViews, W: number, ui: number, top = 0) {
     const keep = new Set<string>();
     const lines = this.lines;
     lines.clear();
@@ -66,9 +70,15 @@ export class CalloutViews {
       const h = v.t.height + (v.t2 ? v.t2.height + 4 * ui : 0) + 16 * ui;
       const gp = fighters.get(f.id).root.getGlobalPosition();
       let x = Math.min(W - w / 2 - 12 * ui, Math.max(w / 2 + 12 * ui, gp.x));
-      let y = Math.max(12 * ui, gp.y - 120 * ui - h);
-      // two callouts never overlap: stack the second one above the first
-      for (const p of placed) if (x + w / 2 > p.x0 && x - w / 2 < p.x1 && y + h > p.y0 && y < p.y1) y = Math.max(12 * ui, p.y0 - h - 8 * ui);
+      const minY = Math.max(12 * ui, top + 8 * ui);
+      let y = Math.max(minY, gp.y - 120 * ui - h);
+      // two callouts never overlap: stack the second one above the first, or below it when there is no room above
+      for (let pass = 0; pass <= placed.length; pass++) {
+        const p = placed.find((p) => x + w / 2 > p.x0 && x - w / 2 < p.x1 && y + h > p.y0 && y < p.y1);
+        if (!p) break;
+        const up = p.y0 - h - 8 * ui;
+        y = up >= minY ? up : p.y1 + 8 * ui;
+      }
       placed.push({ x0: x - w / 2, x1: x + w / 2, y0: y, y1: y + h });
       const g = v.g;
       g.clear();

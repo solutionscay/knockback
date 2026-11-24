@@ -1183,7 +1183,8 @@ body.capture #controls {
 }
 @media (max-aspect-ratio: 1/1) {
   #lineup.fight {
-    top: calc(11 * var(--u)); /* the clock box ends at about calc(9.5 * var(--u)) */
+    /* the clock box ends at about calc(9.5 * var(--u)), or lower on a phone, where its text has a px floor (#132) */
+    top: max(calc(11 * var(--u)), 50px);
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   #lineup.fight .chip:nth-child(3) {
@@ -1212,10 +1213,13 @@ body.capture #controls {
   max-width: calc(50vw - calc(17 * var(--u)));
   min-width: 0;
 }
+/* #132: each item has a cell of its own, so nothing prints over its neighbour. Before, the weapon shared a shrinking
+   column with the badge's row and its nowrap text ran left over the badge ("HOUSE BOTSTS", "HOUROCKET 4/8"). A wide
+   chip: the badge; the name and the weapon; the build and the plan. Only the plan (and a long model name) is cut. */
 #lineup.fight .chip .nm {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  grid-template-areas: "b b a" "f k p";
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-areas: "b b b" "f . a" "k p p";
   column-gap: calc(0.7 * var(--u));
   row-gap: calc(0.3 * var(--u));
   min-width: 0;
@@ -1223,6 +1227,8 @@ body.capture #controls {
 #lineup.fight .chip .kb-mb {
   grid-area: b;
   justify-self: start;
+  min-width: 0; /* a long model name is cut in its cell (#132) instead of running past the chip's edge */
+  box-sizing: border-box;
 }
 #lineup.fight .chip .fn {
   grid-area: f;
@@ -1737,12 +1743,13 @@ body.embed:has(#celebrate.show) #lineup {
   #dialogue {
     bottom: calc(2 * var(--u) + 48px);
   }
-  /* the clock's text has a px floor: keep its lane at least that wide so the plan chips stay clear of it */
+  /* the clock's text has a px floor: keep its lane at least that wide so the plan chips stay clear of it (#132: the
+     clock is some 180 px wide on a phone sideways; a wider lane left the chips too narrow) */
   :root {
-    --clock-lane: max(calc(30 * var(--u)), 250px);
+    --clock-lane: max(calc(48 * var(--u)), 200px);
   }
   #lineup.fight .chip {
-    max-width: calc(50vw - max(calc(17 * var(--u)), 125px));
+    max-width: calc(50vw - max(calc(24 * var(--u)), 100px));
   }
   /* the site's stage shows only the time (no round label, no pips): a narrower lane */
   body.embed {
@@ -1879,16 +1886,31 @@ body.embed:has(#celebrate.show) #lineup {
   grid-area: k;
   align-self: center;
 }
-/* phones (portrait): the build gets a row of its own under the name. The chips sit under the round clock here, so
-   the landscape cap that keeps them clear of it does not apply: each takes its half of the width */
+/* phones (portrait): the chips sit under the round clock here, so the landscape cap that keeps them clear of it does
+   not apply: each takes its half of the width */
 @media (max-aspect-ratio: 1/1) {
   #lineup.fight .chip {
     max-width: none;
   }
+}
+/* narrow chips (#132: a phone either way up, a tablet): the badge, the build and the weapon each take a row (each is
+   about as wide as the chip); the name shares its row with the plan */
+@media (max-width: 1200px), (max-height: 500px), (max-aspect-ratio: 1/1) {
   #lineup.fight .chip .nm {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "b a" "f f" "k p";
+    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-areas: "b b" "f p" "k k" "a a";
   }
+  #lineup.fight .chip .slot {
+    justify-self: start;
+  }
+}
+/* the site's stage hides the name and the badge: the weapon on the right, then the build and the plan */
+body.embed #lineup.fight .chip .nm {
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-areas: "a a" "k p";
+}
+body.embed #lineup.fight .chip .slot {
+  justify-self: end;
 }
 #dialogue .plan b.bld {
   display: inline-flex;

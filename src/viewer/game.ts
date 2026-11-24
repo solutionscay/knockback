@@ -642,8 +642,14 @@ export class Game {
         }
       }
     }
-    this.scene.setCallouts(this.plans.update(this.clock, beat.kind !== "fight" || this.slow > 0), this.clock);
+    const callouts = this.plans.update(this.clock, beat.kind !== "fight" || this.slow > 0);
+    this.scene.setCallouts(callouts, this.clock);
     if (beat.kind === "go" || beat.kind === "fight") this.plans.renderChips(this.hud.lineup, this.match, this.shown, this.decisions);
+    // #132: the callouts keep below the plan chips (measured only while one shows)
+    if (callouts.length) {
+      const chips = this.hud.lineup.classList.contains("fight") ? this.hud.lineup.getBoundingClientRect() : null;
+      this.scene.calloutTop = chips && chips.height > 0 ? Math.max(0, chips.bottom - this.scene.canvasTop()) : 0;
+    }
 
     if (beat.kind === "entrance") this.updateEntrance();
     if (beat.kind === "dialogue") {
