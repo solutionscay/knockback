@@ -400,26 +400,26 @@ def bg_crystal():
     return T
 
 
-def column(T, x, h, w, mat, up):
-    """A felt rock column: a tall tapered wedge, rising from the strip's foot (a stalagmite) or hanging from its top
-    (a stalactite); its side stitched with a strata line or two."""
-    n = 10
-    pts = []
-    for j in range(n):
-        t = j / (n - 1)
-        pts.append((x - w / 2 + w * t, 0.02 * math.sin(t * math.pi * 3)))
+def column(T, x, h, w, mat, up, lean=0.0):
+    """A felt rock column (#134: round, not a flat wedge): a tapered cone rising from the strip's foot (a stalagmite) or
+    hanging from its top (a stalactite), its root flared into the fill, a round cross-section and a rounded point, a
+    strata line stitched across it. Its outline is two smooth curves, so no step or kink shows at any scale."""
     base = -COLS_H / 2 if up else COLS_H / 2
     s = 1 if up else -1
-    tip = (x + 0.03, base + s * h)
-    outline = [(px, base + s * dz) for px, dz in pts] + [(x + w * 0.18, base + s * h * 0.55), tip, (x - w * 0.16, base + s * h * 0.5)]
-    P = np.array([[px, 0.0, pz] for px, pz in outline] + [[x, -0.03, base + s * h * 0.3]])
-    c = len(P) - 1
-    F = [(i, i + 1, c) for i in range(len(outline) - 1)] + [(len(outline) - 1, 0, c)]
-    back = P.copy()
-    back[:, 1] = 0.03
-    V = np.vstack([P, back])
-    F2 = F + [(a + len(P), c2 + len(P), b + len(P)) for a, b, c2 in F]
-    T.add(V, [list(t) for t in F2], mat)
+
+    def r(t):  # half width: a flared root, a long taper, a blunt rounded point (a fifth of the root's width)
+        flare = 1 + 0.35 * max(0.0, 1 - t / 0.12) ** 2
+        return w / 2 * flare * (0.2 + 0.8 * (1 - t) ** 0.9) * math.sqrt(max(0.0, 1 - t ** 8))
+
+    def at(t, side):
+        return (x + lean * t * t + side * r(t), base + s * (h * t - 0.06))
+    L, R = (lambda t: at(t, -1)), (lambda t: at(t, 1))
+    V, F = band(L, R, lambda t, u, wd: 0.004 + 0.12 * min(1.0, wd / 0.5) * math.sqrt(max(0.0, 1 - (2 * u - 1) ** 2)), n_t=40, n_u=12)
+    T.add(V, F, mat)
+    for t in (0.3, 0.55):
+        rr = r(t) * 0.9
+        zc = base + s * (h * t - 0.06)
+        T.stitch([(x + lean * t * t + q, 0, zc - s * 0.03 * (1 - (q / rr) ** 2)) for q in np.linspace(-rr, rr, 16)], thread("#262532"), dash=0.05, gap=0.02, width=0.014, height=0.008)
 
 
 def bg_columns():
@@ -435,9 +435,118 @@ def bg_columns():
             x = float(x + rng.uniform(-0.1, 0.1))
             h = float(rng.uniform(*hr))
             w = float(rng.uniform(0.32, 0.5))
+            lean = float(rng.uniform(-0.04, 0.04))  # the same for the copies across the seam
             for xx in (x, x - COLS_W, x + COLS_W):
                 if -COLS_W / 2 - w < xx < COLS_W / 2 + w:
-                    column(T, xx, h, w, dark, up)
+                    column(T, xx, h, w, dark, up, lean)
+    return T
+
+
+# ---------------------------------------------------------------- rounded stalactites (#134)
+
+def band(L, R, height, n_t=28, n_u=12):
+    """A plush surface between two outlines, L(t) and R(t) (t 0..1 from top to bottom, points (x, z) in screen meters):
+    a grid of n_t by n_u quads (as triangles), each point pushed toward the camera (-y) by height(t, u, width), u 0..1
+    from L to R. The silhouette is the two outlines (sampled finely), so it is smooth at any size."""
+    V = []
+    for i in range(n_t + 1):
+        t = i / n_t
+        (lx, lz), (rx, rz) = L(t), R(t)
+        wdt = math.hypot(rx - lx, rz - lz)
+        for j in range(n_u + 1):
+            u = j / n_u
+            V.append((lx + (rx - lx) * u, -height(t, u, wdt), lz + (rz - lz) * u))
+    F = []
+    for i in range(n_t):
+        for j in range(n_u):
+            a, b = i * (n_u + 1) + j, i * (n_u + 1) + j + 1
+            c, d = a + n_u + 1, b + n_u + 1
+            F += [(a, b, d), (a, d, c)]
+    return np.array(V), F
+
+
+def dome(depth):
+    """A round cross-section (a squashed cylinder): full depth on the middle line, nothing at either outline."""
+    return lambda t, u, w: 0.004 + depth * min(1.0, w / 0.4) * math.sqrt(max(0.0, 1 - (2 * u - 1) ** 2))
+
+
+ST_TOP, ST_DEPTH = 0.2, 0.07  # a tip's half width where it meets the cell above; how far a stalactite bulges
+
+
+def st_radius(kind, t):
+    """Half width along a hanging cell, t 0..1 from its top: a mid segment narrows from nearly the cell's width to
+    ST_TOP, a tip from ST_TOP to a rounded point (an ogive: full most of the way, then closing fast)."""
+    if kind == "mid":
+        return 0.24 + (ST_TOP - 0.24) * (3 * t * t - 2 * t ** 3)
+    return ST_TOP * math.sqrt(max(0.0, 1 - t ** 1.6)) * (1 - 0.15 * t)
+
+
+def st_shape(kind):
+    """The parts of one hanging-rock cell (the frame is one cell; outside the shape it is transparent):
+       tip  both sides open and nothing under it: a rounded point, 0.45 m long
+       mid  both sides open, rock under it: a tapered segment
+       l, r one side open and nothing under it (a stalactite's shoulder, a step in the ceiling's underside): the open
+            side flares in along an S curve, from the cell's top corner on that side to its bottom corner on the other,
+            upright at both ends, so it runs on from a straight side above and into the narrower rock below"""
+    top, bot = CELL / 2, -CELL / 2
+    if kind in ("tip", "mid"):
+        length = 0.45 if kind == "tip" else CELL
+        z = lambda t: top - length * t
+        return band(lambda t: (-st_radius(kind, t), z(t)), lambda t: (st_radius(kind, t), z(t)), dome(ST_DEPTH))
+    sx = -1 if kind == "l" else 1  # the open side
+
+    def curve(t):  # the S curve: x from the open side's edge to the far edge, upright at both ends
+        k = 3 * t * t - 2 * t ** 3
+        return (sx * (CELL / 2 - CELL * k), top - CELL * t)
+
+    def wall(t):  # the closed sides, the matching point: along the top, then down the far side
+        if t < 0.5:
+            return (sx * (CELL / 2 - CELL * 2 * t), top)
+        return (-sx * CELL / 2, top - CELL * (2 * t - 1))
+
+    def h(t, u, w):  # rounded only along the open side (the rock carries on full depth past the closed sides)
+        d = u * w
+        return 0.004 + ST_DEPTH * math.sqrt(max(0.0, 1 - max(0.0, 1 - d / 0.14) ** 2))
+    L, R = (curve, wall) if sx < 0 else (wall, curve)
+    if sx > 0:  # keep the quads facing the camera: the left outline on the left
+        return band(lambda t: wall(t), lambda t: curve(t), lambda t, u, w: h(t, 1 - u, w))
+    return band(L, R, h)
+
+
+def stalactite(kind, stage):
+    """Frame st-<kind>-<stage> (#134): a hanging cave-rock cell drawn round (terrainview.ts picks it from the cell's
+    open sides), in the slate's colors, a stitched strata line or two across it; stage 1 and 2 add the cave's tears
+    (gravel spilling out), smaller and kept inside the shape."""
+    T = Tile("st-%s-%d" % (kind, stage), G, kind="overlay", rep=(0, 0))
+    mcol, _ = colors()
+    col = mcol["rock"]
+    V, F = st_shape(kind)
+    T.add(V, F, felt(col, felt=0.35, mottle=(0.9, 1.06)))
+    strata = thread(hexs(shade(col, 0.55)))
+    if kind in ("tip", "mid"):
+        for t in ((0.3, 0.62) if kind == "tip" else (0.45,)):
+            r = st_radius(kind, t) * 0.92
+            zc = CELL / 2 - (0.45 if kind == "tip" else CELL) * t
+            T.stitch([(x, 0, zc - 0.02 * (1 - (x / r) ** 2)) for x in np.linspace(-r, r, 14)], strata, dash=0.03, gap=0.012, width=0.009, height=0.005)
+    else:
+        sx = -1 if kind == "l" else 1
+        pts = []
+        for t in np.linspace(0.05, 0.95, 16):
+            k = 3 * t * t - 2 * t ** 3
+            pts.append((sx * (CELL / 2 - CELL * k) - sx * 0.09, 0, CELL / 2 - CELL * t - 0.06))
+        T.stitch([p for p in pts if abs(p[0]) < 0.24 and abs(p[2]) < 0.24], strata, dash=0.03, gap=0.012, width=0.009, height=0.005)
+    if stage:
+        # the tears, smaller, moved into the widest part of the shape and in front of its bulge
+        k, (cx, cz) = {"tip": (0.5, (0, 0.1)), "mid": (0.7, (0, 0)), "l": (0.7, (0.08, 0.08)), "r": (0.7, (-0.08, 0.08))}[kind]
+        parts = tears(np.random.default_rng(3200 + stage * 10 + "tmlr".index(kind[0])), 1, False)
+        if stage == 2:
+            parts += tears(np.random.default_rng(3240 + "tmlr".index(kind[0])), 1, True)
+        for v, f, m in parts:
+            v = np.asarray(v, float).copy()
+            v[:, 0] = v[:, 0] * k + cx
+            v[:, 2] = v[:, 2] * k + cz
+            v[:, 1] = v[:, 1] - ST_DEPTH + 0.04
+            T.add(v, f, m)
     return T
 
 
@@ -474,6 +583,11 @@ def cave_tiles():
     for kind in PROPS:
         for state in range(3):
             out.append(prop_tile(kind, state))
+    for kind in ("tip", "mid", "l", "r"):
+        for stage in (0, 1, 2):
+            T = stalactite(kind, stage)
+            T.make = lambda: None
+            out.append(T)
     for fn in (bg_crystal, bg_columns):
         T = fn()
         if not hasattr(T, "make"):
