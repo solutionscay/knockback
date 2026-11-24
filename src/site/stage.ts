@@ -2,18 +2,22 @@
  * The fight on the site pages is the real viewer in a same-origin iframe (`?embed`, see src/viewer/embed.ts).
  * This side listens to its playback position and live messages, and sends seek and speed for replays.
  */
-import type { PlaybackPos } from "../viewer/embed";
+import type { PlanEvent, PlaybackPos } from "../viewer/embed";
 
 export interface StageEvents {
   pos?: (p: PlaybackPos | null) => void;
   live?: (msg: unknown) => void;
   seeking?: (on: boolean) => void;
+  /** rule starts/stops and knockouts as the fight plays (#104) */
+  ev?: (round: number, e: PlanEvent) => void;
 }
 
 export class Stage {
   readonly frame: HTMLIFrameElement;
   src = "";
   pos: PlaybackPos | null = null;
+  /** the fighter the viewer's camera follows (-1: none) */
+  follow = -1;
 
   constructor(
     readonly box: HTMLElement,
@@ -29,12 +33,14 @@ export class Stage {
     this.frame.addEventListener("load", unlock);
     addEventListener("message", (e) => {
       if (e.origin !== location.origin || e.source !== this.frame.contentWindow || !e.data || typeof e.data !== "object") return;
-      const d = e.data as { kb?: string; pos?: PlaybackPos | null; msg?: unknown; on?: boolean };
+      const d = e.data as { kb?: string; pos?: PlaybackPos | null; msg?: unknown; on?: boolean; follow?: number; round?: number; e?: PlanEvent };
       if (d.kb === "pos") {
         this.pos = d.pos ?? null;
+        this.follow = typeof d.follow === "number" ? d.follow : -1;
         this.ev.pos?.(this.pos);
       } else if (d.kb === "live") this.ev.live?.(d.msg);
       else if (d.kb === "seeking") this.ev.seeking?.(!!d.on);
+      else if (d.kb === "ev" && typeof d.round === "number" && d.e && typeof d.e === "object") this.ev.ev?.(d.round, d.e);
     });
   }
 
@@ -70,6 +76,12 @@ export class Stage {
 
   seek(to: PlaybackPos) {
     this.frame.contentWindow?.postMessage({ kb: "seek", to }, location.origin);
+  }
+
+  /** the camera follows fighter `id` (-1: back to auto) */
+  followFighter(id: number) {
+    this.follow = id;
+    this.frame.contentWindow?.postMessage({ kb: "follow", id }, location.origin);
   }
 
   speed(x: number) {

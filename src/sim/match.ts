@@ -12,7 +12,7 @@
  * three rounds can have three different winners), the round-3 winner still
  * takes the match. Winner takes all.
  */
-import { Fight, type FightRecord, type FightResult, type PlanUpdate } from "./fight";
+import { Fight, type FightRecord, type FightResult, type PlanUpdate, type RuleFiring } from "./fight";
 import { CLASSIC, resolveRuleset, type Ruleset } from "./ruleset";
 import { generateLevel, type LevelDef } from "./levelgen";
 import { initialMorale, updateMorale, type Morale, type RoundFacts } from "./morale";
@@ -67,6 +67,11 @@ export interface CheckinMeta {
   /** the plan fields that changed */
   changed?: string[];
   detail?: string;
+  /** what the fighter shouted with its answer, and its reason (#104: spectators see them; kept on a keep too) */
+  line?: string;
+  why?: string;
+  /** a late answer: what it asked for, short (#104), e.g. "target Pickle->Haiku, weapons shotgun>rocket->bat>rocket" (an invalid one: see detail) */
+  wanted?: string;
   /** prompt and answer size in characters (cost: about 4 characters a token) */
   promptChars?: number;
   answerChars?: number;
@@ -81,6 +86,8 @@ export interface RoundRecord {
   planUpdates?: PlanUpdate[];
   /** every mid-round check-in and its outcome (#9; log only) */
   checkins?: CheckinMeta[];
+  /** every plan rule start and stop (#104; for spectators' timelines, never replayed; older records have none) */
+  firings?: RuleFiring[];
   strategies: Strategy[];
   lines: string[];
   fight: FightRecord;
@@ -322,6 +329,7 @@ export class Match {
     const fight = this.fight!;
     const res = fight.result();
     const facts = fight.facts(this.round);
+    if (fight.firings.length) this.record.rounds[this.round - 1]!.firings = fight.firings.slice();
     // replaying a record: it must end in the recorded state
     const want = this.opts.recorded?.rounds[this.round - 1]?.fight.finalHash;
     if (want && want !== fight.record.finalHash && this.diverged < 0) this.diverged = this.round;

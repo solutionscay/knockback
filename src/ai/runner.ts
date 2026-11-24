@@ -41,7 +41,7 @@ export type RunnerEvent =
   /** a check-in answer became a plan update (#8): it applies at update.tick */
   | { type: "planUpdate"; round: number; update: PlanUpdate }
   /** a seat's check-in is over (answered, missed or dropped): no more updates from it */
-  | { type: "checkinEnd"; round: number; tick: number; seat: number }
+  | { type: "checkinEnd"; round: number; tick: number; seat: number; outcome?: CheckinMeta["outcome"]; ms?: number; answeredTick?: number; applyTick?: number; line?: string; why?: string; wanted?: string }
   /** how far the server's sim is in a round with check-ins: no update will apply before tick + leadTicks */
   | { type: "fightTick"; round: number; tick: number; leadTicks: number }
   /** no more check-ins this round (the rest of the schedule was skipped: the round ended, or one fighter is left) */
@@ -468,7 +468,9 @@ export class MatchRunner {
       this.checkinPrompts.push({ round, tick, seat, prompt, raw });
       const skipped = meta.skipped?.length ? `, skipped ${meta.skipped.map((t) => `${t / 60} s`).join(", ")}` : "";
       if (meta.outcome !== "update") this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${meta.outcome.toUpperCase()}${meta.detail ? ` (${meta.detail})` : ""}${skipped}`);
-      this.emit({ type: "checkinEnd", round, tick, seat });
+      // how it went (#104): spectators show it once playback reaches answeredTick
+      const { outcome, ms, answeredTick, applyTick, line, why, wanted } = meta;
+      this.emit({ type: "checkinEnd", round, tick, seat, outcome, ms, ...(answeredTick !== undefined ? { answeredTick } : {}), ...(applyTick !== undefined ? { applyTick } : {}), ...(line ? { line } : {}), ...(why ? { why } : {}), ...(wanted ? { wanted } : {}) });
       ctx.wake();
     };
     const o: OpenCheckin = {
@@ -497,9 +499,11 @@ export class MatchRunner {
         const a = parseCheckin(got, seat, names, current, cfg, match.ruleset);
         meta.answeredTick = ctx.answeredTick(o, meta.ms);
         const at = applyTick(tick, meta.answeredTick, cfg, ctx.realTime());
+        // the line and reason, whatever the outcome (#104); a late answer also keeps what it asked for
+        if (a.kind !== "invalid") Object.assign(meta, { ...(a.line ? { line: a.line } : {}), ...(a.why ? { why: a.why.slice(0, 160) } : {}) });
         if (a.kind === "invalid") Object.assign(meta, { outcome: "invalid", detail: a.problems.join(", ").slice(0, 200) });
         else if (a.kind === "keep") Object.assign(meta, { outcome: "keep", ...(a.line ? { detail: `line: ${a.line}` } : {}) });
-        else if (fight.over || !fight.sim.fighters[seat]!.alive) Object.assign(meta, { outcome: "late", detail: `would apply at tick ${at}` });
+        else if (fight.over || !fight.sim.fighters[seat]!.alive) Object.assign(meta, { outcome: "late", detail: `would apply at tick ${at}`, wanted: planChangeSummary(current, a.strategy, names) });
         else {
           const u: PlanUpdate = { tick: at, fighter: seat, strategy: a.strategy, ...(a.line ? { line: a.line } : {}), ...(a.why ? { why: a.why } : {}), source: "checkin" };
           match.addUpdate(u);

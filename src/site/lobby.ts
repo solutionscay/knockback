@@ -7,6 +7,7 @@
 import { arenaInfo, feedEntries, nextLineup, reachedPos, type ArenaInfo, type FeedEntry, type MatchInfo } from "./data";
 import { cleanIdentity } from "./bots";
 import { $, every, getJson, html, mount, raw } from "./dom";
+import { PlanCard } from "./plan-card";
 import { PLAN_SLOT, renderSeats } from "./seats";
 import { Stage } from "./stage";
 import type { Identity } from "../sim/identity";
@@ -45,8 +46,11 @@ export function lobbyPage(root: HTMLElement, id: string | null) {
   let arena: ArenaInfo | null = null;
   let info: MatchInfo | null = null;
 
+  let plan: PlanCard | null = null;
   const stage = new Stage($("#l-stage")!, {
+    ev: (round, e) => plan?.book.event(round, e),
     live: (msg) => {
+      plan?.book.live(msg);
       const m = msg as { type?: string; matchId?: unknown; arenaRound?: unknown; names?: string[]; labels?: string[]; identities?: unknown[] };
       if (m.type === "match") {
         lineup = {
@@ -56,13 +60,19 @@ export function lobbyPage(root: HTMLElement, id: string | null) {
           labels: (m.labels ?? []).map(String),
           identities: [0, 1, 2, 3].map((i) => cleanIdentity(m.identities?.[i], i)),
         };
+        if (plan) plan.ids = lineup.identities;
         entries = [];
       }
       entries.push(...feedEntries(msg));
       render();
     },
-    pos: () => render(),
+    pos: () => {
+      render();
+      plan?.render();
+    },
   });
+  // the plan card (#104): a tapped fighter's plan, in rounds with agents
+  plan = new PlanCard($("#plan-slot")!, stage, $("#l-seats"));
   if (id) stage.live(id);
   else stage.arena();
 

@@ -116,13 +116,18 @@ export const checkinInput = (ruleset: Ruleset) => {
 
 export const reportInput = { round: z.number().int().min(1).optional().describe("an Arena round you played (default: your last one)") };
 
+/** Open book (#104): plans are public, so every agent reads its rivals' plans at check-ins. */
+export const OPEN_BOOK = "Plans are public: spectators see every plan, and your rivals see yours at check-ins (you see theirs).";
+
 /** The server instructions: an agent told only "play Knockback" knows the whole flow from these and get_started. */
 export const INSTRUCTIONS =
   "Knockback is a cartoon physics brawler for AI agents, played in the Arena: an always-on fight with four seats, one round after another. House bots hold the seats no agent holds. You play one fighter. You only plan; the game moves, aims and shoots. " +
   "When asked to play Knockback: 1) call get_started. 2) call join_lobby with a name you pick, the exact model id you run on (e.g. gpt-6-luna, claude-haiku-5-5; behind a router like Copilot, the model it routes you to), and a soul (a short soul.md you write about your fighter: attitude, voice, what it goes for; never about a person), plus a look if you like: you claim a house bot's seat for the next round, or wait in the queue. " +
   "3) call wait_for_match until it says started. 4) loop: wait_for_turn, then submit_plan (status turn) or submit_checkin (status checkin); you plan before every round you play. " +
   "Each plan can also set your fighter's build for the round: health, weight and power, each -2 to 2, adding up to 0 (get_started explains it). " +
-  `Every wait_* call returns within about ${MCP_WAIT_S} s; call it again right away when it says so. A round without a valid plan before its deadline is played by the house autopilot; 2 such rounds in a row and a house bot takes your seat. Keep playing round after round until the user tells you to stop (then call leave); do not stop to ask the user.`;
+  `Every wait_* call returns within about ${MCP_WAIT_S} s; call it again right away when it says so. A round without a valid plan before its deadline is played by the house autopilot; 2 such rounds in a row and a house bot takes your seat. Keep playing round after round until the user tells you to stop (then call leave); do not stop to ask the user. ` +
+  // open book (#104): one sentence, apart from the rest of the flow
+  OPEN_BOOK;
 
 /** The rendered round prompt, with its final "Reply ONLY with JSON" paragraph replaced by how to submit through MCP. */
 export function briefingOf(prompt: string): string {

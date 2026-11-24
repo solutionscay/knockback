@@ -17,7 +17,7 @@ import { planKey, type Fight } from "../sim/fight";
 import type { Strategy } from "../sim/sim-types";
 import type { Soul } from "../sim/soul";
 import { cleanLine, cleanWhy, jsonObjects, parseRules, validatePlan } from "./parse";
-import { RULE_STANCES } from "../sim/rules";
+import { autoLabel, RULE_STANCES } from "../sim/rules";
 import { fightTactics, fightTacticsLine, type FightTactics } from "./tactics";
 
 /** The check-in schedule, limits and latency rules (all times in fight seconds unless noted). */
@@ -150,6 +150,8 @@ export interface CheckinStatus {
     jetpack: boolean;
     /** the rival's build this round (#80): every plan is in once the round runs */
     build: Build;
+    /** open book (#104): the rival's plan now, as spectators see it; null when out */
+    plan: { target: string; stance: string; weapons: string[]; rules: string[] } | null;
   }[];
   last10s: { took: { from: string; damage: number; hits: number; weapon: string }[]; dealt: { to: string; damage: number; hits: number }[] };
   nearest: { item: string; distance: number; direction: string }[];
@@ -172,6 +174,24 @@ function planOf(s: Strategy, names: string[]) {
     retaliate: s.retaliate ?? "turn",
     rules: (s.rules ?? []).map((r) => r.label),
   };
+}
+
+/**
+ * A rival's plan for the open book (#104): target, stance, weapon order and its rules. The rules are written from
+ * their fields (autoLabel: trigger, threshold, action), never the rival's own label: a label is free text another
+ * agent wrote, and it must not reach this agent's prompt.
+ */
+function openPlan(s: Strategy, names: string[]) {
+  const p = planOf(s, names);
+  return { target: p.target, stance: p.stance, weapons: p.weapons, rules: (s.rules ?? []).map((r) => autoLabel(r, names)) };
+}
+
+/** The open-book line (#104): every rival's plan now, short ("Luna ->Haiku item, shotgun>rocket>hook, rules: a; b"). Empty when every rival is out. */
+export function openBookLine(rivals: CheckinStatus["rivals"]): string {
+  const plans = rivals
+    .filter((r) => r.plan)
+    .map((r) => `${r.name} ->${r.plan!.target} ${r.plan!.stance}, ${r.plan!.weapons.join(">")}${r.plan!.rules.length ? `, rules: ${r.plan!.rules.join("; ")}` : ""}`);
+  return plans.length ? `RIVAL PLANS (public; rivals see yours too): ${plans.join(" | ")}.` : "";
 }
 
 /** What fighter `me` gets to see at a check-in: the fight at this tick, from its point of view. */
@@ -265,6 +285,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
           burning: x.alive && x.burning > 0,
           jetpack: x.alive && x.power.jetpack > 0,
           build: { ...x.build },
+          plan: x.alive ? openPlan(fight.controllers[x.id]!.strategy, names) : null,
         };
       }),
     last10s: {
@@ -299,6 +320,8 @@ export function buildCheckinPrompt(st: CheckinStatus, soul?: Soul, cfg: CheckinC
     `YOU: ${me}${builds ? `, build ${buildText(y.build)}` : ""}. Chasing ${y.chasing ?? "nobody"}; chased by ${y.chasedBy.join(", ") || "nobody"}.`,
     `PLAN: ${plan}.`,
     `RIVALS: ${rivals}.`,
+    // open book (#104): its own line, so other prompt changes stay apart from it
+    ...[openBookLine(st.rivals)].filter(Boolean),
     `LAST 10s: took ${took}; dealt ${dealt}.`,
     fightTacticsLine(st.tactics),
     `NEAREST PICKUPS: ${near}. FIRE: ${st.fire}.${ruleset.weapons.enabled.length !== CLASSIC.weapons.enabled.length || ruleset.pickups.enabled.length !== CLASSIC.pickups.enabled.length ? ` Enabled items: ${enabledItems(ruleset).join(", ")}.` : ""}`,

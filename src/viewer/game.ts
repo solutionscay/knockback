@@ -532,6 +532,9 @@ export class Game {
 
   // ------------------------------------------------------------- events
 
+  /** every sim event of the fight on screen (#104: the embed bridge forwards rule and knockout events to the page) */
+  onSimEvent: ((e: SimEvent) => void) | null = null;
+
   /** ?debug=rules: log every plan rule start/stop and float its label over the fighter (#6) */
   debugRules = typeof location !== "undefined" && new URLSearchParams(location.search).get("debug") === "rules";
 
@@ -539,6 +542,7 @@ export class Game {
     this.scene.onEvent(e);
     if (this.shown) this.sound?.event(e, this.shown.sim, this.clock);
     this.plans.onEvent(e, this.match, this.clock);
+    this.onSimEvent?.(e);
     if (e.type === "rule" && this.debugRules) {
       const f = this.shown.sim.fighters[e.fighter]!;
       const rule = (this.shown.controllers[e.fighter]?.strategy ?? this.match.decisions[e.fighter]?.strategy)?.rules?.[e.rule];
