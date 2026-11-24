@@ -15,13 +15,13 @@ type Key = keyof typeof LEVEL_URLS;
 const FRAMES = LEVEL_LAYOUT.frames as unknown as Record<string, FrameMeta>;
 /**
  * Does the theme need the nature atlas? Only for a #94 material or liquid its own atlas does not draw (#111: the
- * beach draws its own sand and water, so a beach match does not load nature).
+ * beach draws its own sand and water, so a beach match does not load nature; #114: the forest its mud and water).
  */
 function needsNature(theme: Theme): boolean {
   if (!themeUsesNature(theme)) return false;
   const r = THEME_DEFS[theme].rules as ThemeRules;
   const own = (n: string) => `${THEME_DEFS[theme].look.atlas}:${n}` in FRAMES;
-  const mats = [r.body, r.surface, r.tower, ...r.platform, ...r.bridge, r.speckle.chance > 0 ? r.speckle.mat : 0].filter((m) => m >= Mat.Sand);
+  const mats = [r.body, r.surface, r.tower, ...r.platform, ...r.bridge, r.speckle.chance > 0 ? r.speckle.mat : 0, r.hazards.bankCells > 0 ? Mat.Mud : 0].filter((m) => m >= Mat.Sand);
   const liquids = (["water", "oil", "lava", "acid"] as const).filter((l) => r.hazards.pools[1] > 0 && r.hazards[l] > 0);
   return mats.some((m) => !own(`c-${MAT_NAMES[m]}-0`)) || liquids.some((l) => !own(`q-${l}-0`));
 }

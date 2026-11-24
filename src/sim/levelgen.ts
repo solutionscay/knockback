@@ -408,6 +408,14 @@ function digPools(
         grid.liq[grid.idx(cx, cy)] = liquid;
       }
     }
+    // #114: a muddy creek: mud lines the basin's walls and tops the banks (not its floor: mud's weaker jump would leave
+    // a fighter on the floor of a drained basin unable to climb out)
+    const bank = H.bankCells;
+    if (bank > 0) {
+      const mud = (cx: number, cy: number) => { const m = grid.matAt(cx, cy); if (cy >= bedrockRows && m !== Mat.Empty && m !== Mat.Bedrock) grid.set(cx, cy, Mat.Mud, grid.flags[grid.idx(cx, cy)]); };
+      for (let cy = ty - depth - 1; cy < ty; cy++) { mud(c0 - 1, cy); mud(c1 + 1, cy); }
+      for (let k = 1; k <= bank; k++) { mud(c0 - k, ty - 1); mud(c1 + k, ty - 1); }
+    }
     pools.push({ x0, x1, y, depth, liquid });
   }
   return pools;

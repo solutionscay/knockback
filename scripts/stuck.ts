@@ -3,6 +3,7 @@
  *
  *   bun scripts/stuck.ts sims [count=100] [first=1] --out runs.json     Arena-style rounds: house bots in every seat,
  *                                                                        the souls rotated, one round per match
+ *     [--ruleset '{"arena":{...}}']                                      a partial ruleset over Classic (#114: one map)
  *   bun scripts/stuck.ts records <file|dir>... --out runs.json          replay match records on the current sim (rounds
  *                                                                        that no longer reach their recorded hash are
  *                                                                        counted apart and left out)
@@ -13,7 +14,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { exampleSouls, initPhysics, Match, type MatchRecord } from "../src/sim";
-import { CLASSIC, type Ruleset } from "../src/sim/ruleset";
+import { validateRuleset, type Ruleset } from "../src/sim/ruleset";
 import { StuckDetector, type StuckEpisode } from "../src/stats/stuck";
 
 export interface FighterRound {
@@ -78,7 +79,9 @@ function watchRound(m: Match, src: string, seats: string[], out: FighterRound[])
 }
 
 function arenaRuleset(): Ruleset {
-  return { ...CLASSIC, round: { ...CLASSIC.round, maxRounds: 1, winsToTake: 1 } };
+  // --ruleset: a partial ruleset over Classic (#114: one map's rounds, e.g. '{"arena":{"enabledThemes":["forest"]}}')
+  const base = validateRuleset(JSON.parse(arg("--ruleset") ?? "{}"));
+  return { ...base, round: { ...base.round, maxRounds: 1, winsToTake: 1 } };
 }
 
 function runSims(count: number, first: number): RunFile {

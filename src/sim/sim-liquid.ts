@@ -31,6 +31,9 @@ export interface OilFire {
   by: number;
 }
 
+/** #114: ticks before a fighter's next splash event (a swimmer's strokes splashed several times a second) */
+const SPLASH_REARM = 45;
+
 export class LiquidState {
   /** the level has liquids or #94 materials: everything here runs (else nothing does) */
   readonly on: boolean;
@@ -43,6 +46,8 @@ export class LiquidState {
   private readonly seen;
   /** per fighter: the liquid its body was in last tick (splash events) */
   readonly inside: number[] = [0, 0, 0, 0];
+  /** #114: per fighter: the tick of its last splash event (a swimmer's every stroke re-enters the water) */
+  readonly splashed: number[] = [-SPLASH_REARM, -SPLASH_REARM, -SPLASH_REARM, -SPLASH_REARM];
   /** per fighter: on slippery footing (its collider takes no friction from the ground) */
   readonly slick: boolean[] = [false, false, false, false];
 
@@ -163,7 +168,10 @@ export function updateLiquids(sim: Sim) {
     const liquid = bodyLiquid(sim, f);
     const p = f.entity.body.translation();
     if (liquid !== sim.liquids.inside[f.id]) {
-      if (liquid) sim.events.push({ type: "splash", tick: sim.tick, fighter: f.id, liquid, x: p.x, y: p.y });
+      if (liquid && sim.tick - sim.liquids.splashed[f.id]! >= SPLASH_REARM) {
+        sim.events.push({ type: "splash", tick: sim.tick, fighter: f.id, liquid, x: p.x, y: p.y });
+        sim.liquids.splashed[f.id] = sim.tick;
+      }
       sim.liquids.inside[f.id] = liquid;
     }
     if (liquid === Liquid.Water) {

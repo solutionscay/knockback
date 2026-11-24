@@ -27,13 +27,15 @@ const GOLDEN = {
   // #109 (on top of #111): a few more weapons (5 at the start, a drop every 6 s, 4 in play), a drop for a fighter cut off from every
   // weapon, bare-handed bots go for one first, the jetpack lasts 3 s, the ground check sees corners; a bot breaks a chunk
   // lodged in its line of sight
-  fight: "8140f360",
-  fightWithUpdate: "de46400f",
-  closeQuarters: "107ca9f3",
+  // #114: the forest in the rotation (match seeds pick from six themes); a stale landing no longer steers a swimmer, a run-up
+  // on mud asks for what mud allows, a swimmer's splash re-arms after 45 ticks
+  fight: "b4f79ad7",
+  fightWithUpdate: "15b87cb9",
+  closeQuarters: "38c66ba0",
   // house bots play their souls' builds (#80)
-  match: ["ca7643b5", "2a02ff85", "15bfb821"],
+  match: ["9fc581ee", "a92df55a", "db5e2591"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["2b7765aa", "7f7b3013", "21519bcb"],
+  neutralMatch: ["44774354", "671c41ac", "fdf6fc31"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

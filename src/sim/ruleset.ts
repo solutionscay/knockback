@@ -181,6 +181,7 @@ export function validateRuleset(input: unknown): Ruleset {
     require(t.stage.topRows[0] >= 1 && t.stage.topRows[1] <= 4, `${at}.stage.topRows`, "expected 1 to 4 rows");
     const H = t.hazards;
     require(H.pools[1] === 0 || H.water + H.oil + H.lava + H.acid > 0, `${at}.hazards`, "pools need a liquid with positive weight");
+    require(H.bankCells <= 4, `${at}.hazards.bankCells`, "expected 0 to 4 cells");
     require(H.width[0] >= 1 && H.width[1] <= 8 && H.depth[0] >= 1 && H.depth[1] <= 6 && H.pools[1] <= 6, `${at}.hazards`, "width expected 1 to 8 meters, depth 1 to 6 cells, at most 6 pools");
   }
   const L = r.liquids;
