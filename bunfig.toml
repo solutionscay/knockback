@@ -1,3 +1,5 @@
 [test]
 # per-test limit: rounds play real physics; a loaded machine (batches running) must not fail a correct test
 timeout = 20000
+# the engine stamp's reference rounds (every map, about 3 s) play once per run, before any test's time limit starts
+preload = ["./tests/helpers/engine-stamp.ts"]

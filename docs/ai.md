@@ -24,7 +24,7 @@ Records land in `records/` and replay exactly with `bun run dev` +
 `/?record=/records/<file>.json` (or `bun run record <dir> --record /records/<file>.json`).
 A record replays only if every round reaches its recorded final hash; a record that does not is refused, never
 replayed into a different result. A sim change that moves hashes leaves older records unreplayable (pre-alpha: they
-are not kept in the app). The match server stamps every round with the engine it was played on (#88); rounds from an
+are not kept in the app). The match server stamps every round with the engine it was played on (#88; the stamp folds a full reference round on every map, #146); rounds from an
 older engine stay in its database and records folder as training data, are never shown, and their URLs are not found.
 Providers live in `src/ai/providers.ts` (one entry each).
 For ruleset files and named presets, see [docs/rulesets.md](rulesets.md).
