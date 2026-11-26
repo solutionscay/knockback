@@ -186,7 +186,7 @@ describe("rounds from an older engine (#88)", () => {
     const fromDb = run("--db", dbPath);
     expect(fromDb.length).toBe(5);
     expect(fromDb.filter((r) => r.engine === "older").map((r) => r.match).sort()).toEqual([ids.old, ids.unstampedOld, ids.late].sort());
-  });
+  }, 30_000); // two script runs, each works out the stamp (its reference rounds on every map, about 3 s)
 
   test("an in-flight round that does not replay at startup is set aside quietly; a fresh round starts", async () => {
     // the round in progress when the server stopped, from an older engine (as round 1810 at the #88 switch)
