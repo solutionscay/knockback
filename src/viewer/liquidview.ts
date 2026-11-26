@@ -6,7 +6,7 @@
  * - Each pool's open surface is one continuous span (not per-cell tiles): a wavy top edge from a few layered ambient
  *   waves plus a spring height field (4 samples per cell) that carries ripples out from where something hits it.
  *   A foam line runs along the top, and a gloss line under it for glossy liquids.
- * - The body follows the pool's carved shape cell by cell (it refills or drains with the grid). It shades from
+ * - The body follows the pool's carved shape cell by cell. It shades from
  *   translucent at the surface to darker and denser at depth. A faint caustic shimmer runs on the floor of clear
  *   liquids, and a glow sits over glowing ones (lava).
  * - Where the surface meets a wall it climbs a small meniscus. The wall above it is darkened (a wet edge), and the
@@ -14,6 +14,11 @@
  * - It reacts, read-only from the sim: a fighter, prop, chunk, weapon or projectile crossing the surface splashes
  *   (droplets plus a ripple). Swimming leaves a small wake, and an explosion near the surface pushes a bigger wave.
  *   Things floating at the surface bob with it (bob()), and fighters below it wobble (submerged()).
+ * - Moving liquid (#143, liquid-motion.ts): the sim moves whole cells per flow step, but each column's drawn level eases
+ *   to the sim's between steps (a pool drains and a crater fills smoothly, never past the sim's level), and liquid that
+ *   falls (a pour over a broken rim, a waterfall off a ledge, a drain into a crater) is drawn as one continuous stream
+ *   (a sheet over adjacent falling columns, a narrow stream for a lone one) with a gloss line, streaks running down
+ *   it and droplets where it lands, instead of blocks jumping a cell at a time.
  *
  * Deterministic for a given frame sequence: the springs step at a fixed 60 Hz from the time the scene passes in,
  * and the droplets use a seeded generator (no Math.random), so a replay or teaser capture renders the same frames.
@@ -25,11 +30,12 @@ import type { Sim } from "../sim/sim";
 import type { SimEvent } from "../sim/sim-types";
 import type { Theme } from "../sim/themes";
 import { liquidLook, type LiquidLook } from "./liquid-looks";
+import { Levels, scanRuns, STEP, streamSources, Streams, type Level, type Stream } from "./liquid-motion";
 
 /** surface samples per cell */
 const SPC = 4;
 const DX = CELL / SPC;
-const STEP = 1 / 60;
+const lookOf = (L: number) => liquidLook(LIQUID_NAMES[L] ?? "water");
 const MAX_DROPS = 320;
 
 interface Span {
@@ -37,8 +43,10 @@ interface Span {
   look: LiquidLook;
   cx0: number;
   cx1: number;
-  /** world y of each column's surface at rest (top of its top cell), cx0..cx1; the highest */
+  /** world y of each column's surface in the sim (top of its top cell), cx0..cx1; the highest */
   tops: number[];
+  /** each column's drawn level, easing towards `tops` (#143) */
+  ent: Level[];
   top: number;
   /** world y of each column's floor (bottom of its run), cx0..cx1 */
   floor: number[];
@@ -64,6 +72,9 @@ export class LiquidView {
   private readonly lines = new Graphics();
   private readonly glow = new Graphics();
   private readonly dropsG = new Graphics();
+  private readonly streamG = new Graphics();
+  private readonly levels = new Levels((L) => lookOf(L).ease);
+  private readonly streams = new Streams((L) => lookOf(L).ease);
   private readonly sig: Uint8Array;
   private spans: Span[] = [];
   private hidden: Hidden[] = [];
@@ -92,7 +103,7 @@ export class LiquidView {
     this.v = new Float32Array(grid.cols * SPC);
     this.own = new Int32Array(grid.cols * SPC).fill(-1);
     this.glow.blendMode = "add";
-    this.container.addChild(this.back, this.glow, this.lines, this.dropsG);
+    this.container.addChild(this.back, this.streamG, this.glow, this.lines, this.dropsG);
   }
 
   /**
@@ -100,16 +111,18 @@ export class LiquidView {
    * level lab passes none (still pools).
    */
   update(time: number, sim?: Sim) {
-    const dt = this.time < 0 ? 0 : Math.max(0, time - this.time);
+    const first = this.time < 0;
+    const dt = first ? 0 : Math.max(0, time - this.time);
     this.time = time;
-    this.rebuildIfChanged();
+    // a long gap (fast-forward without drawing, a new round): no splashes for what crossed meanwhile, and the levels and
+    // streams stand where the sim is (no draining or pouring replayed)
+    const jumped = dt > 0.25;
+    this.rebuildIfChanged(first || jumped);
     if (!this.any && !this.drops.length) {
       // no liquid on this map (or it all drained): nothing to draw, nothing to step
-      if (this.drawn) { this.back.clear(); this.lines.clear(); this.glow.clear(); this.dropsG.clear(); this.drawn = false; }
+      if (this.drawn) { this.back.clear(); this.lines.clear(); this.glow.clear(); this.dropsG.clear(); this.streamG.clear(); this.drawn = false; }
       return;
     }
-    // a long gap (fast-forward without drawing, a new round): no splashes for what crossed meanwhile
-    const jumped = dt > 0.25;
     if (sim && this.any) this.observe(sim, jumped);
     this.acc = Math.min(this.acc + (jumped ? 0 : dt), STEP * 4);
     while (this.acc >= STEP) {
@@ -155,39 +168,29 @@ export class LiquidView {
 
   // ---- the pools from the grid
 
-  private rebuildIfChanged() {
+  private rebuildIfChanged(snap: boolean) {
     const g = this.grid;
     let changed = false;
     for (let i = 0; i < g.liq.length; i++) {
       const L = g.liq[i]!;
       if (L !== this.sig[i]) { this.sig[i] = L; changed = true; }
     }
-    if (changed) this.rebuild();
+    if (changed || (snap && this.any)) this.rebuild(snap);
   }
 
-  private rebuild() {
+  private rebuild(snap: boolean) {
     const g = this.grid;
     const old = this.spans;
     this.spans = [];
     this.hidden = [];
     this.spanAt.fill(-1);
     const own = new Int32Array(this.own.length).fill(-1);
-    // per column, its runs of one liquid; a run whose top cell has open air (or another liquid) above is a surface
-    type Run = { cx: number; L: number; top: number; bot: number };
-    const surf: Run[] = [];
-    for (let cx = 0; cx < g.cols; cx++) {
-      let cy = g.rows - 1;
-      while (cy >= 0) {
-        const L = g.liqAt(cx, cy);
-        if (!L) { cy--; continue; }
-        const top = cy;
-        while (cy >= 0 && g.liqAt(cx, cy) === L) cy--;
-        const bot = cy + 1;
-        const open = top + 1 >= g.rows || !g.solid(cx, top + 1);
-        if (open) surf.push({ cx, L, top, bot });
-        else this.hidden.push({ L, look: liquidLook(LIQUID_NAMES[L] ?? "water"), x: g.wx(cx), y0: g.wy(bot), y1: g.wy(top) + CELL });
-      }
-    }
+    // per column, its runs of one liquid: a run whose top cell has open air (or another liquid) above is a surface; one
+    // with a free cell under it is falling (drawn as a stream, not a block)
+    const scan = scanRuns(g);
+    const surf = scan.surf;
+    for (const r of scan.hidden) this.hidden.push({ L: r.L, look: lookOf(r.L), x: g.wx(r.cx), y0: g.wy(r.bot), y1: g.wy(r.top) + CELL });
+    type Run = (typeof surf)[number];
     // neighbouring columns of one liquid whose runs touch make one span, even where the level steps by a cell (the
     // grid settles whole cells): the surface eases across the step instead of standing up in a wall
     surf.sort((a, b) => a.L - b.L || a.cx - b.cx || b.top - a.top);
@@ -212,7 +215,7 @@ export class LiquidView {
       }
       const top = Math.max(...tops);
       const sp: Span = {
-        L: a.L, look, cx0: a.cx, cx1: b.cx, tops, top,
+        L: a.L, look, cx0: a.cx, cx1: b.cx, tops, top, ent: [],
         floor: runs.map((r) => g.wy(r.bot)),
         wallL: g.solid(a.cx - 1, a.top), wallR: g.solid(b.cx + 1, b.top),
         s0: a.cx * SPC, n: (b.cx - a.cx + 1) * SPC,
@@ -226,15 +229,24 @@ export class LiquidView {
         if (cur < 0 || this.spans[cur]!.top < top) this.spanAt[cx] = id;
       }
     }
-    // keep the ripples where the surface stayed (same row), drop them where it moved
-    const restCol = (sp: Span | undefined, cx: number) => (sp && cx >= sp.cx0 && cx <= sp.cx1 ? sp.tops[cx - sp.cx0] : NaN);
+    // each column's drawn level carries over from the run it was (it eases to the new level), and falling liquid is
+    // a stream (#143)
+    const targets = this.spans.flatMap((sp) => sp.tops.map((t, i) => ({ cx: sp.cx0 + i, L: sp.L, floor: sp.floor[i]!, top: t })));
+    const ents = this.levels.sync(targets, snap);
+    let k = 0;
+    for (const sp of this.spans) sp.ent = ents.slice(k, (k += sp.tops.length));
+    this.streams.sync(streamSources(g, scan.falling), snap);
+    // keep the ripples where a surface stays (the level eases, so they ride it); drop them where one went or came
     for (let s = 0; s < own.length; s++) {
-      const was = this.own[s]!, now = own[s]!, cx = Math.floor(s / SPC);
-      if (now < 0 || was < 0 || restCol(old[was], cx) !== restCol(this.spans[now], cx)) { this.h[s] = 0; this.v[s] = 0; }
+      if (own[s]! < 0 || this.own[s]! < 0) { this.h[s] = 0; this.v[s] = 0; }
     }
     this.own.set(own);
     for (const sp of old) sp.fill.destroy();
-    this.any = this.spans.length > 0 || this.hidden.length > 0;
+    this.updateAny();
+  }
+
+  private updateAny() {
+    this.any = this.spans.length > 0 || this.hidden.length > 0 || this.streams.list.length > 0 || this.levels.list().length > this.spans.reduce((n, sp) => n + sp.ent.length, 0);
   }
 
   /** translucent at the surface, darker and denser over the look's depth (world y down from the surface) */
@@ -277,7 +289,29 @@ export class LiquidView {
       }
       for (let s = sp.s0; s < e; s++) h[s] = Math.max(-0.22, Math.min(0.22, h[s]!));
     }
+    // #143: the levels ease to the sim's, the streams run, and where a stream lands it throws droplets and dimples
+    this.levels.step();
+    this.streams.step((L) => lookOf(L).streamDrops, (st, n) => this.landSplash(st, n));
+    if (this.streams.list.length === 0 && this.spans.length === 0 && this.hidden.length === 0) this.updateAny();
     this.frame++;
+  }
+
+  private landSplash(st: Stream, n: number) {
+    const look = lookOf(st.L);
+    const x = this.grid.wx(st.cx) + CELL / 2;
+    const fall = Math.max(0, st.shown - st.landShown);
+    const speed = (1.2 + Math.min(2.2, Math.sqrt(fall) * 1.4)) * (1 - 0.5 * look.viscosity);
+    const sp = this.surfaceSpan(x);
+    const onPool = sp && Math.abs(this.rest(sp, x) - st.landShown) < CELL * 1.5;
+    if (onPool) this.impulse(sp, x, -0.006 * st.I * n, 0.3);
+    for (let i = 0; i < n && this.drops.length < MAX_DROPS; i++) {
+      const r = this.rand(), q = this.rand();
+      this.drops.push({
+        x: x + (r - 0.5) * look.streamWidth * 1.4, y: st.landShown + 0.03,
+        vx: (q - 0.5) * speed * 1.3, vy: speed * (0.45 + 0.55 * this.rand()),
+        life: 0.3 + 0.3 * this.rand(), size: 0.025 + 0.03 * this.rand(), color: look.drop,
+      });
+    }
   }
 
   private impulse(sp: Span, x: number, amount: number, width: number) {
@@ -379,14 +413,14 @@ export class LiquidView {
     return id < 0 ? null : this.spans[id]!;
   }
 
-  /** the surface's resting world y at x: each column's level, eased between column centres where it steps */
+  /** the surface's resting world y at x: each column's drawn level, eased between column centres where it steps */
   private rest(sp: Span, x: number) {
     const u = (x - this.grid.wx(sp.cx0)) / CELL - 0.5;
-    const n = sp.tops.length;
+    const n = sp.ent.length;
     const a = Math.max(0, Math.min(n - 1, Math.floor(u))), b = Math.min(n - 1, a + 1);
     const t = Math.max(0, Math.min(1, u - a));
     const k = t * t * (3 - 2 * t);
-    return sp.tops[a]! + (sp.tops[b]! - sp.tops[a]!) * k;
+    return sp.ent[a]!.lvl + (sp.ent[b]!.lvl - sp.ent[a]!.lvl) * k;
   }
 
   /** the surface's world y at x: rest + ripples + the swell + the meniscus at walls */
@@ -416,6 +450,115 @@ export class LiquidView {
     return y;
   }
 
+  /**
+   * The streams (#143). Falling columns side by side make one sheet (a curtain over a broken rim); a lone one is a
+   * narrow stream. Each sheet is one shape: its top edge runs through each column's top (smooth between columns,
+   * so a tail falling away dips through it), its bottom through where each lands. Over it: a gloss line, streaks
+   * running down each column, a foam crown where it lands, and a glow for glowing liquids.
+   */
+  private drawStreams(glow: Graphics) {
+    const sg = this.streamG.clear();
+    const g = this.grid;
+    const list = this.streams.list.filter((st) => st.I > 0.01 && st.shown - st.landShown > 0.02).sort((a, b) => a.cx - b.cx || b.shown - a.shown);
+    for (let i = 0; i < list.length; ) {
+      const sheet = [list[i]!];
+      for (i++; i < list.length && list[i]!.L === sheet[0]!.L && list[i]!.cx === sheet[sheet.length - 1]!.cx + 1; i++) sheet.push(list[i]!);
+      const look = lookOf(sheet[0]!.L);
+      const I = sheet.reduce((a, s) => a + s.I, 0) / sheet.length;
+      const inset = (CELL - look.streamWidth * (0.5 + 0.5 * I)) / 2;
+      const wob = (x: number, y: number) => 0.012 * Math.sin(y * 7 + this.time * 9 * look.streamSpeed + x * 3);
+      const s0 = sheet[0]!, s1 = sheet[sheet.length - 1]!;
+      const xl = g.wx(s0.cx) + inset, xr = g.wx(s1.cx) + CELL - inset;
+      // poured over a lip, the sheet leans a little away from the pool as it falls (capped: it stays near its column),
+      // and it narrows as it speeds up
+      const dir = s0.lip === -1 && s1.lip !== 1 ? 1 : s1.lip === 1 && s0.lip !== -1 ? -1 : 0;
+      const lean = (fall: number) => dir * Math.min(0.15, 0.07 * Math.sqrt(Math.max(0, fall)));
+      const narrow = (fall: number) => Math.min(0.05, Math.max(0, fall) * 0.02);
+      const edgeX = (left: boolean, top: number, y: number) => {
+        const fall = top - y;
+        return (left ? xl + narrow(fall) : xr - narrow(fall)) + lean(fall) + wob(left ? xl : xr, y);
+      };
+      // where a pool feeds it from the side, its top starts at that pool's surface and curves over the lip
+      const lipY = (st: Stream, side: number) => {
+        if (st.lip !== side) return null;
+        const x = g.wx(st.cx) + (side < 0 ? -0.01 : CELL + 0.01);
+        const sp = this.surfaceSpan(x);
+        if (!sp) return null;
+        const y = this.surfY(sp, x);
+        return y > st.shown - 0.05 && y < st.shown + CELL ? y : null;
+      };
+      const r = Math.min(0.08, (xr - xl) / 3);
+      const pts: number[] = [];
+      const lyL = lipY(s0, -1);
+      if (lyL !== null) pts.push(g.wx(s0.cx), -lyL, xl + r, -(s0.shown + (lyL - s0.shown) * 0.3));
+      else pts.push(xl, -(s0.shown - r), xl + r * 0.3, -(s0.shown - r * 0.3), xl + r, -s0.shown);
+      for (const st of sheet) pts.push(g.wx(st.cx) + CELL / 2, -st.shown);
+      const lyR = lipY(s1, 1);
+      if (lyR !== null) pts.push(xr - r, -(s1.shown + (lyR - s1.shown) * 0.3), g.wx(s1.cx) + CELL, -lyR);
+      else pts.push(xr - r, -s1.shown, xr - r * 0.3, -(s1.shown - r * 0.3), xr, -(s1.shown - r));
+      const rightEdge: number[] = [], leftEdge: number[] = [];
+      const edge = (left: boolean, st: Stream, out: number[]) => {
+        const n = Math.max(2, Math.ceil((st.shown - st.landShown) / 0.25));
+        for (let k = 1; k <= n; k++) {
+          const y = st.shown - r - ((st.shown - r - st.landShown) * k) / n;
+          out.push(edgeX(left, st.shown, y), -y);
+        }
+      };
+      edge(false, s1, rightEdge);
+      edge(true, s0, leftEdge);
+      pts.push(...rightEdge);
+      for (let k = sheet.length - 1; k >= 0; k--) pts.push(g.wx(sheet[k]!.cx) + CELL / 2 + lean(sheet[k]!.shown - sheet[k]!.landShown), -sheet[k]!.landShown);
+      for (let k = leftEdge.length - 2; k >= 0; k -= 2) pts.push(leftEdge[k]!, leftEdge[k + 1]!);
+      const a = I * Math.min(1, look.alpha * 0.5 + look.deepAlpha * 0.5 + 0.12);
+      sg.poly(pts, true).fill({ color: mix(look.color, look.deep, 0.5), alpha: a });
+      // a lighter band down the middle: it reads as a rounded, moving body of liquid
+      if (xr - xl > 0.12) {
+        const m = (xr - xl) * 0.25;
+        const band: number[] = [];
+        for (const st of sheet) band.push(Math.max(xl + m, Math.min(xr - m, g.wx(st.cx) + CELL / 2)), -st.shown);
+        band.unshift(xl + m, -s0.shown);
+        band.push(xr - m, -s1.shown, xr - m + lean(s1.shown - s1.landShown), -s1.landShown, xl + m + lean(s0.shown - s0.landShown), -s0.landShown);
+        sg.poly(band, true).fill({ color: look.color, alpha: a * 0.3 });
+      }
+      // bright edges
+      const strokeEdge = (e: number[]) => {
+        sg.moveTo(e[0]!, e[1]!);
+        for (let k = 2; k < e.length; k += 2) sg.lineTo(e[k]!, e[k + 1]!);
+      };
+      strokeEdge(leftEdge);
+      strokeEdge(rightEdge);
+      sg.stroke({ width: 0.02, color: look.foam, alpha: 0.4 * I * look.foamAlpha });
+      // the gloss line near the left edge of each sheet, top to bottom
+      if (look.streamGloss > 0) {
+        const s = sheet[0]!;
+        const x = xl + Math.min(0.06, (xr - xl) * 0.25);
+        const n = Math.max(1, Math.ceil((s.shown - s.landShown) / 0.25));
+        sg.moveTo(x, -s.shown);
+        for (let k = 1; k <= n; k++) { const y = s.shown - ((s.shown - s.landShown) * k) / n; sg.lineTo(x + wob(x, y) + narrow(s.shown - y) + lean(s.shown - y), -y); }
+        sg.stroke({ width: Math.max(0.015, look.streamWidth * 0.14), color: 0xffffff, alpha: 0.5 * look.streamGloss * I, cap: "round", join: "round" });
+      }
+      // streaks running down each column: the liquid moves even where the sheet holds still
+      const SL = 0.22, period = 0.7, v = 4 * look.streamSpeed;
+      let drew = false;
+      for (const s of sheet) {
+        const x = g.wx(s.cx) + CELL / 2 + ((s.cx * 37) % 7 - 3) * 0.02;
+        for (let y = s.shown - ((((this.time * v + s.cx * 0.37) % period) + period) % period); y > s.landShown + 0.02; y -= period) {
+          const xs = x + wob(x, y) + lean(s.shown - y);
+          sg.moveTo(xs, -Math.min(s.shown, y + SL)).lineTo(xs, -Math.max(s.landShown, y));
+          drew = true;
+        }
+      }
+      if (drew) sg.stroke({ width: Math.max(0.012, look.streamWidth * 0.1), color: look.foam, alpha: 0.45 * I * look.foamAlpha });
+      // the foam crown where it lands
+      for (const s of sheet) {
+        const x = g.wx(s.cx) + CELL / 2 + lean(s.shown - s.landShown);
+        sg.ellipse(x, -s.landShown, Math.min(CELL * 0.6, look.streamWidth * 0.9) + 0.03 * Math.sin(this.time * 17 + s.cx), 0.05).fill({ color: look.foam, alpha: look.foamAlpha * 0.55 * s.I });
+      }
+      if (look.streamGlow > 0) {
+        glow.poly(pts, true).fill({ color: look.glow || look.color, alpha: look.streamGlow * 0.25 * I });
+      }
+    }
+  }
   private draw() {
     const g = this.grid;
     const back = this.back.clear();
@@ -451,7 +594,7 @@ export class LiquidView {
         back.closePath().fill({ color: look.foam, alpha: look.band * 0.35 });
       }
       // the soft edge: the liquid bleeds a little into the walls below its surface; above, the wall is wet
-      const tL = sp.tops[0]!, tR = sp.tops[sp.tops.length - 1]!;
+      const tL = sp.ent[0]!.lvl, tR = sp.ent[sp.ent.length - 1]!.lvl;
       if (sp.wallL) {
         back.rect(x0 - 0.06, -tL, 0.06, tL - sp.floor[0]!).fill({ color: look.deep, alpha: look.alpha * 0.45 });
         back.rect(x0 - 0.14, -tL - 0.12, 0.14, 0.12).fill({ color: 0x000000, alpha: 0.12 });
@@ -467,7 +610,7 @@ export class LiquidView {
           const x = x0 + (i + 0.5) * DX;
           const c = Math.floor((x - x0) / CELL);
           const floor = sp.floor[c]!;
-          if (sp.tops[c]! - floor < CELL * 1.5) continue;
+          if (sp.ent[c]!.lvl - floor < CELL * 1.5) continue;
           const n = Math.sin(x * 6.3 + this.time * 1.9) + Math.sin(x * 2.7 - this.time * 1.2 + 2);
           if (n < 0.9) continue;
           const y = -(floor + 0.07 + 0.03 * Math.sin(x * 11 + this.time * 3));
@@ -491,6 +634,15 @@ export class LiquidView {
         glow.stroke({ width: 0.3, color: look.glow, alpha: look.glowAlpha * 0.6 });
       }
     }
+    // a column whose liquid left drains to its floor before it goes
+    for (const gh of this.levels.ghosts()) {
+      const look = lookOf(gh.L);
+      const x = g.wx(gh.cx);
+      if (gh.lvl - gh.floor < 0.005) continue;
+      back.rect(x, -gh.lvl, CELL, gh.lvl - gh.floor).fill({ color: look.color, alpha: (look.alpha + look.deepAlpha) / 2 });
+      lines.moveTo(x, -gh.lvl).lineTo(x + CELL, -gh.lvl).stroke({ width: look.foamWidth, color: look.foam, alpha: look.foamAlpha * 0.8 });
+    }
+    this.drawStreams(glow);
     const dg = this.dropsG.clear();
     for (const d of this.drops) dg.circle(d.x, -d.y, d.size).fill({ color: d.color, alpha: Math.min(1, d.life * 2.5) * 0.9 });
   }
