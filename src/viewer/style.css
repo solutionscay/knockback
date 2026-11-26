@@ -218,7 +218,9 @@ body {
 }
 
 /* ---------------------------------------------------------- the entrance (#66) */
-/* its parts pop in by the beat's clock (game.ts renderEntrance sets opacity and scale per frame) */
+/* its parts pop in by the beat's clock (game.ts renderEntrance sets opacity and scale per frame); each part grows from
+   its top edge, so its overshoot covers only the space below it, which the next part has not reached yet, never the part
+   above (#145: on a phone the name popped over the kicker) */
 #entrance {
   position: absolute;
   top: calc(6 * var(--u));
@@ -229,7 +231,7 @@ body {
 }
 #entrance > div {
   opacity: 0;
-  transform-origin: 50% 60%;
+  transform-origin: 50% 0;
 }
 #entrance .ent-kicker {
   display: inline-block;
@@ -266,7 +268,6 @@ body {
     0 0 calc(5 * var(--u)) rgba(255, 120, 40, 0.55);
   -webkit-text-stroke: calc(0.55 * var(--u)) var(--shadow);
   paint-order: stroke fill;
-  transform-origin: 50% 50%;
   padding: 0 calc(3 * var(--u));
   text-wrap: balance;
 }
@@ -683,6 +684,8 @@ body.capture #controls {
 
 /* ---------------------------------------------------------- dialogue frame (RPG style, readable) */
 #dialogue {
+  /* the SKIP button's width: the name row (.who) leaves this much room on its right, so a long tag wraps instead of running under it */
+  --skip-w: max(calc(10.5 * var(--u)), 72px);
   position: absolute;
   left: 50%;
   bottom: calc(7 * var(--u));
@@ -734,6 +737,12 @@ body.capture #controls {
   align-items: baseline;
   gap: calc(1.6 * var(--u));
   flex-wrap: wrap;
+  /* the SKIP button sits 1.8u from the panel's edge, inside its 4u padding: keep 1u clear of it */
+  padding-right: calc(var(--skip-w) - 1.2 * var(--u));
+}
+/* a flex item does not shrink below its text by default: the model badge may (its name ends in "…") and stays in the row */
+#dialogue .who .kb-mb {
+  min-width: 0;
 }
 #dialogue .name {
   font-size: calc(6 * var(--u));
@@ -806,7 +815,11 @@ body.capture #controls {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: calc(0.8 * var(--u));
-  padding: calc(0.6 * var(--u)) calc(1.2 * var(--u));
+  box-sizing: border-box;
+  width: var(--skip-w);
+  padding: calc(0.6 * var(--u)) 0;
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
 }
 #dialogue .skip:hover {
@@ -1792,6 +1805,16 @@ body.embed:has(#celebrate.show) #lineup {
     width: calc(18 * var(--u));
     height: calc(21 * var(--u));
   }
+  /* the name row is too narrow to share with SKIP: SKIP sits on the panel's top edge instead */
+  #dialogue .who {
+    padding-right: 0;
+  }
+  #dialogue .skip {
+    top: auto;
+    bottom: calc(100% + 6px);
+    right: 0;
+    background: rgba(10, 11, 18, 0.92);
+  }
   #celebrate .winner {
     left: 4vw;
     right: 4vw;
@@ -1856,7 +1879,8 @@ body.embed:has(#celebrate.show) #lineup {
     display: none;
   }
   #dialogue .who {
-    padding-right: 64px;
+    /* SKIP sits 4 px from the edge, the panel's padding is 10 px: keep 4 px clear of it */
+    padding-right: calc(var(--skip-w) - 2px);
   }
   #dialogue .skip {
     top: 4px;

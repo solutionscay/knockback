@@ -507,7 +507,7 @@ export class Game {
       p.style.transform = `scale(${over.toFixed(3)})`;
     };
     part(".ent-kicker", 0, 0.2);
-    part(".ent-name", 0.1, 0.25);
+    part(".ent-name", 0.2, 0.25); // after the kicker has settled
     part(".ent-shout", A.shout, 0.18);
     part(".ent-out", this.scene.entranceInfo?.kick === "land" ? A.land : A.kick, 0.2);
     part(".ent-thinking", A.step + 0.7, 0.3);
