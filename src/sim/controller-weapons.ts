@@ -118,7 +118,8 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   const ranged = carried.some(w => !melee(me, w));
   // a weapon that fights from range is kept in hand up close while the zone leaves room to back off to its range
   // (#69): no fists then
-  const room = 2 * sim.zoneHalfAhead(0);
+  const [zlo, zhi] = sim.zoneAhead(0);
+  const room = zhi - zlo;
   const longReach = carried.some(w => weaponReach(ruleset, me, w).standOff >= RANGED_STANDOFF && room >= weaponReach(ruleset, me, w).standOff);
   // a jab never lowers the weapon (#95: one slot, fists always there): a rival in fist reach gets punched even then
   const canHold = (w: Weapon) => (w === "fist" ? !longReach || inWeaponBand(me, w, dist, ruleset, dy0) : carried.includes(w)) && (!ranged || !melee(me, w) || inWeaponBand(me, w, dist, ruleset, dy0));

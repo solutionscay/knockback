@@ -63,6 +63,8 @@ Close Quarters keeps its own start (the old armory) but shares the supply cap, t
 
 Classic waits for the first fighter-on-fighter damage before the sudden-death countdown. When nobody has landed a hit, the quiet clock begins after `zone.suddenDeath.graceTicks` (20 seconds). If that clock runs out, bots close in on a rival. Sudden death, including the faster zone and its announcement, can start once a hit has landed and the next quiet window expires. Classic uses a seven-second quiet window.
 
+The zone's edges stop only on ground a fighter can hold (#156). The regular shrink aims at `zone.boundary.endHalf` about the level's zone centre, and sudden death at `zone.suddenDeath.endHalf` (0.5 m in Classic). Each edge stops at the nearest point that meets all of these conditions: the lowest surface continues for 1.5 m on each side of the point (no step over 1 m, no crumbling or submerged floor), and no lip over a pit is within 1.5 m inside the edge or 4 m outside it. The search goes up to 6 m out and 2 m in. Thus the zone does not stop on a pit's lip, where it holds a fighter against the lip, and it does not stop over a pit, where it pushes the fighters outside into the pit. The final zone is often off-centre, and in Classic it is usually a few meters wide.
+
 `tactics.weapons.reach` sets each weapon's effective range for aiming, choosing shots, attacking obstructions and positioning. The settings also set vertical reach for melee and a preferred stand-off distance within the band. The controller favors ready weapons and treats obstructing destructibles as targets. Ammunition and fuel still come from the weapon table and carried inventory.
 
 Close Quarters keeps its original opening timer and weapon selection through its ruleset settings.

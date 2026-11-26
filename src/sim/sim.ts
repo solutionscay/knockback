@@ -34,7 +34,7 @@ import { type Look } from "./identity";
 import { updateLiveGround } from "./sim-lightning";
 import { updateMines } from "./sim-mines";
 import { updateRockets } from "./sim-weapons";
-import { SimZone, zoneHalfAt, zonePush } from "./sim-zone";
+import { SimZone, zonePush } from "./sim-zone";
 import { bodyHeights, TacticalMap } from "./tactical";
 import { Terrain } from "./terrain";
 
@@ -81,7 +81,9 @@ export class Sim {
   /** live ground (#72): floor strips electrified by lightning bolts, in the order they were made */
   liveGround: LiveGround[] = [];
   events: SimEvent[] = [];
-  zone: { center: number; half: number; startHalf: number };
+  /** the safe zone: its edges lo..hi (#156: each stops where a fighter can hold it, so not always centred on the
+   * level's zoneCenter), their middle and half-width, and the half-width it starts at */
+  zone: { lo: number; hi: number; center: number; half: number; startHalf: number };
   /** Sandbox switch (tests): when false the zone neither shrinks nor pushes. */
   zoneEnabled = true;
   /** The round is decided (set by the fight once one fighter or none is left): the walls stop, no more supply drops. */
@@ -160,7 +162,9 @@ export class Sim {
     this.navVersion = this.terrain.version;
     this.initialCells = this.grid.countSolid() - this.grid.countMat(Mat.Bedrock);
     const startHalf = this.level.width / 2 - this.ruleset.zone.boundary.edgeInset;
-    this.zone = { center: this.level.zoneCenter, half: startHalf, startHalf };
+    const c = this.level.zoneCenter;
+    this.zone = { lo: c - startHalf, hi: c + startHalf, center: c, half: startHalf, startHalf };
+    this.zoneBehavior.init(this);
     for (const p of this.level.props) this.addProp(p.kind, p.x, p.y, p);
     // two power-ups waiting up high: a reason to climb
     const high = this.nav.surfaces.filter((s) => s.y > 3.5 && s.x1 - s.x0 >= 2 && Math.abs((s.x0 + s.x1) / 2 - this.zone.center) < 18);
@@ -213,9 +217,9 @@ export class Sim {
     return dangers(this);
   }
 
-  /** Zone half-width `ticks` from now (sudden death included): where to stand. */
-  zoneHalfAhead(ticks: number): number {
-    return this.zoneBehavior.halfAhead(this, ticks);
+  /** The zone `ticks` from now (sudden death included), as [lo, hi]: where to stand. */
+  zoneAhead(ticks: number): [number, number] {
+    return this.zoneBehavior.ahead(this, ticks);
   }
 
   // ----------------------------------------------------------------- queries
@@ -272,8 +276,7 @@ export class Sim {
     const tick = this.tick;
     const z = this.zone;
     if (this.zoneEnabled && !this.roundOver) {
-      z.half = zoneHalfAt(tick, z.startHalf, this.ruleset);
-      this.zoneBehavior.checkStalemate(this, tick);
+      this.zoneBehavior.update(this, tick);
     }
     const opening = this.ruleset.pickups.armory.spread;
     if (!this.roundOver && opening.enabled && opening.skyDrops > 0 && tick === opening.skyDropTicks) skyDrop(this, this.skyRng);
