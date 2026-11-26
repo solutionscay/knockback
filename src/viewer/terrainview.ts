@@ -64,9 +64,11 @@ interface Exposed { top: boolean; bottom: boolean; left: boolean; right: boolean
  * theme's st-<shape>-<crack stage> frames instead of a square cell: both sides open and rock above it, a tip (nothing
  * under it) or a tapered mid segment (rock under it, not standing on the ground: a pillar keeps its square cells); one
  * side and the bottom open, a shoulder flaring in from that side. Null: a square cell.
+ * #148: a tip under a cell drawn square (a 3-wide stalactite's root) is the wide tip, full width at its top, so the
+ * root's straight sides run on into it; under a mid segment (which narrows to the tip's width) it is the plain tip.
  */
-function hangShape(ex: Exposed, above: boolean, grounded: () => boolean): string | null {
-  if (ex.left && ex.right) return !above ? null : ex.bottom ? "tip" : grounded() ? null : "mid";
+function hangShape(ex: Exposed, above: boolean, grounded: () => boolean, midAbove: () => boolean): string | null {
+  if (ex.left && ex.right) return !above ? null : ex.bottom ? (midAbove() ? "tip" : "tipw") : grounded() ? null : "mid";
   if (ex.bottom && ex.left) return "l";
   if (ex.bottom && ex.right) return "r";
   return null;
@@ -140,13 +142,10 @@ export class TerrainView {
         const s = m === 0 ? 0 : m * 4 + crackStage(g.hp[i]!, m) + 1 + (g.flags[i]! & F_CHARRED ? 64 : 0) + (g.flags[i]! & F_ONEWAY ? 128 : 0);
         if (s !== this.sig[i]) {
           this.sig[i] = s;
-          const k = Math.floor(cy / CH) * this.cols + Math.floor(cx / CH);
-          dirty.add(k);
-          // neighbours' exposed edges change too
-          if (cy % CH === 0 && cy > 0) dirty.add(k - this.cols);
-          if (cy % CH === CH - 1 && cy < g.rows - 1) dirty.add(k + this.cols);
-          if (cx % CH === 0 && cx > 0) dirty.add(k - 1);
-          if (cx % CH === CH - 1 && cx < g.cols - 1) dirty.add(k + 1);
+          // the cells whose look reads this one: the neighbours' exposed edges, and (#148) a tip one row down and one
+          // column over or two rows down, which picks its shape from the cell above it and that cell's sides
+          for (let y = Math.max(0, cy - 2); y <= Math.min(g.rows - 1, cy + 1); y++)
+            for (let x = Math.max(0, cx - 1); x <= Math.min(g.cols - 1, cx + 1); x++) dirty.add(Math.floor(y / CH) * this.cols + Math.floor(x / CH));
         }
       }
     }
@@ -172,7 +171,7 @@ export class TerrainView {
           let d = cy;
           while (d >= 0 && g.solid(cx, d)) d--;
           return d < 0;
-        }) : null;
+        }, () => g.mat[i + g.cols] === Mat.Rock && !g.solid(cx - 1, cy + 1) && !g.solid(cx + 1, cy + 1) && g.solid(cx, cy + 2)) : null;
         drawCell(p, this.theme, g.wx(cx), g.wy(cy), m, crackStage(g.hp[i]!, m), ex, above >= 4, g.flags[i]!, cx, cy, shape);
         if (g.flags[i]! & F_ANCHOR) {
           // the anchor bolt; the chain above it is drawn by ChainView (chains.ts) up to the top of the view
@@ -188,11 +187,13 @@ export class TerrainView {
 export function drawPiece(c: Container, theme: Theme, cells: PieceCell[]) {
   const p = new Pool(c);
   p.begin();
-  const at = new Set(cells.map((q) => q.ly * 4096 + q.lx));
+  const mat = new Map(cells.map((q) => [q.ly * 4096 + q.lx, q.mat]));
+  const has = (lx: number, ly: number) => mat.has(ly * 4096 + lx);
   for (const q of cells) {
-    const ex = { top: !at.has((q.ly + 1) * 4096 + q.lx), bottom: !at.has((q.ly - 1) * 4096 + q.lx), left: !at.has(q.ly * 4096 + q.lx - 1), right: !at.has(q.ly * 4096 + q.lx + 1) };
+    const ex = { top: !has(q.lx, q.ly + 1), bottom: !has(q.lx, q.ly - 1), left: !has(q.lx - 1, q.ly), right: !has(q.lx + 1, q.ly) };
     // a falling stalactite keeps its round cells (nothing in a loose piece stands on the ground)
-    const shape = q.mat === Mat.Rock ? hangShape(ex, !ex.top, () => false) : null;
+    const midAbove = () => mat.get((q.ly + 1) * 4096 + q.lx) === Mat.Rock && !has(q.lx - 1, q.ly + 1) && !has(q.lx + 1, q.ly + 1) && has(q.lx, q.ly + 2);
+    const shape = q.mat === Mat.Rock ? hangShape(ex, !ex.top, () => false, midAbove) : null;
     drawCell(p, theme, q.lx * CELL, q.ly * CELL, q.mat, crackStage(q.hp, q.mat), ex, false, q.charred ? F_CHARRED : 0, q.lx, q.ly, shape);
   }
   p.end();
