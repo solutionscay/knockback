@@ -475,22 +475,29 @@ ST_TOP, ST_DEPTH = 0.2, 0.07  # a tip's half width where it meets the cell above
 
 def st_radius(kind, t):
     """Half width along a hanging cell, t 0..1 from its top: a mid segment narrows from nearly the cell's width to
-    ST_TOP, a tip from ST_TOP to a rounded point (an ogive: full most of the way, then closing fast)."""
+    ST_TOP, a tip from ST_TOP to a rounded point (an ogive: full most of the way, then closing fast). A wide tip (tipw)
+    hangs from a square cell (a 3-wide stalactite's root): it starts at the cell's full width, upright, and eases in onto
+    the tip's outline by 0.4 of its length, so the root's straight sides run on into it with no step."""
     if kind == "mid":
         return 0.24 + (ST_TOP - 0.24) * (3 * t * t - 2 * t ** 3)
-    return ST_TOP * math.sqrt(max(0.0, 1 - t ** 1.6)) * (1 - 0.15 * t)
+    r = ST_TOP * math.sqrt(max(0.0, 1 - t ** 1.6)) * (1 - 0.15 * t)
+    if kind == "tipw":
+        k = min(1.0, t / 0.4)
+        r += (CELL / 2 - ST_TOP) * (1 - (3 * k * k - 2 * k ** 3))
+    return r
 
 
 def st_shape(kind):
     """The parts of one hanging-rock cell (the frame is one cell; outside the shape it is transparent):
        tip  both sides open and nothing under it: a rounded point, 0.45 m long
+       tipw the same under a square cell (#148: a 3-wide root): full width at its top
        mid  both sides open, rock under it: a tapered segment
        l, r one side open and nothing under it (a stalactite's shoulder, a step in the ceiling's underside): the open
             side flares in along an S curve, from the cell's top corner on that side to its bottom corner on the other,
             upright at both ends, so it runs on from a straight side above and into the narrower rock below"""
     top, bot = CELL / 2, -CELL / 2
-    if kind in ("tip", "mid"):
-        length = 0.45 if kind == "tip" else CELL
+    if kind in ("tip", "tipw", "mid"):
+        length = CELL if kind == "mid" else 0.45
         z = lambda t: top - length * t
         return band(lambda t: (-st_radius(kind, t), z(t)), lambda t: (st_radius(kind, t), z(t)), dome(ST_DEPTH))
     sx = -1 if kind == "l" else 1  # the open side
@@ -523,10 +530,10 @@ def stalactite(kind, stage):
     V, F = st_shape(kind)
     T.add(V, F, felt(col, felt=0.35, mottle=(0.9, 1.06)))
     strata = thread(hexs(shade(col, 0.55)))
-    if kind in ("tip", "mid"):
-        for t in ((0.3, 0.62) if kind == "tip" else (0.45,)):
+    if kind in ("tip", "tipw", "mid"):
+        for t in ((0.45,) if kind == "mid" else (0.3, 0.62)):
             r = st_radius(kind, t) * 0.92
-            zc = CELL / 2 - (0.45 if kind == "tip" else CELL) * t
+            zc = CELL / 2 - (CELL if kind == "mid" else 0.45) * t
             T.stitch([(x, 0, zc - 0.02 * (1 - (x / r) ** 2)) for x in np.linspace(-r, r, 14)], strata, dash=0.03, gap=0.012, width=0.009, height=0.005)
     else:
         sx = -1 if kind == "l" else 1
@@ -537,7 +544,7 @@ def stalactite(kind, stage):
         T.stitch([p for p in pts if abs(p[0]) < 0.24 and abs(p[2]) < 0.24], strata, dash=0.03, gap=0.012, width=0.009, height=0.005)
     if stage:
         # the tears, smaller, moved into the widest part of the shape and in front of its bulge
-        k, (cx, cz) = {"tip": (0.5, (0, 0.1)), "mid": (0.7, (0, 0)), "l": (0.7, (0.08, 0.08)), "r": (0.7, (-0.08, 0.08))}[kind]
+        k, (cx, cz) = {"tip": (0.5, (0, 0.1)), "tipw": (0.5, (0, 0.1)), "mid": (0.7, (0, 0)), "l": (0.7, (0.08, 0.08)), "r": (0.7, (-0.08, 0.08))}[kind]
         parts = tears(np.random.default_rng(3200 + stage * 10 + "tmlr".index(kind[0])), 1, False)
         if stage == 2:
             parts += tears(np.random.default_rng(3240 + "tmlr".index(kind[0])), 1, True)
@@ -583,7 +590,7 @@ def cave_tiles():
     for kind in PROPS:
         for state in range(3):
             out.append(prop_tile(kind, state))
-    for kind in ("tip", "mid", "l", "r"):
+    for kind in ("tip", "tipw", "mid", "l", "r"):
         for stage in (0, 1, 2):
             T = stalactite(kind, stage)
             T.make = lambda: None
