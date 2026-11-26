@@ -17,7 +17,17 @@ interface FloatText {
   max: number;
   vy: number;
   scale: number;
+  /** text size at scale 1 (px) */
+  w: number;
+  h: number;
+  /** screen px (at ui 1) it is drawn above its spot, to clear a float that came up at the same spot just before (#75); null until its first frame */
+  lift: number | null;
 }
+
+/** A float this young still holds its spot: a new one that would cover it goes above it (#75). */
+const FLOAT_HOLD = 0.3;
+/** Text drawn at its settled pop size and a little more, for the stacking check. */
+const FLOAT_ROOM = 1.1;
 
 export class SceneEffects {
   readonly fx = new Fx();
@@ -330,7 +340,7 @@ export class SceneEffects {
     });
     t.anchor.set(0.5);
     this.textLayer.addChild(t);
-    this.floats.push({ t, x, y, life: scale > 1.5 ? 1.6 : 0.9, max: scale > 1.5 ? 1.6 : 0.9, vy: scale > 1.5 ? 0.8 : 2.2, scale });
+    this.floats.push({ t, x, y, life: scale > 1.5 ? 1.6 : 0.9, max: scale > 1.5 ? 1.6 : 0.9, vy: scale > 1.5 ? 0.8 : 2.2, scale, w: t.width, h: t.height, lift: null });
   }
 
   /** Intro / countdown punctuation. */
@@ -352,6 +362,9 @@ export class SceneEffects {
 
     // ------------------------------------------------ floating text
     const keep: FloatText[] = [];
+    const sx = (ft: FloatText) => W / 2 + (ft.x - cx) * s;
+    const sy = (ft: FloatText) => H / 2 - (ft.y - cy) * s - (ft.lift ?? 0) * ui;
+    const room = (ft: FloatText) => ({ w: ft.w * ft.scale * ui * FLOAT_ROOM, h: ft.h * ft.scale * ui * FLOAT_ROOM });
     for (const ft of this.floats) {
       ft.life -= dt;
       if (ft.life <= 0) {
@@ -359,11 +372,28 @@ export class SceneEffects {
         continue;
       }
       ft.y += ft.vy * dt;
+      // a new float that would cover a young one (a bolt's ZAP! and its damage number, #75) goes above it
+      if (ft.lift === null) {
+        ft.lift = 0;
+        const me = room(ft);
+        for (let moved = true; moved; ) {
+          moved = false;
+          for (const o of keep) {
+            if (o.max - o.life > FLOAT_HOLD) continue;
+            const r = room(o);
+            const below = sy(o) - sy(ft); // > 0: o is lower on screen
+            if (Math.abs(sx(o) - sx(ft)) < (me.w + r.w) / 2 && Math.abs(below) < (me.h + r.h) / 2) {
+              ft.lift += ((me.h + r.h) / 2 - below) / ui;
+              moved = true;
+            }
+          }
+        }
+      }
       const t = 1 - ft.life / ft.max;
       const pop = t < 0.12 ? 0.6 + (t / 0.12) * 0.6 : 1.2 - Math.min(0.2, (t - 0.12) * 2);
       ft.t.scale.set(pop * ft.scale * ui);
       ft.t.alpha = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
-      ft.t.position.set(W / 2 + (ft.x - cx) * s, H / 2 - (ft.y - cy) * s);
+      ft.t.position.set(sx(ft), sy(ft));
       keep.push(ft);
     }
     this.floats = keep;
