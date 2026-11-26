@@ -797,6 +797,9 @@ export class ControllerNavigation {
       }
     }
 
+    // escaping a spot that went nowhere (#88): back off the way it came (in the air, only as far as a landing allows:
+    // the back-off carried fighters off small ledges into the pit, #69)
+    if (sim.tick < this.escapeUntil && !this.activeLink) moveTarget = mp.x + this.escapeDir * 2;
     // in the air (#69): only steer where a surface can still catch us; on a link, fly it the planner's way (#84)
     if (!me.grounded && !pool) {
       moveTarget = this.landing(sim, me, mp, mv, moveTarget, input);
@@ -815,8 +818,6 @@ export class ControllerNavigation {
       this.rockUntil = sim.tick + 10;
     }
     if (sim.tick < this.rockUntil) moveTarget = mp.x + this.rockDir * 2;
-    // escaping a spot that went nowhere (#88): back off the way it came
-    if (sim.tick < this.escapeUntil && !this.activeLink) moveTarget = mp.x + this.escapeDir * 2;
 
     const diff = moveTarget - mp.x;
     // a link is run up to and flown at the base walk speed (#84), as the planner flew it: a Speed power-up would

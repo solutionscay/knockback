@@ -27,6 +27,9 @@ const CLOSE_WEAPONS: readonly Weapon[] = ["bat", "hammer", "flamethrower", "ligh
 const NO_FIRE: Input = { ...NO_INPUT };
 /** a chunk this close in the line of sight is lodged on the fighter (#88), within a punch */
 const LODGED_REACH = 1.2;
+/** #69: a chunk this close in the line, with no line for LODGED_WAIT ticks, is walked up to and broken too */
+const LODGED_NEAR = 2.6;
+const LODGED_WAIT = 60;
 
 
 export class Controller {
@@ -322,12 +325,14 @@ export class Controller {
     if (me.alive && !me.removed && input !== NO_FIRE) {
       this.dropIfDone(sim, me, input);
       this.navigation.guardLiveGround(sim, me, sim.pos(me), input);
-      this.navigation.guardLedge(sim, me, sim.pos(me), sim.vel(me), input);
       this.navigation.guardLiquid(sim, me, sim.pos(me), sim.vel(me), input);
       this.escape.intoZone(sim, me, input);
       const tf = this.targetId >= 0 ? sim.fighters[this.targetId] : undefined;
       // hopping in place on the way somewhere (#109): that way is blocked; with a plan around it, no walk-and-dig
       if (this.escape.breakHops(sim, me, input, tf && tf.alive && !tf.removed ? sim.pos(tf).x : null) && this.navigation.hopsBlocked(sim, me)) this.escape.endBreak(sim);
+      // last of the walks (#69): the zone's walk and the hop-breaker's walk set the move too, and walked fighters off
+      // ledges into the pit
+      this.navigation.guardLedge(sim, me, sim.pos(me), sim.vel(me), input);
       // no idle gaps (#69): a target we can neither reach nor shoot is left for one we can
       const target = this.targetId >= 0 ? sim.fighters[this.targetId]! : null;
       if (this.navigation.watchIdle(sim, me, input, target) && target && sim.alive().length > 2 && me.surface >= 0 && target.surface >= 0 &&
@@ -484,10 +489,14 @@ export class Controller {
     this.noLos = los ? 0 : this.noLos + 1;
     // a broken-off chunk lodged against me, in the line to the target (#88: a fallen pillar wedged at a pit's lip
     // blocks every shot and the way on, 45 s of pacing): break it with the heaviest swing carried, along that line
-    const lodged = !los && sight.sight?.entity?.kind === "chunk" && sight.sight.dist < LODGED_REACH;
+    // ...or a step or two away, when it has blocked the line a while (#69: a rifle held 31 s at a pit's lip behind a
+    // chunk 2 m off, out of fist reach): step up to it (the ledge guard still holds at the lip) and break it
+    const chunkAt = !los && sight.sight?.entity?.kind === "chunk" ? sight.sight.dist : Infinity;
+    const lodged = chunkAt < LODGED_REACH || (chunkAt < LODGED_NEAR && this.noLos > LODGED_WAIT);
     if (lodged && !choice?.shot && !flying && me.stun === 0) {
       const w: Weapon = me.weapons.includes("hammer") ? "hammer" : me.weapons.includes("bat") ? "bat" : "fist";
       const l = length2D(dx0, dy0) || 1;
+      if (chunkAt > sim.ruleset.tactics.weapons.reach[w].max - 0.3 && me.grounded) input.move = Math.sign(dx0) * 0.6;
       input.weapon = w;
       if (w === "hammer") input.jump = false;
       input.aimX = dx0 / l;
