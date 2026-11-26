@@ -32,13 +32,16 @@ const GOLDEN = {
   // #125: the cave in the rotation as well (match seeds pick from seven themes)
   // #127: space in the rotation as well (match seeds pick from eight themes; its rounds play low gravity)
   // #135: a swimmer plans from the pool it is in and swims for the way out (fight 1001 is a forest round, with a creek)
-  fight: "5b45284e",
-  fightWithUpdate: "55fb2e75",
-  closeQuarters: "5be44550",
+  // #69: the ledge guard runs after the zone's and the hop-breaker's walks; the hop-breaker walks in the air only the
+  // way the landing allows; the going-nowhere back-off obeys the air's landing; a chunk up to 2.6 m off in the line
+  // is walked up to and broken
+  fight: "1857d92a",
+  fightWithUpdate: "d540f0aa",
+  closeQuarters: "0e47eb6f",
   // house bots play their souls' builds (#80)
-  match: ["2d4610c7", "dc7ee96c", "45beb234"],
+  match: ["7798f810", "15c7fc32", "6b675a22"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["f28baba9", "65d77f39", "214b93bf"],
+  neutralMatch: ["c753e246", "402efc27"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

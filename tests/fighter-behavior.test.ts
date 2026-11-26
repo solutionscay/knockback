@@ -5,7 +5,9 @@
  * Hand-built levels with no randomness in their layout; house controllers only.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { Fight, Grid, initPhysics, Mat, resolveRuleset, type LevelDef, type Strategy } from "../src/sim";
+import { Fight, Grid, houseBrain, initPhysics, Mat, Match, resolveRuleset, type Brain, type LevelDef, type Strategy } from "../src/sim";
+import { CLASSIC } from "../src/sim/ruleset";
+import { withBuilds } from "../scripts/batch-options";
 
 beforeAll(async () => {
   await initPhysics();
@@ -70,4 +72,30 @@ describe("fighter behavior", () => {
       expect(dist[0]!).toBeGreaterThan(min * 2);
     }
   });
+
+  // rounds of the #69 scorecard batch (house bots, Classic, neutral builds) where a fighter walked off a ledge on its own:
+  // the zone's walk and the hop-breaker's walk came after the ledge guard (seeds 105, 112, 11, 164), the hop-breaker
+  // held its walk in the air over a crater (77), and the going-nowhere back-off overrode the air's landing (1)
+  const walkedOff: [number, number, number][] = [[105, 1, 2], [112, 1, 3], [11, 1, 1], [164, 1, 2], [77, 3, 3], [1, 2, 3]];
+  for (const [seed, round, seat] of walkedOff) {
+    test(`ledge safety: seed ${seed} round ${round}, seat ${seat} does not fall with no attacker`, () => {
+      const brains: Brain[] = withBuilds([0, 1, 2, 3].map(() => houseBrain), { kind: "neutral" }, seed);
+      const m = new Match(seed, { ruleset: CLASSIC, brains });
+      while (m.round < round - 1) {
+        m.prepareRound();
+        while (!m.step()) {}
+        m.finishRound();
+      }
+      m.prepareRound();
+      const sim = m.fight!.sim, f = sim.fighters[seat]!;
+      let fell = false;
+      for (let over = false; !over; ) {
+        const was = f.alive, others = sim.alive().length;
+        over = m.step();
+        // a ring-out nobody caused, while the round was still on (not a fall after it was won)
+        if (was && !f.alive && f.koCause === "ringout" && (f.koBy < 0 || f.koBy === seat) && others > 1) fell = true;
+      }
+      expect({ seed, round, seat, fell }).toEqual({ seed, round, seat, fell: false });
+    }, 60_000);
+  }
 });

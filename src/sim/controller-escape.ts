@@ -228,6 +228,9 @@ export class Escape {
       input.jump = false;
       input.thrust = false;
       if (input.fire) return false; // a shot it is taking stays
+      // it walks (#69): in the air only the way the steering's landing allows (a walk held over a pit carried the
+      // fighter into it)
+      if (!me.grounded && Math.sign(input.move) !== this.breakDir) return false;
       input.move = this.breakDir;
       const g = sim.grid;
       const ahead = g.cx(p.x + this.breakDir * 0.7);

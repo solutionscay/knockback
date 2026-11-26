@@ -76,8 +76,8 @@ function mergeCards(cards: Scorecard[]): Scorecard {
   const all = newScorecard();
   for (const c of cards) {
     for (const [s, b] of Object.entries(c.byStance)) {
-      const a = (all.byStance[s] ??= { alive: 0, stare: 0, longTicks: 0, longClose: 0, longRatio: [], longDist: [], noGunTicks: 0, noGunClose: 0, falls: 0, zoneFalls: 0 });
-      a.alive += b.alive; a.stare += b.stare; a.longTicks += b.longTicks; a.longClose += b.longClose; a.noGunTicks += b.noGunTicks; a.noGunClose += b.noGunClose; a.falls += b.falls; a.zoneFalls += b.zoneFalls;
+      const a = (all.byStance[s] ??= { alive: 0, stare: 0, idle: 0, bare: 0, longTicks: 0, longClose: 0, longRatio: [], longDist: [], noGunTicks: 0, noGunClose: 0, falls: 0, zoneFalls: 0 });
+      a.alive += b.alive; a.stare += b.stare; a.idle += b.idle; a.bare += b.bare; a.longTicks += b.longTicks; a.longClose += b.longClose; a.noGunTicks += b.noGunTicks; a.noGunClose += b.noGunClose; a.falls += b.falls; a.zoneFalls += b.zoneFalls;
       for (const r of b.longRatio) a.longRatio.push(r);
       for (const d of b.longDist) a.longDist.push(d);
     }
