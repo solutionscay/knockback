@@ -75,10 +75,10 @@ describe("fighter behavior", () => {
 
   // rounds of the #69 scorecard batch (house bots, Classic, neutral builds) where a fighter walked off a ledge on its own:
   // the zone's walk and the hop-breaker's walk came after the ledge guard (seeds 105, 112, 11, 164), the hop-breaker
-  // held its walk in the air over a crater (77). (#156: seed 1 round 2, where the going-nowhere back-off overrode the
-  // air's landing, left the list: the zone's new stopping edges change that round, and seat 3 now overshoots a low
-  // ledge in a jump with no link instead, a different fall)
-  const walkedOff: [number, number, number][] = [[105, 1, 2], [112, 1, 3], [11, 1, 1], [164, 1, 2], [77, 3, 3]];
+  // held its walk in the air over a crater (77), and the going-nowhere back-off overrode the air's landing (1). On the
+  // zone of #156, seed 1 round 2 changed: seat 3's escape from a pocket started in the air, mid-drop, and drove the
+  // flight toward an exit across the pit (#159: escape starts only on the ground, and never pushes over a drop)
+  const walkedOff: [number, number, number][] = [[105, 1, 2], [112, 1, 3], [11, 1, 1], [164, 1, 2], [77, 3, 3], [1, 2, 3]];
   for (const [seed, round, seat] of walkedOff) {
     test(`ledge safety: seed ${seed} round ${round}, seat ${seat} does not fall with no attacker`, () => {
       const brains: Brain[] = withBuilds([0, 1, 2, 3].map(() => houseBrain), { kind: "neutral" }, seed);

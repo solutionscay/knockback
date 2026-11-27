@@ -33,6 +33,8 @@ const ESCAPE_TICKS = 36;
 const BLOCKER_TICKS = 180;
 /** a hop needs this much headroom over the head to clear what is in front (#88) */
 const HOP_HEADROOM = 1.1;
+/** #159: how long (ticks) out of the water a swimmer still plans from the pool it swam in (a stroke's lift) */
+const POOL_MEMORY_TICKS = 40;
 
 export interface Goal {
   surface: number;
@@ -75,6 +77,8 @@ export class ControllerNavigation {
   private jumpTo: { x: number; y: number } | null = null;
   /** where the feet last stood (#69): the ledge to fall back on */
   private foothold: { x: number; y: number } | null = null;
+  /** the pool last swum in, and when (#159: a stroke that lifts the swimmer out still plans from it) */
+  private lastPool: { id: number; tick: number } | null = null;
   /** the link this fighter is walking to this tick: its edge is not a ledge to stop at */
   private edgeLink: Link | null = null;
   /** wedged (#69): ticks stuck in the air (between two corners), and until when to push the other way */
@@ -683,6 +687,7 @@ export class ControllerNavigation {
       this.navVersion = sim.navVersion;
       this.goal = null;
       this.activeLink = null;
+      this.lastPool = null;
     }
 
     const surf = me.surface >= 0 ? nav.surfaces[me.surface] : undefined;
@@ -698,7 +703,13 @@ export class ControllerNavigation {
     // was on is over (a drop into the pool, or a jump that fell short into it), so it plans from the pool and swims for
     // the way out that leads to the goal, instead of holding over the link's landing and then turning back to the rim
     // it came from, to drop in again (#135: the pool-edge loops on the beach, forest, cave and space)
-    const pool = this.swimPool(sim, me, mp);
+    let pool = this.swimPool(sim, me, mp);
+    // #159: a stroke lifts the swimmer clear of the water (or past the pool floor's end, at its wall) for a moment.
+    // Planned from its old rim then, the first link was the drop back into the pool, so it turned round on every
+    // stroke and bobbed at the wall: until it lands or takes a link, it still plans from the pool it swam in
+    if (pool) this.lastPool = { id: pool.id, tick: sim.tick };
+    else if (me.grounded || this.activeLink) this.lastPool = null;
+    else if (this.lastPool && sim.tick - this.lastPool.tick <= POOL_MEMORY_TICKS && swimmable(nav.surfaces[this.lastPool.id]?.liquid ?? 0)) pool = nav.surfaces[this.lastPool.id]!;
     if (pool) {
       this.activeLink = null;
       this.jumpTo = null;

@@ -246,6 +246,32 @@ export function makeRoomForWeapon(sim: Sim) {
 }
 
 /** How high above a spot a dropped item can start and still fall onto it: up to `top`, below anything solid. */
+/**
+ * Where a sudden-death drop lands (#159): on ground in the zone that most of the living fighters' own plans reach, the
+ * point nearest `x` (the survivors' midpoint), off a drop's lip where there is room. The midpoint itself was often over
+ * the pit between them: the weapon fell in, and a rusher with a bat stared across the gap at its rival. `side`: the
+ * drops take turns at or left of x (-1) and at or right of it (1), so survivors apart on two grounds both get some.
+ * Null when no fighter stands on known ground.
+ */
+export function suddenDeathSpot(sim: Sim, x: number, side: -1 | 1): Sim["nav"]["points"][number] | null {
+  const nav = sim.nav, z = sim.zone, size = sim.ruleset.pickups.item.size, gap = sim.ruleset.pickups.spots.edgeGap;
+  const who = sim.alive().filter((f) => f.surface >= 0 && f.surface < nav.surfaces.length);
+  if (!who.length) return null;
+  const counts = planCounts(sim, who);
+  let points = nav.points.filter((p) => p.x >= z.lo - 1 && p.x <= z.hi + 1 && counts[p.surface]! > 0 && !nav.surfaces[p.surface]!.fragile && !sim.grid.solidAt(p.x, p.y + size));
+  if (!points.length) return null;
+  const most = Math.max(...points.map((p) => counts[p.surface]!));
+  points = points.filter((p) => counts[p.surface] === most);
+  const inside = points.filter((p) => {
+    const s = nav.surfaces[p.surface]!;
+    return !(s.dropLeft && p.x - s.x0 < gap) && !(s.dropRight && s.x1 - p.x < gap);
+  });
+  if (inside.length) points = inside;
+  const sided = points.filter((p) => (p.x - x) * side >= 0);
+  if (sided.length) points = sided;
+  return points.reduce((a, p) => (Math.abs(p.x - x) < Math.abs(a.x - x) || (Math.abs(p.x - x) === Math.abs(a.x - x) && p.x < a.x) ? p : a));
+}
+
 export function dropHeight(sim: Sim, p: Point, top: number): number {
   const g = sim.grid;
   for (let y = p.y + 0.6; y < top; y += 0.25) if (g.solidAt(p.x, y + 0.6)) return Math.max(p.y + 0.4, y);

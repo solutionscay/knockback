@@ -37,11 +37,14 @@ const GOLDEN = {
   // is walked up to and broken
   // #156: the zone stops (regular and sudden death) only on ground a fighter can hold, and sudden death closes to the
   // nearest such ground (match rounds 1 and 3 move; fight 1001 and the neutral match keep their hashes)
-  fight: "1857d92a",
-  fightWithUpdate: "d540f0aa",
-  closeQuarters: "0e47eb6f",
+  // #159: sudden-death drops land on ground the survivors reach; a swimmer lifted out of the water by a stroke still
+  // plans from its pool; an escape from a pocket starts on the ground and never pushes over a drop (fight 1001, Close
+  // Quarters and the match move; the neutral match keeps its hashes)
+  fight: "c6b153f2",
+  fightWithUpdate: "363c888f",
+  closeQuarters: "4f1e6a88",
   // house bots play their souls' builds (#80)
-  match: ["c876bc3d", "15c7fc32", "f98e68f5"],
+  match: ["db9d17a9", "617fb886", "864cf927"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
   neutralMatch: ["c753e246", "402efc27"],
 };
