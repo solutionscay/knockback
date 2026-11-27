@@ -47,9 +47,9 @@ session scoreboard.
 
 Sound (#12): every sound is generated in code (no audio files in the repo); it starts with the first click or
 key press (browser rule). The corner has a mute button and a volume slider, remembered per browser. A private
-sample pack can replace sounds by name (`/sounds/manifest.json`, served by `bun run dev` from the git- and
-docker-ignored `sounds/` folder, or `--sounds <dir>`). Capture-mode videos get their audio from a cue log
-(`__kb.drainSounds()` + `scripts/sound-mix.ts`). See [docs/sound.md](sound.md).
+sample pack can replace sounds by name when the URL asks for it (`?sounds=/sounds/manifest.json`, served by
+`bun run dev` from the git- and docker-ignored `sounds/` folder, or `--sounds <dir>`). Capture-mode videos get
+their audio from a cue log (`__kb.drainSounds()` + `scripts/sound-mix.ts`). See [docs/sound.md](sound.md).
 
 ## Tests
 

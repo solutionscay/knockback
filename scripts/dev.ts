@@ -35,3 +35,4 @@ const server = Bun.serve({
 console.log(`Knockback viewer: http://localhost:${server.port}/`);
 logLanUrls(hostname, server.port, "/");
 console.log("  add ?seed=123 to pick a match, ?hold to wait for the Next match button");
+if (await Bun.file(join(soundsDir, "manifest.json")).exists()) console.log("  sample pack: add ?sounds=/sounds/manifest.json");

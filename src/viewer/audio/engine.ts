@@ -3,8 +3,8 @@
  * - Silent until the first user gesture (browser autoplay policy): the AudioContext is made on the first
  *   pointer, key or touch event.
  * - Generated sounds by default (recipes.ts, rendered once per pitch/variant and cached).
- * - An optional private sample pack replaces sounds by name: a manifest at a configurable URL
- *   (default /sounds/manifest.json, served from a folder that is never committed). See parseManifest.
+ * - An optional private sample pack replaces sounds by name: a manifest named by ?sounds=<url> (no default: the
+ *   pack is never committed and the match server does not serve one). See packManifestUrl and parseManifest.
  * - Pan and volume from the camera (map.ts spatial), voice limiting (mixer.ts), then a compressor and a limiter.
  * - Capture mode: nothing plays; every cue is logged with its game time, pan and gain, so a video render can mix
  *   the audio afterwards with the same synthesis (scripts/sound-mix.ts).
@@ -40,6 +40,15 @@ export function saveSettings(s: SoundSettings, storage: Pick<Storage, "setItem">
   } catch {
     /* private mode: not remembered */
   }
+}
+
+/**
+ * The sample pack manifest URL from the ?sounds= parameter, or null (no pack, no request). A same-site path (not
+ * "//host/...", which is another site) or an https URL, ending in .json; anything else is ignored.
+ */
+export function packManifestUrl(param: string | null): string | null {
+  if (!param) return null;
+  return /^\/(?!\/)[\w./-]+\.json$/.test(param) || /^https:\/\/[\w.-]+(:\d+)?\/[\w./-]+\.json$/.test(param) ? param : null;
 }
 
 /** A sample pack entry: one or more files (picked by the cue's seed) and a gain. */
