@@ -69,7 +69,8 @@ bun scripts/remote-agent.ts --server http://localhost:5176 --key kbk_... --mode 
 - [docs/ai.md](docs/ai.md): local AI matches, model badges and the models leaderboard, the AI eval.
 - [docs/development.md](docs/development.md): the local viewer, the stage, tests, other scripts, the source layout.
 - [docs/sound.md](docs/sound.md), [docs/video.md](docs/video.md), [docs/deploy.md](docs/deploy.md): sound, match
-  videos, the container deploy.
+  videos, the container deploy. Durable operator data on the dev Mac lives in `KB_DATA` (`~/knockback-data`), never
+  under `~/skiff-agent`: see [docs/deploy.md](docs/deploy.md#operator-data-on-the-dev-mac-kb_data).
 
 ## Art
 

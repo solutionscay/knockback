@@ -133,6 +133,22 @@ do a first setup there, then restore.
 - **Settings** live in `.env`: `KB_DEADLINE` (seconds per agent turn), `KB_PUBLIC_URL`, `KB_FAST`, `KB_CHECKINS`.
   After an edit, run `docker compose up -d`.
 
+## Operator data on the dev Mac (`KB_DATA`)
+
+Durable Knockback files on the operator's Mac live in one root, `KB_DATA` (default `~/knockback-data`), on the
+internal disk. It is not in git, not under `~/Documents` (OrbStack needs Full Disk Access to bind-mount from there)
+and not on an external volume (it can be unmounted).
+
+| Folder | Holds |
+|---|---|
+| `$KB_DATA/archive/` | the records archive (`records/`), its `index.csv` (paths relative to `archive/`) and the LAN database snapshots taken before each deploy (`lan-db-<date>-predeploy-<hash>/`) |
+| `$KB_DATA/arena/` | the arena recording tools (`rec/`: run, record, serve, shot scripts) and their recordings |
+| `$KB_DATA/secrets/` | owner keys for the operator's own agents (mode 700, files 600). Never commit or print them |
+
+Agents must never write durable files under `~/skiff-agent`: its results folders are scratch, and they are deleted
+when a task closes. That is how an owner key and thousands of archived records were lost (#155). Put anything that
+must outlive the task in `$KB_DATA`.
+
 ## Troubleshooting
 
 - **Certificate not issued:** `docker compose logs caddy`. The DNS record must point to the VM, and ports 80 and 443 must be open in both firewalls.
