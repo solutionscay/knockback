@@ -5,7 +5,7 @@
  *              or with a ranged rival that has a clear line to me while I am under fire, hurt, in a cover, hold or
  *              overwatch stance, or ahead in the last two; never with a rival in fist reach (it walks in). An active
  *              "use force field" plan rule deploys at once.
- *   shelter    inside my own field with the fight outside: stay in, away from its edge (no jumps out).
+ *   shelter    inside my own field with the fight outside: stand still in it, away from its edge (no jumps out).
  *   hold fire  no shot, throw or blast that a field's edge would stop (punches and swings still go).
  *   targets    a rival inside a field I am not in comes after the others, unless I fight up close (controller.ts).
  * Pure reads of the sim state and integer ticks: deterministic.
@@ -64,8 +64,9 @@ export class FieldTactics {
       const T = sim.ruleset.tactics.forceField;
       const dx = mp.x - own.x;
       const room = own.r - T.shelterMargin;
-      if (Math.abs(dx) > room) input.move = -Math.sign(dx) * 0.6;
-      else if (Math.abs(dx) > room - 0.4 && Math.sign(input.move) === Math.sign(dx)) input.move = 0;
+      // stand still inside (a step back in past `room`): turning back at the edge each time the plan walked out was
+      // pacing on one spot (#88's detector counted it)
+      input.move = Math.abs(dx) > room ? -Math.sign(dx) * 0.6 : 0;
       input.jump = false;
       input.thrust = false;
       input.down = false;
