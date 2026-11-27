@@ -92,6 +92,12 @@ const api = new MatchServer({
   arena: { deadlineMs: secs(flags.deadline, 75_000), ...(publicUrl ? { publicUrl } : {}) },
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
+// the drain before a deploy (#167, docs/deploy.md): SIGUSR2 finishes the round on now and holds the next one (at most
+// --drain-max s, default 600); SIGHUP ends the drain. `docker compose kill -s SIGUSR2 server`; GET /api/health shows
+// it. Set before the server listens: once it answers the healthcheck these signals never end it (unhandled, they would).
+const drainMaxMs = secs(flags["drain-max"], 600_000);
+process.on("SIGUSR2", () => api.arena.drain(drainMaxMs));
+process.on("SIGHUP", () => api.arena.undrain("SIGHUP"));
 const mcp = flags["no-mcp"] === "true" ? null : new McpGateway(api, publicUrl ? { publicUrl } : {});
 
 /**
@@ -143,10 +149,5 @@ for (const sig of ["SIGINT", "SIGTERM"] as const)
     console.log(`${sig}: closing the database`);
     void store.close().finally(() => process.exit(0));
   });
-// the drain before a deploy (#167, docs/deploy.md): SIGUSR2 finishes the round on now and holds the next one (at most
-// --drain-max s, default 600); SIGHUP ends the drain. `docker compose kill -s SIGUSR2 server`; GET /api/health shows it.
-const drainMaxMs = secs(flags["drain-max"], 600_000);
-process.on("SIGUSR2", () => api.arena.drain(drainMaxMs));
-process.on("SIGHUP", () => api.arena.undrain("SIGHUP"));
 // the Arena never stops: house bots fill every seat no agent holds
 void api.arena.start();

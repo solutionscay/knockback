@@ -93,5 +93,7 @@ remote '
   [ -n "$cur" ] && [ "$cur" != "'"$TAG"'" ] && echo "$cur" > .previous-tag
   docker compose up -d --no-build
   '"$wait_healthy"'
+  # the same tag again keeps the drained container: end its drain (a new server has none; SIGHUP does nothing there)
+  [ -z "${drained:-}" ] || docker compose kill -s SIGHUP server >/dev/null
   docker compose ps
   echo "deployed '"$TAG"' (previous: ${cur:-none}); rollback: deploy/deploy.sh --rollback"'
