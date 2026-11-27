@@ -35,6 +35,19 @@ const BLOCKER_TICKS = 180;
 const HOP_HEADROOM = 1.1;
 /** #159: how long (ticks) out of the water a swimmer still plans from the pool it swam in (a stroke's lift) */
 const POOL_MEMORY_TICKS = 40;
+/**
+ * #163: debris on the way to a pickup (the nav graph sees only the grid): a crate, a pane of glass or a broken-off chunk
+ * of at most CLEAR_CHUNK_CELLS cells, within CLEAR_REACH m in front, is punched through for up to CLEAR_TICKS (once per
+ * pickup) before the way counts as blocked
+ */
+const CLEAR_TICKS = 180;
+const CLEAR_REACH = 1.6;
+const CLEAR_CHUNK_CELLS = 12;
+/**
+ * #163: a pickup under a prop or a chunk is taken from the floor beside it (no hop onto it, where the body can't reach
+ * down); this long pressed against the cover, still out of reach, and it is given up
+ */
+const COVER_TICKS = 40;
 
 export interface Goal {
   surface: number;
@@ -52,6 +65,13 @@ export class ControllerNavigation {
   private skipItems = new Map<number, number>();
   /** pickup being chased: give up on it if we stop getting closer (unreachable spots) */
   private chase: { id: number; best: number; since: number } | null = null;
+  /** #163: debris being punched through on the way to a pickup: which entity, which way, for which pickup, until when */
+  private clearing: { entity: number; dir: 1 | -1; item: number; until: number } | null = null;
+  /** #163: pickups a clearing was already tried for */
+  private cleared = new Set<number>();
+  /** #163: near a covered pickup this tick (no hop onto its cover), and ticks pressed against the cover out of reach */
+  private nearCover = false;
+  private coverPress = 0;
   /** progress toward the current goal (stuck watchdog) */
   private prog: { surface: number; x: number; y: number; best: number; since: number } | null = null;
   /** surfaces to stay off for a while, by where they are (#88: surface ids change with every nav rebuild) */
@@ -177,7 +197,7 @@ export class ControllerNavigation {
     const takeoff = this.wasGrounded && !me.grounded && sim.vel(me).y > 2;
     this.wasGrounded = me.grounded;
     const quiet = sim.tick - this.controller.lastFight > NOWHERE_TICKS;
-    if (!target || !target.alive || target.removed || me.stun > 0 || !quiet || sim.tick < this.escapeUntil) {
+    if (!target || !target.alive || target.removed || me.stun > 0 || !quiet || sim.tick < this.escapeUntil || this.clearing) {
       this.trail.length = 0;
       return false;
     }
@@ -210,8 +230,10 @@ export class ControllerNavigation {
     if (!hopping && !pacing && !pushing) return false;
     // the way it was trying to go: the moves' average, or toward the goal
     const want: 1 | -1 = Math.abs(pushSum) > tr.length * 0.15 ? (pushSum > 0 ? 1 : -1) : (this.goal?.x ?? sim.pos(target).x) >= p.x ? 1 : -1;
-    this.addBlocker(sim, me, want);
     const g = this.goal;
+    // #163: on the way to a pickup with debris in front: punch through it first
+    if (this.startClearing(sim, me, want)) return false;
+    this.addBlocker(sim, me, want);
     if (g?.item !== undefined) this.skipItems.set(g.item, sim.tick + sim.ruleset.tactics.pickup.skipTicks);
     if (g && g.surface !== me.surface) this.markBad(sim, g.surface, sim.ruleset.tactics.patience.avoidTicks);
     this.escapeDir = want === 1 ? -1 : 1;
@@ -229,6 +251,99 @@ export class ControllerNavigation {
 
   replan(tick: number) {
     this.nextEval = tick;
+  }
+
+  /**
+   * #163: debris in front of the fighter going `dir` (at the feet, the middle and the head): a crate, glass or a small
+   * broken-off chunk within CLEAR_REACH m, the nearest first; where the ray meets it.
+   */
+  private debrisAhead(sim: Sim, me: Fighter, dir: 1 | -1, only?: number): { entity: number; x: number; y: number; dist: number } | null {
+    const p = sim.pos(me), feet = sim.feetY(me);
+    const F = sim.ruleset.combat.fighter;
+    let best: { entity: number; x: number; y: number; dist: number } | null = null;
+    for (const [dy, y] of [[0, feet + 0.35], [0, p.y], [0.5, feet + 2 * (F.halfHeight + F.radius) - 0.2]] as const) {
+      const l = Math.hypot(1, dy);
+      const hit = sim.raycast(p.x, y, dir / l, dy / l, CLEAR_REACH, me.entity.collider);
+      const e = hit?.entity;
+      if (!hit || !e || e.dead || (only !== undefined && e.id !== only)) continue;
+      const debris = e.kind === "crate" || e.kind === "glass" || (e.kind === "chunk" && e.cells!.length <= CLEAR_CHUNK_CELLS);
+      if (debris && (!best || hit.dist < best.dist)) best = { entity: e.id, x: p.x + (dir / l) * hit.dist, y: y + (dy / l) * hit.dist, dist: hit.dist };
+    }
+    return best;
+  }
+
+  /**
+   * #163: the walk for a pickup under a prop or a chunk (the nav graph sees neither: the goal is the pickup's spot, and
+   * the hop over what is in the way put the fighter on top of the cover, where the body can't reach down to it). On top:
+   * off it to the nearest floor beside it. Beside it: no hop onto it; pressed against it out of reach for COVER_TICKS:
+   * given up.
+   */
+  private besideCover(sim: Sim, me: Fighter, mp: { x: number; y: number }, mv: { x: number }, item: number, moveTarget: number): number {
+    const it = sim.entities.get(item);
+    if (!it) return moveTarget;
+    const ip = it.body.translation();
+    const dx = ip.x - mp.x;
+    const over = Math.abs(dx) < 2.5 ? sim.raycast(ip.x, ip.y, 0, 1, 1.6, it.collider) : null;
+    const e = over?.entity;
+    if (!e || e.kind === "fighter" || e.kind === "item" || e.kind === "grenade") {
+      this.coverPress = 0;
+      return moveTarget;
+    }
+    this.nearCover = true;
+    const feet = sim.feetY(me);
+    const P = sim.ruleset.pickups.item;
+    const giveUp = () => {
+      this.skipItems.set(item, sim.tick + sim.ruleset.tactics.pickup.skipTicks);
+      this.coverPress = 0;
+      this.nextEval = sim.tick;
+      return moveTarget;
+    };
+    if (ip.y < feet - P.reachBelow + 0.05) {
+      // on top of the cover (or of something else over the pickup's floor): the nearest floor beside it, my side first
+      const side = dx > 0 ? -1 : 1;
+      for (let d = 0.7; d <= 2.5; d += 0.2)
+        for (const k of [side, -side]) {
+          const x = ip.x + k * d;
+          const down = sim.raycast(x, feet + 0.2, 0, -1, feet - ip.y + 0.8, me.entity.collider);
+          if (down?.terrain && Math.abs(feet + 0.2 - down.dist - (ip.y - it.hh)) < 0.3) return x;
+        }
+      return giveUp();
+    }
+    // on the pickup's floor beside the cover: press in toward it; still out of reach a while, give it up
+    const inReach = Math.abs(dx) <= P.pickupRange * 0.85;
+    this.coverPress = !inReach && Math.abs(mv.x) < 0.3 ? this.coverPress + 1 : 0;
+    if (this.coverPress > COVER_TICKS) return giveUp();
+    return moveTarget;
+  }
+
+  /** #163: on the way to a pickup, debris in front going `dir`: punch through it (once per pickup). True when started. */
+  private startClearing(sim: Sim, me: Fighter, dir: 1 | -1): boolean {
+    const g = this.goal;
+    if (g?.item === undefined || this.cleared.has(g.item)) return false;
+    const d = this.debrisAhead(sim, me, dir);
+    if (!d) return false;
+    this.cleared.add(g.item);
+    this.clearing = { entity: d.entity, dir, item: g.item, until: sim.tick + CLEAR_TICKS };
+    this.trail.length = 0;
+    return true;
+  }
+
+  /**
+   * #163: the debris being punched through this tick (where to swing), or null once it is gone, out of the way, the
+   * pickup is no longer the goal, or the time is up.
+   */
+  clearingAt(sim: Sim, me: Fighter): { entity: number; x: number; y: number; dist: number } | null {
+    const c = this.clearing;
+    if (!c) return null;
+    // a chunk punched apart is new pieces: the next debris in front is punched on, while the time lasts
+    const hit = sim.tick < c.until && this.goal?.item === c.item && sim.entities.has(c.item) ? this.debrisAhead(sim, me, c.dir, c.entity) ?? this.debrisAhead(sim, me, c.dir) : null;
+    if (hit) c.entity = hit.entity;
+    else {
+      this.clearing = null;
+      this.trail.length = 0;
+      this.nextEval = sim.tick;
+    }
+    return hit;
   }
 
   /** A new plan: forget the stance's chosen spots (#38). */
@@ -410,7 +525,7 @@ export class ControllerNavigation {
         // no closer for sim.ruleset.tactics.pickup.giveUpTicks: unreachable, skip it for a while
         const d = Math.abs(sim.pos(me).x - best.x) + Math.abs(sim.pos(me).y - (nav.surfaces[best.surface]?.y ?? 0)) * 0.5;
         if (!this.chase || this.chase.id !== best.item) this.chase = { id: best.item!, best: d, since: sim.tick };
-        else if (d < this.chase.best - 0.5) this.chase = { id: best.item!, best: d, since: sim.tick };
+        else if (d < this.chase.best - 0.5 || this.clearing?.item === best.item) this.chase = { id: best.item!, best: Math.min(d, this.chase.best), since: sim.tick };
         else if (sim.tick - this.chase.since > sim.ruleset.tactics.pickup.giveUpTicks) {
           // weapons are few (#95): bare-handed or low, try that one again soon
           const again = (!armed || low) && sim.items().some((e) => e.id === best!.item && isWeaponItem(e.itemType));
@@ -690,6 +805,8 @@ export class ControllerNavigation {
       this.lastPool = null;
     }
 
+    // #163: a clearing ends with its time or its pickup, also on ticks the controller spends on something else
+    if (this.clearing && (sim.tick >= this.clearing.until || this.goal?.item !== this.clearing.item)) this.clearing = null;
     const surf = me.surface >= 0 ? nav.surfaces[me.surface] : undefined;
     let moveTarget = tp.x;
     const lastEdge = this.edgeLink;
@@ -800,6 +917,11 @@ export class ControllerNavigation {
       }
     }
 
+    // #163: a pickup under a prop or a chunk: from the floor beside it
+    this.nearCover = false;
+    if (this.goal?.item !== undefined && me.grounded && !this.activeLink) moveTarget = this.besideCover(sim, me, mp, mv, this.goal.item, moveTarget);
+    else this.coverPress = 0;
+
     // run from lit TNT / armed barrels
     for (const d of sim.dangers()) {
       const dx = mp.x - d.x;
@@ -848,15 +970,17 @@ export class ControllerNavigation {
       const F = sim.ruleset.combat.fighter;
       const head = sim.feetY(me) + 2 * (F.halfHeight + F.radius);
       const roof = () => sim.raycast(mp.x + dir * 0.3, head - 0.05, 0, 1, HOP_HEADROOM, me.entity.collider);
-      if (hit && hit.entity?.kind !== "fighter" && !stopsShort) {
+      // ...and while punching through debris (#163), no hop: up against it, under a low roof, debris on the way to a
+      // pickup is punched through; anything else is no way past here
+      if (hit && hit.entity?.kind !== "fighter" && !stopsShort && !this.clearing && !this.nearCover) {
         if (!roof()) {
           input.jump = true;
           this.hopped = true;
-        } else if (hit.dist < 0.5) this.blockWay(sim, me, dir); // up against it under a low roof: no way past here
+        } else if (hit.dist < 0.5 && !this.startClearing(sim, me, dir)) this.blockWay(sim, me, dir);
       }
       if (Math.abs(mv.x) < 0.6) this.stuck++;
       else this.stuck = 0;
-      if (this.stuck > 18) {
+      if (this.stuck > 18 && !this.clearing && !this.nearCover) {
         if (!roof()) {
           input.jump = true;
           this.hopped = true;

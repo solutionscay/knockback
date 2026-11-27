@@ -504,6 +504,21 @@ export class Controller {
       input.fire = (sim.weapon(me) === w || w === "fist") && me.swap === 0 && me.cooldown[w] === 0;
       return input;
     }
+    // debris on the way to a pickup (#163: a crate stack under a hanging chunk between a bare-handed fighter and the
+    // bat): break it with the heaviest swing carried, stepping up to it, before that way counts as blocked
+    const clear = this.navigation.clearingAt(sim, me);
+    if (clear && !choice?.shot && !flying && me.stun === 0) {
+      const w: Weapon = me.weapons.includes("hammer") && me.grounded ? "hammer" : me.weapons.includes("bat") ? "bat" : "fist";
+      const cx = clear.x - mp.x, cy = clear.y - (mp.y + 0.25);
+      const l = length2D(cx, cy) || 1;
+      input.move = clear.dist > sim.ruleset.tactics.weapons.reach[w].max - 0.5 && me.grounded ? Math.sign(cx) * 0.6 : 0;
+      input.jump = false;
+      input.weapon = w;
+      input.aimX = cx / l;
+      input.aimY = cy / l;
+      input.fire = (sim.weapon(me) === w || w === "fist") && me.swap === 0 && me.cooldown[w] === 0;
+      return input;
+    }
     // a target with no path and no line of sight for long: pick someone else for a while
     const tSurf = target.surface;
     const reachable = surf && tSurf >= 0 ? sim.nav.fighterPlan(sim.grid, me.surface, mp.x).cost[tSurf] !== Infinity : true;

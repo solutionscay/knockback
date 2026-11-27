@@ -43,13 +43,16 @@ const GOLDEN = {
   // #159 (seat order): the fighters act (inputs, then pickups) in an order that turns with the tick, not in seat order,
   // so no seat lands first in every trade of blows or wins every race for an item (every hash moves; the neutral match
   // now plays three rounds)
+  // #163: debris on the way to a pickup (a crate, glass, a small chunk the hop cannot clear) is punched through, and a
+  // pickup under a prop or a chunk is taken from the floor beside it, not from on top (fight 1001 keeps its hash; the
+  // plan update, Close Quarters and the match move; the neutral match keeps its first round)
   fight: "9164c17a",
-  fightWithUpdate: "3f9dab08",
-  closeQuarters: "b854ea3d",
+  fightWithUpdate: "0b07023d",
+  closeQuarters: "2d3c3d9b",
   // house bots play their souls' builds (#80)
-  match: ["2216937c", "7082f1f1", "c6179449"],
+  match: ["10951ab7", "310dc741", "bcb07ccc"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["2f6a5f9d", "91d1bafb", "bb2eb5bf"],
+  neutralMatch: ["2f6a5f9d", "3513fc54", "3455be1e"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {
