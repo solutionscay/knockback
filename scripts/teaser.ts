@@ -15,6 +15,7 @@ import { OptionError, parseTeaserArgs } from "./teaser/options";
 import { cleanup, deliver, teaserPaths } from "./teaser/paths";
 import { planVideo } from "./teaser/plan";
 import { getRecord, matchFacts } from "./teaser/source";
+import { webglRenderer } from "./viewer-browser";
 
 let opts;
 try {
@@ -49,7 +50,8 @@ const facts = await matchFacts(got.rec);
 phase("sim pass (dead stretches, numbers)");
 
 const server = serveViewer(JSON.stringify(got.rec));
-const browser = await launch();
+const browser = await launch(opts.gpu);
+log(`  browser GPU: ${opts.gpu} (WebGL: ${await webglRenderer(browser)})`);
 try {
   const timeline = await scanTimeline(browser, server.url);
   const plan = planVideo(timeline, facts.dead, opts.fps);

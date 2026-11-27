@@ -5,10 +5,11 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { chromium, type Browser, type Page } from "playwright";
+import type { Browser, Page } from "playwright";
 import index from "../../index.html";
 import type { LoggedCue } from "../../src/viewer/audio/engine";
 import { modelOf } from "../../src/stats/models";
+import { launchViewerBrowser, type GpuBackend } from "../viewer-browser";
 import { chunks, type Plan, type Timeline } from "./plan";
 
 /**
@@ -43,8 +44,9 @@ export function serveViewer(recordJson: string) {
   return { url: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) };
 }
 
-export async function launch(): Promise<Browser> {
-  return chromium.launch({ args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"] });
+/** The capture browser on the chosen GPU backend (SwiftShader by default, see ../viewer-browser.ts). */
+export function launch(gpu: GpuBackend): Promise<Browser> {
+  return launchViewerBrowser(gpu, ["--autoplay-policy=no-user-gesture-required"]);
 }
 
 async function openPage(browser: Browser, base: string, w: number, h: number): Promise<Page> {
