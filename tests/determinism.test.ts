@@ -40,13 +40,16 @@ const GOLDEN = {
   // #159: sudden-death drops land on ground the survivors reach; a swimmer lifted out of the water by a stroke still
   // plans from its pool; an escape from a pocket starts on the ground and never pushes over a drop (fight 1001, Close
   // Quarters and the match move; the neutral match keeps its hashes)
-  fight: "c6b153f2",
-  fightWithUpdate: "363c888f",
-  closeQuarters: "4f1e6a88",
+  // #159 (seat order): the fighters act (inputs, then pickups) in an order that turns with the tick, not in seat order,
+  // so no seat lands first in every trade of blows or wins every race for an item (every hash moves; the neutral match
+  // now plays three rounds)
+  fight: "9164c17a",
+  fightWithUpdate: "3f9dab08",
+  closeQuarters: "b854ea3d",
   // house bots play their souls' builds (#80)
-  match: ["db9d17a9", "617fb886", "864cf927"],
+  match: ["2216937c", "7082f1f1", "c6179449"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["c753e246", "402efc27"],
+  neutralMatch: ["2f6a5f9d", "91d1bafb", "bb2eb5bf"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

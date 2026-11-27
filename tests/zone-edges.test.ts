@@ -24,9 +24,12 @@ describe("zone edges", () => {
   test("junkyard seed 169: sudden death stops past the lip at x = 3.5, not on it", () => {
     // before #156 the zone closed to -1.5..3.5 with its right edge on the lip of the ground (x 3.5..18): fighter 0 stood
     // on the lip, stepped out, was pushed back, and paced there for 54 s
+    // checked when sudden death's zone stops closing, not at the round's end: with the act order of #159 the round
+    // runs on, and blasts carve the ground at the edge away later
     const m = arenaRound("junkyard", 169);
     const sim = m.fight!.sim;
-    while (!m.step() && sim.tick < 2400) {}
+    let hi = sim.zone.hi;
+    while (!m.step() && sim.tick < 2400 && !(sim.suddenDeath > 0 && sim.zone.hi === hi)) hi = sim.zone.hi;
     expect(sim.suddenDeath).toBeGreaterThan(0);
     expect(sim.zone.hi).toBeGreaterThanOrEqual(3.5 + 1.5);
     expect(holdableEdge(sim, sim.zone.hi, 1)).toBe(true);
