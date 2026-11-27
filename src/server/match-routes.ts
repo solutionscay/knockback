@@ -29,7 +29,7 @@ import { siteRoute } from "./site";
 /** Liveness and readiness for the container healthcheck: the process answers and the store can be read. */
 export async function health(server: MatchServer): Promise<Response> {
   const count = (st: string) => [...server.matches.values()].filter((m) => m.status === st).length;
-  const base = { version: server.opts.version, uptimeSec: Math.round(process.uptime()), arenaRound: server.arena.current?.arenaRound ?? null, matches: { open: count("open"), running: count("running") } };
+  const base = { version: server.opts.version, uptimeSec: Math.round(process.uptime()), arenaRound: server.arena.current?.arenaRound ?? null, matches: { open: count("open"), running: count("running") }, arena: server.arena.state() };
   try {
     await server.store.listMatches(["running"]);
     return json({ ok: true, ...base, store: "ok" });

@@ -9,13 +9,21 @@
 #
 # Env: KB_HOST (user@host, or "local"), KB_DIR (default /opt/knockback),
 # KB_PLATFORM (default linux/amd64; linux/arm64 for Hetzner CAX), KB_ALLOW_DIRTY=1
-# to deploy uncommitted changes (tagged <hash>-dirty).
+# to deploy uncommitted changes (tagged <hash>-dirty), KB_WAIT (seconds to wait for
+# the Arena round in progress to end before the stop, default 150; 0 = stop at once).
+#
+# Before the stop (#167) it drains the running server (SIGUSR2: the round in progress
+# ends, the next one is held) and waits until the Arena is idle, so no round is cut off
+# and resumed on the new version. The wait runs in the new image (`bun run arena
+# wait-idle`). On a timeout it ends the drain, leaves the old version running and exits 3.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 HOST=${KB_HOST:?set KB_HOST=user@host (or local)}
 DIR=${KB_DIR:-/opt/knockback}
 PLATFORM=${KB_PLATFORM:-linux/amd64}
 MODE=${1:-deploy}
+WAIT=${KB_WAIT:-150}
+case "$WAIT" in ''|*[!0-9]*) echo "deploy: KB_WAIT must be a whole number of seconds" >&2; exit 1 ;; esac
 
 remote() { # run a shell snippet in $DIR on the target
   if [ "$HOST" = local ]; then (cd "$DIR" && bash -c "$1"); else ssh "$HOST" "cd '$DIR' && bash -c $(printf '%q' "$1")"; fi
@@ -64,10 +72,25 @@ remote '
     echo "deploy: created .env from deploy/.env.example: set KB_DOMAIN (and the rest) in '"$DIR"'/.env, then run deploy again" >&2
     exit 2
   fi
-  if docker compose ps --status running --services 2>/dev/null | grep -qx server; then deploy/backup.sh; fi
   cur=$(grep "^KB_IMAGE_TAG=" .env | cut -d= -f2 || true)
-  [ -n "$cur" ] && [ "$cur" != "'"$TAG"'" ] && echo "$cur" > .previous-tag
+  up=; docker compose ps --status running --services 2>/dev/null | grep -qx server && up=1
+  # the backup first: without a drain (an old server) the stop must follow the wait at once
+  if [ -n "$up" ]; then deploy/backup.sh; fi
   set -- "'"$TAG"'"; '"$set_tag"'
+  if [ -n "$up" ] && [ "'"$WAIT"'" != 0 ]; then
+    # the new image (named in .env now) runs the wait; the old server keeps playing meanwhile
+    arena() { docker compose run --rm --no-deps -T server bun scripts/arena.ts "$@" --server http://server:5176; }
+    drained=; if arena drainable; then docker compose kill -s SIGUSR2 server >/dev/null && drained=1; fi
+    rc=0; arena wait-idle --timeout "'"$WAIT"'" || rc=$?
+    if [ "$rc" = 3 ]; then
+      [ -n "$drained" ] && docker compose kill -s SIGHUP server >/dev/null
+      set -- "$cur"; '"$set_tag"'
+      echo "deploy: the Arena round in progress did not end within '"$WAIT"' s; nothing was changed (the old version runs on). Retry, or stop anyway: KB_WAIT=0 deploy/deploy.sh" >&2
+      exit 3
+    fi
+    [ "$rc" = 0 ] || echo "deploy: the Arena state could not be read (exit $rc); going on" >&2
+  fi
+  [ -n "$cur" ] && [ "$cur" != "'"$TAG"'" ] && echo "$cur" > .previous-tag
   docker compose up -d --no-build
   '"$wait_healthy"'
   docker compose ps
