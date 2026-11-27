@@ -16,7 +16,8 @@
     "models": "bun scripts/models.ts",
     "db:reset": "bun scripts/db-reset.ts",
     "keys": "bun scripts/keys.ts",
-    "presets": "bun scripts/presets.ts"
+    "presets": "bun scripts/presets.ts",
+    "arena": "bun scripts/arena.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-deterministic-compat": "0.21.0",

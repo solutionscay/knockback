@@ -25,6 +25,9 @@
  * and the change applies at the tick viewers have reached when it arrives (+ a lead), so a slow answer applies late.
  * --checkin-cap (s, default 60) only stops hung calls; --checkin-every, --checkin-max as in ai-match.
  *
+ * Drain (#167, before a deploy): SIGUSR2 lets the round on now end and holds the next round (at most --drain-max s,
+ * default 600; SIGHUP ends it). GET /api/health shows `arena.idle`; `bun run arena wait-idle` waits for it.
+ *
  * Every flag can also come from the environment as KB_<FLAG> (KB_DEADLINE=75, KB_FAST=true, ...), plus PORT and
  * HOST; command-line flags win. KB_VERSION is shown by GET /api/health. SIGTERM/SIGINT close the database cleanly (a
  * SIGKILL is safe too: SQLite WAL, and the round in progress resumes).
@@ -89,6 +92,12 @@ const api = new MatchServer({
   arena: { deadlineMs: secs(flags.deadline, 75_000), ...(publicUrl ? { publicUrl } : {}) },
   log: (s) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`),
 });
+// the drain before a deploy (#167, docs/deploy.md): SIGUSR2 finishes the round on now and holds the next one (at most
+// --drain-max s, default 600); SIGHUP ends the drain. `docker compose kill -s SIGUSR2 server`; GET /api/health shows
+// it. Set before the server listens: once it answers the healthcheck these signals never end it (unhandled, they would).
+const drainMaxMs = secs(flags["drain-max"], 600_000);
+process.on("SIGUSR2", () => api.arena.drain(drainMaxMs));
+process.on("SIGHUP", () => api.arena.undrain("SIGHUP"));
 const mcp = flags["no-mcp"] === "true" ? null : new McpGateway(api, publicUrl ? { publicUrl } : {});
 
 /**

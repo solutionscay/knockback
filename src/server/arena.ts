@@ -135,6 +135,10 @@ export class Arena {
   private settledId: string | null = null;
   private stopped = false;
   private sleep: (ms: number) => Promise<void>;
+  /** the drain (#167): no round starts while it is on; it ends at `until` (ms) or with undrain() */
+  private drainState: { until: number; timer: ReturnType<typeof setTimeout>; wake: () => void; woken: Promise<void> } | null = null;
+  /** the loop is parked at the drain: the round before has ended and the next has not started */
+  private parked = false;
 
   constructor(
     readonly api: MatchServer,
@@ -158,6 +162,14 @@ export class Arena {
         this.current.live.mirror = null;
       }
       while (!this.stopped) {
+        // the drain (#167) holds the next round here: also the first one after a resumed round
+        while (this.drainState && !this.stopped) {
+          this.parked = true;
+          this.changed();
+          await this.drainState.woken;
+        }
+        this.parked = false;
+        if (this.stopped) break;
         try {
           await this.playRound();
         } catch (e) {
@@ -173,7 +185,65 @@ export class Arena {
   /** Stop after the round on now; resolves when the loop has ended. */
   stop(): Promise<void> {
     this.stopped = true;
+    this.drainState?.wake();
     return this.loop ?? Promise.resolve();
+  }
+
+  /**
+   * Drain (#167, before a deploy): the round on now plays to its end, then the loop holds the next round until
+   * undrain() or for at most `maxMs` (a drain the operator forgets ends by itself). The drain lives in memory only: a
+   * new process (the new image) starts rounds at once. A second drain sets a new end.
+   */
+  drain(maxMs = 600_000, now = Date.now()): void {
+    if (this.drainState) {
+      clearTimeout(this.drainState.timer);
+      this.drainState.until = now + maxMs;
+      this.drainState.timer = this.drainTimer(maxMs);
+    } else {
+      let wake!: () => void;
+      const woken = new Promise<void>((r) => (wake = r));
+      this.drainState = { until: now + maxMs, timer: this.drainTimer(maxMs), wake, woken };
+    }
+    this.api.log(`arena: drain on: ${this.parked || !this.roundLive() ? "no round runs" : `round ${this.current!.arenaRound} plays to its end`}; the next round waits (at most ${Math.round(maxMs / 1000)} s)`);
+    this.changed();
+  }
+
+  private drainTimer(ms: number) {
+    const t = setTimeout(() => this.undrain("the drain timed out"), ms);
+    t.unref?.(); // a held drain never keeps the process alive
+    return t;
+  }
+
+  /** End the drain: the next round starts (after the win screen, if the loop is still in it). */
+  undrain(why = "undrained"): void {
+    const d = this.drainState;
+    if (!d) return;
+    clearTimeout(d.timer);
+    this.drainState = null;
+    d.wake();
+    this.api.log(`arena: drain off (${why}); rounds go on`);
+    this.changed();
+  }
+
+  /** A round is open (turns) or running (the fight). */
+  private roundLive(): boolean {
+    const m = this.current;
+    return !!m && (m.status === "open" || m.status === "running");
+  }
+
+  /**
+   * The Arena's state for a deploy (#167, GET /api/health): the round on now (or the last one), the drain, and idle =
+   * safe to stop (no round open or running; with a drain on, only once the loop holds the next round).
+   */
+  state() {
+    const m = this.current;
+    const live = this.roundLive();
+    return {
+      round: m?.arenaRound ?? null,
+      status: m?.status ?? null,
+      drain: this.drainState ? { held: this.parked, until: new Date(this.drainState.until).toISOString() } : null,
+      idle: !live && (!this.drainState || this.parked || !this.loop),
+    };
   }
 
   /** Play one round to its end: the line-up as the seats stand now, then misses, rotation and claims. */
