@@ -48,6 +48,10 @@ export function initPhysics(): Promise<void> {
 const ALL = 0xffff;
 const SHOT_FILTER = groups(ALL, G.TERRAIN | G.FIGHTER | G.PROP);
 
+/** The seat that acts k-th (inputs, then pickups) at `tick`, of n: the first seat turns with the tick, so no seat is
+ * always first in a trade of blows or a race for an item (#159) */
+export const actSeat = (tick: number, k: number, n: number) => (tick + k) % n;
+
 export class Sim {
   readonly level: LevelDef;
   readonly grid: Grid;
@@ -283,7 +287,11 @@ export class Sim {
     clearOutsideWeapons(this);
     if (!this.roundOver && tick >= this.ruleset.pickups.supply.firstTick && (tick - this.ruleset.pickups.supply.firstTick) % this.ruleset.pickups.supply.interval === 0) supplyDrop(this, this.supplyCount++);
 
-    for (const f of this.fighters) {
+    // the fighters act in an order that turns with the tick (#159): in seat order, seat 0's swing landed first in every
+    // trade of blows and won the rounds' close duels more often
+    const n = this.fighters.length;
+    for (let k = 0; k < n; k++) {
+      const f = this.fighters[actSeat(tick, k, n)]!;
       if (!f.alive) continue;
       tickPowers(this, f);
       applyInput(this, f, inputs[f.id] ?? NO_INPUT);
@@ -342,6 +350,14 @@ export class Sim {
         knockOut(this, f, "ringout", p.x, p.y);
         continue;
       }
+    }
+    // pickups: two fighters on one item in the same tick, the first checked gets it. In seat order, seat 0 won every
+    // such race (#159: a seat bias, once sudden-death drops landed where both survivors run for them); the order turns
+    // with the tick
+    for (let k = 0; k < n; k++) {
+      const f = this.fighters[actSeat(tick, k, n)]!;
+      if (f.removed || !f.alive) continue;
+      const p = this.pos(f);
       checkPickups(this, f, p.x, p.y);
     }
     // world-out and debris cleanup

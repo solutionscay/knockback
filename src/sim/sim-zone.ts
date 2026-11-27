@@ -1,5 +1,5 @@
 import { ordinaryWeapons } from "./spread-armory";
-import { dropHeight, makeRoomForWeapon } from "./weapon-spots";
+import { dropHeight, makeRoomForWeapon, suddenDeathSpot } from "./weapon-spots";
 import { DT } from "./constants";
 import { type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
@@ -121,9 +121,13 @@ export class SimZone {
         sx += sim.pos(f).x;
         low = Math.min(low, sim.feetY(f));
       }
-      const x = clamp(sx / alive.length, z.lo + 0.5, z.hi - 0.5);
+      const mid = clamp(sx / alive.length, z.lo + 0.5, z.hi - 0.5);
       makeRoomForWeapon(sim);
-      const y = dropHeight(sim, { x, y: low }, 15);
+      // on ground the survivors reach, nearest their midpoint, the drops taking turns either side of it (#159); else
+      // the midpoint, from over the lowest of them
+      const spot = suddenDeathSpot(sim, mid, ((tick - sim.suddenDeath) / sdr.dropEvery) % 2 === 0 ? -1 : 1);
+      const x = spot ? spot.x : mid;
+      const y = dropHeight(sim, spot ?? { x, y: low }, 15);
       const e = sim.spawnItem(sim.rng.pick(ranged.length ? ranged : pool), x, y);
       sim.events.push({ type: "itemSpawn", tick, entity: e.id, item: e.itemType!, x, y });
     }

@@ -128,7 +128,8 @@ export class Escape {
     }
     const trapped = this.active || this.trapped(sim, me);
     if (!this.active) {
-      if (!trapped || sim.tick < this.restUntil || !this.exit) return false;
+      // #159: never starts in the air (a stale measure from the ledge it left: it drove a drop's flight into the pit)
+      if (!trapped || sim.tick < this.restUntil || !this.exit || !me.grounded) return false;
       this.active = true;
       this.started = sim.tick;
       const p = sim.pos(me);
@@ -178,8 +179,9 @@ export class Escape {
       this.dig(sim, me, input, dir, exit, feet);
       return true;
     }
-    // climb: walk at the exit, hop whatever stands in front of the body
-    input.move = dir;
+    // climb: walk at the exit, hop whatever stands in front of the body; in the air with no wall ahead and nothing under
+    // the way to the exit, no push over the drop (#159: an exit across a pit pulled a fighter off its ledge into it)
+    input.move = !me.grounded && !wall && sim.nav.fallBelow(g, p.x + dir * 0.7, feet) === Infinity ? 0 : dir;
     input.aimX = dir;
     input.aimY = 0;
     // hop only onto a step; on open ground it walks (no hopping in place)

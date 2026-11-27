@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { exampleSouls, initPhysics, Match } from "../src/sim";
 import { validateRuleset } from "../src/sim/ruleset";
 import { holdableEdge, holdableEdges } from "../src/sim/sim-zone";
+import { suddenDeathSpot } from "../src/sim/weapon-spots";
 
 beforeAll(async () => {
   await initPhysics();
@@ -23,9 +24,12 @@ describe("zone edges", () => {
   test("junkyard seed 169: sudden death stops past the lip at x = 3.5, not on it", () => {
     // before #156 the zone closed to -1.5..3.5 with its right edge on the lip of the ground (x 3.5..18): fighter 0 stood
     // on the lip, stepped out, was pushed back, and paced there for 54 s
+    // checked when sudden death's zone stops closing, not at the round's end: with the act order of #159 the round
+    // runs on, and blasts carve the ground at the edge away later
     const m = arenaRound("junkyard", 169);
     const sim = m.fight!.sim;
-    while (!m.step() && sim.tick < 2400) {}
+    let hi = sim.zone.hi;
+    while (!m.step() && sim.tick < 2400 && !(sim.suddenDeath > 0 && sim.zone.hi === hi)) hi = sim.zone.hi;
     expect(sim.suddenDeath).toBeGreaterThan(0);
     expect(sim.zone.hi).toBeGreaterThanOrEqual(3.5 + 1.5);
     expect(holdableEdge(sim, sim.zone.hi, 1)).toBe(true);
@@ -43,6 +47,25 @@ describe("zone edges", () => {
         expect(lo).toBeLessThanOrEqual(c - h + 2);
         expect(hi).toBeGreaterThanOrEqual(c + h - 2);
       }
+    }
+  });
+
+  test("sudden-death drops land on ground the survivors reach, not in the pit between them (#159)", () => {
+    // junkyard seed 169: the survivors' midpoint is over the pit; each side gets its turn
+    const m = arenaRound("junkyard", 169);
+    const sim = m.fight!.sim;
+    while (!m.step() && sim.suddenDeath < 0) {}
+    for (const side of [-1, 1] as const) {
+      const alive = sim.alive();
+      const mid = alive.reduce((a, f) => a + sim.pos(f).x, 0) / alive.length;
+      const spot = suddenDeathSpot(sim, mid, side)!;
+      expect(spot).not.toBeNull();
+      const s = sim.nav.surfaces[spot.surface]!;
+      expect(s.fragile).toBe(false);
+      expect(spot.x).toBeGreaterThanOrEqual(sim.zone.lo - 1);
+      expect(spot.x).toBeLessThanOrEqual(sim.zone.hi + 1);
+      const reached = alive.filter((f) => f.surface >= 0 && sim.nav.fighterPlan(sim.grid, f.surface, sim.pos(f).x).cost[spot.surface] !== Infinity);
+      expect(reached.length).toBeGreaterThan(0);
     }
   });
 });
