@@ -107,6 +107,13 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       return e.on ? [] : [cue("power.off", at(e.fighter).x, at(e.fighter).y, 1, 1, e.tick)]; // switching on is the pickup sound
     case "shieldPop":
       return [cue("shield.pop", e.x, e.y, 1, 1, e.tick)];
+    // the force field (#40); a blast's own boom covers its stop, so that ripple is quieter
+    case "fieldUp":
+      return [cue("field.up", e.x, e.y, 1, 1, e.tick + e.field)];
+    case "fieldHit":
+      return [cue("field.hit", e.x, e.y, /explo|barrel|tnt|gas|rocket|grenade|mine/.test(e.cause) ? 0.6 : 1, clamp(1.15 - e.damage / 40, 0.75, 1.15), e.tick + e.field + Math.round(e.y * 5))];
+    case "fieldDown":
+      return [cue("field.down", e.x, e.y, e.reason === "broken" ? 1 : 0.8, e.reason === "broken" ? 0.9 : 1.1, e.tick + e.field)];
     case "impact":
       return [cue("hit.heavy", e.x, e.y, clamp(0.4 + e.damage / 30, 0.4, 0.9), 0.8, e.tick + e.fighter)];
     case "jump":

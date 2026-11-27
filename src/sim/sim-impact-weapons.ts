@@ -7,6 +7,7 @@ import type { Sim } from "./sim";
 import { hitProp } from "./sim-objects";
 import { damagePiece, damageTerrainCell } from "./sim-terrain";
 import type { Entity, Fighter } from "./sim-types";
+import { absorbHit, fieldApart, fieldCut } from "./sim-field";
 
 export function fireRailgun(sim: Sim, f: Fighter, x: number, y: number, dx: number, dy: number) {
   const spec = sim.ruleset.weapons.table.railgun;
@@ -24,6 +25,13 @@ export function fireRailgun(sim: Sim, f: Fighter, x: number, y: number, dx: numb
     return true;
   }, undefined, groups(0xffff, G.FIGHTER | G.PROP), f.entity.collider);
 
+  // #40: a force field's edge stops the slug: nothing past it is hit, not even terrain
+  const cut = fieldCut(sim, x, y, dx, dy, obstacle.distance);
+  if (cut) {
+    obstacle.distance = cut.dist;
+    obstacle.entity = null;
+    absorbHit(sim, cut.field, spec.damage, x + dx * cut.dist, y + dy * cut.dist, "railgun", f.id);
+  }
   const distance = traceRail(sim.grid, x, y, dx, dy, obstacle.distance, (cx, cy) => {
     damageTerrainCell(sim, cx, cy, sim.grid.matAt(cx, cy), spec.terrainDamage);
   }, spec.terrainPenetration);
@@ -98,6 +106,12 @@ export function slamHammer(sim: Sim, f: Fighter, x: number, dx: number) {
     const point = paths[rx < 0 ? 0 : 1]![Math.round(d / (CELL / 2))];
     if (!point || Math.abs(sim.feetY(rival) - point.y) > spec.feetReach) continue;
     const scale = clamp(1 - d / (spec.range * 1.6), 0, 1);
+    // #40: the wave stops at a force field's edge between the slam and the rival
+    const shield = fieldApart(sim, x, y + 0.84, p.x, p.y);
+    if (shield) {
+      absorbHit(sim, shield, spec.damage * scale, p.x, p.y, "hammer", f.id);
+      continue;
+    }
     sim.damageFighter(rival, spec.damage * scale, f.id, dir * spec.knockback * scale, spec.lift * scale, "hammer", p.x, p.y);
   }
   sim.events.push({ type: "shockwave", tick: sim.tick, fighter: f.id, x, y, paths });

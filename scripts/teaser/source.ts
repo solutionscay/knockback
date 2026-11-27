@@ -10,7 +10,7 @@ import { deadStretches } from "./plan";
 import type { Source } from "./options";
 
 /** Sim events that count as action (dead stretches, the score). */
-const ACTION = new Set(["fire", "pellet", "swing", "grapple", "hit", "ko", "explosion", "carve", "break", "shatter", "detach", "impact", "suddenDeath", "lit", "zap", "shieldPop", "chainBreak", "platformFall", "ignite", "burn"]);
+const ACTION = new Set(["fire", "pellet", "swing", "grapple", "hit", "ko", "explosion", "carve", "break", "shatter", "detach", "impact", "suddenDeath", "lit", "zap", "shieldPop", "chainBreak", "platformFall", "ignite", "burn", "fieldUp", "fieldHit"]);
 
 /** How much each big moment counts (the --best-of score and the montage cuts): the big moments count more than the steady ones. */
 export const MAYHEM: Record<string, number> = { explosion: 1, chainBreak: 1.5, platformFall: 4, "ko.ringout": 6, "ko.hp": 5, suddenDeath: 6, ignite: 0.3, hit: 0.1 };

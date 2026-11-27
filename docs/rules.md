@@ -35,7 +35,7 @@ The `rules` key is optional. Plans without rules work as before.
 - `target`: my current target;
 - a fighter's name, which is stored as that fighter's seat number. A name can't be your own.
 
-**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works), `flamethrower` (`flamer` also works), `mine`, `railgun`, `hammer`, `rifle`, `sniper`, `crossbow`, `lightning` (`sword` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`, `jetpack`.
+**Weapons:** `rocket`, `shotgun`, `bat`, `grenade`, `grapple` (`hook` also works), `flamethrower` (`flamer` also works), `mine`, `railgun`, `hammer`, `rifle`, `sniper`, `crossbow`, `lightning` (`sword` also works). **Pickups:** the weapons plus `health`, `shield`, `speed`, `heavy`, `damage`, `jump`, `jetpack`, and `forcefield` (#40; `force field` also works) when the ruleset has it.
 
 ## Actions (`do`)
 
@@ -44,7 +44,7 @@ The `rules` key is optional. Plans without rules work as before.
 | `target` | none | target the fighter that made the trigger true (the closest one if more than one does) |
 | `avoid` | none | keep away from that fighter (distance stance relative to it); never target it |
 | `seek` | `item` (a pickup) | go for the item (the pickup hunt with a high limit) |
-| `use` | `item` (a weapon or jetpack) | prefer the weapon when carried, or make the fighter more willing to spend jetpack fuel on a climb or chase |
+| `use` | `item` (a weapon, jetpack or forcefield) | prefer the weapon when carried, or make the fighter more willing to spend jetpack fuel on a climb or chase; `forcefield`: deploy the carried force field now (#40, docs/rulesets.md) |
 | `stance` | `stance`: rush, distance, cover or item | play that stance |
 | `retaliate` | `retaliate`: attacker, turn or ignore | use that retaliate setting |
 | `drop` | `item` (a weapon, optional) | drop the weapon I carry (only that one, when `item` is given), once each time the rule starts: it stays on the floor with its ammo (#95) |

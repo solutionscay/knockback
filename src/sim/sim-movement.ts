@@ -7,6 +7,7 @@ import { type Look } from "./identity";
 import { clamp, length2D } from "./dmath";
 import { fire } from "./sim-weapons";
 import { dropCarried } from "./sim-items";
+import { deployField } from "./sim-field";
 import { fighterStats, type Build } from "./build";
 import { bodyLiquid, footing, setSlick } from "./sim-liquid";
 import { Liquid } from "./grid";
@@ -91,6 +92,7 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     outsideZone: false,
     outsideTicks: 0,
     power: { shield: 0, shieldHits: 0, speed: 0, heavy: 0, damage: 0, jump: 0, jetpack: 0 },
+    forceField: 0,
     jetting: false,
     damageDealt: 0,
     damageTaken: 0,
@@ -228,6 +230,8 @@ export function applyInput(sim: Sim, f: Fighter, inp: Input) {
     const p = body.translation();
     dropCarried(sim, f, p.x + f.facing * 0.5, p.y + 0.3, f.facing * 2, 3, "drop");
   }
+  // #40: the force field goes up where the fighter stands
+  if (inp.field && f.forceField > 0) deployField(sim, f);
   // fists are always there: a jab needs no swap, and the carried weapon stays in hand
   const jab = inp.weapon === "fist";
   if (inp.weapon && !jab && inp.weapon !== sim.weapon(f)) {

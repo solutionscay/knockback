@@ -57,7 +57,7 @@ export function cleanWhy(v: unknown): string | null {
   return s.length > MAX_WHY ? s.slice(0, MAX_WHY - 1).replace(/\s+\S*$/, "") + "…" : s;
 }
 
-const ITEM_ALIAS: Record<string, ItemType> = { ...WEAPON_ALIAS, heal: "health", medkit: "health", hp: "health" };
+const ITEM_ALIAS: Record<string, ItemType> = { ...WEAPON_ALIAS, heal: "health", medkit: "health", hp: "health", "force field": "forcefield", force_field: "forcefield", field: "forcefield", bubble: "forcefield" };
 function itemOf(v: unknown): ItemType | undefined {
   if (typeof v !== "string") return undefined;
   const w = v.toLowerCase().trim();

@@ -4,11 +4,11 @@ import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
  * resolved items). Shared by the AI parser (src/ai/parse.ts), the viewer's
  * sanitizer (records, the live stream) and the house bots. Pure.
  */
-import { isPickupWeapon, POWER_LIST, RULE_DO, RULE_WHEN, WEAPON_LIST, type ItemType, type Rule, type RuleWhen, type RuleWho } from "./sim-types";
+import { FORCE_FIELD, isPickupWeapon, POWER_LIST, RULE_DO, RULE_WHEN, WEAPON_LIST, type ItemType, type Rule, type RuleWhen, type RuleWho } from "./sim-types";
 
 export const RULE_STANCES = ["rush", "distance", "cover", "item", "overwatch", "flank", "hold"] as const;
 export const RULE_RETALIATE = ["attacker", "turn", "ignore"] as const;
-export const PICKUPS: readonly ItemType[] = [...WEAPON_LIST, ...POWER_LIST];
+export const PICKUPS: readonly ItemType[] = [...WEAPON_LIST, ...POWER_LIST, FORCE_FIELD];
 export const MAX_RULE_LABEL = 40;
 
 /** Triggers about fighters (they have a subject: the fighter that makes them true). */
@@ -45,7 +45,7 @@ export function checkRule(r: Rule, me: number, ruleset: Ruleset = CLASSIC): stri
   if (r.when === "item_near" && !PICKUPS.includes(r.item as never)) return `"item_near" needs a pickup, got ${JSON.stringify(r.item)}`;
   if ((r.do === "target" || r.do === "avoid") && !SUBJECT_TRIGGERS.includes(r.when)) return `"${r.do}" needs a trigger about a fighter, not "${r.when}"`;
   if (r.do === "seek" && !PICKUPS.includes(r.doItem as never)) return `"seek" needs a pickup, got ${JSON.stringify(r.doItem)}`;
-  if (r.do === "use" && r.doItem !== "jetpack" && !isPickupWeapon(r.doItem)) return `"use" needs a weapon or jetpack, got ${JSON.stringify(r.doItem)}`;
+  if (r.do === "use" && r.doItem !== "jetpack" && r.doItem !== FORCE_FIELD && !isPickupWeapon(r.doItem)) return `"use" needs a weapon, jetpack or forcefield, got ${JSON.stringify(r.doItem)}`;
   if (r.do === "swap" && r.doItem !== "fist" && !isPickupWeapon(r.doItem)) return `"swap" needs a weapon or "fist", got ${JSON.stringify(r.doItem)}`;
   if (r.do === "drop" && r.doItem !== undefined && !isPickupWeapon(r.doItem)) return `"drop" takes a weapon or nothing, got ${JSON.stringify(r.doItem)}`;
   if (r.do === "stance" && !(RULE_STANCES as readonly string[]).includes(r.stance as string)) return `"stance" needs one of ${RULE_STANCES.join(", ")}`;
@@ -56,7 +56,7 @@ export function checkRule(r: Rule, me: number, ruleset: Ruleset = CLASSIC): stri
 }
 
 const whoText = (w: RuleWho | undefined, names: string[]) => (w === undefined ? "" : typeof w === "number" ? names[w] ?? `seat ${w}` : w === "anyone" ? "anyone" : w === "enemy" ? "a rival" : "my target");
-const ITEM_TEXT: Record<string, string> = { grapple: "hook" };
+const ITEM_TEXT: Record<string, string> = { grapple: "hook", forcefield: "force field" };
 const it = (x?: string) => (x ? (ITEM_TEXT[x] ?? x) : "");
 
 /** A short label made from the rule, when the AI gave none. */

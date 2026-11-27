@@ -217,6 +217,19 @@ export const SOUNDS: Record<string, SoundDef> = {
     recipe: { layers: [L({ wave: "sine", freq: 900, freqEnd: 200, decay: 0.15, gain: 0.35 }), L({ wave: "noise", freq: 4000, decay: 0.08, highpass: 2000, gain: 0.25 })] },
     group: "shield", max: 3, gap: 0.05, priority: 6,
   },
+  // the force field (#40): a rising hum as it goes up, a glassy ripple when it stops something, a falling fizz at the end
+  "field.up": {
+    recipe: { layers: [L({ wave: "sine", freq: 180, freqEnd: 540, attack: 0.04, decay: 0.55, vibrato: [0.6, 11], gain: 0.32 }), L({ wave: "triangle", freq: 720, freqEnd: 1440, attack: 0.02, decay: 0.4, gain: 0.12, delay: 0.08 }), L({ wave: "noise", freq: 5000, decay: 0.25, highpass: 3000, gain: 0.06 })] },
+    group: "field", max: 2, gap: 0.1, priority: 7,
+  },
+  "field.hit": {
+    recipe: { layers: [L({ wave: "triangle", freq: 1500, freqEnd: 700, decay: 0.16, vibrato: [1.5, 28], gain: 0.22 }), L({ wave: "sine", freq: 380, freqEnd: 260, decay: 0.2, gain: 0.2 }), L({ wave: "noise", freq: 6000, decay: 0.05, highpass: 2500, gain: 0.08 })] },
+    group: "field", max: 4, gap: 0.035, priority: 6,
+  },
+  "field.down": {
+    recipe: { layers: [L({ wave: "sine", freq: 600, freqEnd: 120, attack: 0.01, decay: 0.5, vibrato: [1, 14], gain: 0.28 }), L({ wave: "noise", freq: 3000, freqEnd: 800, decay: 0.35, highpass: 900, gain: 0.12 })] },
+    group: "field", max: 2, gap: 0.1, priority: 6,
+  },
   "hit.light": {
     recipe: { layers: [L({ wave: "noise", freq: 2000, freqEnd: 600, decay: 0.05, lowpass: 3000, gain: 0.4 }), L({ wave: "sine", freq: 200, freqEnd: 90, decay: 0.06, gain: 0.5 })] },
     group: "hit", max: 5, gap: 0.025, priority: 5,

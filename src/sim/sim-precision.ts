@@ -10,6 +10,7 @@ import { hitProp } from "./sim-objects";
 import { chipTerrain } from "./sim-terrain";
 import type { Fighter, PrecisionWeapon } from "./sim-types";
 import { inCover } from "./tactical";
+import { absorbHit, fieldCut } from "./sim-field";
 
 /** The spread (perpendicular offset per meter) a fighter's shot gets right now (ruleset `weapons.accuracy`). */
 export function spreadFor(sim: Sim, f: Fighter, weapon: PrecisionWeapon): number {
@@ -36,13 +37,19 @@ export function firePrecision(sim: Sim, f: Fighter, weapon: PrecisionWeapon, ox:
   const l = length2D(rx, ry) || 1;
   rx /= l;
   ry /= l;
-  const hit = sim.raycast(ox, oy, rx, ry, spec.range, f.entity.collider);
-  const dist = hit ? hit.dist : spec.range;
+  const ray = sim.raycast(ox, oy, rx, ry, spec.range, f.entity.collider);
+  // a force field's edge on the way stops the round (#40)
+  const cut = fieldCut(sim, ox, oy, rx, ry, ray ? ray.dist : spec.range);
+  const hit = cut ? null : ray;
+  const dist = cut ? cut.dist : hit ? hit.dist : spec.range;
   const hx = ox + rx * dist, hy = oy + ry * dist;
   shootChains(sim, ox, oy, hx, hy, spec.propDamage, f.id, weapon);
-  let kind: "fighter" | "prop" | "terrain" | "none" = "none";
+  let kind: "fighter" | "prop" | "terrain" | "field" | "none" = "none";
   let target = -1;
-  if (hit?.terrain) {
+  if (cut) {
+    kind = "field";
+    absorbHit(sim, cut.field, spec.damage, hx, hy, weapon, f.id);
+  } else if (hit?.terrain) {
     kind = "terrain";
     chipTerrain(sim, hx, hy, rx, ry, spec.terrainDamage);
   } else if (hit?.entity) {

@@ -266,10 +266,11 @@ export function ruleExamplesFor(seed: number, round: number, me: number, ruleset
 export function rulesSection(examples: string[], ruleset: Ruleset = CLASSIC): string {
   const tuning = ruleset.tactics.ruleEval;
   const holds = ruleset.pickups.enabled.includes("jetpack") ? "weapon or jetpack" : "weapon";
+  const usable = `${holds}${ruleset.pickups.forceField.enabled ? ", or forcefield to deploy it" : ""}`;
   return [
     `RULES (optional, max 4, first wins): active while triggered, for at least ${tuning.minOnTicks / TICK_RATE} s. A rule that never fires does nothing.`,
     'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two) | in_open who (I have a clear shot) | has_long_gun who | in_cover (me)',
-    `who: anyone | enemy | target | name. do: target | avoid | seek item | use item (${holds}) | stance "stance": ${RULE_STANCES.join("/")} | retaliate "retaliate": attacker/turn/ignore | dig (dig toward the target through soft ground when no way leads there). target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.`,
+    `who: anyone | enemy | target | name. do: target | avoid | seek item | use item (${usable}) | stance "stance": ${RULE_STANCES.join("/")} | retaliate "retaliate": attacker/turn/ignore | dig (dig toward the target through soft ground when no way leads there). target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.`,
     `Examples: ${examples.join(" ")}`,
   ].join("\n");
 }
@@ -361,6 +362,7 @@ export function buildPrompt(soul: Soul, ctx: DecideContext, x: PromptExtras): st
       .join(", ")}; you fight with what you pick up. Change your weapons if last round's pickups or knockouts say so. ` +
       `target = a fighter's name, or nearest | weakest | strongest | leader. ` +
       (ruleset.pickups.enabled.includes("jetpack") ? `jetpack has limited fuel for climbing, escape and pursuit. Rules can seek, use or check for it with holds. ` : "") +
+      (ruleset.pickups.forceField.enabled ? `forcefield is a rare supply drop: deployed where you stand, a ${ruleset.pickups.forceField.radius} m bubble stops shots and blasts from crossing its edge (either way) for ${ruleset.pickups.forceField.ticks / TICK_RATE} s or until it has taken ${ruleset.pickups.forceField.absorb} damage; fighters walk through it. Fighters deploy it when shot at; a rule can seek it or "use" it to deploy now. ` : "") +
       (ruleset.pickups.enabled.length !== CLASSIC.pickups.enabled.length ? `Power-ups in this match: ${ruleset.pickups.enabled.join(", ") || "none"}. ` : "") +
       `stance = ${stanceChoices()}. ` +
       `retaliate = after 3 hits from behind by a non-target (default turn): attacker = chase that fighter for 10 s, turn = fight back for 3 s then resume, ignore = glance back and stay on target. ` +

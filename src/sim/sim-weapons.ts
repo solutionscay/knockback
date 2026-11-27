@@ -13,6 +13,7 @@ import { fireRailgun, slamHammer } from "./sim-impact-weapons";
 import { boltLine, castBolt } from "./sim-lightning";
 import { firePrecision } from "./sim-precision";
 import { throwAway } from "./sim-items";
+import { absorbHit, fieldCut } from "./sim-field";
 
 export function fire(sim: Sim, f: Fighter, weapon: Weapon, dig = false) {
   if (f.cooldown[weapon] > 0 || (weapon !== "fist" && !sim.ruleset.weapons.enabled.includes(weapon))) return;
@@ -43,7 +44,10 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon, dig = false) {
     case "rocket": {
       f.cooldown.rocket = sim.ruleset.weapons.table.rocket.cooldown;
       const muzzle = 0.95;
-      const block = sim.raycast(ox, oy, dx, dy, muzzle, f.entity.collider);
+      const wall = sim.raycast(ox, oy, dx, dy, muzzle, f.entity.collider);
+      // #40: a force field's edge within the muzzle: the rocket bursts on it, on the shooter's side
+      const edge = fieldCut(sim, ox, oy, dx, dy, wall ? wall.dist : muzzle);
+      const block = edge ? { dist: Math.max(0, edge.dist - 0.05) } : wall;
       if (block) {
         sim.explode(ox + dx * block.dist, oy + dy * block.dist, sim.ruleset.weapons.table.rocket, "rocket", f.id, 0, null);
         break;
@@ -88,7 +92,7 @@ export function fire(sim: Sim, f: Fighter, weapon: Weapon, dig = false) {
       if (bolt) {
         f.cooldown.lightning = sim.ruleset.weapons.table.lightning.boltCooldown;
         f.ammo.lightning--;
-        castBolt(sim, f, ox, oy, dx, dy, bolt.hit);
+        castBolt(sim, f, ox, oy, dx, dy, bolt.hit, bolt.field);
       } else {
         f.cooldown.lightning = sim.ruleset.weapons.table.lightning.cooldown;
         swingMelee(sim, f, "lightning", ox, oy, dx, dy);
@@ -111,12 +115,16 @@ function fireShotgun(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, d
     const l = length2D(rx, ry);
     rx /= l;
     ry /= l;
-    const hit = sim.raycast(ox, oy, rx, ry, W.range, f.entity.collider);
-    const dist = hit ? hit.dist : W.range;
+    const ray = sim.raycast(ox, oy, rx, ry, W.range, f.entity.collider);
+    // a force field's edge stops the pellet (#40)
+    const cut = fieldCut(sim, ox, oy, rx, ry, ray ? ray.dist : W.range);
+    const hit = cut ? null : ray;
+    const dist = cut ? cut.dist : hit ? hit.dist : W.range;
     const hx = ox + rx * dist;
     const hy = oy + ry * dist;
-    sim.events.push({ type: "pellet", tick: sim.tick, fighter: f.id, x0: ox, y0: oy, x1: hx, y1: hy, hit: !!hit });
+    sim.events.push({ type: "pellet", tick: sim.tick, fighter: f.id, x0: ox, y0: oy, x1: hx, y1: hy, hit: !!hit || !!cut });
     const fall = 1 - 0.45 * (dist / W.range);
+    if (cut) absorbHit(sim, cut.field, W.pelletDamage * fall, hx, hy, "shotgun", f.id);
     // pellets go through chains, chipping them (#34)
     shootChains(sim, ox, oy, hx, hy, W.pelletBlockDamage * fall, f.id, "shotgun");
     if (!hit) continue;
@@ -209,11 +217,15 @@ function throwGrenade(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, 
 
 function fireGrapple(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
   const Gp = sim.ruleset.weapons.table.grapple;
-  const hit = sim.raycast(ox, oy, dx, dy, Gp.range, f.entity.collider);
-  const dist = hit ? hit.dist : Gp.range;
+  const ray = sim.raycast(ox, oy, dx, dy, Gp.range, f.entity.collider);
+  // a force field's edge stops the hook (#40): it catches nothing
+  const cut = fieldCut(sim, ox, oy, dx, dy, ray ? ray.dist : Gp.range);
+  const hit = cut ? null : ray;
+  const dist = cut ? cut.dist : hit ? hit.dist : Gp.range;
   const hx = ox + dx * dist;
   const hy = oy + dy * dist;
-  let kind: "fighter" | "prop" | "terrain" | "none" = hit ? (hit.terrain ? "terrain" : "prop") : "none";
+  let kind: "fighter" | "prop" | "terrain" | "field" | "none" = cut ? "field" : hit ? (hit.terrain ? "terrain" : "prop") : "none";
+  if (cut) absorbHit(sim, cut.field, Gp.damage, hx, hy, "grapple", f.id);
   let target = -1;
   if (hit?.entity) {
     const e = hit.entity;
@@ -257,7 +269,10 @@ export function updateRockets(sim: Sim) {
     const len = length2D(sx, sy);
     const owner = sim.fighters[r.owner]!;
     const exclude = r.age < 30 && !owner.removed ? owner.entity.collider : undefined;
-    const hit = sim.raycast(r.x, r.y, sx / len, sy / len, len, exclude);
+    const ray = sim.raycast(r.x, r.y, sx / len, sy / len, len, exclude);
+    // #40: a force field's edge on the way: the rocket bursts on it (a hair on its own side)
+    const cut = fieldCut(sim, r.x, r.y, sx / len, sy / len, ray ? ray.dist : len);
+    const hit = cut ? { dist: Math.max(0, cut.dist - 0.05) } : ray;
     if (hit) {
       sim.explode(r.x + (sx / len) * hit.dist, r.y + (sy / len) * hit.dist, W, "rocket", r.owner, 0, null);
       continue;

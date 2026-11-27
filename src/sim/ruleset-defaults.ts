@@ -128,6 +128,34 @@ const BUILDS = {
   caps: { knockbackTaken: 0.4, density: 3.5, damage: 2.2, knockbackDealt: 1.4 },
 };
 
+/**
+ * The force field (#40): a rare deployable bubble, one in play at a time (a loose one, a carried one or one that is up).
+ *   enabled     off: no force field drops, and plans can't name it
+ *   firstTick   no force field drops before this tick of the round
+ *   dropChance  a supply drop that would bring a power-up brings the force field instead, by this chance, while none is
+ *               in play (its own stream of the round seed, so the other drops stay as they were)
+ *   radius      meters around where the holder stood (the middle of its body); fighters walk through the edge
+ *   ticks       how long it stays up
+ *   absorb      the damage it takes before it breaks: each shot, thrown thing or blast it stops counts its full damage
+ *   bounce      share of speed a grenade or a thrown mine keeps when it bounces off the edge
+ */
+const FORCE_FIELD = { enabled: true, firstTick: 15 * C.TICK_RATE, dropChance: 0.25, radius: 2.4, ticks: 6 * C.TICK_RATE, absorb: 30, bounce: 0.45 };
+
+/**
+ * How fighters use force fields (#40), meters and ticks.
+ *   seekLimit        path cost a fighter goes for a loose force field (one carried: none)
+ *   underFireTicks / underFireDamage   deploy after taking this much damage within this many ticks
+ *   incomingRange    deploy when a rival's rocket or grenade is this close and coming my way
+ *   hurtShare        below this share of max HP (or in a cover, hold or overwatch stance), deploy when a rival with a
+ *                    ranged weapon has a clear line to me within threatRange
+ *   leadHp           the last two: deploy when ahead by this much HP and the rival has a ranged weapon and a line to me
+ *   meleeRange       no deploy with a rival this close (they walk in)
+ *   shelterMargin    inside my own field, keep this far in from its edge while the fight is outside
+ *   protectedCost    target choice: a rival inside a field I am not in costs this much more (unless I fight up close)
+ *   rangedReach      a weapon reaching this far (tactics.weapons.reach max) counts as ranged for the deploy checks
+ */
+const FIELD_TACTICS = { rangedReach: 12, seekLimit: 20, underFireTicks: 90, underFireDamage: 9, incomingRange: 6, hurtShare: 0.5, threatRange: 20, leadHp: 25, meleeRange: 2.2, shelterMargin: 0.7, protectedCost: 25 };
+
 export const RULESET_DEFAULTS = {
   combat: { gravity: C.GRAVITY, fighter: { ...C.FIGHTER, ringOutMargin: 6 }, launch: C.LAUNCH, density: C.FIGHTER_DENSITY, swapTicks: C.SWAP_TICKS, wallJump: C.WALL_JUMP, blastCarveScale: 1.12, attributionTicks: 120 },
   weapons: {
@@ -144,6 +172,7 @@ export const RULESET_DEFAULTS = {
     supply: { ...C.SUPPLY, firstTick: 8 * C.TICK_RATE, itemHeight: 16, propEvery: 2, tntChance: 0.3, propHeight: 15, extraBarrelHeight: 16.4, barrelOffset: 0.75, avoidDistance: 7 },
     spots: WEAPON_SPOTS,
     weights: { health: 3, shield: 2.5, speed: 2, heavy: 1.5, damage: 2, jump: 2, jetpack: 2 },
+    forceField: FORCE_FIELD,
   },
   arena: {
     layout: LEVEL, enabledThemes: THEMES, themes: LEVEL_THEMES, spawns: SPAWNS, walls: WALLS,
@@ -158,5 +187,5 @@ export const RULESET_DEFAULTS = {
   builds: BUILDS,
   morale: MORALE,
   round: { maxRounds: 3, winsToTake: 2, fightTicks: C.FIGHT_TICKS, finishTicks: C.FINISH_TICKS },
-  tactics: { weapons: TACTICAL_WEAPONS, stances: STANCES, aimNoise: AIM_NOISE, patience: PATIENCE, pickup: PICKUP, wall: WALL_PURSUIT, ruleEval: RULE_EVAL, reflex: C.REFLEX },
+  tactics: { weapons: TACTICAL_WEAPONS, stances: STANCES, aimNoise: AIM_NOISE, patience: PATIENCE, pickup: PICKUP, wall: WALL_PURSUIT, ruleEval: RULE_EVAL, reflex: C.REFLEX, forceField: FIELD_TACTICS },
 };

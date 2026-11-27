@@ -19,6 +19,7 @@ import { inOpen } from "./tactical";
 import { type Sim } from "./sim";
 import { NO_INPUT, isPickupWeapon, isPrecision, type Fighter, type Input, type Stance, type Strategy, type Weapon } from "./sim-types";
 import { lowOnAmmo } from "./sim-items";
+import { FieldTactics, fightsClose, shieldedFrom } from "./controller-field";
 
 /** Weapons that are for close range anyway: saving their last uses for later means nothing (#95). */
 const CLOSE_WEAPONS: readonly Weapon[] = ["bat", "hammer", "flamethrower", "lightning", "shotgun"];
@@ -65,6 +66,10 @@ export class Controller {
   private lastFired = 0;
   /** the last tick this fighter fired anything (fists too) */
   private lastShot = 0;
+  /** force fields (#40): deploy, shelter, hold fire */
+  readonly field = new FieldTactics();
+  /** the fighter aimed at this tick (the target, or a reflex or spotted rival), or -1 */
+  aimId = -1;
 
   get goal() {
     return this.navigation.goal;
@@ -131,6 +136,7 @@ export class Controller {
   onHit(src: number, behind: boolean, _damage: number, tick: number, ruleset: Ruleset = CLASSIC) {
     const reflex = ruleset.tactics.reflex;
     this.lastTaken = tick;
+    this.field.onHit(tick, _damage);
     const log = this.hitLog;
     if (!log.length || log[log.length - 1]!.src !== src || log[log.length - 1]!.tick !== tick) log.push({ src, tick, behind });
     while (log.length && log[0]!.tick < tick - reflex.windowTicks) log.shift();
@@ -217,7 +223,9 @@ export class Controller {
     // a rival with no route to it comes after the ones we can get to (#69: no waiting at a ledge)
     const plan = me.surface >= 0 && foes.length > 1 ? sim.nav.fighterPlan(sim.grid, me.surface, p.x) : null;
     const noRoute = (o: Fighter) => !!plan && o.surface >= 0 && plan.cost[o.surface] === Infinity;
-    const scored = (o: Fighter) => score(o) + (skip(o) && foes.length > 1 ? 60 : 0) + (noRoute(o) ? 30 : 0) + (avoided.includes(o.id) && foes.length > 1 ? 1000 : 0);
+    // #40: a rival inside a force field I am not in comes after the others, unless I fight up close (I walk in)
+    const shielded = (o: Fighter) => foes.length > 1 && !fightsClose(me) && shieldedFrom(sim, me, o) ? sim.ruleset.tactics.forceField.protectedCost : 0;
+    const scored = (o: Fighter) => score(o) + (skip(o) && foes.length > 1 ? 60 : 0) + (noRoute(o) ? 30 : 0) + (avoided.includes(o.id) && foes.length > 1 ? 1000 : 0) + shielded(o);
     let best = foes[0]!;
     let bs = scored(best);
     for (const o of foes) {
@@ -323,6 +331,7 @@ export class Controller {
     // ledge safety (#69) on the final input: combat moves come after steering
     const me = sim.fighters[this.fighterId]!;
     if (me.alive && !me.removed && input !== NO_FIRE) {
+      this.field.apply(sim, me, input, this.aimId, this.stanceNow(sim), this.rules.deploysField());
       this.dropIfDone(sim, me, input);
       this.navigation.guardLiveGround(sim, me, sim.pos(me), input);
       this.navigation.guardLiquid(sim, me, sim.pos(me), sim.vel(me), input);
@@ -428,6 +437,7 @@ export class Controller {
     const mp = sim.pos(me);
     const mv = sim.vel(me);
     const input: Input = { move: 0, jump: false, aimX: me.aimX, aimY: me.aimY, weapon: null, fire: false };
+    this.aimId = target ? aimTarget.id : -1;
     if (!target) return input;
     if (target.id !== this.sinceFor) {
       this.sinceFor = target.id;

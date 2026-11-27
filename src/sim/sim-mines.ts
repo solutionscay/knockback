@@ -2,6 +2,7 @@ import { DT } from "./constants";
 import { dcos, dsin, length2D } from "./dmath";
 import type { Sim } from "./sim";
 import type { Fighter, Mine } from "./sim-types";
+import { bounceMine } from "./sim-field";
 
 export function throwMine(sim: Sim, f: Fighter, x: number, y: number, dx: number, dy: number) {
   const M = sim.ruleset.weapons.table.mine;
@@ -32,6 +33,8 @@ function move(sim: Sim, mine: Mine) {
   }
   mine.mount = null;
   mine.vy -= M.gravity * DT;
+  // #40: a force field's edge in the way: it bounces off (and moves next tick)
+  if (bounceMine(sim, mine)) return;
   const sx = mine.vx * DT, sy = mine.vy * DT;
   const distance = length2D(sx, sy);
   if (distance < 1e-6) return;

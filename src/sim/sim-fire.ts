@@ -25,7 +25,8 @@ import { catchFighters, cellCanCatch, igniteCell, igniteEntityAt, igniteFighter,
 import { hitProp } from "./sim-objects";
 import { igniteOilNear } from "./sim-liquid";
 import { damageTerrainCell, prunePiece } from "./sim-terrain";
-import type { Entity, Fighter } from "./sim-types";
+import type { Entity, Fighter, ForceField } from "./sim-types";
+import { absorbHit, fieldCut } from "./sim-field";
 import { throwAway } from "./sim-items";
 import { pieceCellWorld, type PieceCell } from "./terrain";
 
@@ -44,6 +45,7 @@ const RAYS: readonly [number, number][] = [
 export function fireFlamethrower(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
   const W = sim.ruleset.weapons.table.flamethrower;
   const hitFighters: { fi: Fighter; rx: number; ry: number }[] = [];
+  const stoppedBy: { field: ForceField; x: number; y: number }[] = [];
   for (const [baseCos, baseSin] of RAYS) {
     let co = baseCos;
     let si = baseSin;
@@ -55,8 +57,12 @@ export function fireFlamethrower(sim: Sim, f: Fighter, ox: number, oy: number, d
     }
     const rx = dx * co - dy * si;
     const ry = dx * si + dy * co;
-    const hit = sim.raycast(ox, oy, rx, ry, W.range, f.entity.collider);
-    const dist = hit ? hit.dist : W.range;
+    const ray = sim.raycast(ox, oy, rx, ry, W.range, f.entity.collider);
+    // #40: a force field's edge stops the flame (the pulse counts once against it)
+    const cut = fieldCut(sim, ox, oy, rx, ry, ray ? ray.dist : W.range);
+    if (cut && !stoppedBy.some((s) => s.field === cut.field)) stoppedBy.push({ field: cut.field, x: ox + rx * cut.dist, y: oy + ry * cut.dist });
+    const hit = cut ? null : ray;
+    const dist = cut ? cut.dist : hit ? hit.dist : W.range;
     shootChains(sim, ox, oy, ox + rx * dist, oy + ry * dist, W.chainDamage, f.id, "fire");
     // #94: the flame lights the oil it passes over (no RNG drawn on a level without liquids)
     if (sim.liquids.on) for (let d = 0.5; d <= dist; d += 0.5) igniteOilNear(sim, ox + rx * d, oy + ry * d, 0.3, f.id);
@@ -75,6 +81,7 @@ export function fireFlamethrower(sim: Sim, f: Fighter, ox: number, oy: number, d
       if (sim.rng.chance(W.igniteChance)) igniteEntityAt(sim, e, hx, hy, f.id, "flame");
     }
   }
+  for (const s of stoppedBy) absorbHit(sim, s.field, W.damage, s.x, s.y, "flamethrower", f.id);
   for (const h of hitFighters) {
     const t = h.fi.entity.body.translation();
     sim.damageFighter(h.fi, W.damage, f.id, h.rx * W.push, h.ry * W.push + W.push * 0.3, "flamethrower", t.x, t.y);

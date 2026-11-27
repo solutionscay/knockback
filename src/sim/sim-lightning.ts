@@ -13,24 +13,33 @@ import type { Sim } from "./sim";
 import { shootChains } from "./sim-chains";
 import { hitProp } from "./sim-objects";
 import { chipTerrain } from "./sim-terrain";
-import type { Fighter, LiveGround } from "./sim-types";
+import type { Fighter, ForceField, LiveGround } from "./sim-types";
+import { absorbHit, fieldCut } from "./sim-field";
 
 /** A bolt, or null when the slash is the right call: the first thing on the line is too close, or no bolt is left. */
 export function boltLine(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number) {
   const spec = sim.ruleset.weapons.table.lightning;
   if (f.ammo.lightning <= 0) return null;
-  const hit = sim.raycast(ox, oy, dx, dy, spec.range, f.entity.collider);
-  if (hit && hit.dist < spec.boltMinRange) return null;
-  return { hit };
+  const ray = sim.raycast(ox, oy, dx, dy, spec.range, f.entity.collider);
+  // #40: a force field's edge on the line is what the bolt meets first (too close: the slash)
+  const cut = fieldCut(sim, ox, oy, dx, dy, ray ? ray.dist : spec.range);
+  const first = cut ? cut.dist : ray ? ray.dist : Infinity;
+  if (first < spec.boltMinRange) return null;
+  return { hit: cut ? null : ray, field: cut };
 }
 
 /** Cast a bolt from (ox, oy) along (dx, dy); `hit` is the first thing on the line (boltLine). */
-export function castBolt(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number, hit: ReturnType<Sim["raycast"]>) {
+export function castBolt(sim: Sim, f: Fighter, ox: number, oy: number, dx: number, dy: number, hit: ReturnType<Sim["raycast"]>, field: { field: ForceField; dist: number } | null = null) {
   const spec = sim.ruleset.weapons.table.lightning;
-  const dist = hit ? hit.dist : spec.range;
+  const dist = field ? field.dist : hit ? hit.dist : spec.range;
   const hx = ox + dx * dist, hy = oy + dy * dist;
   shootChains(sim, ox, oy, hx, hy, spec.boltPropDamage, f.id, "lightning");
-  let kind: "fighter" | "prop" | "terrain" | "none" = "none";
+  let kind: "fighter" | "prop" | "terrain" | "field" | "none" = "none";
+  if (field) {
+    // #40: stopped on a force field's edge: no live ground
+    kind = "field";
+    absorbHit(sim, field.field, spec.boltDamage, hx, hy, "lightning", f.id);
+  }
   let target = -1;
   // where the floor goes live: under the fighter's feet, or under the point hit (a step back toward the caster, so a
   // wall's face finds the floor at its foot, not the cells inside it)

@@ -79,6 +79,10 @@ directories.
 - `old-engine` - rounds from an older engine (#88): kept in the database and on disk, never listed or shown; their
   URLs are a clean 404 (no re-simulation); scripts still list them and tell them apart; an in-flight round that no
   longer replays at startup is set aside for a fresh one.
+- `force-field` - the force field (#40): it stops shots, rockets, grenades and blasts at its edge and fighters walk
+  through; it breaks after its damage and goes down on time; one in play at a time; a fight with one replays exactly;
+  invalid settings are refused; bots pick it up and deploy it, hold fire at an enemy field, and a "use force field"
+  rule deploys it.
 - `stuck` - bots go somewhere (#88): Arena-style house-bot rounds stay under 1.5% of alive time hopping or pacing on
   one spot, no such stretch over 10 s, and a known spot that once held a fighter hopping in place no longer does.
 - `site-join` - the Connect page's MCP snippets carry the key only in a header or an environment variable; the join status says
@@ -114,6 +118,8 @@ bun run typecheck
   - `sim-chains.ts` breakable platform chains (#34): chain hit points (`CHAIN` in `constants.ts`); explosions,
     shotgun pellets, bats, heavy fists and heavy flying things damage them; one chain gone, the platform swings
     on the other (rope joint to a pivot); all gone, it falls and crushes (credited to whoever broke the chain)
+  - `sim-field.ts` force fields (#40): a rare deployable bubble that stops shots, thrown things and blasts at its edge
+    (fighters walk through); `controller-field.ts` how fighters deploy it, shelter in it and hold fire at one
   - `sim.ts` world, deterministic stepping and state hash; delegates combat, movement, items, objects, terrain, fire and chains to the `sim-*` modules
   - `fight.ts` one round: controllers, physics, result, fight record and replay
   - `match.ts` round orchestration (rounds per match from the ruleset: Classic best of 3, the Arena 1), morale, identities, decisions, match record and replay

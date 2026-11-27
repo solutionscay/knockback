@@ -43,7 +43,12 @@ export function isPickupWeapon(value: unknown): value is Exclude<Weapon, "fist">
 
 export const POWER_LIST = ["health", "shield", "speed", "heavy", "damage", "jump", "jetpack"] as const;
 export type PowerUp = (typeof POWER_LIST)[number];
-export type ItemType = PowerUp | Weapon;
+/**
+ * The force field (#40): a rare deployable, not a power-up. Picked up from a supply drop, carried (one at most), then
+ * deployed where the holder stands: a bubble that blocks shots and blasts across its edge (sim-field.ts).
+ */
+export const FORCE_FIELD = "forcefield" as const;
+export type ItemType = PowerUp | Weapon | typeof FORCE_FIELD;
 /**
  * How a fighter positions itself. #38 adds overwatch (high ground, long gun, shoot whoever is in the open),
  * flank (route around the target) and hold (defend a spot); cover now moves between sim-computed cover spots.
@@ -132,6 +137,8 @@ export interface Input {
   down?: boolean;
   /** #100: a fist punch that digs (arena.terrain.dig: carves at arm's length, harder); the house bots dig out with it */
   dig?: boolean;
+  /** #40: deploy the carried force field where the fighter stands */
+  field?: boolean;
 }
 
 export const NO_INPUT: Input = { move: 0, jump: false, aimX: 1, aimY: 0, weapon: null, fire: false };
@@ -252,6 +259,8 @@ export interface Fighter {
   outsideZone: boolean;
   outsideTicks: number;
   power: Powers;
+  /** force fields carried, not yet deployed (#40): 0 or 1 */
+  forceField: number;
   jetting: boolean;
   // stats
   damageDealt: number;
@@ -296,13 +305,33 @@ export interface LiveGround {
   points: { x: number; y: number }[];
 }
 
+/**
+ * A deployed force field (#40): a circle of `r` around (x, y), fixed where it went up. A shot, a thrown thing or a blast
+ * that would cross its edge stops there; fighters walk through. It lasts `ticks` more ticks or until `hp` (the damage it
+ * can still take) runs out.
+ */
+export interface ForceField {
+  id: number;
+  owner: number;
+  x: number;
+  y: number;
+  r: number;
+  born: number;
+  ticks: number;
+  hp: number;
+  /** damage taken so far (stats, viewer) */
+  absorbed: number;
+  /** grenades and mines that bounced off it already (their damage counts once) */
+  stopped: number[];
+}
+
 export type SimEvent =
   | { type: "fire"; tick: number; fighter: number; weapon: Weapon; x: number; y: number; dx: number; dy: number }
   | { type: "mineStick" | "mineArm"; tick: number; x: number; y: number; entity: number }
   | { type: "railCharge"; tick: number; fighter: number }
   | { type: "rail"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number }
   /** a precision shot (#38): rifle round, sniper round or crossbow bolt; spread = the perpendicular offset the accuracy model gave it */
-  | { type: "shot"; tick: number; fighter: number; weapon: "rifle" | "sniper" | "crossbow"; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number; spread: number }
+  | { type: "shot"; tick: number; fighter: number; weapon: "rifle" | "sniper" | "crossbow"; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "field" | "none"; target: number; spread: number }
   /** a sniper started aiming (#38): the laser sight is on */
   | { type: "scope"; tick: number; fighter: number }
   /** a crossbow bolt pinned a fighter to a wall (#38) */
@@ -311,10 +340,10 @@ export type SimEvent =
   | { type: "pellet"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: boolean }
   | { type: "swing"; tick: number; fighter: number; x: number; y: number; dx: number; dy: number; hit: boolean; weapon: MeleeWeapon }
   /** a lightning bolt (#72): from the sword to the first fighter, prop or surface on its line; ground = the live strip's id, or -1 */
-  | { type: "bolt"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number; ground: number }
+  | { type: "bolt"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "field" | "none"; target: number; ground: number }
   /** live ground (#72) shocked a fighter: by = the bolt's owner; stun = it was stunned too */
   | { type: "shock"; tick: number; fighter: number; by: number; x: number; y: number; stun: boolean }
-  | { type: "grapple"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "none"; target: number }
+  | { type: "grapple"; tick: number; fighter: number; x0: number; y0: number; x1: number; y1: number; hit: "fighter" | "prop" | "terrain" | "field" | "none"; target: number }
   | { type: "swap"; tick: number; fighter: number; weapon: Weapon }
   | {
       type: "explosion";
@@ -371,6 +400,12 @@ export type SimEvent =
   | { type: "platformFall"; tick: number; entity: number; x: number; y: number; by: number }
   /** a plan rule started or stopped (#6); subject = the fighter that made it true, or -1 */
   | { type: "rule"; tick: number; fighter: number; rule: number; on: boolean; subject: number }
+  /** #40: a force field went up where `fighter` stood */
+  | { type: "fieldUp"; tick: number; field: number; fighter: number; x: number; y: number; r: number }
+  /** #40: a force field stopped a shot, a thrown thing or a blast at (x, y) on its edge; damage = what it took */
+  | { type: "fieldHit"; tick: number; field: number; x: number; y: number; damage: number; cause: string; source: number }
+  /** #40: a force field is gone: its time ran out, or it took all the damage it could */
+  | { type: "fieldDown"; tick: number; field: number; x: number; y: number; reason: "time" | "broken"; absorbed: number }
   /** a mid-round plan update took effect (#8): the fighter plays its new plan from this tick */
   | { type: "plan"; tick: number; fighter: number };
 

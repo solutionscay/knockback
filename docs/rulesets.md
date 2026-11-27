@@ -19,14 +19,14 @@ This example removes railgun pickups and doubles the probability of fire spreadi
 | --- | --- |
 | `combat` | Fighter dimensions, health, movement, density, impact damage, ring-outs, launch height, weapon switching, and explosion carve scale. |
 | `weapons` | Enabled pickup weapons, weapon stats and effect tuning, including ammo, cooldowns, charge, reach, knockback and spread. Fists are built in. |
-| `pickups` | Enabled power-ups, weighted drops, power-up strengths and durations, and the armory and supply schedule. An empty power-up list turns off power-ups. |
+| `pickups` | Enabled power-ups, weighted drops, power-up strengths and durations, the armory and supply schedule, and the force field (`pickups.forceField`, #40). An empty power-up list turns off power-ups; the force field has its own `enabled`. |
 | `arena` | Size, generation, themes and their prop and material mixtures, spawn constraints, walls, terrain, prop dimensions, chain tuning and navigation. |
 | `zone` | Safe-zone width, shrink schedule, pressure, and sudden-death rules. |
 | `fire` | Burn times, fuel materials and props, spread, ignition and damage. |
 | `builds` | What each fighter-build attribute level does (#79): max HP, weight and power tables, and the caps when a build stacks with a power-up. |
 | `morale` | State thresholds, gains and losses, anger, score limits, and aim effects. |
 | `round` | Round limit, wins required, fight timeout and time past the last knockout. |
-| `tactics` | Controller aim, patience, pickup and wall pursuit tuning, retaliation and plan-rule evaluation. |
+| `tactics` | Controller aim, patience, pickup and wall pursuit tuning, retaliation, plan-rule evaluation, and how fighters use force fields (`tactics.forceField`). |
 
 See `src/sim/ruleset-defaults.ts` and `src/sim/level-config.ts` for the fields, and `src/sim/constants.ts` for the default values those fields use. Export the complete Classic body from a checkout with the following command.
 
@@ -58,6 +58,41 @@ Classic keeps weapons few and spread out, and every weapon runs out.
 - **Bots (`tactics.pickup`):** at or under `lowAmmoShare` a fighter is low: it takes any weapon with more ammo, goes up to `rearmLimit` for the nearest one, fights a rival within `saveShotsReach` with fists, and drops a low weapon not fired for `dropIdleTicks` when another weapon lies on the floor. A weapon given up on is tried again after `rearmSkipTicks`.
 
 Close Quarters keeps its own start (the old armory) but shares the supply cap, the spots and the ammo.
+
+## Force field (#40)
+
+A rare deployable shield for an area, different from the Shield power-up (which lowers the damage and knockback one
+fighter takes for a few hits). One force field at most is in play at a time: on the floor, carried, or up.
+
+- **Drop (`pickups.forceField`):** from `firstTick` (15 s), a supply drop that would bring a power-up brings the force
+  field instead with `dropChance` (0.25), while none is in play. It lands on a spot every fighter can reach (the weapon
+  spots above). The choice and the spot come from the force field's own stream of the round seed, so the other drops
+  stay as they were. Crates and the round's opening power-ups never bring it. A fighter carries one at most; a
+  fighter knocked out by damage drops it, and a ring-out loses it.
+- **Deploy:** where the holder stands, a circle of `radius` (2.4 m) around the middle of its body. It stays there (it
+  does not follow the holder) for `ticks` (360, 6 s) or until it has taken `absorb` (30) damage, then it goes down.
+- **What it stops:** anything that would cross its edge, from either side. Rifle, sniper and crossbow rounds, shotgun
+  pellets, the railgun's slug, lightning bolts, the grappling hook and flame end on the edge; a rocket bursts on it; a
+  grenade or a thrown mine bounces off (keeping `bounce`, 0.45, of its speed); a blast and the hammer's ground wave do
+  not reach a fighter on the other side of the edge. Each thing stopped counts its full damage against `absorb` (a
+  blast once; a grenade or mine once however often it bounces).
+- **What it does not stop:** fighters walk through it, and punches and swings (fists, bat, the lightning sword's slash)
+  work through it. So it never traps anyone, never blocks a way or a gap, and never changes the nav graph; a rival can
+  walk in and fight up close. Fire, live ground, the zone and falls are not stopped either.
+- **Why at the holder, and walk-through:** the holder is the one under fire, so the bubble goes up where it is needed
+  with no aim and no throw to miss; it reads at once on video (a bubble around a fighter). A solid wall could trap
+  fighters, wall off a gap (fewer ring-outs) or make new spots to get stuck; a walk-through bubble does none of that
+  and still makes range useless for a few seconds.
+- **Bots (`tactics.forceField`):** a fighter goes up to `seekLimit` (20) path cost for a loose force field. It deploys
+  on the ground, where the zone will still be while it is up, and never with a rival within `meleeRange` (2.2 m): when
+  a rival's rocket or grenade is within `incomingRange` (6 m) and coming its way; or when a rival with a ranged weapon
+  (reach `rangedReach`, 12 m, or more) has a clear line to it within `threatRange` (20 m) while it has taken
+  `underFireDamage` (9) in `underFireTicks` (90), is under `hurtShare` (half) of its max HP, plays a cover, hold or
+  overwatch stance, or leads the last rival by `leadHp` (25) HP. Inside its own field with its target outside, it keeps
+  `shelterMargin` (0.7 m) in from the edge and does not jump out. No fighter shoots, throws or fires a blast that a
+  field's edge would stop. A rival inside a field the fighter is not in costs `protectedCost` (25) more in target
+  choice, unless the fighter fights up close (fists, bat, hammer, flamethrower, lightning sword, shotgun): then it walks
+  in. A plan rule `"do": "use", "item": "forcefield"` deploys at once while the rule is active (docs/rules.md).
 
 ## Opening grace and weapon reach
 
