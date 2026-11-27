@@ -204,6 +204,14 @@ export const CLOSE_QUARTERS = validateRuleset({
   pickups: { armory: CLOSE_ARMORY, supply: { avoidDistance: 0, firstTick: SUPPLY.firstTick, interval: 480, weaponChance: 0.5, maxLooseWeapons: 3 }, power: { jetpack: { ceiling: 36_000 } } },
 });
 
+/** The paths (a.b.c) where two rulesets differ, with both values; [] when equal. */
+export function rulesetDiff(a: unknown, b: unknown, path = ""): string[] {
+  if (JSON.stringify(a) === JSON.stringify(b)) return [];
+  const obj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+  if (obj(a) && obj(b)) return [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap((k) => rulesetDiff(a[k], b[k], path ? `${path}.${k}` : k));
+  return [`${path || "(body)"}: ${JSON.stringify(a)?.slice(0, 80)} -> ${JSON.stringify(b)?.slice(0, 80)}`];
+}
+
 const prepared = new WeakSet<object>([CLASSIC, CLOSE_QUARTERS]);
 export function resolveRuleset(input?: unknown): Ruleset {
   if (input === undefined) return CLASSIC;

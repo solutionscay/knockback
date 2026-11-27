@@ -11,7 +11,7 @@
  * types) so a Cloudflare backend (#26: D1, or a Durable Object's own SQLite)
  * can implement it; SqliteStore is the bun:sqlite one for local and LAN use.
  */
-import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, type Ruleset } from "../sim/ruleset";
+import { CLASSIC, CLOSE_QUARTERS, resolveRuleset, rulesetDiff, type Ruleset } from "../sim/ruleset";
 import { Database } from "bun:sqlite";
 import type { ControlEvent } from "../ai/runner";
 import type { IdentityWish } from "../sim/identity";
@@ -35,6 +35,22 @@ export interface RulesetPreset {
   ruleset: Ruleset | null;
   version: number;
   isDefault: boolean;
+}
+
+/**
+ * The built-in presets (#161): their bodies come from the code. A fresh database gets them at version 1;
+ * `syncBuiltinPresets` (bun run presets sync) brings a stored one to the code's body, with version + 1, when they differ.
+ * `putRulesetPreset` refuses these names, so the code is their only source.
+ */
+export const BUILTIN_PRESETS: Readonly<Record<string, Ruleset>> = { Classic: CLASSIC, "Close Quarters": CLOSE_QUARTERS };
+const isBuiltin = (name: string) => Object.keys(BUILTIN_PRESETS).some((b) => b.toLowerCase() === name.toLowerCase());
+
+/** One built-in preset after a sync: `from` is the stored version (null: there was no row), `changes` the paths that differed. */
+export interface BuiltinSync {
+  name: string;
+  from: number | null;
+  to: number;
+  changes: string[];
 }
 
 export interface MatchRow {
@@ -195,6 +211,8 @@ export interface MatchStore {
   listRulesetPresets(): Promise<RulesetPreset[]>;
   putRulesetPreset(name: string, ruleset: unknown): Promise<RulesetPreset>;
   setDefaultRulesetPreset(name: string): Promise<void>;
+  /** bring the built-in presets to the code's bodies (version + 1 where a body changed); `dryRun` reports only */
+  syncBuiltinPresets(dryRun?: boolean): Promise<BuiltinSync[]>;
   insertMatch(m: MatchRow): Promise<void>;
   updateMatch(id: string, patch: MatchPatch): Promise<void>;
   getMatch(id: string): Promise<MatchRow | null>;
@@ -410,8 +428,8 @@ export const SCHEMA = `
     CHECK (is_default = 0 OR body IS NOT NULL)
   );
   CREATE UNIQUE INDEX one_default_ruleset ON ruleset_presets(is_default) WHERE is_default = 1;
-  INSERT INTO ruleset_presets (name, body, is_default) VALUES ('Classic', '${JSON.stringify(CLASSIC).replaceAll("'", "''")}', 1);
-  INSERT INTO ruleset_presets (name, body) VALUES ('Close Quarters', '${JSON.stringify(CLOSE_QUARTERS).replaceAll("'", "''")}');
+  INSERT INTO ruleset_presets (name, body, is_default) VALUES ('Classic', '${JSON.stringify(BUILTIN_PRESETS.Classic).replaceAll("'", "''")}', 1);
+  INSERT INTO ruleset_presets (name, body) VALUES ('Close Quarters', '${JSON.stringify(BUILTIN_PRESETS["Close Quarters"]).replaceAll("'", "''")}');
   INSERT INTO ruleset_presets (name) VALUES ('Sniper Alley'), ('Chaos');
 `;
 
@@ -539,7 +557,7 @@ export class SqliteStore implements MatchStore {
   async putRulesetPreset(name: string, input: unknown) {
     name = name.trim();
     if (!name || name.length > 64 || /[\x00-\x1f]/.test(name)) throw new Error("ruleset preset name must be 1–64 printable characters");
-    if (name.toLowerCase() === "classic") throw new Error("Classic is the built-in ruleset");
+    if (isBuiltin(name)) throw new Error(`${name} is a built-in preset: it follows the code (bun run presets sync)`);
     if (input === undefined) throw new Error("ruleset preset needs settings");
     const ruleset = resolveRuleset(input);
     const row = this.db.query(
@@ -553,6 +571,28 @@ export class SqliteStore implements MatchStore {
       if (!row?.body) throw new Error("the Arena's default ruleset must be a preset with settings");
       this.db.query("UPDATE ruleset_presets SET is_default = 0 WHERE is_default = 1").run();
       this.db.query("UPDATE ruleset_presets SET is_default = 1 WHERE name = ?").run(name);
+    })();
+  }
+
+  async syncBuiltinPresets(dryRun = false) {
+    return this.db.transaction(() => {
+      const out: BuiltinSync[] = [];
+      for (const [name, code] of Object.entries(BUILTIN_PRESETS)) {
+        const row = this.db.query("SELECT body, version FROM ruleset_presets WHERE name = ?").get(name) as Row | null;
+        const changes = row?.body ? rulesetDiff(resolveRuleset(p(row.body)), code) : ["(no settings)"];
+        const from = row ? (row.version as number) : null;
+        if (!changes.length) {
+          out.push({ name, from, to: from!, changes });
+          continue;
+        }
+        const to = from === null ? 1 : from + 1;
+        if (!dryRun) {
+          if (row) this.db.query("UPDATE ruleset_presets SET body = ?, version = ? WHERE name = ?").run(j(code), to, name);
+          else this.db.query("INSERT INTO ruleset_presets (name, body) VALUES (?, ?)").run(name, j(code));
+        }
+        out.push({ name, from, to, changes });
+      }
+      return out;
     })();
   }
 
