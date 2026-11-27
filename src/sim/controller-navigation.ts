@@ -305,9 +305,10 @@ export class ControllerNavigation {
   }
 
   private zoneBounds(sim: Sim): [number, number] {
-    const half = sim.zoneHalfAhead(120);
-    const h = Math.max(1.5, half - 1.2);
-    return [sim.zone.center - h, sim.zone.center + h];
+    const [lo, hi] = sim.zoneAhead(120);
+    if (hi - lo - 2.4 >= 3) return [lo + 1.2, hi - 1.2];
+    const c = (lo + hi) / 2;
+    return [c - 1.5, c + 1.5];
   }
 
   private chooseGoal(sim: Sim, me: Fighter, target: Fighter, plan: ReturnType<NavGraph["plan"]>, crossingWall: boolean, flank: number, weapon?: Weapon): Goal {

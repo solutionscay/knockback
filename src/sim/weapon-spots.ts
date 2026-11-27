@@ -144,11 +144,12 @@ export function weaponSpot(sim: Sim, rng: Rng, spawns: readonly Point[] | null =
   const counts = forWho?.length ? planCounts(sim, bareOnes) : origins.length ? reachCounts(sim, origins) : null;
   // inside the zone (a meter in from its edge); a narrow zone with nothing reachable inside widens to its edge, then
   // a little past it (fighters at bay on the ledges either side of a sudden-death zone)
-  const half0 = Math.min(z.half, sim.zoneHalfAhead(cfg.zoneAhead));
+  const [aheadLo, aheadHi] = sim.zoneAhead(cfg.zoneAhead);
+  const lo0 = Math.max(z.lo, aheadLo), hi0 = Math.min(z.hi, aheadHi);
   let points: typeof nav.points = [];
   for (const margin of [-1, 0, 2]) {
-    const lo = Math.max(sim.level.minX + 1, z.center - half0 - margin);
-    const hi = Math.min(sim.level.maxX - 1, z.center + half0 + margin);
+    const lo = Math.max(sim.level.minX + 1, lo0 - margin);
+    const hi = Math.min(sim.level.maxX - 1, hi0 + margin);
     points = nav.points.filter((p) => p.x >= lo && p.x <= hi && !nav.surfaces[p.surface]!.fragile && !sim.grid.solidAt(p.x, p.y + size) && !underProp(p));
     if (counts) {
       const best = Math.max(0, ...points.map((p) => counts[p.surface]!));

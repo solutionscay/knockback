@@ -35,11 +35,13 @@ const GOLDEN = {
   // #69: the ledge guard runs after the zone's and the hop-breaker's walks; the hop-breaker walks in the air only the
   // way the landing allows; the going-nowhere back-off obeys the air's landing; a chunk up to 2.6 m off in the line
   // is walked up to and broken
+  // #156: the zone stops (regular and sudden death) only on ground a fighter can hold, and sudden death closes to the
+  // nearest such ground (match rounds 1 and 3 move; fight 1001 and the neutral match keep their hashes)
   fight: "1857d92a",
   fightWithUpdate: "d540f0aa",
   closeQuarters: "0e47eb6f",
   // house bots play their souls' builds (#80)
-  match: ["7798f810", "15c7fc32", "6b675a22"],
+  match: ["c876bc3d", "15c7fc32", "f98e68f5"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
   neutralMatch: ["c753e246", "402efc27"],
 };

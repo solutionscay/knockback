@@ -353,7 +353,8 @@ export function groups(member: number, filter: number): number {
 }
 
 /**
- * Safe zone: holds, then shrinks steadily toward a seeded center. Outside it,
+ * Safe zone: holds, then shrinks steadily toward a seeded center, its edges
+ * stopping near endHalf on ground a fighter can hold (#156). Outside it,
  * fighters are pushed inward (no health drain), which can shove them into the pit.
  */
 export const ZONE = {
@@ -374,11 +375,13 @@ export const ZONE = {
 /**
  * Anti-stalemate: when no fighter has damaged another for quietTicks (and 2+
  * are alive), SUDDEN DEATH for the rest of the round: everyone goes for the
- * nearest rival, the zone closes fast down to endHalf, and a weapon drops
- * between the survivors every dropEvery ticks. Outside the zone the shocks
+ * nearest rival, the zone closes fast toward endHalf about its centre (#156:
+ * each edge stops at the nearest ground a fighter can hold, so in practice
+ * a few meters wide), and a weapon drops between the survivors every
+ * dropEvery ticks. Outside the zone the shocks
  * come sooner, more often and harder (nobody waits it out in a hole).
  */
-export const STALEMATE = { quietTicks: 7 * TICK_RATE, shrinkPerSec: 2.4, endHalf: 2.5, dropEvery: 3 * TICK_RATE, shockAfter: 60, shockEvery: 40, shockDamage: 8 };
+export const STALEMATE = { quietTicks: 7 * TICK_RATE, shrinkPerSec: 2.4, endHalf: 0.5, dropEvery: 3 * TICK_RATE, shockAfter: 60, shockEvery: 40, shockDamage: 8 };
 
 /**
  * Supply drops: every interval an item (sometimes a weapon) inside the zone, barrels every other drop. With

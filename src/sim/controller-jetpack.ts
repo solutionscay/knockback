@@ -25,8 +25,8 @@ export class JetpackPilot {
     if (me.power.jetpack <= 0) return false;
 
     const t = sim.pos(target);
-    const half = sim.zoneHalfAhead(60);
-    const outside = sim.zoneEnabled && Math.abs(p.x - sim.zone.center) > half - 0.5;
+    const [lo, hi] = sim.zoneAhead(60);
+    const outside = sim.zoneEnabled && (p.x < lo + 0.5 || p.x > hi - 0.5);
     const falling = !me.grounded && v.y < -1 && sim.nav.fallBelow(sim.grid, p.x, sim.feetY(me)) > 5;
     const inward = Math.sign(sim.zone.center - p.x);
     if (this.burst && (sim.tick >= this.burst.until || (!this.burst.rescue && (outside || falling)))) {
