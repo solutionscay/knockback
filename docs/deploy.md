@@ -81,6 +81,17 @@ new version doesn't change the simulation (sim hashes for seeds 1-200 unchanged,
 the checks require). For a change to the simulation, deploy when no match is
 running (`GET /api/health` → `matches.running: 0`).
 
+Then bring the built-in presets (Classic, Close Quarters) to the new version's bodies (#161). On the VM, in
+`/opt/knockback` (on the LAN: `docker exec knockback-lan-server-1 …`):
+```sh
+docker compose exec server bun run presets sync --dry-run   # each built-in: "same as the code", or vN -> vN+1 with the changed paths
+docker compose exec server bun run presets sync             # writes the code's body, version + 1, only where it differs
+```
+A second `sync` prints "same as the code" for both. The sync never changes operator presets (new names, or the
+Sniper Alley and Chaos placeholders once filled) or the default, and matches keep the body and version they pinned:
+rounds that started before the sync finish on the old body. Nothing else writes a built-in preset
+(`putRulesetPreset` refuses those names): if you skip this step, the Arena keeps the old bodies.
+
 ## Rollback
 
 ```sh
@@ -124,6 +135,7 @@ do a first setup there, then restore.
 | logs | `docker compose logs -f server` / `caddy` (json-file, rotated at 10 MB × 5 per container) |
 | restart | `docker compose restart server` (the Arena round in progress resumes; agents join again) |
 | stop / start | `docker compose stop` / `docker compose up -d` (data stays on the volumes) |
+| presets | `docker compose exec server bun run presets list`; after an upgrade `… presets sync` (see Upgrade) |
 | Arena, rounds, records | `curl https://$KB_DOMAIN/api/queue` (seats, queue, the round on now), `/api/matches`, `/api/records` |
 | disk | `docker system df`; old images: `docker image prune` (keep the previous tag for rollback) |
 
