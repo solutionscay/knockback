@@ -5,7 +5,7 @@ import { PickPanel } from "./picks";
 import { Application } from "pixi.js";
 import { initPhysics } from "../sim/sim";
 import { SoundDirector } from "./audio/director";
-import { AudioEngine, type LoggedCue } from "./audio/engine";
+import { AudioEngine, packManifestUrl, type LoggedCue } from "./audio/engine";
 import { mountSoundControls } from "./audio/ui";
 import { Game } from "./game";
 import { liveStreamUrl } from "./live-url";
@@ -90,10 +90,9 @@ document.getElementById("hud")!.addEventListener("click", (e) => {
   else if (t.dataset.follow) game.toggleFollow(Number(t.dataset.follow));
 });
 // Sound (#12): generated sounds, on by default (they start as soon as the browser allows: at once on a site the
-// person has used, else at the first click or key press, here or on the site page around the embedded viewer). A private sample pack may replace
-// them: ?sounds=<manifest url> (default /sounds/manifest.json; ?sounds=off to never look for one).
-const soundParam = params.get("sounds");
-const manifestUrl = soundParam === "off" ? null : soundParam && (/^\/[\w./-]+\.json$/.test(soundParam) || /^https:\/\/[\w.-]+(:\d+)?\/[\w./-]+\.json$/.test(soundParam)) ? soundParam : "/sounds/manifest.json";
+// person has used, else at the first click or key press, here or on the site page around the embedded viewer). A private
+// sample pack may replace them, only when asked: ?sounds=<manifest url> (no request without it, see packManifestUrl).
+const manifestUrl = packManifestUrl(params.get("sounds"));
 const audio = new AudioEngine({ capture, manifestUrl });
 game.sound = new SoundDirector(audio);
 audio.unlockOn(window);

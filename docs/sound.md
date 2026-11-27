@@ -65,7 +65,7 @@ These names are the contract for a sample pack.
 
 ## Optional private sample pack
 
-The viewer looks for a manifest at `/sounds/manifest.json`. Use `?sounds=<url>` for another place (a path, or an `https://` URL), or `?sounds=off` to never look.
+The viewer looks for a manifest only when the URL names one: `?sounds=<url>` (a same-site path such as `/sounds/manifest.json`, or an `https://` URL). Without it the viewer makes no request and plays the generated sounds. `bun run dev` serves the git- and docker-ignored `sounds/` folder (or `--sounds <dir>`) at `/sounds/` and prints the URL to open when the folder has a `manifest.json`. The match server and the Docker image serve no pack.
 
 When a manifest is found, its samples replace the generated sounds by name. Sounds the manifest does not name stay generated.
 
