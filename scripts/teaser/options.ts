@@ -1,4 +1,5 @@
-/** Command-line options of `bun run teaser` (docs/video.md). Pure: tested in tests/teaser.test.ts. */
+/** Command-line options of `bun run teaser` (docs/video.md). Pure: tested in tests/viewer-browser.test.ts. */
+import { GPU_ENV, resolveGpu, type GpuBackend } from "../viewer-browser";
 
 export type Source = { kind: "record"; file: string } | { kind: "seed"; seed: number } | { kind: "best-of"; n: number } | { kind: "server"; url: string };
 
@@ -16,9 +17,11 @@ export interface TeaserOptions {
   work: string | null;
   /** keep the scratch folder (frames, cues, WAV, plan) after the run */
   keepWork: boolean;
+  /** the capture browser's GPU backend: --gpu, else KB_TEASER_GPU, else swiftshader */
+  gpu: GpuBackend;
 }
 
-export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <n> | --server <url>] [--out <dir>] [--sizes 1080,720] [--fps 30|60] [--fast] [--workers <n>] [--work <dir>] [--keep-work]
+export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <n> | --server <url>] [--out <dir>] [--sizes 1080,720] [--fps 30|60] [--fast] [--workers <n>] [--work <dir>] [--keep-work] [--gpu swiftshader|metal|default]
   --record <file>   a saved match record (records/*.json)
   --seed <n>        a house-bot match with this seed (no AI calls)
   --best-of <n>     play n real AI matches headless (default providers), keep the one with the most action per second
@@ -29,11 +32,12 @@ export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <
   --fast            quick preview: 30 fps, 720p only, fast encode
   --workers <n>     parallel capture pages (default 6)
   --work <dir>      scratch folder for frames, sound and encodes (default: the system temp dir; keep it local)
-  --keep-work       keep the scratch folder after the run (--keep-frames does the same)`;
+  --keep-work       keep the scratch folder after the run (--keep-frames does the same)
+  --gpu <backend>   capture browser GPU: swiftshader (default, CPU), metal or default (Chromium picks); env KB_TEASER_GPU`;
 
 export class OptionError extends Error {}
 
-export function parseTeaserArgs(argv: string[], now = new Date()): TeaserOptions {
+export function parseTeaserArgs(argv: string[], now = new Date(), env: string | undefined = process.env[GPU_ENV]): TeaserOptions {
   const flags = new Map<string, string>();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -42,7 +46,7 @@ export function parseTeaserArgs(argv: string[], now = new Date()): TeaserOptions
     const boolean = k === "fast" || k === "keep-frames" || k === "keep-work" || k === "help";
     const v = boolean ? "true" : (inline ?? argv[++i]);
     if (v === undefined || (!boolean && v.startsWith("--"))) throw new OptionError(`--${k} needs a value`);
-    if (!["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "work", "keep-work", "keep-frames", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
+    if (!["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "work", "keep-work", "keep-frames", "gpu", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
     flags.set(k, v);
   }
   if (flags.has("help")) throw new OptionError(USAGE);
@@ -71,6 +75,12 @@ export function parseTeaserArgs(argv: string[], now = new Date()): TeaserOptions
       ? [720]
       : [1080, 720];
   if (!sizes.length || sizes.some((s) => s !== 1080 && s !== 720)) throw new OptionError("--sizes takes 1080 and/or 720");
+  let gpu: GpuBackend;
+  try {
+    gpu = resolveGpu(flags.get("gpu"), env);
+  } catch (e) {
+    throw new OptionError((e as Error).message);
+  }
   const stamp = now.toISOString().slice(0, 16).replace(/[:T]/g, "-");
   return {
     source,
@@ -81,5 +91,6 @@ export function parseTeaserArgs(argv: string[], now = new Date()): TeaserOptions
     workers: flags.has("workers") ? int("workers", 1, 16) : 6,
     work: flags.get("work") ?? null,
     keepWork: flags.has("keep-work") || flags.has("keep-frames"),
+    gpu,
   };
 }

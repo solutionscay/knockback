@@ -20,6 +20,7 @@ import { crossfade, END_FADE_S, SR, segmentSound, XF_S, type Stereo } from "./mo
 import { bursts, cropLeft, cutFrames, describe, montageOrder, pickCuts, type Burst } from "./montage/cuts";
 import { MONTAGE_USAGE, parseMontageArgs, type MontageOptions } from "./montage/options";
 import { captureFrames, launch, planCaption, scanTimeline, serveViewer, type CaptureResult, END_TEXT, END_TITLE } from "./teaser/capture";
+import { webglRenderer } from "./viewer-browser";
 import { ffmpeg, fitKbps } from "./teaser/media";
 import { OptionError } from "./teaser/options";
 import { cleanup, deliver, teaserPaths } from "./teaser/paths";
@@ -121,7 +122,8 @@ interface Shot {
 const shots: Shot[] = [];
 const captures = new Map<number, CaptureResult>();
 const needed = [...new Set([...picked.map((b) => b.rec), cardsRec, titleRec, ...(entranceRec >= 0 ? [entranceRec] : [])])].sort((a, b) => a - b);
-const browser = await launch();
+const browser = await launch(opts.gpu);
+log(`  browser GPU: ${opts.gpu} (WebGL: ${await webglRenderer(browser)})`);
 try {
   for (const ri of needed) {
     const r = recs[ri]!;

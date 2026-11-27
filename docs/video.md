@@ -22,6 +22,7 @@ bun run teaser --seed 42 --fast                       # a quick 720p30 preview o
 | `--workers <n>` | Parallel capture pages (default 6; more doesn't help at 1080p, see Speed) |
 | `--work <dir>` | The scratch folder for frames, sound cues, the WAV and the encodes (default: the system temp dir). Keep it on a fast local disk; a `--work` inside `--out` falls back to the temp dir. |
 | `--keep-work` | Keep the scratch folder after the run (`--keep-frames` does the same) |
+| `--gpu swiftshader\|metal\|default` | The capture browser's GPU backend (default `swiftshader`, on the CPU). See [GPU backend](#gpu-backend). |
 
 ## What you get
 
@@ -79,6 +80,8 @@ Measured full runs: a match with 2 minutes of fighting, three rounds (record `ai
 
 `--best-of n` adds the AI matches themselves (they run in parallel; two took 36 s). Encoding the 1080p file is the biggest step; `--sizes 720` skips it.
 
+The speed tables above were measured on Metal (`--gpu metal`), before SwiftShader became the default.
+
 **Why no real-time capture:** frame stepping is exact and deterministic, so no frames are dropped and the timing is right. Parallel pages already make it faster than real time at 720p, and close to it at 1080p.
 
 ## Montage: `bun run montage`
@@ -95,7 +98,7 @@ bun run montage --server http://localhost:5176 # the newest finished records wit
 | `<folder or files>` / `--server <url>` | The records. Each must replay on the current sim; one that does not is skipped with a note. |
 | `--out <dir>` | Output folder (default `videos/montage-<date>`) |
 | `--workers <n>` | Parallel capture pages per record (default 3) |
-| `--work <dir>`, `--keep-work` | As for the teaser |
+| `--work <dir>`, `--keep-work`, `--gpu <backend>` | As for the teaser |
 
 How the cuts are made (`scripts/montage/cuts.ts`):
 
@@ -109,6 +112,24 @@ Out: `knockback-montage-1080x1920.mp4` and `knockback-montage-1920x1080.mp4` (60
 
 - **The vertical cut** crops each fight shot from the 1920×1080 capture: 900×820 px below the HUD chips, centred on the weighted median of the cut's moments on screen, scaled to 1080 wide over a blurred copy. View all in a portrait viewport would cut fighters off at the sides. The cards and the title card are captured in a 1080×1920 viewport, where the viewer lays them out for portrait.
 - **Sound:** each shot's own game sound (cues from 0.6 s before the shot still ring into it), 40 ms crossfades at every cut, a 0.6 s fade-out under the title.
+
+## GPU backend
+
+Every Chromium that the render and capture scripts start (`teaser`, `montage`, `record`, `levels`, `fps`, `sheet`, `cammodes`, `plush-shots`) comes from `scripts/viewer-browser.ts`, with one GPU backend:
+
+| Backend | Chromium flags | Use |
+|---|---|---|
+| `swiftshader` (default) | `--use-angle=swiftshader --use-gl=angle --enable-unsafe-swiftshader --disable-gpu` | WebGL on the CPU. The same pixels on every machine, also with no GPU (Linux, a container), and the development Mac's GPU stays free (its rule is CPU only). |
+| `metal` | `--use-angle=metal --enable-gpu --ignore-gpu-blocklist` | The Mac GPU. Faster capture on Apple Silicon; use it only when you ask for it. |
+| `default` | none | Chromium picks. |
+
+`--gpu <backend>` on `bun run teaser` and `bun run montage` picks it; otherwise the `KB_TEASER_GPU` environment variable (for all the scripts above), otherwise `swiftshader`. An unknown name is an error. The teaser and the montage log the backend and the WebGL renderer string that the browser reports (for SwiftShader: `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device ...`).
+
+```bash
+bun run teaser --seed 42 --fast                 # SwiftShader
+bun run teaser --seed 42 --fast --gpu metal     # the Mac GPU
+KB_TEASER_GPU=metal bun scripts/record.ts ...   # the same for a script with no --gpu flag
+```
 
 ## Viewer API used (capture mode)
 
