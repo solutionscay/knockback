@@ -56,6 +56,8 @@ export const POWER_COLOR: Record<string, number> = {
   damage: 0xff4d5e,
   jump: 0xffffff,
   jetpack: 0x60f4d1,
+  /** the force field (#40): its pickup badge, the bubble and its ripples */
+  forcefield: 0x8ea6ff,
 };
 
 /** Light page grounds the name ink is checked against (none in the game today: websites, light themes, printed sheets). */

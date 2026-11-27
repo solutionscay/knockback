@@ -54,6 +54,7 @@ These names are the contract for a sample pack.
 | zap / fuse | `zap`; `fuse.lit` |
 | item / drop | `item.spawn`; `prop.drop` |
 | pickup / shield | `pickup.weapon`, `pickup.power`, `power.off`; `shield.pop` |
+| force field (#40) | `field.up` (it goes up), `field.hit` (it stops a shot, a throw or a blast; quieter under a blast's boom), `field.down` (time ran out, or broken: lower) |
 | hit | `hit.light`, `hit.heavy`, `hit.shielded` |
 | move | `land` (hard landings), `jump` (double jumps), `swap` (in the book, but silent: AI fighters swap several times a second) |
 | ko | `ko`, `ringout.whoosh` |

@@ -120,7 +120,8 @@ describe("fire", () => {
     expect(again.stats).toEqual(sim.stats);
     const { firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited } = sim.stats;
     expect({ hash: sim.hash(), firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited }).toEqual({
-      hash: "10b73476",
+      // #40: the state hash covers the force field state and its drop stream (no force field in this scene)
+      hash: "66f421d6",
       firesStarted: 10,
       cellsIgnited: 31,
       cellsBurnedDown: 10,

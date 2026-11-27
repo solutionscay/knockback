@@ -24,6 +24,12 @@ export function drawPickup(g: Graphics, it: string, time: number) {
   g.circle(0, 0, r + 0.03).fill(INK);
   g.circle(0, 0, r - 0.04).fill(power ? col : 0xfff3d6).stroke({ width: 0.08, color: power ? shade(col, 0.75) : 0xffa21f });
   if (power) g.circle(0, 0, r - 0.13).fill({ color: 0xffffff, alpha: 0.55 });
+  // the force field (#40) has no plush sprite: a small dome on its badge, drawn here (y down)
+  if (it === "forcefield") {
+    g.arc(0, 0.16, 0.3, Math.PI, 0).stroke({ width: 0.09, color: shade(col, 0.55) });
+    g.arc(0, 0.16, 0.18, Math.PI, 0).stroke({ width: 0.06, color: shade(col, 0.7), alpha: 0.8 });
+    g.rect(-0.36, 0.14, 0.72, 0.08).fill(shade(col, 0.5));
+  }
 }
 
 /** The plush sprite on a pickup's badge: w-<weapon> or p-<power>. */

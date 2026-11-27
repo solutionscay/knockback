@@ -460,6 +460,12 @@ export class FighterViews {
           bars.circle(bx + 6 * ui + pi * 13 * ui, below + 6 * ui, 5 * ui).fill(POWER_COLOR[k]!).stroke({ width: 1.5 * ui, color: 0x07080d });
           pi++;
         }
+        // a force field carried (#40): a half-dome dot
+        if (f.forceField > 0) {
+          const cx = bx + 6 * ui + pi * 13 * ui, cy = below + 8 * ui;
+          bars.arc(cx, cy, 6 * ui, Math.PI, 0).closePath().fill(POWER_COLOR.forcefield!).stroke({ width: 1.5 * ui, color: 0x07080d });
+          pi++;
+        }
       }
     }
   }

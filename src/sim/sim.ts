@@ -29,10 +29,11 @@ import { crumbleUnder, flushTerrain } from "./sim-terrain";
 import { buildChains, updateChains, type Chain } from "./sim-chains";
 import { updateFire } from "./sim-fire";
 import { type CellFire } from "./sim-ignite";
-import { ALL_WEAPONS, AMMO_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type Input, type ItemType, type LiveGround, type Mine, type Rocket, type SimEvent, type Weapon } from "./sim-types";
+import { ALL_WEAPONS, AMMO_WEAPONS, NO_INPUT, SEAT_LOOKS, type Entity, type ExplosionKind, type Fighter, type ForceField, type Input, type ItemType, type LiveGround, type Mine, type Rocket, type SimEvent, type Weapon } from "./sim-types";
 import { type Look } from "./identity";
 import { updateLiveGround } from "./sim-lightning";
 import { updateMines } from "./sim-mines";
+import { updateFields } from "./sim-field";
 import { updateRockets } from "./sim-weapons";
 import { SimZone, zonePush } from "./sim-zone";
 import { bodyHeights, TacticalMap } from "./tactical";
@@ -66,6 +67,8 @@ export class Sim {
   readonly rng: Rng;
   /** the sky drops' own stream of the round seed (#16) */
   private readonly skyRng: Rng;
+  /** the force field drop's own stream of the round seed (#40): the other drops stay as they were */
+  readonly fieldRng: Rng;
   readonly world: RAPIER.World;
   readonly terrain: Terrain;
   tick = 0;
@@ -84,6 +87,8 @@ export class Sim {
   readonly fires = new Map<number, CellFire>();
   /** live ground (#72): floor strips electrified by lightning bolts, in the order they were made */
   liveGround: LiveGround[] = [];
+  /** deployed force fields (#40), in the order they went up */
+  fields: ForceField[] = [];
   events: SimEvent[] = [];
   /** the safe zone: its edges lo..hi (#156: each stops where a fighter can hold it, so not always centred on the
    * level's zoneCenter), their middle and half-width, and the half-width it starts at */
@@ -153,6 +158,7 @@ export class Sim {
     this.grid = this.level.grid.clone();
     this.rng = new Rng(seed);
     this.skyRng = new Rng((seed ^ 0x2545f491) >>> 0);
+    this.fieldRng = new Rng((seed ^ 0x5f3759df) >>> 0);
     this.world = new RAPIER.World({ x: 0, y: -this.ruleset.combat.gravity });
     this.world.timestep = DT;
     this.entityStore = new EntityStore(this.world);
@@ -305,6 +311,7 @@ export class Sim {
     this.softCeiling();
     updateRockets(this);
     updateMines(this);
+    updateFields(this);
     updateObjects(this);
     updateChains(this);
     updateFire(this);
@@ -445,6 +452,7 @@ export class Sim {
       num(f.pinned);
       num(f.shockCd);
       num(f.dropTicks * 4 + f.wallSide + 1);
+      num(f.forceField);
       for (const weapon of AMMO_WEAPONS) num(f.ammo[weapon]);
     }
     for (const r of this.rockets) {
@@ -482,6 +490,7 @@ export class Sim {
         num(p.y);
       }
     }
+    for (const fl of this.fields) for (const value of [fl.id, fl.owner, fl.x, fl.y, fl.r, fl.born, fl.ticks, fl.hp, fl.stopped.length]) num(value);
     for (let i = 0; i < g.flags.length; i++) if (g.flags[i]) num(i * 8 + g.flags[i]!);
     // #94: only a level with liquids, sand, mud or ice hashes them (every other level's hash is as before)
     if (this.liquids.on) {
@@ -498,6 +507,7 @@ export class Sim {
     }
     for (const s of this.rng.state()) num(s);
     for (const s of this.skyRng.state()) num(s);
+    for (const s of this.fieldRng.state()) num(s);
     return h.toString(16).padStart(8, "0");
   }
 }

@@ -4,7 +4,7 @@ import { swimmable } from "./grid";
 import { hazardous, LIQUID_COST, runUp, type Link, type NavGraph, type Surface } from "./nav";
 import { clamp, length2D } from "./dmath";
 import { type Sim } from "./sim";
-import { POWER_LIST, type Fighter, type Input, type Weapon } from "./sim-types";
+import { FORCE_FIELD, isPickupWeapon, type Fighter, type Input, type Weapon } from "./sim-types";
 import { RANGED_STANDOFF, weaponReach } from "./controller-weapons";
 import { onLiveGround } from "./sim-lightning";
 import { lowOnAmmo } from "./sim-items";
@@ -17,7 +17,7 @@ import { coverSpots, hasLongGun, isLongGun, nearestRival, shelters, spotFree } f
 const IDLE_TICKS = 40;
 /** then look for a spot with a shot this long */
 const VANTAGE_TICKS = 120;
-const isWeaponItem = (t: unknown) => typeof t === "string" && !(POWER_LIST as readonly string[]).includes(t);
+const isWeaponItem = (t: unknown) => isPickupWeapon(t);
 const isRanged = (sim: Sim, w: Weapon) => w !== "fist" && sim.ruleset.tactics.weapons.reach[w].standOff >= RANGED_STANDOFF;
 /** A goal on live ground (#72) costs this much: fighters stand somewhere else while it is live. */
 const LIVE_GROUND_COST = 25;
@@ -484,7 +484,7 @@ export class ControllerNavigation {
         const type = it.itemType!;
         if (type === "jetpack" && me.power.jetpack > sim.ruleset.pickups.power.jetpack.fuelTicks / 2) continue;
         const sought = seeking.indexOf(type);
-        const isWeapon = !(POWER_LIST as readonly string[]).includes(type);
+        const isWeapon = isPickupWeapon(type);
         let limit: number;
         let extra = 0;
         if (sought >= 0 && (!isWeapon || sim.wantsWeapon(me, type as Weapon, it.ammo))) {
@@ -506,6 +506,11 @@ export class ControllerNavigation {
             extra -= 10;
           }
         } else if (type === "jetpack") limit = stranded ? sim.ruleset.tactics.pickup.unarmedLimit : sim.ruleset.tactics.pickup.jetpackLimit;
+        // #40: a loose force field is worth a detour (one carried: no second)
+        else if (type === FORCE_FIELD) {
+          if (me.forceField > 0) continue;
+          limit = sim.ruleset.tactics.forceField.seekLimit;
+        }
         else if (stance === "item") limit = sim.ruleset.tactics.pickup.itemStanceLimit;
         else if (type === "health" && me.hp < sim.ruleset.tactics.pickup.healthBelowHp) limit = sim.ruleset.tactics.pickup.healthLimit;
         else if (nothingReaches) limit = sim.ruleset.tactics.pickup.unarmedLimit;
@@ -616,7 +621,7 @@ export class ControllerNavigation {
       }
       if (!spot || zonePenalty(spot.x) > 0 || plan.cost[spot.surface] === Infinity) {
         const spots = coverSpots(sim);
-        const caches = sim.items().filter((e) => e.itemType && !(POWER_LIST as readonly string[]).includes(e.itemType)).map((e) => e.body.translation());
+        const caches = sim.items().filter((e) => isPickupWeapon(e.itemType)).map((e) => e.body.translation());
         const g = this.bestPoint(sim, plan, (px, py, sid, i) => {
           let s = -Math.max(0, tac.rise[i]!) * hold.riseWeight + Math.abs(px - mp.x) * hold.homeWeight;
           if (spots.some((c) => c.surface === sid && Math.abs(c.x - px) < 0.6)) s -= hold.coverBonus;

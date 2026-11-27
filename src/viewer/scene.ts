@@ -15,6 +15,7 @@ import { FighterViews } from "./scene-fighters";
 import { EntranceView } from "./scene-entrance";
 import type { Identity } from "../sim/identity";
 import { ProjectileViews } from "./scene-projectiles";
+import { FieldView } from "./fieldview";
 import { PropViews } from "./scene-props";
 import { ChainView } from "./chains";
 import { FireView } from "./fire";
@@ -64,6 +65,8 @@ export class Scene {
   /** flames and smoke on whatever burns (#33) */
   private readonly fireView = new FireView();
   private readonly projectiles = new ProjectileViews();
+  /** force fields (#40): the bubble in front of the fighters it covers */
+  private readonly fieldView = new FieldView();
   private readonly calloutViews = new CalloutViews();
   /** the entrance (#66): an agent drops in and kicks the house bot out */
   private readonly entrance = new EntranceView();
@@ -78,7 +81,7 @@ export class Scene {
 
   constructor(private readonly app: Application) {
     app.stage.addChild(this.sky, this.backdrop, this.hills, this.world, this.overlay, this.effects.flashScreen);
-    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.liquidLayer, this.entrance.layer, this.projectiles.graphics, this.projectiles.sprites, this.effects.front);
+    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.fieldView.graphics, this.liquidLayer, this.entrance.layer, this.projectiles.graphics, this.projectiles.sprites, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
     this.projectiles.muzzleOf = (id) => this.fighters.muzzle(id); // rockets, mines, the grapple line leave the plush hand
     this.props.muzzleOf = (id) => this.fighters.muzzle(id); // ... and grenades
@@ -155,6 +158,7 @@ export class Scene {
     this.effects.clearText();
     this.prev.clear();
     this.projectiles.reset();
+    this.fieldView.reset();
     this.effects.fx.parts = [];
     this.camera.reset();
     this.celebrateId = -1;
@@ -494,6 +498,7 @@ export class Scene {
   onEvent(e: SimEvent) {
     this.liquidView?.event(e);
     this.effects.onEvent(e, this.sim, this.pal, this.camera, this.fighters, this.props, this.projectiles);
+    this.fieldView.onEvent(e, this.effects.fx, (text, x, y, color, scale) => this.effects.float(text, x, y, color, scale));
   }
 
   afterTick() {
@@ -568,6 +573,7 @@ export class Scene {
       this.entranceDrawn = this.entranceU;
     }
     this.fighters.render(sim, fx, this.camera, frame, W, H, this.time, dt, alpha, fxDt, this.xform);
+    this.fieldView.render(sim, this.time, dt);
     this.props.drawDropMarks(sim, this.time, alpha, this.xform);
     this.calloutViews.render(sim, this.fighters, W, this.ui, this.calloutTop);
     this.effects.render(frame, W, H, dt, this.ui);

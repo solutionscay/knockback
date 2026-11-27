@@ -8,6 +8,7 @@ import { hitProp } from "./sim-objects";
 import { damagePiece } from "./sim-terrain";
 import { blastChains } from "./sim-chains";
 import { blastIgnite } from "./sim-ignite";
+import { absorbHit, fieldApart } from "./sim-field";
 
 export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: ExplosionKind, owner: number, depth: number, chainFrom: string | null) {
   sim.stats.explosions++;
@@ -29,6 +30,11 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
     }
     return true;
   });
+  // #40: a force field the blast reaches takes its full damage once, and no fighter on the far side of its edge is hurt
+  for (const fl of sim.fields) {
+    const d = length2D(fl.x - x, fl.y - y);
+    if (Math.abs(d - fl.r) <= spec.radius) absorbHit(sim, fl, spec.damage, d > 1e-6 ? fl.x + ((x - fl.x) / d) * fl.r : fl.x, d > 1e-6 ? fl.y + ((y - fl.y) / d) * fl.r : fl.y + fl.r, kind, owner);
+  }
   for (const e of found) {
     if (e.dead) continue;
     const t = e.body.translation();
@@ -43,6 +49,7 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
     if (e.kind === "fighter" && e.fighter) {
       const fi = e.fighter;
       if (!fi.alive) continue;
+      if (sim.fields.length && fieldApart(sim, x, y, t.x, t.y)) continue;
       ny += 0.55;
       const l = length2D(nx, ny);
       nx /= l;

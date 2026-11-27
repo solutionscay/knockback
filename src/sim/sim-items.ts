@@ -3,7 +3,8 @@ import { G, groups } from "./constants";
 import { availableItem, CLASSIC, type Ruleset } from "./ruleset";
 import { ordinaryWeapons, stockSpreadArmory } from "./spread-armory";
 import type { Sim } from "./sim";
-import { hasAmmo, isPickupWeapon, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
+import { fieldInPlay } from "./sim-field";
+import { FORCE_FIELD, hasAmmo, isPickupWeapon, type Entity, type Fighter, type ItemType, type PowerUp, type Weapon } from "./sim-types";
 import { cutOff, dropHeight, liveWeapons, looseWeapons, makeRoomForWeapon, weaponSpot } from "./weapon-spots";
 import { clamp } from "./dmath";
 import type { Rng } from "./rng";
@@ -219,8 +220,16 @@ export function supplyDrop(sim: Sim, n: number) {
   const stranded = supply.cutOffDrops ? cutOff(sim) : [];
   const spot = stranded.length ? weaponSpot(sim, sim.rng, null, [], [stranded[n % stranded.length]!]) : null;
   const wc = spot ? 1 : !roomForWeapon(sim) ? 0 : starved ? 1 : supply.weaponChance;
-  const item = randomDrop(sim, wc);
-  if (isPickupWeapon(item) && spot) {
+  let item = randomDrop(sim, wc);
+  // #40: a power-up drop may be the force field instead, while none is in play (drawn from its own stream)
+  const FF = sim.ruleset.pickups.forceField;
+  if (FF.enabled && !isPickupWeapon(item) && sim.tick >= FF.firstTick && !fieldInPlay(sim) && sim.fieldRng.chance(FF.dropChance)) item = FORCE_FIELD;
+  if (item === FORCE_FIELD) {
+    // where a weapon would go: a spot every fighter can reach (its own stream: the other drops stay as they were)
+    const p = weaponSpot(sim, sim.fieldRng);
+    const x = p ? p.x : dropX(sim, sim.fieldRng);
+    sim.spawnItem(item, x, p ? dropHeight(sim, p, supply.itemHeight) : underRoof(sim, x, supply.itemHeight));
+  } else if (isPickupWeapon(item) && spot) {
     makeRoomForWeapon(sim);
     sim.spawnItem(item, spot.x, dropHeight(sim, spot, supply.itemHeight));
   } else if (isPickupWeapon(item)) dropWeapon(sim, sim.rng, item);
@@ -293,9 +302,13 @@ export function throwAway(sim: Sim, f: Fighter, w: Weapon) {
   sim.events.push({ type: "swap", tick: sim.tick, fighter: f.id, weapon: "fist" });
 }
 
-/** A knocked-out fighter's weapon falls where it went out. */
+/** A knocked-out fighter's weapon falls where it went out, and its force field (#40), still up for grabs. */
 export function dropWeapons(sim: Sim, f: Fighter, x: number, y: number) {
   dropCarried(sim, f, x - 0.3, y + 0.6, -2.2, 4, "ko");
+  if (f.forceField > 0) {
+    f.forceField = 0;
+    sim.spawnItem(FORCE_FIELD, x + 0.3, y + 0.6, 2.2, 4);
+  }
 }
 
 export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
@@ -310,6 +323,7 @@ export function checkPickups(sim: Sim, f: Fighter, x: number, y: number) {
     const it = e.itemType!;
     if (!availableItem(sim.ruleset, it)) continue;
     if (it === "jetpack" && f.power.jetpack > sim.ruleset.pickups.power.jetpack.fuelTicks / 2) continue;
+    if (it === FORCE_FIELD && f.forceField > 0) continue;
     if (isPickupWeapon(it)) {
       // the one who just dropped it can't grab it straight back
       if (e.owner === f.id && sim.tick - e.born < sim.ruleset.pickups.armory.pickupGraceTicks) continue;
@@ -328,6 +342,9 @@ export function applyItem(sim: Sim, f: Fighter, it: ItemType, ammo?: number) {
   f.pickups.push(it);
   const on = (p: PowerUp) => sim.events.push({ type: "power", tick: sim.tick, fighter: f.id, power: p, on: true });
   switch (it) {
+    case FORCE_FIELD:
+      f.forceField++;
+      return;
     case "health":
       f.hp = Math.min(f.maxHp, f.hp + sim.ruleset.pickups.item.healAmount);
       return;

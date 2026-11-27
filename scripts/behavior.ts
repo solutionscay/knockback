@@ -11,6 +11,9 @@
  *   bare       holding nothing but fists: share of alive time
  * and per map (theme) the same, plus ring-outs (the share of all knockouts, and early ones: under 10 s into the
  * round), the median round length; for a batch, the seat spread (round wins per seat) and the median round length.
+ * Force fields (#40): drops, pickups, deploys per match, damage absorbed per deploy (what stopped it), fields that ended
+ * with nothing absorbed, how long the deployer stayed inside, and the round-win rate of the deployer against its fair
+ * share (1 / fighters alive when it went up), next to the holder that never deployed (1 / alive at its pickup).
  *
  *   bun scripts/behavior.ts record.json [--rounds]          a recorded match (the record's plans on the current sim)
  *   bun scripts/behavior.ts [count=200] [first=1] [--ruleset classic|close-quarters] [--theme <map>] [--stances] [--builds neutral|souls|random:SEED] [--json out.json]
@@ -38,10 +41,23 @@ const mapBucket = (): MapBucket => ({ ...bucket(), rounds: 0, kos: 0, ringOuts: 
 
 /** zone: outside the safe zone in the last 2 s before the fall (the zone pushes fighters in, over a pit if one is in the way) */
 export type FallNote = { seed: number; round: number; fighter: number; tick: number; stance: string; x: number; y: number; zone: boolean; theme: string };
-export type Scorecard = { byStance: Record<string, Bucket>; byMap: Record<string, MapBucket>; rounds: number; fighterRounds: number; roundSeconds: number[]; seatWins: number[]; falls: FallNote[]; rows: string[] };
+/** #40: force-field measures, summed over rounds */
+export type FieldCard = {
+  drops: number; pickups: number; deploys: number; roundsWithDeploy: number; roundsHeldNoDeploy: number;
+  /** damage absorbed by each field that went up */
+  absorbed: number[]; broken: number; unused: number; stops: Record<string, number>;
+  /** ticks a field was up, and of them ticks its deployer stood inside */
+  upTicks: number; ownerInside: number;
+  /** deployers: round wins, and their fair share summed (1 / alive at the deploy); holders that never deployed: the same */
+  deployerWins: number; deployerFair: number; holderWins: number; holderFair: number;
+  /** knocked out while carrying one (it drops, or is lost with a ring-out) */
+  carriedAtKo: number;
+};
+export const newFieldCard = (): FieldCard => ({ drops: 0, pickups: 0, deploys: 0, roundsWithDeploy: 0, roundsHeldNoDeploy: 0, absorbed: [], broken: 0, unused: 0, stops: {}, upTicks: 0, ownerInside: 0, deployerWins: 0, deployerFair: 0, holderWins: 0, holderFair: 0, carriedAtKo: 0 });
+export type Scorecard = { byStance: Record<string, Bucket>; byMap: Record<string, MapBucket>; rounds: number; fighterRounds: number; roundSeconds: number[]; seatWins: number[]; falls: FallNote[]; rows: string[]; field: FieldCard };
 
 export function newScorecard(): Scorecard {
-  return { byStance: {}, byMap: {}, rounds: 0, fighterRounds: 0, roundSeconds: [], seatWins: [0, 0, 0, 0], falls: [], rows: [] };
+  return { byStance: {}, byMap: {}, rounds: 0, fighterRounds: 0, roundSeconds: [], seatWins: [0, 0, 0, 0], falls: [], rows: [], field: newFieldCard() };
 }
 
 /** Play one round of `m` (prepareRound already called) and score it into `card`. */
@@ -63,9 +79,33 @@ export function scoreRound(m: Match, card: Scorecard, seed: number, names?: stri
   const fall: (FallNote | null)[] = Array(n).fill(null);
   const outside = Array(n).fill(-999);
   let aliveBefore = n;
+  // #40: force-field events this round
+  const fc = card.field;
+  const deployed: { fighter: number; alive: number }[] = [];
+  /** who picked one up, and how many were alive then */
+  const held = new Map<number, number>();
+  const absorbedBy = new Map<number, number>();
+  const prevEvent = f.onEvent;
+  f.onEvent = (e) => {
+    prevEvent?.(e);
+    if (e.type === "itemSpawn" && e.item === "forcefield") fc.drops++;
+    else if (e.type === "pickup" && e.item === "forcefield") { fc.pickups++; held.set(e.fighter, sim.alive().length); }
+    else if (e.type === "fieldUp") { fc.deploys++; deployed.push({ fighter: e.fighter, alive: sim.alive().length }); held.delete(e.fighter); absorbedBy.set(e.field, 0); }
+    else if (e.type === "fieldHit") { fc.stops[e.cause] = (fc.stops[e.cause] ?? 0) + 1; absorbedBy.set(e.field, (absorbedBy.get(e.field) ?? 0) + e.damage); }
+    else if (e.type === "fieldDown") { if (e.reason === "broken") fc.broken++; }
+    else if (e.type === "ko" && sim.fighters[e.fighter]!.forceField > 0) fc.carriedAtKo++;
+  };
   while (!f.over) {
     aliveBefore = sim.alive().length;
     f.step();
+    for (const fl of sim.fields) {
+      fc.upTicks++;
+      const o = sim.fighters[fl.owner]!;
+      if (o.alive && !o.removed) {
+        const q = sim.pos(o);
+        if ((q.x - fl.x) ** 2 + (q.y - fl.y) ** 2 < fl.r * fl.r) fc.ownerInside++;
+      }
+    }
     for (let i = 0; i < n; i++) {
       const fi = sim.fighters[i]!;
       if (!fi.alive || fi.removed) {
@@ -146,6 +186,24 @@ export function scoreRound(m: Match, card: Scorecard, seed: number, names?: stri
       if (fi.koTick < EARLY_TICKS) map.earlyRingOuts++;
     }
   }
+  f.onEvent = prevEvent;
+  const winner = sim.alive().length === 1 ? sim.alive()[0]!.id : -1;
+  for (const a of absorbedBy.values()) {
+    fc.absorbed.push(a);
+    if (a <= 0) fc.unused++;
+  }
+  if (deployed.length) fc.roundsWithDeploy++;
+  for (const d of deployed) {
+    fc.deployerFair += 1 / d.alive;
+    if (d.fighter === winner) fc.deployerWins++;
+  }
+  // carried one at some point and never deployed it this round
+  const holders = [...held].filter(([h]) => !deployed.some((d) => d.fighter === h));
+  if (holders.length && !deployed.length) fc.roundsHeldNoDeploy++;
+  for (const [h, alive] of holders) {
+    fc.holderFair += 1 / alive;
+    if (h === winner) fc.holderWins++;
+  }
   map.rounds++;
   map.roundSeconds.push(sim.tick / TICK_RATE);
   card.rounds++;
@@ -191,6 +249,12 @@ export function report(card: Scorecard, title: string): string {
       cells.splice(1, 1, String(b.rounds));
       out.push(`${cells.join(" | ").replace(/ \|$/, "")} | ${pct(b.ringOuts, b.kos)} | ${(b.earlyRingOuts / b.rounds).toFixed(2)} | ${median(b.roundSeconds).toFixed(1)} s |`);
     }
+  }
+  const fc = card.field;
+  if (fc.drops || fc.deploys) {
+    const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+    out.push("");
+    out.push(`force fields (#40): ${fc.drops} dropped, ${fc.pickups} picked up, ${fc.deploys} deployed in ${fc.roundsWithDeploy} of ${card.rounds} rounds; absorbed per deploy mean ${mean(fc.absorbed).toFixed(1)}, median ${median(fc.absorbed).toFixed(1)} (${fc.broken} broken, ${fc.unused} ended with nothing absorbed); deployer inside ${pct(fc.ownerInside, fc.upTicks)} of the time up; deployer round wins ${fc.deployerWins} (fair share ${fc.deployerFair.toFixed(1)}); held, never deployed: ${fc.holderWins} wins (fair ${fc.holderFair.toFixed(1)}); carried at a knockout ${fc.carriedAtKo}; stops: ${Object.entries(fc.stops).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}`);
   }
   if (card.rounds > 1) {
     out.push("");

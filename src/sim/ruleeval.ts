@@ -7,7 +7,7 @@
  * strategy is never changed, so it comes back when a rule stops.
  */
 import type { Controller } from "./controller";
-import { isPickupWeapon } from "./sim-types";
+import { FORCE_FIELD, isPickupWeapon } from "./sim-types";
 import { hasLongGun, inCover, inOpen } from "./tactical";
 import type { Sim } from "./sim";
 import type { Fighter, ItemType, Retaliate, Rule, Stance, Weapon } from "./sim-types";
@@ -190,9 +190,19 @@ export class RuleEngine {
     return this.first(["stance"])?.rule.stance ?? null;
   }
 
+  /** The highest active use rule's weapon or jetpack (a use rule for the force field is deploysField's). */
   use(): Weapon | "jetpack" | null {
-    const item = this.first(["use"])?.rule.doItem;
-    return item === "jetpack" || isPickupWeapon(item) ? item : null;
+    for (let i = 0; i < this.rules.length; i++) {
+      const r = this.rules[i]!;
+      if (!this.state[i]!.active || r.do !== "use" || r.doItem === FORCE_FIELD) continue;
+      return r.doItem === "jetpack" || isPickupWeapon(r.doItem) ? r.doItem : null;
+    }
+    return null;
+  }
+
+  /** An active "use force field" rule (#40): deploy the carried force field now. */
+  deploysField(): boolean {
+    return this.rules.some((r, i) => this.state[i]!.active && r.do === "use" && r.doItem === FORCE_FIELD);
   }
 
   /** An active dig rule (#100): dig toward the target through soft ground when no way leads to it. */

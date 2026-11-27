@@ -211,7 +211,7 @@ export function checkinStatus(fight: Fight, me: number, names: string[], round: 
     return w === "fist" ? null : `${x.ammo[w]}/${sim.ruleset.weapons.table[w].ammo}`;
   };
   const pw = f.power;
-  const powerUps = [pw.shield > 0 ? "shield" : "", pw.speed > 0 ? "speed" : "", pw.heavy > 0 ? "heavy" : "", pw.damage > 0 ? "damage" : "", pw.jump > 0 ? "jump" : ""].filter(Boolean);
+  const powerUps = [pw.shield > 0 ? "shield" : "", pw.speed > 0 ? "speed" : "", pw.heavy > 0 ? "heavy" : "", pw.damage > 0 ? "damage" : "", pw.jump > 0 ? "jump" : "", f.forceField > 0 ? "force field (not deployed)" : ""].filter(Boolean);
   const targetOf = (i: number) => {
     const c = fight.controllers[i]!;
     return sim.fighters[i]!.alive && c.targetId >= 0 ? names[c.targetId]! : null;

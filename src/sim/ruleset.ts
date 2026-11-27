@@ -2,7 +2,7 @@ import { SUPPLY } from "./constants";
 import { CLOSE_ARMORY, RULESET_DEFAULTS } from "./ruleset-defaults";
 import { ALL_THEMES, CLOSE_SPAWNS } from "./level-config";
 import { Mat, MAT_MAX } from "./grid";
-import { isPickupWeapon, WEAPON_LIST, type ItemType, type Weapon } from "./sim-types";
+import { FORCE_FIELD, isPickupWeapon, WEAPON_LIST, type ItemType, type Weapon } from "./sim-types";
 
 type Wide<T> = T extends number ? number : T extends boolean ? boolean
   : T extends readonly unknown[] ? { readonly [K in keyof T]: Wide<T[K]> }
@@ -154,6 +154,13 @@ export function validateRuleset(input: unknown): Ruleset {
   require(r.pickups.item.size > 0, "pickups.item.size", "must be positive");
   require(!r.pickups.enabled.includes("jetpack") || r.pickups.power.jetpack.thrust > r.combat.gravity, "pickups.power.jetpack.thrust", "an enabled jetpack must overcome gravity");
   require(r.pickups.enabled.length === 0 || r.pickups.enabled.some(p => r.pickups.weights[p] > 0), "pickups.weights", "an enabled power-up needs positive weight");
+  // #40: the force field
+  const FF = r.pickups.forceField, FT = r.tactics.forceField;
+  require(FF.radius >= 1 && FF.radius <= 6, "pickups.forceField.radius", "expected 1 to 6 meters");
+  require(FF.ticks >= 1 && FF.absorb > 0, "pickups.forceField", "ticks and absorb must be positive");
+  require(FF.bounce <= 1, "pickups.forceField.bounce", "expected 0 to 1");
+  require(FT.hurtShare <= 1, "tactics.forceField.hurtShare", "expected 0 to 1");
+  require(FT.shelterMargin < FF.radius, "tactics.forceField.shelterMargin", "must be less than pickups.forceField.radius");
   for (const [weapon, reach] of Object.entries(r.tactics.weapons.reach)) {
     require(reach.max > 0 && reach.min <= reach.max, `tactics.weapons.reach.${weapon}`, "expected a positive maximum and minimum at most maximum");
     const physics = r.weapons.table[weapon as Weapon];
@@ -222,11 +229,12 @@ export function resolveRuleset(input?: unknown): Ruleset {
 }
 
 export function enabledItems(ruleset: Ruleset): ItemType[] {
-  return [...ruleset.weapons.enabled, ...ruleset.pickups.enabled];
+  return [...ruleset.weapons.enabled, ...ruleset.pickups.enabled, ...(ruleset.pickups.forceField.enabled ? [FORCE_FIELD] : [])];
 }
 
 export function availableItem(ruleset: Ruleset, item: ItemType): boolean {
   if (item === "fist") return false;
+  if (item === FORCE_FIELD) return ruleset.pickups.forceField.enabled;
   return isPickupWeapon(item) ? ruleset.weapons.enabled.includes(item) : ruleset.pickups.enabled.includes(item);
 }
 
