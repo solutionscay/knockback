@@ -376,14 +376,16 @@ export class SceneEffects {
       if (ft.lift === null) {
         ft.lift = 0;
         const me = room(ft);
-        for (let moved = true; moved; ) {
+        // each push clears the overlap by 1 px more (#177): an exact push can land a rounding error short, and then the next
+        // push is too small to change lift and the loop never ends; the pass cap is a second guard
+        for (let moved = true, pass = 0; moved && pass < 32; pass++) {
           moved = false;
           for (const o of keep) {
             if (o.max - o.life > FLOAT_HOLD) continue;
             const r = room(o);
             const below = sy(o) - sy(ft); // > 0: o is lower on screen
             if (Math.abs(sx(o) - sx(ft)) < (me.w + r.w) / 2 && Math.abs(below) < (me.h + r.h) / 2) {
-              ft.lift += ((me.h + r.h) / 2 - below) / ui;
+              ft.lift += ((me.h + r.h) / 2 - below + 1) / ui;
               moved = true;
             }
           }
