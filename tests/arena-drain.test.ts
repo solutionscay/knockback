@@ -71,21 +71,40 @@ describe("the drain", () => {
     await loop;
   }, 30_000);
 
-  test("undrain, or the drain's own limit, lets rounds go on", async () => {
-    const api = server({ sleep: async () => void (api.arena.round >= 3 && api.arena.stop()) });
-    api.arena.drain(60_000); // before the first round: no round runs, so the Arena is idle at once
+  test("a drain before the loop holds even the first round; undrain, or the drain's own limit, lets rounds go on", async () => {
+    const api = server({ sleep: async () => void (api.arena.round >= 2 && api.arena.stop()) });
+    api.arena.drain(60_000);
     expect(api.arena.state()).toMatchObject({ round: null, idle: true });
     const loop = api.arena.start();
-    // the first round still plays (a drain holds the next round, from the end of a round); then the loop holds
     await until(api, () => api.arena.state().drain?.held === true);
-    expect(api.arena.round).toBe(1);
+    expect(api.arena.round).toBe(0);
     api.arena.undrain();
     expect(api.arena.state().drain).toBeNull();
-    await until(api, () => api.arena.round >= 2);
-    // a drain of 50 ms ends by itself
+    await until(api, () => api.arena.round >= 1);
+    // a drain of 50 ms ends by itself (set during round 1 or its win screen: round 2 waits for it, then plays)
     api.arena.drain(50);
     await loop;
-    expect(api.arena.round).toBe(3);
+    expect(api.arena.round).toBe(2);
     expect(api.arena.state().drain).toBeNull();
+  }, 30_000);
+
+  test("a drain while a resumed round plays holds the round after it", async () => {
+    const store = new SqliteStore(":memory:");
+    const before = server({}, store);
+    const key = (await post(before, "/api/keys", { owner: "rex" })).data.key as string;
+    await post(before, "/api/queue", { name: "Resumer", model: "claude-opus-5-5", soul: SOUL, line: "Again." }, key);
+    void before.arena.playRound(); // this process "dies" with round 1 waiting for the plan
+    await until(before, () => before.arena.current?.status === "open");
+
+    const after = server({}, store);
+    expect(await after.resume()).toEqual({ round: 1 });
+    after.arena.drain(60_000); // the resumed round is on: it plays out, round 2 waits
+    const loop = after.arena.start();
+    await until(after, () => after.arena.state().idle);
+    expect(after.arena.state()).toMatchObject({ round: 1, status: "over", drain: { held: true } });
+    expect(after.arena.round).toBe(1);
+    void after.arena.stop();
+    await loop;
+    await before.arena.leave(before.arena.seats[0]!); // let the dead process's round end too
   }, 30_000);
 });

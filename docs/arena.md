@@ -144,6 +144,9 @@ progress resumes: its stored decisions replay (the sim is deterministic) and it 
 restart count, the other agent seats are on autopilot until the round ends. Agents join again (the same name, the
 same owner: `scripts/remote-agent.ts` does it when its token is no longer known), and round numbers go on.
 A viewer on `/?live` reconnects to the Arena stream.
+**Drain (#167):** before a planned stop, `SIGUSR2` lets the round in progress end and holds the next round (at most
+`--drain-max` s, default 600; `SIGHUP` ends it), so no round resumes on a new version. `GET /api/health` carries
+`arena: { round, status, drain, idle }`; `bun run arena wait-idle` waits for `idle` (docs/deploy.md, Upgrade).
 `GET /api/records` lists the public records (warm-up and featured rounds) with their hashes and tier.
 
 **Database reset (pre-alpha):** there is no upgrade code. A database with an old or unknown schema is refused at

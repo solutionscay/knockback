@@ -69,17 +69,49 @@ internet ──443/80──> caddy ──http──> server:5176 (not published)
 
 ## Upgrade
 
+**Wait for the round in progress first (#167).** A stop cuts off the Arena round that runs. The new process resumes
+it from SQLite, and when the new version changes the simulation that round fails (round 5644 on the LAN deploy of
+8bd40da). So every upgrade drains the server and waits before the stop:
+
+- **Drain:** `SIGUSR2` to the server. The round in progress plays to its end, then the Arena holds the next round
+  (for at most 600 s, the server flag `--drain-max`; `SIGHUP` ends the drain at once). The drain lives in memory only: the new
+  process starts rounds at once. A server from before #167 has no drain, and an unhandled `SIGUSR2` ends it: send
+  it only when `bun run arena drainable` exits 0. Without a drain, idle is the win screen between two rounds
+  (about 10 s): stop at once.
+- **Wait:** `bun run arena wait-idle --server <url> [--timeout 150]` reads `GET /api/health` (`arena`: round,
+  status, drain, `idle`) once a second. Exit 0: idle, stop now. Exit 3: the timeout, a round still runs (wait again,
+  or stop anyway and accept that the round fails if the sim changed). Exit 4: the server did not answer.
+  The default 150 s covers a bot-only round from its first frame (about 120 s: intro ~20 s, countdown 3 s, a fight of
+  at most 90 s, the result 5 s). With agents seated, their turn (75 s deadline) and slow check-ins can add more: use
+  `--timeout 300`.
+
+**Server form** (deploy.sh does the drain and the wait):
 ```sh
 git pull   # or check out the commit to deploy; the tree must be clean (KB_ALLOW_DIRTY=1 overrides)
-KB_HOST=deploy@vm1.example.net KB_PLATFORM=linux/amd64 deploy/deploy.sh
+KB_HOST=deploy@vm1.example.net KB_PLATFORM=linux/amd64 deploy/deploy.sh   # KB_WAIT=300 waits longer; KB_WAIT=0 stops at once
 ```
-The script builds `knockback-server:<git hash>` and ships it. On the VM it takes a backup,
-records the running tag in `.previous-tag`, writes the new tag into `.env`, runs
-`docker compose up -d`, and waits until the server is healthy. Running matches resume
-in the new version. Their rounds replay from SQLite, so this is only safe when the
-new version doesn't change the simulation (sim hashes for seeds 1-200 unchanged, as
-the checks require). For a change to the simulation, deploy when no match is
-running (`GET /api/health` → `matches.running: 0`).
+The script builds `knockback-server:<git hash>` and ships it. On the VM it takes a backup and writes the new tag into
+`.env`. Then it drains the running server and waits up to `KB_WAIT` seconds (default 150) for the Arena to be idle;
+the wait runs in the new image (`docker compose run server bun run arena wait-idle`), the old server plays on. On a
+timeout it ends the drain, puts the old tag back into `.env`, leaves the old version running and exits 3: run it
+again, or `KB_WAIT=0` to stop anyway. When idle, it records the running tag in `.previous-tag`, runs `docker compose
+up -d`, waits until the server is healthy, and ends the drain in case the container was kept (the same tag again).
+
+**LAN form** (on the Mac that runs the LAN, in the checkout to deploy):
+```sh
+C="docker compose -f docker-compose.yml -f docker-compose.lan.yml -p knockback-lan"
+$C build server                                                   # the new image first: the Arena keeps playing meanwhile
+bun run arena drainable --server http://localhost:5180 && $C kill -s SIGUSR2 server
+bun run arena wait-idle --server http://localhost:5180            # exit 0: idle; exit 3: timeout, see below
+$C up -d --no-build                                               # the stop and the start; the new server starts the next round
+```
+On exit 3, end the drain (`$C kill -s SIGHUP server`; it also ends by itself after 600 s) and try again, or run
+`$C up -d --no-build` anyway. Take the LAN database snapshot (`$KB_DATA/archive/lan-db-<date>-predeploy-<hash>/`)
+before the drain: once the Arena is idle the stop should follow at once.
+
+Running matches still resume in the new version after a crash or a stop without the wait. Their rounds replay from
+SQLite, which is only safe when the new version doesn't change the simulation (sim hashes for seeds 1-200 unchanged,
+as the checks require).
 
 Then bring the built-in presets (Classic, Close Quarters) to the new version's bodies (#161). On the VM, in
 `/opt/knockback` (on the LAN: `docker exec knockback-lan-server-1 …`):
@@ -133,7 +165,7 @@ do a first setup there, then restore.
 |---|---|
 | status | `docker compose ps` (the server shows `healthy`); `curl https://$KB_DOMAIN/api/health` |
 | logs | `docker compose logs -f server` / `caddy` (json-file, rotated at 10 MB × 5 per container) |
-| restart | `docker compose restart server` (the Arena round in progress resumes; agents join again) |
+| restart | `docker compose restart server` (the Arena round in progress resumes; agents join again). To restart between rounds: `docker compose kill -s SIGUSR2 server`, `bun run arena wait-idle --server https://$KB_DOMAIN`, then restart |
 | stop / start | `docker compose stop` / `docker compose up -d` (data stays on the volumes) |
 | presets | `docker compose exec server bun run presets list`; after an upgrade `… presets sync` (see Upgrade) |
 | Arena, rounds, records | `curl https://$KB_DOMAIN/api/queue` (seats, queue, the round on now), `/api/matches`, `/api/records` |
@@ -165,7 +197,8 @@ must outlive the task in `$KB_DATA`.
 
 - **Certificate not issued:** `docker compose logs caddy`. The DNS record must point to the VM, and ports 80 and 443 must be open in both firewalls.
 - **502 for more than 20 s:** the server isn't healthy. `docker compose ps`, then `docker compose logs --tail 100 server`.
-- **A resumed round failed** (`GET /api/matches/<id>` shows `error`): the stored decisions don't replay with this version, because the simulation changed. The Arena goes on with the next round; to keep that round, roll back, let it finish, then upgrade.
+- **A resumed round failed** (`GET /api/matches/<id>` shows `error`): the stored decisions don't replay with this version, because the simulation changed (the stop came without the drain and the wait, see Upgrade). The Arena goes on with the next round; to keep that round, roll back, let it finish, then upgrade.
+- **The Arena holds and plays no round:** a drain is on (`GET /api/health` → `arena.drain`). `docker compose kill -s SIGHUP server` ends it; it also ends by itself after 600 s.
 - **Clients get 429:** the per-address limits. Behind Caddy the server takes the client address from `X-Forwarded-For`, and only from Caddy (private addresses).
 
 ## Rehearsal on a Mac (OrbStack)

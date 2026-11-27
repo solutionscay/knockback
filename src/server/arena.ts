@@ -162,18 +162,20 @@ export class Arena {
         this.current.live.mirror = null;
       }
       while (!this.stopped) {
-        try {
-          await this.playRound();
-        } catch (e) {
-          this.api.log(`arena: round ${this.round} could not run: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
-        }
-        if (!this.stopped) await this.sleep(this.gapMs);
+        // the drain (#167) holds the next round here: also the first one after a resumed round
         while (this.drainState && !this.stopped) {
           this.parked = true;
           this.changed();
           await this.drainState.woken;
         }
         this.parked = false;
+        if (this.stopped) break;
+        try {
+          await this.playRound();
+        } catch (e) {
+          this.api.log(`arena: round ${this.round} could not run: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
+        }
+        if (!this.stopped) await this.sleep(this.gapMs);
       }
       this.loop = null;
     })();
@@ -202,7 +204,7 @@ export class Arena {
       const woken = new Promise<void>((r) => (wake = r));
       this.drainState = { until: now + maxMs, timer: this.drainTimer(maxMs), wake, woken };
     }
-    this.api.log(`arena: drain on: ${this.parked || !this.live_() ? "no round runs" : `round ${this.current!.arenaRound} plays to its end`}; the next round waits (at most ${Math.round(maxMs / 1000)} s)`);
+    this.api.log(`arena: drain on: ${this.parked || !this.roundLive() ? "no round runs" : `round ${this.current!.arenaRound} plays to its end`}; the next round waits (at most ${Math.round(maxMs / 1000)} s)`);
     this.changed();
   }
 
@@ -224,7 +226,7 @@ export class Arena {
   }
 
   /** A round is open (turns) or running (the fight). */
-  private live_(): boolean {
+  private roundLive(): boolean {
     const m = this.current;
     return !!m && (m.status === "open" || m.status === "running");
   }
@@ -235,7 +237,7 @@ export class Arena {
    */
   state() {
     const m = this.current;
-    const live = this.live_();
+    const live = this.roundLive();
     return {
       round: m?.arenaRound ?? null,
       status: m?.status ?? null,
