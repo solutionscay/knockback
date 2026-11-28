@@ -17,13 +17,20 @@ import { Fight } from "../src/sim/fight";
 import type { Rule, Strategy } from "../src/sim/sim-types";
 import { planCardHtml } from "../src/site/plan-card";
 import { PlanBook, planAt, ruleStates } from "../src/site/plans";
-import { ruleText } from "../src/viewer/callouts";
+import { planChangeText, ruleText } from "../src/viewer/callouts";
 
 beforeAll(async () => {
   await initPhysics();
 });
 
 const NAMES = ["Haiku", "Skiff", "Luna", "Pickle"];
+
+test("plan changes identify the new stance", () => {
+  const rush: Strategy = { target: "nearest", stance: "rush", weapons: ["bat"], line: "" };
+  expect(planChangeText(rush, { ...rush, stance: "overwatch" }, NAMES)).toBe("→ hold high ground");
+  expect(planChangeText(rush, { ...rush, stance: "flank" }, NAMES)).toBe("→ flank");
+  expect(planChangeText(rush, { ...rush, stance: "hold" }, NAMES)).toBe("→ hold position");
+});
 
 describe("ruleText", () => {
   // the rules of a real four-agent round (records archive, arena-1260586827)
