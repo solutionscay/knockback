@@ -143,3 +143,9 @@ To replay a match, serve its JSON from the viewer's `records/` directory and ope
 `weapons.table.freezegun` sets the tank capacity (`ammo`, 18 pulses), `cooldown` (15 ticks), `range` (5 m, positive through 12), and `spread` (0.35, outer ray slope, 0–1). Each pulse deals `damage` (3) once per rival. It sets `chillTicks` (60, whole ticks from 1 to 600) at `speedMul` (0.6, strictly between 0 and 1) of walking speed. Movement from knockback is preserved. The spray converts only water, including water below the surface.
 
 Bots use `tactics.weapons.reach.freezegun` (minimum 0 m, maximum 5 m, no vertical limit, preferred distance 3 m). Enable or disable the weapon in `weapons.enabled`. An item-seeking plan can name the freeze gun when it is enabled.
+
+### Liquid tanks
+
+Classic asks for one water tank on a beach and one oil tank on a construction site. Their theme prop ranges are `arena.themes.beach.props.waterTank` and `arena.themes.construction.props.oilTank`. Each tank has half extents of 0.34 by 0.5 m in `arena.propHalf`. Tanks replace barrel sites with enough clearance. Solid ground and other liquids limit the spill.
+
+`arena.props.tank` sets `density` (1.5, positive), `cells` (24, integer 1–64), `radius` (3 m, positive through 6), and `washSpeed` (5 m/s, positive through 12). Water adds sideways speed, falling linearly to zero at the rim. The blast opener receives credit for a resulting washout. A force field blocks the wash across its edge. Oil uses the regular oil grip and fire settings. A plan can use the `near_tank` condition with a fighter as its subject. The condition uses the spill radius.

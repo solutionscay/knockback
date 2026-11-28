@@ -121,7 +121,9 @@ describe("fire", () => {
     const { firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited } = sim.stats;
     expect({ hash: sim.hash(), firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited }).toEqual({
       // #174: the freeze gun ammo, cooldown and chill timer enter the hash even in this dry scene
-      hash: "37c90d16",
+      // #175: the hash now includes whether liquid flow is active, even in a dry scene
+      // #175 rebased on #179 (the freeze gun's hash fields as well)
+      hash: "4895e256",
       firesStarted: 10,
       cellsIgnited: 31,
       cellsBurnedDown: 10,

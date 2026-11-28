@@ -38,7 +38,7 @@ const SPLASH_REARM = 45;
 
 export class LiquidState {
   /** the level has liquids or #94 materials: everything here runs (else nothing does) */
-  readonly on: boolean;
+  on: boolean;
   /** the terrain changed since the last settle step that moved nothing */
   active = true;
   private lastVersion: number;

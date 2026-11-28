@@ -156,6 +156,10 @@ export const SOUNDS: Record<string, SoundDef> = {
     group: "flame", max: 3, gap: 0.05, priority: 4,
   },
   // --------------------------------------------------------------- arena: chains, platforms, props
+  "tank.burst": {
+    recipe: { layers: [L({ wave: "triangle", freq: 230, freqEnd: 54, decay: 0.17, gain: 0.4 }), L({ wave: "noise", freq: 4100, lowpass: 4200, lowpassEnd: 620, attack: 0.015, hold: 0.1, decay: 0.55, gain: 0.45 })] },
+    group: "tank", max: 3, gap: 0.04, priority: 6,
+  },
   "chain.snap": {
     recipe: { layers: [L({ wave: "square", freq: 2200, freqEnd: 900, decay: 0.05, gain: 0.2 }), L({ wave: "noise", freq: 6000, decay: 0.04, highpass: 3000, gain: 0.35 }), L({ wave: "triangle", freq: 1600, decay: 0.25, vibrato: [0.3, 18], gain: 0.12, delay: 0.02 })] },
     group: "chain", max: 3, gap: 0.04, priority: 6,

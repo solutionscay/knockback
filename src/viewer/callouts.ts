@@ -179,6 +179,7 @@ export function ruleText(rule: Rule, names: string[] = []): string {
     my_health_below: `Health under ${v}%`,
     health_below: `${who(true)} under ${v}% health`,
     near_ledge: `${who(true)} near a ledge`,
+    near_tank: `${who(true)} near a liquid tank`,
     near_barrel: `${who(true)} near a barrel`,
     on_streak: `${who(true)} has ${v} KO${v === 1 ? "" : "s"}`,
     chasing_me: `${who(true)} chases me`,

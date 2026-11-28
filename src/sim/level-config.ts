@@ -2,7 +2,7 @@ import { ALL_THEMES, THEME_DEFS, THEMES, type Theme, type ThemeRules } from "./t
 
 export { ALL_THEMES, THEMES, type Theme };
 
-export type PropKind = "block" | "crate" | "barrel" | "gas" | "tnt" | "steel" | "glass" | "pad" | "weight";
+export type PropKind = "block" | "crate" | "barrel" | "gas" | "tnt" | "steel" | "glass" | "pad" | "weight" | "waterTank" | "oilTank";
 
 /** Half extents per prop kind (meters). */
 export const PROP_HALF: Record<PropKind, [number, number]> = {
@@ -14,6 +14,8 @@ export const PROP_HALF: Record<PropKind, [number, number]> = {
   steel: [0.5, 0.5],
   glass: [0.08, 0.9],
   pad: [0.6, 0.15],
+  waterTank: [0.34, 0.5],
+  oilTank: [0.34, 0.5],
   weight: [0.5, 0.5],
 };
 

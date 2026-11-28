@@ -179,7 +179,7 @@ export const THEME_DEFS = {
     rules: {
       body: Mat.Dirt, surface: Mat.Dirt, platform: [Mat.Steel, Mat.Wood, Mat.Crumble], tower: Mat.Steel, bridge: [Mat.Steel, Mat.Wood],
       pitChance: 0.7, extraPits: [0, 0], towers: [2, 3], platforms: [11, 15], crumble: 0.22,
-      props: { tnt: [2, 4], weight: [2, 3], crate: [3, 5], barrel: [3, 5], gas: [1, 3], steel: [1, 3], pad: [1, 2], glass: [0, 2] },
+      props: { tnt: [2, 4], weight: [2, 3], crate: [3, 5], barrel: [3, 5], gas: [1, 3], steel: [1, 3], pad: [1, 2], glass: [0, 2], oilTank: [1, 1] },
       stepy: true, ground: { heights: "ground", runs: "random", steps: true }, speckle: NO_SPECKLE, parapet: 0,
       hazards: NO_HAZARDS, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [3, 4], topRows: [1, 1], ceiling: 0, ceilingRock: [0, 0], stalactites: [0, 0] },
@@ -219,7 +219,7 @@ export const THEME_DEFS = {
     rules: {
       body: Mat.Dirt, surface: Mat.Sand, platform: [Mat.Wood, Mat.Wood, Mat.Wood, Mat.Rock], tower: Mat.Rock, bridge: [Mat.Wood],
       pitChance: 0.7, extraPits: [0, 0], towers: [1, 2], platforms: [11, 14], crumble: 0.12,
-      props: { crate: [4, 6], barrel: [4, 6], gas: [1, 2], pad: [1, 2], tnt: [0, 1], steel: [0, 1], weight: [0, 1] },
+      props: { crate: [4, 6], barrel: [4, 6], gas: [1, 2], pad: [1, 2], tnt: [0, 1], steel: [0, 1], weight: [0, 1], waterTank: [1, 1] },
       stepy: false, ground: { heights: "ground", runs: "random", steps: true }, speckle: { on: Mat.Dirt, mat: Mat.Rock, chance: 0.06 }, parapet: 0,
       hazards: { pools: [1, 2], width: [3, 5], depth: [2, 3], water: 1, oil: 0, lava: 0, acid: 0, bankCells: 0, slime: 0, coolant: 0 }, physics: EARTH,
       stage: { oneWay: 0.75, catwalk: true, catwalkHeight: 2.5, frame: Mat.Rock, softDepth: [4, 5], topRows: [2, 2], ceiling: 0, ceilingRock: [0, 0], stalactites: [0, 0] },

@@ -70,6 +70,13 @@ export class RuleEngine {
         return this.some(cand().filter((f) => f.hp < r.value! * (f.maxHp / 100)));
       case "near_ledge":
         return this.some(cand().filter((f) => nearLedge(sim, f)));
+      case "near_tank": {
+        const tanks = [...sim.entities.values()].filter(e => !e.dead && (e.kind === "waterTank" || e.kind === "oilTank"));
+        return this.some(cand().filter(f => tanks.some(e => {
+          const p = e.body.translation(), q = pos(f);
+          return Math.hypot(p.x - q.x, p.y - q.y) <= sim.ruleset.arena.props.tank.radius;
+        })));
+      }
       case "near_barrel": {
         const barrels: { x: number; y: number }[] = [];
         for (const e of sim.entities.values()) if (!e.dead && (e.kind === "barrel" || e.kind === "tnt")) barrels.push(e.body.translation());

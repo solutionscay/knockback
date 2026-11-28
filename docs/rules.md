@@ -110,3 +110,5 @@ A record replays only when each round reaches its recorded final state hash. A r
 - **Wall jump:** in the air against a wall, jump again to kick off it (up and away). Not off the same side twice before standing again, not while stunned or just after being knocked (a fighter knocked off an edge is not saved by the wall), never over the void.
 
 In Classic, freeze guns arrive in drops and crates. A freeze gun sprays a short fan of coolant. Each pulse slows a rival’s walk for one second. Repeated hits refresh the chill. Water touched by the spray turns to slippery ice. Ice can support a fighter over water and breaks like other ice. Walls and force fields stop the spray.
+
+Beaches have blue water tanks and construction sites have brown oil tanks. A blast ruptures any tank it touches. Water spills onto connected ground, puts out fires, and washes nearby fighters away from the tank. Oil spreads into a slick that a later flame or blast can ignite. A fighter can shoot a tank with a rocket when a rival is close enough to catch the spill.
