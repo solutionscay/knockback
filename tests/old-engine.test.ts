@@ -77,7 +77,7 @@ describe("rounds from an older engine (#88)", () => {
     expect(JSON.parse(readFileSync(join(outDir, paths.keep!.slice("/records/".length)), "utf8")).engine).toBe(stamp);
   });
 
-  test("rounds from before stamps are checked once: the ones that no longer replay are marked older", async () => {
+  test("the server excludes an unstamped database row even if its file still replays", async () => {
     makeOlder(ids.old, { stamp: "e-0ld0ld00" });
     store.db.query("UPDATE matches SET engine = ? WHERE id = ?").run("e-0ld0ld00", ids.old); // stamped by an older engine
     makeOlder(ids.unstampedOld, { unstamped: true });
@@ -88,17 +88,15 @@ describe("rounds from an older engine (#88)", () => {
     writeFileSync(f, JSON.stringify(j));
     store.db.query("UPDATE matches SET engine = NULL WHERE id IN (?, ?)").run(ids.unstampedOld, ids.unstampedNew);
 
-    expect(await api.stampOldRounds(0)).toEqual({ current: 1, older: 1 });
-    expect(raw("SELECT engine FROM matches WHERE id = ?", ids.unstampedOld)!.engine).toBe(OLDER_ENGINE);
-    expect(raw("SELECT engine FROM matches WHERE id = ?", ids.unstampedNew)!.engine).toBe(engineStamp());
-    expect(await api.stampOldRounds(0)).toEqual({ current: 0, older: 0 }); // once
+    expect(await store.getRecord(ids.unstampedNew)).toMatchObject({ engine: null });
+    expect((await call(new MatchServer({ outDir, store }), "GET", `/api/replays/${ids.unstampedNew}`)).status).toBe(404);
   });
 
   test("an older round is left out of every public list", async () => {
     // a restart: nothing in memory, every round comes from storage (as on the LAN after a deploy)
     const fresh = new MatchServer({ outDir, store, pace: "fast" });
-    const hidden = [ids.old, ids.unstampedOld];
-    const shown = [ids.unstampedNew, ids.keep, ids.late];
+    const hidden = [ids.old, ids.unstampedOld, ids.unstampedNew];
+    const shown = [ids.keep, ids.late];
 
     const replays = (await call(fresh, "GET", "/api/replays?limit=100")).data.replays.map((r: { match: string }) => r.match);
     expect(replays).toEqual(expect.arrayContaining(shown));
@@ -118,7 +116,7 @@ describe("rounds from an older engine (#88)", () => {
     const board = (await call(fresh, "GET", "/api/leaderboard")).data;
     expect(JSON.stringify(board)).toContain("Basher");
     const played = (board.agents as { name: string; vsHouse: { rounds: number } }[]).find((a) => a.name === "Basher")!;
-    expect(played.vsHouse.rounds).toBe(shown.length); // its 3 rounds on this engine, not all 5 it played
+    expect(played.vsHouse.rounds).toBe(shown.length); // its 2 stamped rounds on this engine, not all 5 it played
 
     // nothing in any answer gives the mark away
     for (const body of [replays, records, agent, board]) expect(JSON.stringify(body)).not.toMatch(/older|e-0ld|engine/);
@@ -165,7 +163,7 @@ describe("rounds from an older engine (#88)", () => {
     expect(all.length).toBe(5);
     const engineOf = (id: string) => all.find((r) => r.matchId === id)!.engine;
     expect(engineOf(ids.keep)).toBe(engineStamp());
-    expect(engineOf(ids.unstampedOld)).toBe(OLDER_ENGINE);
+    expect(engineOf(ids.unstampedOld)).toBeNull();
 
     // the record files on their own: a stamp, or a replay for one without
     const file = (k: keyof typeof ids) => JSON.parse(readFileSync(join(outDir, paths[k]!.slice("/records/".length)), "utf8"));
@@ -185,7 +183,7 @@ describe("rounds from an older engine (#88)", () => {
     expect(fromFiles.filter((r) => r.engine === "older").length).toBe(3);
     const fromDb = run("--db", dbPath);
     expect(fromDb.length).toBe(5);
-    expect(fromDb.filter((r) => r.engine === "older").map((r) => r.match).sort()).toEqual([ids.old, ids.unstampedOld, ids.late].sort());
+    expect(fromDb.filter((r) => r.engine === "older").map((r) => r.match).sort()).toEqual([ids.old, ids.late].sort());
   }, 30_000); // two script runs, each works out the stamp (its reference rounds on every map, about 3 s)
 
   test("an in-flight round that does not replay at startup is set aside quietly; a fresh round starts", async () => {
@@ -210,6 +208,6 @@ describe("rounds from an older engine (#88)", () => {
     const db = new Database(dbPath);
     const n = db.query("SELECT COUNT(*) AS n FROM matches WHERE engine = ?").get(OLDER_ENGINE) as { n: number };
     db.close();
-    expect(n.n).toBe(3);
+    expect(n.n).toBe(2);
   });
 });

@@ -32,7 +32,7 @@ export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <
   --fast            quick preview: 30 fps, 720p only, fast encode
   --workers <n>     parallel capture pages (default 6)
   --work <dir>      scratch folder for frames, sound and encodes (default: the system temp dir; keep it local)
-  --keep-work       keep the scratch folder after the run (--keep-frames does the same)
+  --keep-work       keep the scratch folder after the run
   --gpu <backend>   capture browser GPU: swiftshader (default, CPU), metal or default (Chromium picks); env KB_TEASER_GPU`;
 
 export class OptionError extends Error {}
@@ -43,10 +43,10 @@ export function parseTeaserArgs(argv: string[], now = new Date(), env: string | 
     const a = argv[i]!;
     if (!a.startsWith("--")) throw new OptionError(`unexpected argument: ${a}`);
     const [k, inline] = a.slice(2).split("=", 2) as [string, string | undefined];
-    const boolean = k === "fast" || k === "keep-frames" || k === "keep-work" || k === "help";
+    const boolean = k === "fast" || k === "keep-work" || k === "help";
     const v = boolean ? "true" : (inline ?? argv[++i]);
     if (v === undefined || (!boolean && v.startsWith("--"))) throw new OptionError(`--${k} needs a value`);
-    if (!["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "work", "keep-work", "keep-frames", "gpu", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
+    if (!["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "work", "keep-work", "gpu", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
     flags.set(k, v);
   }
   if (flags.has("help")) throw new OptionError(USAGE);
@@ -90,7 +90,7 @@ export function parseTeaserArgs(argv: string[], now = new Date(), env: string | 
     fast,
     workers: flags.has("workers") ? int("workers", 1, 16) : 6,
     work: flags.get("work") ?? null,
-    keepWork: flags.has("keep-work") || flags.has("keep-frames"),
+    keepWork: flags.has("keep-work"),
     gpu,
   };
 }

@@ -463,8 +463,6 @@ export class ServerMatch {
       // the round was decided before the restart: its decisions go out again now, so picks must be closed
       if (rounds.length) await this.lockPicks();
       for (const r of rounds) await this.runner.replayRound(r);
-      // it replays: played on this engine (a round from before stamps gets the stamp now)
-      if (rounds.length) await this.store.updateMatch(this.id, { engine: this.store.engine });
       await this.restoreControl();
       if (!rounds.length) {
         for (const seat of [...away.keys()]) if (await this.store.getPlan(this.id, 1, seat)) away.delete(seat);

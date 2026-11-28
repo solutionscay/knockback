@@ -7,11 +7,9 @@
  * server after a restart: the Arena round in progress replays its stored decisions (deterministic) and plays on;
  * finished rounds load on demand.
  */
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { CheckinConfig } from "../ai/checkin";
 import { OlderEngineError } from "../ai/runner";
-import { OLDER_ENGINE, recordEngine, type StampedRecord } from "../sim/engine";
+import { OLDER_ENGINE } from "../sim/engine";
 import { dedupe, headToHead, leaderboard, type SeatEntry } from "../stats/models";
 import { Arena, type ArenaOptions } from "./arena";
 import { errorResponse, HttpError, json, RateLimiter } from "./limits";
@@ -163,34 +161,6 @@ export class MatchServer {
     } finally {
       this.loading.delete(mid);
     }
-  }
-
-  /**
-   * The rounds from before engine stamps (#88): replay each one's record once, in the background, and stamp it with
-   * this engine if it reaches its recorded hashes, "older" if not. Until then it is not shown. Public rounds first;
-   * a pause between replays keeps the live Arena smooth. Resolves when all are done (tests await it).
-   */
-  async stampOldRounds(pauseMs = 200): Promise<{ current: number; older: number }> {
-    const out = { current: 0, older: 0 };
-    for (const row of await this.store.unstampedMatches()) {
-      const rec = row.status === "over" ? await this.store.getRecord(row.id) : null;
-      let engine: string = OLDER_ENGINE;
-      if (rec) {
-        const file = rec.path.startsWith("/records/") ? join(this.opts.outDir, rec.path.slice("/records/".length)) : join(this.opts.outDir, rec.path);
-        try {
-          const raw = JSON.parse(await readFile(file, "utf8")) as StampedRecord;
-          if (recordEngine(raw) === "current") engine = this.store.engine;
-        } catch {
-          /* no readable record: it cannot be shown either way */
-        }
-      }
-      await this.store.updateMatch(row.id, { engine });
-      if (engine === OLDER_ENGINE) out.older++;
-      else out.current++;
-      if (pauseMs > 0) await new Promise((r) => setTimeout(r, pauseMs));
-    }
-    if (out.current + out.older) this.log(`engine: ${out.current + out.older} rounds from before engine stamps checked: ${out.current} on this engine, ${out.older} older (kept as training data, not shown)`);
-    return out;
   }
 
   // ------------------------------------------------------------ HTTP

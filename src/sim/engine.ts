@@ -65,8 +65,7 @@ export type StampedRecord = MatchRecord & { engine?: string };
 /**
  * Was this record made on the current engine? Another engine's stamp answers at once (older). A record with this
  * engine's stamp, or with none (from before stamps), is replayed: current only if every round reaches its recorded
- * hash (a sim change the reference round missed is caught here). For scripts (training, stats, the #88 detector) and
- * the server's one-time check of old rows; the server never shows an older one.
+ * hash (a sim change the reference round missed is caught here). For offline scripts (training, stats, the #88 detector).
  */
 export function recordEngine(rec: StampedRecord): "current" | "older" {
   if (typeof rec.engine === "string" && rec.engine !== engineStamp()) return "older";
