@@ -18,6 +18,7 @@ import { buildsOn, NEUTRAL_BUILD } from "../sim/build";
 import { placing } from "../sim/roundstats";
 import { parseSoul, type Soul } from "../sim/soul";
 import { exampleSouls } from "../sim/souls";
+import { TICK_RATE } from "../sim/constants";
 import { modelOf, remoteLabel, seatEntries } from "../stats/models";
 import { portraitSvg } from "../art/portrait";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
@@ -602,7 +603,7 @@ export class ServerMatch {
         ...base,
         status: "checkin",
         tick: c.tick,
-        second: Math.round(c.tick / 60),
+        second: Math.round(c.tick / TICK_RATE),
         deadlineAt: new Date(c.deadlineAt).toISOString(),
         msLeft: Math.max(0, c.deadlineAt - Date.now()),
         attempts: c.attempts,

@@ -6,6 +6,7 @@ import type { MatchStatus, Operator, ReplaySummary } from "../api-types";
 import { fightSecondsAt, roundPlayback } from "../flow/pacing";
 import { DEFAULT_TIMING } from "../flow/beats";
 import type { PlaybackPos } from "../viewer/embed";
+import { TICK_RATE } from "../sim/constants";
 import { NAME_RE } from "../names";
 import { modelOf } from "../stats/models";
 
@@ -407,7 +408,7 @@ export function timeline(rounds: ReportRound[], names: string[]): Timeline {
   let t = 0;
   for (const r of rounds) {
     if (!r.result) break;
-    const ticks = r.result.ticks ?? Math.round(r.result.seconds * 60);
+    const ticks = r.result.ticks ?? Math.round(r.result.seconds * TICK_RATE);
     const kos = r.result.knockouts;
     const p = roundPlayback({ round: r.round, lines: r.plans.map((x) => x.line ?? ""), fightTicks: ticks, kos: kos.length, endsWithKo: r.result.reason === "last-standing", timing: DEFAULT_TIMING });
     const seg: Segment = { round: r.round, start: t, preFight: p.preFight, fight: p.fight, roundEnd: p.roundEnd, end: t + p.total, ticks, koTicks: kos.map((k) => k.tick ?? -1).filter((x) => x >= 0) };

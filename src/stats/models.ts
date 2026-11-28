@@ -13,6 +13,7 @@
  *
  * No DOM, no Bun, no sim imports beyond types: runs in the viewer, the server and scripts.
  */
+import { TICK_RATE } from "../sim/constants";
 import type { RoundFacts } from "../sim/morale";
 
 export type ModelProvider = "anthropic" | "openai" | "xai" | "google" | "meta" | "mistral" | "deepseek" | "qwen" | "house" | "test" | "other";
@@ -194,7 +195,7 @@ export function fightStatsOf(facts: readonly RoundFacts[]): FightStats {
       seconds: r1(f.seconds),
       seats: f.fighters.map((x) => {
         const ko = f.stats.kos.find((k) => k.victim === x.id);
-        const alive = !x.survived && ko?.tick !== undefined ? Math.min(f.seconds, ko.tick / 60) : f.seconds;
+        const alive = !x.survived && ko?.tick !== undefined ? Math.min(f.seconds, ko.tick / TICK_RATE) : f.seconds;
         return { kos: x.kosDealt.length, ringouts: x.kosDealt.filter((k) => k.cause === "ringout").length, damage: r1(x.damageDealt), taken: r1(x.damageTaken), alive: r1(alive) };
       }),
     })),

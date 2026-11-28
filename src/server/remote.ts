@@ -14,6 +14,7 @@ import { remoteLabel } from "../stats/models";
 import { parseAnswer, MAX_LINE, MAX_WHY } from "../ai/parse";
 import { buildReport, buildsHelp, lastPlanLines, ruleResultLine, whatHappenedLines, weaponHelp, enabledRuleExamples, STANCE_HELP } from "../ai/prompt";
 import { BUILD_EXAMPLES, BUILD_MAX, BUILD_MIN, buildsOn, NEUTRAL_BUILD } from "../sim/build";
+import { TICK_RATE } from "../sim/constants";
 import { levelTactics, longGunsLastRound } from "../ai/tactics";
 import type { Provider } from "../ai/providers";
 import type { Match } from "../sim/match";
@@ -103,7 +104,7 @@ export function turnContext(match: Match, me: number) {
           // each fighter's build last round and how yours did (#80)
           builds: previous ? names.map((name, i) => ({ name, build: previous.strategies[i]!.build ?? NEUTRAL_BUILD })) : [],
           howYourBuildWent: previous && buildsOn(match.ruleset) ? buildReport(previous.strategies.map((s) => s.build ?? NEUTRAL_BUILD), last, me, names)[1]! : null,
-          knockouts: last.stats.kos.map((k) => ({ victim: names[k.victim]!, by: k.by >= 0 && k.by !== k.victim ? names[k.by]! : null, weapon: k.weapon, cause: k.cause, atSeconds: k.tick !== undefined ? Math.round(k.tick / 60) : null })),
+          knockouts: last.stats.kos.map((k) => ({ victim: names[k.victim]!, by: k.by >= 0 && k.by !== k.victim ? names[k.by]! : null, weapon: k.weapon, cause: k.cause, atSeconds: k.tick !== undefined ? Math.round(k.tick / TICK_RATE) : null })),
           damageTaken: names
             .map((from, a) => ({ from, damage: Math.round(last.stats.damage[a]![me]!.damage), hits: last.stats.damage[a]![me]!.hits, fromBehind: last.stats.damage[a]![me]!.fromBehind }))
             .filter((d, a) => a !== me && d.damage >= 1),

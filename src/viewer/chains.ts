@@ -18,6 +18,7 @@ import { CELL } from "../sim/grid";
 import type { Sim } from "../sim/sim";
 import type { Chain } from "../sim/sim-chains";
 import { chainAttach } from "../sim/sim-chains";
+import { TICK_RATE } from "../sim/constants";
 import type { Entity } from "../sim/sim-types";
 import type { PieceCell } from "../sim/terrain";
 import type { CameraFrame } from "./scene-camera";
@@ -142,7 +143,7 @@ export class ChainView {
         continue;
       }
       // broken: the upper part recoils a little, then its end sways and settles
-      const t = Math.max(0, now - ch.brokenTick) / 60;
+      const t = Math.max(0, now - ch.brokenTick) / TICK_RATE;
       const endY = ch.breakY + 0.5 * (1 - Math.exp(-t * 9));
       const hinge = endY + DANGLE;
       const top = this.roof(ch.px, hinge, view);
