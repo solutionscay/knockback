@@ -9,6 +9,6 @@ export function writeMatchFiles(runner: MatchRunner, outDir: string, prefix: str
   writeFileSync(join(outDir, file), JSON.stringify(runner.savedRecord(), null, 2));
   writeFileSync(join(outDir, file.replace(/\.json$/, ".log.txt")), runner.log.join("\n") + "\n");
   writeFileSync(join(outDir, file.replace(/\.json$/, ".prompts.json")), JSON.stringify(runner.prompts, null, 2));
-  if (runner.checkins.checkinPrompts.length) writeFileSync(join(outDir, file.replace(/\.json$/, ".checkins.json")), JSON.stringify(runner.checkins.checkinPrompts, null, 2));
+  if (runner.checkins.prompts.length) writeFileSync(join(outDir, file.replace(/\.json$/, ".checkins.json")), JSON.stringify(runner.checkins.prompts, null, 2));
   return file;
 }
