@@ -6,6 +6,7 @@
  */
 import type { Seat } from "../ai/decide";
 import { MatchRunner, OlderEngineError, type ControlEvent, type RunnerEvent, type StoredRound } from "../ai/runner";
+import { soulIdOf } from "./match-input";
 import { OLDER_ENGINE } from "../sim/engine";
 import { settleSuitUp, type SuitUpAnswer, type SuitUpResult } from "../ai/suitup";
 import { assignIdentities, type Identity, type IdentityWish } from "../sim/identity";
@@ -778,7 +779,3 @@ export function enteringSeats(names: readonly (string | null)[], before: { kinds
   });
   return out;
 }
-
-/** A soul id from an agent name. */
-export const soulIdOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
-
