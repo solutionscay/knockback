@@ -11,10 +11,11 @@
  *                                                                        on the current sim even where the hash moved
  *   bun scripts/stuck.ts report runs.json [after.json] [--md]          rates by plan, build, map, weapon and seat kind
  */
+import { batchRuleset, optionValue, seatOrder } from "./batch-options";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { exampleSouls, initPhysics, Match, type MatchRecord } from "../src/sim";
-import { validateRuleset, type Ruleset } from "../src/sim/ruleset";
+import type { Ruleset } from "../src/sim/ruleset";
 import { StuckDetector, type StuckEpisode } from "../src/stats/stuck";
 
 export interface FighterRound {
@@ -40,10 +41,6 @@ interface RunFile {
   fighters: FighterRound[];
 }
 
-const arg = (name: string) => {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-};
 
 /** Play the prepared round of `m` with a detector on it; push its fighter rows. */
 function watchRound(m: Match, src: string, seats: string[], out: FighterRound[]) {
@@ -78,20 +75,15 @@ function watchRound(m: Match, src: string, seats: string[], out: FighterRound[])
   }
 }
 
-function arenaRuleset(): Ruleset {
-  // --ruleset: a partial ruleset over Classic (#114: one map's rounds, e.g. '{"arena":{"enabledThemes":["forest"]}}')
-  const base = validateRuleset(JSON.parse(arg("--ruleset") ?? "{}"));
-  return { ...base, round: { ...base.round, maxRounds: 1, winsToTake: 1 } };
-}
-
-function runSims(count: number, first: number): RunFile {
+function runSims(count: number, first: number, base: Ruleset): RunFile {
+  const ruleset = { ...base, round: { ...base.round, maxRounds: 1, winsToTake: 1 } };
   const souls = exampleSouls();
   const fighters: FighterRound[] = [];
   let rounds = 0;
   for (let k = 0; k < count; k++) {
     const seed = first + k;
-    const order = [0, 1, 2, 3].map((i) => (i + seed) % 4);
-    const m = new Match(seed, { souls: order.map((i) => souls[i]!), ruleset: arenaRuleset() });
+    const order = seatOrder(seed);
+    const m = new Match(seed, { souls: order.map((i) => souls[i]!), ruleset });
     while (!m.over) {
       m.prepareRound();
       watchRound(m, `sim:${seed}`, ["house", "house", "house", "house"], fighters);
@@ -263,10 +255,10 @@ const mode = process.argv[2];
 if (mode === "report") report(process.argv.slice(3).filter((a) => !a.startsWith("--")));
 else {
   await initPhysics();
-  const outFile = arg("--out") ?? "stuck-runs.json";
-  const pos = process.argv.slice(3).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--out");
+  const outFile = optionValue(process.argv, "--out") ?? "stuck-runs.json";
+  const pos = process.argv.slice(3).filter((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--out" && all[i - 1] !== "--ruleset");
   const t0 = performance.now();
-  const run = mode === "sims" ? runSims(Number(pos[0] ?? 100), Number(pos[1] ?? 1)) : mode === "records" ? runRecords(pos, process.argv.includes("--replay-plans")) : null;
+  const run = mode === "sims" ? runSims(Number(pos[0] ?? 100), Number(pos[1] ?? 1), await batchRuleset(optionValue(process.argv, "--ruleset"))) : mode === "records" ? runRecords(pos, process.argv.includes("--replay-plans")) : null;
   if (!run) throw new Error("usage: bun scripts/stuck.ts sims|records|report ...");
   writeFileSync(outFile, JSON.stringify(run));
   console.error(`${run.rounds} rounds, ${run.diverged} diverged, ${run.skipped} skipped, ${((performance.now() - t0) / 1000).toFixed(0)} s -> ${outFile}`);

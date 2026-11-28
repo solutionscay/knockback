@@ -1,3 +1,4 @@
+import { nearestRank } from "../stats/quantiles";
 import { ruleKey } from "../sim/rules";
 import { isPickupWeapon, type Strategy } from "../sim/sim-types";
 import { checkLine } from "./factcheck";
@@ -5,12 +6,6 @@ import { NA, type ChangeStats, type EvalDecision, type EvalMatch, type EvalRepor
 
 export const r3 = (x: number) => Math.round(x * 1000) / 1000;
 const rate = (hits: number, chances: number) => ({ chances, hits, rate: chances ? r3(hits / chances) : 0 });
-
-export function quantile(xs: number[], q: number): number {
-  if (!xs.length) return 0;
-  const s = xs.slice().sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.max(0, Math.ceil(q * s.length) - 1))]!;
-}
 
 export function variety(values: string[]): FieldVariety {
   const dist: Record<string, number> = {};
@@ -258,7 +253,7 @@ export function reliabilityOf(matches: EvalMatch[]): Record<string, ProviderReli
       });
   const out: Record<string, ProviderReliability> = {};
   for (const [k, a] of Object.entries(acc))
-    out[k] = { calls: a.calls, hedged: a.hedged, ok: a.ok, timeouts: a.timeouts, errors: a.errors, invalid: a.invalid, fallbacks: a.timeouts + a.errors + a.invalid, ms: { median: quantile(a.ms, 0.5), p90: quantile(a.ms, 0.9), max: Math.max(0, ...a.ms) } };
+    out[k] = { calls: a.calls, hedged: a.hedged, ok: a.ok, timeouts: a.timeouts, errors: a.errors, invalid: a.invalid, fallbacks: a.timeouts + a.errors + a.invalid, ms: { median: nearestRank(a.ms, 0.5), p90: nearestRank(a.ms, 0.9), max: Math.max(0, ...a.ms) } };
   return out;
 }
 

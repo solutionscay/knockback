@@ -1,16 +1,18 @@
+import { sampleQuantile } from "../src/stats/quantiles";
 /**
  * Balance check for equal fighters: N headless house-bot matches with the
  * example souls rotated across seats (seed s: seat i gets soul (i+s-1) % 4).
  * Reports win spread per seat (with its 95% noise band) and per soul, time to
  * first weapon pickup, how often a rival was near at that pickup, pickups per
  * round, round length and knockouts per weapon.
- *   bun scripts/equal-batch.ts [N=200] [firstSeed=1] [--close] [--ruleset overrides.json] [--builds neutral|souls|random:SEED] [--json out.json]
+ *   bun scripts/equal-batch.ts [N=200] [firstSeed=1] [--close] [--ruleset preset|overrides.json] [--builds neutral|souls|random:SEED] [--json out.json]
  * --close starts from Close Quarters instead of Classic; --ruleset applies a
  * partial ruleset (JSON) on top of it; --builds sets the builds (batch-options.ts buildsOption; default: all
  * neutral).
  */
-import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, validateRuleset, WEAPON_LIST, type Weapon } from "../src/sim";
-import { buildsLabel, buildsOption, comparisonBatchOptions, mergeOverrides, sampleQuantile, withBuilds } from "./batch-options";
+import { percent, seatWinBand, sum } from "./batch-stats";
+import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, WEAPON_LIST, type Weapon } from "../src/sim";
+import { seatOrder, batchRuleset, optionValue, buildsLabel, buildsOption, comparisonBatchOptions, withBuilds } from "./batch-options";
 
 /** A rival this close at a fighter's first weapon pickup makes that pickup contested (meters, roundstats NEAR_M). */
 const CONTEST_RANGE = 7;
@@ -19,17 +21,13 @@ const OWN_RATIO = 0.6;
 
 await initPhysics();
 const argv = process.argv;
-const flag = (name: string) => {
-  const i = argv.indexOf(name);
-  return i >= 0 ? argv[i + 1] : undefined;
-};
 const valueFlags = new Set(["--ruleset", "--json", "--builds"]);
 const builds = buildsOption(argv);
 const { count: N, first, houseRules } = comparisonBatchOptions(argv.filter((a, i) => !valueFlags.has(a) && !valueFlags.has(argv[i - 1]!)));
-const rulesetFile = flag("--ruleset");
-const jsonOut = flag("--json");
+const rulesetFile = optionValue(argv, "--ruleset");
+const jsonOut = optionValue(argv, "--json");
 const base = argv.includes("--close") ? CLOSE_QUARTERS : CLASSIC;
-const ruleset = rulesetFile ? validateRuleset(mergeOverrides(base, await Bun.file(rulesetFile).json())) : base;
+const ruleset = await batchRuleset(rulesetFile, base);
 const souls = exampleSouls();
 const seatRounds = [0, 0, 0, 0];
 const seatMatches = [0, 0, 0, 0];
@@ -53,7 +51,7 @@ const t0 = performance.now();
 for (let k = 0; k < N; k++) {
   const seed = first + k;
   const rot = (seed - 1) % 4;
-  const order = [0, 1, 2, 3].map((i) => (i + rot) % 4);
+  const order = seatOrder(rot);
   const brains = withBuilds(order.map(() => houseBrain), builds, seed);
   const m = new Match(seed, { souls: order.map((i) => souls[i]!), houseRules, ruleset, brains });
   while (!m.over) {
@@ -111,11 +109,9 @@ for (let k = 0; k < N; k++) {
   seatMatches[m.winner]!++;
   soulMatches[order[m.winner]!]!++;
 }
-const pct = (a: number, b: number) => `${((100 * a) / b).toFixed(1)}%`;
-const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
 const R = sum(seatRounds);
 // 95% band for one seat's round-win share around the even 25%
-const band = 1.96 * Math.sqrt((0.25 * 0.75) / R);
+const band = seatWinBand(R);
 const seatShare = seatRounds.map((w) => w / R);
 const seatDev = Math.max(...seatShare.map((s) => Math.abs(s - 0.25)));
 const K = sum(Object.values(kills));
@@ -141,16 +137,16 @@ const metrics = {
 };
 const out: string[] = [];
 out.push(`${N} matches (seeds ${first}..${first + N - 1}), ${R} rounds, ${((performance.now() - t0) / 1000).toFixed(0)} s (souls rotated across seats every match)${rulesetFile ? `, ruleset ${rulesetFile}` : ""}${base === CLOSE_QUARTERS ? ", Close Quarters" : ""}, ${buildsLabel(builds)}`);
-out.push(`round wins per seat:  ${seatRounds.map((w, i) => `seat ${i + 1} ${pct(w, R)}`).join(", ")}  (95% noise band 25% ± ${(100 * band).toFixed(1)}%; largest gap ${(100 * seatDev).toFixed(1)}%: ${seatDev <= band ? "within noise" : "OUTSIDE noise"})`);
-out.push(`match wins per seat:  ${seatMatches.map((w, i) => `seat ${i + 1} ${pct(w, N)}`).join(", ")}`);
-out.push(`round wins per soul:  ${soulRounds.map((w, i) => `${souls[i]!.id} ${pct(w, R)}`).join(", ")}`);
-out.push(`match wins per soul:  ${soulMatches.map((w, i) => `${souls[i]!.id} ${pct(w, N)}`).join(", ")}`);
-out.push(`time to first weapon: median ${metrics.firstWeapon.median.toFixed(1)} s, 75% within ${metrics.firstWeapon.p75.toFixed(1)} s, 90% within ${metrics.firstWeapon.p90.toFixed(1)} s; armed within 1 s ${pct(metrics.armedWithin1s, 1)}; never armed in ${pct(neverArmed, fighterRounds)} of fighter-rounds (${pct(unarmedKos.length, fighterRounds)} knocked out unarmed, median at ${metrics.unarmedKoMedianSeconds.toFixed(0)} s; the rest unarmed at the round end)`);
-out.push(`first pickup contested (a rival within ${CONTEST_RANGE} m): ${pct(metrics.contestedFirstPickup, 1)}; first weapon was a start weapon ${pct(metrics.firstFromStart, 1)}, the fighter's own (spawn under ${OWN_RATIO}x the nearest rival's distance) ${pct(metrics.ownStartFirst, 1)}`);
+out.push(`round wins per seat:  ${seatRounds.map((w, i) => `seat ${i + 1} ${percent(w, R)}`).join(", ")}  (95% noise band 25% ± ${(100 * band).toFixed(1)}%; largest gap ${(100 * seatDev).toFixed(1)}%: ${seatDev <= band ? "within noise" : "OUTSIDE noise"})`);
+out.push(`match wins per seat:  ${seatMatches.map((w, i) => `seat ${i + 1} ${percent(w, N)}`).join(", ")}`);
+out.push(`round wins per soul:  ${soulRounds.map((w, i) => `${souls[i]!.id} ${percent(w, R)}`).join(", ")}`);
+out.push(`match wins per soul:  ${soulMatches.map((w, i) => `${souls[i]!.id} ${percent(w, N)}`).join(", ")}`);
+out.push(`time to first weapon: median ${metrics.firstWeapon.median.toFixed(1)} s, 75% within ${metrics.firstWeapon.p75.toFixed(1)} s, 90% within ${metrics.firstWeapon.p90.toFixed(1)} s; armed within 1 s ${percent(metrics.armedWithin1s, 1)}; never armed in ${percent(neverArmed, fighterRounds)} of fighter-rounds (${percent(unarmedKos.length, fighterRounds)} knocked out unarmed, median at ${metrics.unarmedKoMedianSeconds.toFixed(0)} s; the rest unarmed at the round end)`);
+out.push(`first pickup contested (a rival within ${CONTEST_RANGE} m): ${percent(metrics.contestedFirstPickup, 1)}; first weapon was a start weapon ${percent(metrics.firstFromStart, 1)}, the fighter's own (spawn under ${OWN_RATIO}x the nearest rival's distance) ${percent(metrics.ownStartFirst, 1)}`);
 out.push(`pickups per round: mean ${(sum(pickupsPerRound) / R).toFixed(1)} (weapons ${(sum(weaponPickups) / R).toFixed(1)}), round length median ${metrics.roundSeconds.median.toFixed(0)} s, mean ${metrics.roundSeconds.mean.toFixed(1)} s`);
 out.push(`knockouts by weapon (${K}): ${Object.entries(kills)
   .sort((a, b) => b[1] - a[1])
-  .map(([w, n]) => `${w} ${pct(n, K)}`)
+  .map(([w, n]) => `${w} ${percent(n, K)}`)
   .join(", ")}`);
 out.push(`house-bot weapon wishes per soul (rounds):`);
 for (const [n, w] of Object.entries(wishes))

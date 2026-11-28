@@ -10,6 +10,8 @@
  * and knockouts by what dealt them (a pickup weapon, fists, anything else), stuck episodes. Per round: its length,
  * loose weapons on the floor (mean, peak) and how clustered they are (the nearest other loose weapon).
  */
+import { median, sum } from "./batch-stats";
+import { batchRuleset, seatOrder, optionValue } from "./batch-options";
 import { readFileSync, writeFileSync } from "node:fs";
 import { exampleSouls, initPhysics, Match } from "../src/sim";
 import { CLASSIC, resolveRuleset, type Ruleset } from "../src/sim/ruleset";
@@ -62,20 +64,15 @@ interface RoundRow {
   fighters: FighterRow[];
 }
 
-const arg = (name: string) => {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
-};
-
 const classOf = (cause: string) => (cause === "fist" ? "fist" : isPickupWeapon(cause) || cause === "flamethrower" ? "weapon" : "other");
 
-function runSims(count: number, first: number, override: Record<string, unknown> = {}): RoundRow[] {
+function runSims(count: number, first: number, base: Ruleset): RoundRow[] {
   const souls = exampleSouls();
-  const ruleset: Ruleset = resolveRuleset({ ...override, round: { maxRounds: 1, winsToTake: 1 } });
+  const ruleset: Ruleset = resolveRuleset({ ...base, round: { maxRounds: 1, winsToTake: 1 } });
   const rows: RoundRow[] = [];
   for (let k = 0; k < count; k++) {
     const seed = first + k;
-    const order = [0, 1, 2, 3].map((i) => (i + seed) % 4);
+    const order = seatOrder(seed);
     const m = new Match(seed, { souls: order.map((i) => souls[i]!), ruleset });
     m.prepareRound();
     const fight = m.fight!;
@@ -173,12 +170,7 @@ function load(spec: string): RoundRow[] {
 
 function summary(rows: RoundRow[]) {
   const fr = rows.flatMap((r) => r.fighters);
-  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   const alive = sum(fr.map((f) => f.aliveTicks));
-  const median = (xs: number[]) => {
-    const s = xs.slice().sort((a, b) => a - b);
-    return s.length ? s[Math.floor(s.length / 2)]! : NaN;
-  };
   const dmg = { weapon: sum(rows.map((r) => r.dmg.weapon)), fist: sum(rows.map((r) => r.dmg.fist)), other: sum(rows.map((r) => r.dmg.other)) };
   const kos = { weapon: sum(rows.map((r) => r.kos.weapon)), fist: sum(rows.map((r) => r.kos.fist)), other: sum(rows.map((r) => r.kos.other)) };
   const got = fr.filter((f) => f.firstWeapon >= 0);
@@ -269,8 +261,8 @@ if (mode === "sims") {
   await initPhysics();
   const count = Number(process.argv[3] ?? 100);
   const first = Number(process.argv[4] ?? 1);
-  const out = arg("--out") ?? "economy.json";
-  writeFileSync(out, JSON.stringify(runSims(count, first, JSON.parse(arg("--ruleset") ?? "{}"))));
+  const out = optionValue(process.argv, "--out") ?? "economy.json";
+  writeFileSync(out, JSON.stringify(runSims(count, first, await batchRuleset(optionValue(process.argv, "--ruleset")))));
   console.log(`wrote ${out}`);
 } else if (mode === "report") {
   report(process.argv.slice(3).filter((a) => !a.startsWith("--")));
