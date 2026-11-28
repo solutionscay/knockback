@@ -39,7 +39,7 @@ export interface BoardRound {
   seats: BoardSeat[];
 }
 
-export interface BoardAgent {
+export interface ModelBoardAgent {
   name: string;
   identity: unknown;
   rounds: number;
@@ -69,7 +69,7 @@ export interface ModelBoardRow {
   build: string | null;
   bestStreak: number;
   /** the agents that played it, most rounds first */
-  agents: BoardAgent[];
+  agents: ModelBoardAgent[];
   /** newest first, at most FORM */
   form: FormEntry[];
   lastAt: string;
@@ -116,7 +116,7 @@ interface Acc {
   damage: number;
   weapons: string[];
   builds: string[];
-  agents: Map<string, BoardAgent>;
+  agents: Map<string, ModelBoardAgent>;
   form: FormEntry[];
   lastAt: string;
 }

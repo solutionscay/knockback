@@ -1,5 +1,5 @@
 /** Points per fight and the running tally across matches in a session. */
-import type { FightResult as MatchResult } from "../sim/fight";
+import type { FightResult } from "../sim/fight";
 
 export const POINTS = { win: 3, ko: 1 };
 
@@ -10,7 +10,7 @@ export interface FightScore {
   total: number;
 }
 
-export function scoreFight(r: MatchResult, fighters = 4): FightScore[] {
+export function scoreFight(r: FightResult, fighters = 4): FightScore[] {
   const out: FightScore[] = [];
   for (let i = 0; i < fighters; i++) {
     const win = r.winner === i ? POINTS.win : 0;
@@ -30,7 +30,7 @@ export class Tally {
     this.wins = new Array(fighters).fill(0);
   }
 
-  add(r: MatchResult): FightScore[] {
+  add(r: FightResult): FightScore[] {
     const s = scoreFight(r, this.fighters);
     for (const f of s) this.points[f.fighter]! += f.total;
     this.wins[r.winner]!++;

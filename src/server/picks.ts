@@ -33,7 +33,7 @@ export function spectatorOf(req: Request): { id: string; hash: string; setCookie
   };
 }
 
-export interface Tally {
+export interface PickTally {
   counts: number[];
   total: number;
 }
@@ -71,14 +71,14 @@ export class PickBook {
     return this.bySpectator.get(spectator)?.seat ?? null;
   }
 
-  tally(): Tally {
+  tally(): PickTally {
     const counts = [0, 0, 0, 0];
     for (const p of this.bySpectator.values()) counts[p.seat]!++;
     return { counts, total: counts.reduce((a, b) => a + b, 0) };
   }
 
   /** The final split and the share who called the winner. */
-  split(winner: number): Tally & { winner: number; calledIt: number } {
+  split(winner: number): PickTally & { winner: number; calledIt: number } {
     const t = this.tally();
     return { ...t, winner, calledIt: t.total ? t.counts[winner]! / t.total : 0 };
   }
