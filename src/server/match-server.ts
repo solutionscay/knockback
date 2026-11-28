@@ -1,3 +1,4 @@
+import { PUBLIC_RECORDS, recordPath } from "./record-path";
 /**
  * The match server (#20, #25, #64): the always-on Arena with remote agents as players. It holds the Arena (arena.ts)
  * and its rounds in memory (each round a ServerMatch, server-match.ts), and answers HTTP through handle() (the
@@ -90,11 +91,11 @@ export class MatchServer {
     // the same name the file server reads (it decodes the path): /records/arena%2D... is the same file as /records/arena-...
     let name: string;
     try {
-      name = decodeURIComponent(path.slice("/records/".length));
+      name = decodeURIComponent(path.slice(PUBLIC_RECORDS.length));
     } catch {
       return false;
     }
-    const rec = await this.store.recordByPath(`/records/${name}`);
+    const rec = await this.store.recordByPath(recordPath(name));
     return !rec || (rec.engine === this.store.engine && rec.tier !== "bot-only");
   }
 

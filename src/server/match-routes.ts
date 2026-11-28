@@ -26,6 +26,7 @@ import type { MatchServer } from "./match-server";
 import { spectatorOf } from "./picks";
 import { profilePatch } from "./profile";
 import { modelsOf } from "./boards";
+import { allow } from "./limits";
 import { siteRoute } from "./site";
 
 /** Liveness and readiness for the container healthcheck: the process answers and the store can be read. */
@@ -50,9 +51,6 @@ async function profileView(server: MatchServer, owner: string) {
 export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: string): Promise<Response> {
   const path = url.pathname.replace(/\/+$/, "");
   const method = req.method;
-  const allow = (want: string) => {
-    if (method !== want) throw new HttpError(405, `use ${want} for ${path}`, undefined, { allow: want });
-  };
   if (path === "/api") return json(apiIndex());
   // the site pages' read-only data (#22): /api/replays, /api/agents/:name, /share/:id.svg
   const site = await siteRoute(server, req, path, url);
@@ -60,17 +58,17 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
   const arena = await arenaRoute(server, req, path, url, ip);
   if (arena) return arena;
   if (path === "/api/live") {
-    allow("GET");
+    allow(method, "GET", path);
     const mid = url.searchParams.get("match");
     // without ?match: the Arena's stream, the round on now from its start and every round after it
     return mid ? (await server.matchOr404(mid, ip)).live.response() : server.arena.live.response();
   }
   if (path === "/api/matches") {
-    allow("GET");
+    allow(method, "GET", path);
     return json({ arenaRound: server.arena.current?.arenaRound ?? null, matches: [...server.matches.values()].filter((m) => server.isPublic(m)).map((m) => m.info()) });
   }
   if (path === "/api/keys") {
-    allow("POST");
+    allow(method, "POST", path);
     server.keyCreateLimit.take(ip, "new owner keys");
     const body = await readJson(req, MAX_BODY);
     const owner = checkOwnerHandle(body.owner);
@@ -100,21 +98,21 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
   }
   if (path === "/api/looks") {
     // the suit-up options (#19): shapes, eyes, marks with a line each, the name and palette rules
-    allow("GET");
+    allow(method, "GET", path);
     return json(lookOptions());
   }
   if (path === "/api/models") {
-    allow("GET");
+    allow(method, "GET", path);
     const min = Number(url.searchParams.get("min"));
     return json(await modelsOf(server, Number.isInteger(min) && min >= 1 && min <= 1000 ? min : undefined));
   }
   if (path === "/api/records") {
-    allow("GET");
+    allow(method, "GET", path);
     return json({ records: await server.store.listRecords(100) });
   }
   if (path === "/api/picks") {
     // a replay's crowd split, read-only (#35): the record holds no picks, the index maps it to its match
-    allow("GET");
+    allow(method, "GET", path);
     const rec = url.searchParams.get("record") ?? "";
     const hit = (await server.store.listRecords(1000)).find((r) => r.path === rec);
     if (!hit) throw new HttpError(404, "no match for that record");
@@ -127,16 +125,16 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
   const match = await server.matchOr404(mm[1]!, ip);
   switch (mm[2]) {
     case undefined:
-      allow("GET");
+      allow(method, "GET", path);
       return json(match.info());
     case "picks": {
       // spectators (#35): the pick cards, the tally, the lock, this browser's pick (anonymous cookie id)
-      allow("GET");
+      allow(method, "GET", path);
       const sp = spectatorOf(req);
       return json(match.picksView(sp.hash), 200, sp.setCookie ? { "set-cookie": sp.setCookie } : {});
     }
     case "pick": {
-      allow("POST");
+      allow(method, "POST", path);
       server.pickLimit.take(ip, "picks");
       const b = await readJson(req, 256);
       const extra = Object.keys(b).filter((k) => k !== "seat");
@@ -146,7 +144,7 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
       return json(match.picksView(sp.hash), 200, sp.setCookie ? { "set-cookie": sp.setCookie } : {});
     }
     case "report": {
-      allow("GET");
+      allow(method, "GET", path);
       const r = url.searchParams.get("round");
       return json(match.report(r === null ? undefined : Number(r)));
     }

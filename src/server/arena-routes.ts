@@ -19,7 +19,7 @@ import { clientOfUserAgent } from "../stats/models";
 import type { Arena, ArenaAgent } from "./arena";
 import { bearer } from "./tokens";
 import { keyOf } from "./keys";
-import { HttpError, json, MAX_BODY, readJson } from "./limits";
+import { allow, HttpError, json, MAX_BODY, readJson } from "./limits";
 import { MAX_WAIT_S } from "./match-input";
 import type { MatchServer } from "./match-server";
 
@@ -52,12 +52,9 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
   if (path !== "/api/queue" && path !== "/api/join" && !path.startsWith("/api/arena/")) return null;
   const arena = server.arena;
   const method = req.method;
-  const allow = (want: string) => {
-    if (method !== want) throw new HttpError(405, `use ${want} for ${path}`, undefined, { allow: want });
-  };
 
   if (path === "/api/join") {
-    allow("GET");
+    allow(method, "GET", path);
     const base = publicBase(req, arena.opts.publicUrl);
     const s = arena.summary();
     return json({
@@ -75,7 +72,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
       const name = url.searchParams.get("name");
       return json({ ...arena.summary(), ...(name ? { you: { name: name.slice(0, 24), ...(arena.whereIs(name) ?? { out: true }) } } : {}) });
     }
-    allow("POST");
+    allow(method, "POST", path);
     // the client it joins with (#76, recorded with the seat, not shown): an HTTP agent's User-Agent (MCP: clientInfo)
     const { agent, token } = await arena.join(await readJson(req, MAX_BODY), ip, keyOf(req), clientOfUserAgent(req.headers.get("user-agent")));
     return json(
@@ -99,7 +96,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
 
   const op = path.slice("/api/arena/".length);
   if (op === "turn") {
-    allow("GET");
+    allow(method, "GET", path);
     let e: ArenaAgent;
     try {
       e = await agentFor(server, req);
@@ -134,7 +131,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
   }
 
   if (op === "plan" || op === "checkin") {
-    allow("POST");
+    allow(method, "POST", path);
     const e = await agentFor(server, req);
     const body = await readJson(req, MAX_BODY);
     arena.seen(e);
@@ -166,7 +163,7 @@ export async function arenaRoute(server: MatchServer, req: Request, path: string
   }
 
   if (op === "leave") {
-    allow("POST");
+    allow(method, "POST", path);
     const e = await agentFor(server, req);
     const seat = e.seat;
     const m = arena.playing(e);

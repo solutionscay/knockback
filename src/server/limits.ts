@@ -13,8 +13,12 @@ export class HttpError extends Error {
   }
 }
 
-export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body, null, 2), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
+export function allow(method: string, want: string, path: string) {
+  if (method !== want) throw new HttpError(405, `use ${want} for ${path}`, undefined, { allow: want });
+}
+
+export function json(body: unknown, status = 200, headers: Record<string, string> = {}, indent = 2): Response {
+  return new Response(JSON.stringify(body, null, indent), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 }
 
 export function errorResponse(e: HttpError): Response {

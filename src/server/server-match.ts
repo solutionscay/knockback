@@ -1,3 +1,4 @@
+import { INTERNAL_DIR, publicRecordFile, recordPath } from "./record-path";
 /**
  * One Arena round on the match server (#64): a one-round match with 4 seats, each held by an agent ("remote") or a
  * house bot. The Arena (arena.ts) makes it, seats its agents and starts it at once; this class plays it: the runner,
@@ -68,8 +69,6 @@ export function tierOf(kinds: readonly string[]): RoundTier {
   return agents === 0 ? "bot-only" : agents === 1 ? "warm-up" : "featured";
 }
 
-/** Where a bot-only round's record goes, under the records folder: never served (GET /records/ serves plain names only). */
-export const INTERNAL_DIR = "internal";
 
 export class ServerMatch {
   status: "open" | "running" | "over" | "failed" = "open";
@@ -502,7 +501,7 @@ export class ServerMatch {
     this.runner.start();
     for (const r of rounds) await this.runner.replayRound(r);
     await this.restoreControl();
-    this.runner.recordFile = recordPath?.startsWith("/records/") ? recordPath.slice("/records/".length) : null;
+    this.runner.recordFile = recordPath ? publicRecordFile(recordPath) : null;
   }
 
   /** After a restart: the control timeline and who is on autopilot (the last event per seat). */
@@ -533,7 +532,7 @@ export class ServerMatch {
       const m = r.match;
       // the per-seat model stats go into the record index too: GET /api/models reads them without opening files
       const stats = JSON.stringify(seatEntries(r.savedRecord()));
-      await this.store.insertRecord({ matchId: this.id, path: internal ? `${INTERNAL_DIR}/${file}` : `/records/${file}`, tier: this.tier, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), stats });
+      await this.store.insertRecord({ matchId: this.id, path: recordPath(file, internal), tier: this.tier, seed: this.seed, hashes: m.record.rounds.map((x) => x.fight.finalHash), winner: m.winner, createdAt: Date.now(), stats });
       this.server.modelsCache = null;
       await this.store.updateMatch(this.id, { status: "over", winner: m.winner, endedAt: Date.now() });
       this.status = "over";
@@ -558,7 +557,7 @@ export class ServerMatch {
   /** The record's public path; null before it is saved and for a bot-only round (its record is internal, #67). */
   recordPath(): string | null {
     const f = this.runner?.recordFile;
-    return f && this.tier !== "bot-only" ? `/records/${f}` : null;
+    return f && this.tier !== "bot-only" ? recordPath(f) : null;
   }
 
   private onEvent(e: RunnerEvent) {
