@@ -1,7 +1,7 @@
 import { esc, hex } from "../html";
 import { portraitSvg, type Mood } from "../art/portrait";
 import { modelOf } from "../stats/models";
-import { type ReplaySummary } from "./replays";
+import type { ReplaySummary } from "../api-types";
 
 /** place a portrait SVG at x,y with size w,h inside another SVG */
 const placeSvg = (svg: string, x: number, y: number, w: number, h: number) => svg.replace("<svg ", `<svg x="${x}" y="${y}" width="${w}" height="${h}" `);

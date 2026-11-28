@@ -1,3 +1,4 @@
+import type { Operator, MatchStatus, PublicTier, RoundTier } from "../api-types";
 /**
  * Match server storage (#27). The server keeps its working state in memory
  * and writes every change through a MatchStore, so a restart can rebuild it:
@@ -20,7 +21,7 @@ import type { PlanUpdate } from "../sim/fight";
 import type { Decision } from "../sim/voice";
 import type { Crown, PlayedRound } from "./crown";
 import { engineStamp } from "../sim/engine";
-import { newOperatorId, type Operator } from "./profile";
+import { newOperatorId } from "./profile";
 
 /** The profile fields an owner sets (#113); undefined leaves a field as it is, null clears it. */
 export interface ProfilePatch {
@@ -28,7 +29,6 @@ export interface ProfilePatch {
   url?: string | null;
 }
 
-export type MatchStatus = "open" | "running" | "over" | "failed";
 
 export interface RulesetPreset {
   name: string;
@@ -142,7 +142,6 @@ export interface PlanRow {
  * Who played a round (#67): "bot-only" (house bots in every seat: kept for evaluation, never public), "warm-up" (one
  * agent and house bots) or "featured" (2 or more agents).
  */
-export type RoundTier = "bot-only" | "warm-up" | "featured";
 
 export interface RecordRow {
   matchId: string;
@@ -265,7 +264,7 @@ export interface MatchStore {
    * The public records (#67: never bot-only), newest first; `before` (ms) pages back through older ones; `tier` keeps
    * only warm-up or featured rounds.
    */
-  listRecords(limit?: number, before?: number, tier?: Exclude<RoundTier, "bot-only">): Promise<RecordRow[]>;
+  listRecords(limit?: number, before?: number, tier?: PublicTier): Promise<RecordRow[]>;
   /** the record row of a public path (/records/<file>.json), any engine; null when no match saved it */
   recordByPath(path: string): Promise<RecordRow | null>;
   /**
@@ -730,7 +729,7 @@ export class SqliteStore implements MatchStore {
     const r = this.db.query("SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id WHERE r.match_id = ?").get(matchId) as Row | null;
     return r ? recordOf(r) : null;
   }
-  async listRecords(limit = 100, before?: number, tier?: Exclude<RoundTier, "bot-only">) {
+  async listRecords(limit = 100, before?: number, tier?: PublicTier) {
     const tiers = tier ? [tier] : ["warm-up", "featured"];
     // only rounds played on this engine (#88): older ones are training data, never listed
     const where = `r.tier IN (${tiers.map(() => "?").join(",")}) AND m.engine = ?${before !== undefined ? " AND r.created_at < ?" : ""}`;

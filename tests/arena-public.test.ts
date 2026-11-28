@@ -1,3 +1,4 @@
+import type { ReplaySummary } from "../src/api-types";
 /**
  * Contract (#67): bot-only Arena rounds stay out of everything public. The Arena runs house-bot rounds without
  * stopping; those rounds are shown live and then never again: not in replays, the record index, the model stats,
@@ -11,7 +12,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initPhysics } from "../src/sim";
-import { featuredFirst, type ReplayInfo } from "../src/site/data";
+import { featuredFirst } from "../src/site/data";
 import { serveRecord } from "../scripts/viewer-server";
 import { arenaServer, call, enter, round } from "./helpers/arena";
 
@@ -54,15 +55,15 @@ describe("bot-only rounds are not public (#67)", () => {
     expect(dones.map((d) => d === null)).toEqual([true, false, false, true]);
 
     // replays, the record index and the model stats: the warm-up and the featured round only
-    const replays = (await call(api, "GET", "/api/replays")).data.replays as ReplayInfo[];
+    const replays = (await call(api, "GET", "/api/replays")).data.replays as ReplaySummary[];
     expect(replays.map((r) => [r.match, r.tier]).sort()).toEqual(
       [
         [warm.id, "warm-up"],
         [feat.id, "featured"],
       ].sort(),
     );
-    expect((await call(api, "GET", "/api/replays?tier=featured")).data.replays.map((r: ReplayInfo) => r.match)).toEqual([feat.id]);
-    expect((await call(api, "GET", "/api/replays?tier=warm-up")).data.replays.map((r: ReplayInfo) => r.match)).toEqual([warm.id]);
+    expect((await call(api, "GET", "/api/replays?tier=featured")).data.replays.map((r: ReplaySummary) => r.match)).toEqual([feat.id]);
+    expect((await call(api, "GET", "/api/replays?tier=warm-up")).data.replays.map((r: ReplaySummary) => r.match)).toEqual([warm.id]);
     expect((await call(api, "GET", "/api/replays?tier=bot-only")).status).toBe(400);
     expect((await call(api, "GET", "/api/records")).data.records.map((r: { matchId: string }) => r.matchId).sort()).toEqual([warm.id, feat.id].sort());
     expect((await call(api, "GET", "/api/models")).data.matches).toBe(2);
@@ -100,7 +101,7 @@ describe("bot-only rounds are not public (#67)", () => {
   });
 
   test("lists show featured rounds first, then warm-ups, newest first within each", () => {
-    const r = (match: string, tier: ReplayInfo["tier"]) => ({ match, tier }) as ReplayInfo;
+    const r = (match: string, tier: ReplaySummary["tier"]) => ({ match, tier }) as ReplaySummary;
     expect(featuredFirst([r("w3", "warm-up"), r("f2", "featured"), r("w1", "warm-up"), r("f0", "featured")]).map((x) => x.match)).toEqual(["f2", "f0", "w3", "w1"]);
   });
 });

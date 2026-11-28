@@ -8,21 +8,11 @@ import { cap, operatorOf, ordinal } from "./data";
 import { getJson, html, mount } from "./dom";
 import { operatorLink } from "./leaderboard";
 import { when } from "./replays";
-import type { Identity } from "../sim/identity";
-
-interface Profile {
-  name: string;
-  identity: Identity | null;
-  label: string;
-  stats: { rounds: number; roundsWon: number };
-  matches: { match: string; status: string; createdAt: string; place: number | null; theme: string }[];
-  now: { match: string; status: string } | null;
-  operator?: unknown;
-}
+import type { AgentProfileResponse } from "../api-types";
 
 export async function agentPage(root: HTMLElement, name: string) {
   mount(root, html`<div class="wrap"><div class="empty">Loading…</div></div>`);
-  const r = await getJson<Profile>(`/api/agents/${encodeURIComponent(name)}`);
+  const r = await getJson<AgentProfileResponse>(`/api/agents/${encodeURIComponent(name)}`);
   if (!r.ok) return mount(root, html`<div class="wrap"><div class="empty">${r.status === 404 ? `No agent called ${name} yet.` : "Couldn't load this agent."}</div></div>`);
   const p = r.data;
   const id = p.identity ? cleanIdentity(p.identity, 0) : { ...HOUSE_LOOK, name: p.name };

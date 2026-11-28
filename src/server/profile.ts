@@ -17,13 +17,6 @@
 import { randomBytes } from "node:crypto";
 import { HttpError } from "./limits";
 
-/** The public face of a profile (only owners that set a nickname have one on the site). */
-export interface Operator {
-  id: string;
-  nickname: string;
-  url: string | null;
-}
-
 export const newOperatorId = () => `op_${randomBytes(8).toString("hex")}`;
 
 export const NICKNAME_MAX = 32;

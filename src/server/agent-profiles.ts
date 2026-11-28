@@ -1,49 +1,12 @@
-import { buildText, type Build } from "../sim/build";
+import type { Operator, MatchStatus, AgentMatch, AgentProfile, AgentProfileResponse, ReplaySummary } from "../api-types";
+import { buildText } from "../sim/build";
 import type { Identity } from "../sim/identity";
 import { parseSoul } from "../sim/soul";
 import type { Weapon } from "../sim/sim-types";
 import { HttpError } from "./limits";
 import { NAME_RE } from "../names";
 import type { MatchServer } from "./match-server";
-import type { Operator } from "./profile";
-import { SEATS, replayOf, type ReplaySummary } from "./replays";
-
-export interface AgentMatch {
-  match: string;
-  seat: number;
-  status: string;
-  createdAt: string;
-  fighter: string | null;
-  /** 1st..4th by match winner, then round wins (null until over) */
-  place: number | null;
-  wins: number[] | null;
-  theme: string;
-  record: string | null;
-  /** the other three: name and look */
-  rivals: { name: string; identity: Identity | null }[];
-  autopilot: boolean;
-  /** the build the agent played in each round of the match, in words (#80); empty while it runs */
-  builds: string[];
-}
-
-export interface AgentProfile {
-  name: string;
-  /** the owner the agent's name is bound to */
-  owner: string;
-  /** the bot from the agent's newest match (null before its first match starts) */
-  identity: Identity | null;
-  weapon: Weapon;
-  label: string;
-  summary: string;
-  catchphrase: string;
-  /** the agent's most recent line in a fight */
-  signature: string;
-  stats: { matches: number; won: number; lost: number; rounds: number; roundsWon: number; planChanges: number; autopilot: number };
-  /** most frequent stance, target, first weapon and build over its plans */
-  style: { stance: string | null; target: string | null; weapon: string | null; build: string | null };
-  matches: AgentMatch[];
-  now: { match: string; status: string } | null;
-}
+import { SEATS, replayOf } from "./replays";
 
 /** The first plain paragraph of a soul.md, at most ~280 characters (pure: tested). */
 export function soulSummary(soul: string): { summary: string; catchphrase: string } {
@@ -81,7 +44,7 @@ export function placeOf(seat: number, winner: number, wins: number[]): number {
 /** Build an agent's profile from its seats (newest first) and the summaries of those matches (pure: tested). */
 export function buildProfile(
   name: string,
-  seats: { match: string; seat: number; status: string; createdAt: number; soul: string; owner: string; leftRound: number | null; live?: { fighter: string | null; identities: Identity[] | null; names: string[] | null } }[],
+  seats: { match: string; seat: number; status: MatchStatus; createdAt: number; soul: string; owner: string; leftRound: number | null; live?: { fighter: string | null; identities: Identity[] | null; names: string[] | null } }[],
   replays: Map<string, ReplaySummary>,
 ): AgentProfile {
   const matches: AgentMatch[] = [];
@@ -166,7 +129,7 @@ export function buildProfile(
 const SCAN = 300;
 
 /** An agent's profile, from the seats in storage (newest SCAN matches) and the matches in memory. */
-export async function agentProfile(server: MatchServer, name: string): Promise<AgentProfile & { operator: Operator | null }> {
+export async function agentProfile(server: MatchServer, name: string): Promise<AgentProfileResponse> {
   if (!NAME_RE.test(name)) throw new HttpError(400, "agent names are 1-24 characters: letters, digits, space, _ . -");
   const want = name.toLowerCase();
   const rows = (await server.store.listMatches()).slice(0, SCAN);

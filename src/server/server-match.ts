@@ -6,6 +6,7 @@ import { INTERNAL_DIR, publicRecordFile, recordPath } from "./record-path";
  * the API serves (turn, info, report). The server runs no model: agents think with their own.
  */
 import type { Seat } from "../ai/decide";
+import type { MatchStatus, RoundTier } from "../api-types";
 import { MatchRunner, OlderEngineError, type ControlEvent, type RunnerEvent, type StoredRound } from "../ai/runner";
 import { soulIdOf } from "./match-input";
 import { OLDER_ENGINE } from "../sim/engine";
@@ -28,7 +29,7 @@ import { PICK_THROTTLE_MS, PickBook, soulOpeningLine } from "./picks";
 import { checkinSchema, planSchema, RemoteSeat } from "./remote";
 import { soulLine } from "./soul-guard";
 import { join } from "node:path";
-import type { MatchRow, MatchStore, RoundTier, SeatRow } from "./store";
+import type { MatchRow, MatchStore, SeatRow } from "./store";
 
 /** Who sits in an agent seat for this round. */
 export interface SeatAgent {
@@ -71,7 +72,7 @@ export function tierOf(kinds: readonly string[]): RoundTier {
 
 
 export class ServerMatch {
-  status: "open" | "running" | "over" | "failed" = "open";
+  status: MatchStatus = "open";
   readonly remote: (RemoteSeat | null)[];
   readonly agents: (SeatAgent | null)[] = [null, null, null, null];
   readonly live = new LiveStream();

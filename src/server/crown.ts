@@ -1,3 +1,4 @@
+import type { RoundTier } from "../api-types";
 /**
  * The crown (#65): the winner of an Arena round holds it and defends it in the next round. Pure rules, no storage.
  *
@@ -10,7 +11,6 @@
  * - The holder starts the next round with the crown mark (the seat it plays) and its streak. A holder that is not in
  *   the next round (it left, or an agent took the house bot's seat) defends nothing: the round's winner takes it.
  */
-import type { RoundTier } from "./store";
 
 export type CrownHolder = { kind: "agent"; name: string; owner: string } | { kind: "house"; seat: number };
 
