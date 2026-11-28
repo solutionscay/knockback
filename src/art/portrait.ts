@@ -1,3 +1,5 @@
+import { mul, type Mat } from "./affine";
+import { faceMatrix } from "./visor-geometry";
 /**
  * Fighter portraits for dialogue cards, plan chips, pick cards, the site's bot pages and share images (#18, #85):
  * the plush brawler as in the game, as one self-contained SVG string (no DOM, no Pixi: the server draws them too).
@@ -11,7 +13,7 @@
 import type { Identity, Mark } from "../sim/identity";
 import type { MoraleState } from "../sim/morale";
 import { PORTRAIT } from "./portraits";
-import { COLS, drawVisor, faceFor, FEET_Y, K, P, ROWS, type FaceMood, type Lod } from "./bot";
+import { drawVisor, faceFor, FEET_Y, type FaceMood, type Lod } from "./bot";
 import { hash } from "./hash";
 import { BEHIND_MARKS, TORSO_MARKS } from "./plush-motion";
 import { plushRamp, RAMP_STOPS } from "./plush-ramp";
@@ -20,37 +22,23 @@ import { SvgPen } from "./svgPen";
 export type Mood = "fight" | "win" | MoraleState | "hit" | "stun" | "ko";
 
 type Pt = readonly number[];
-type M6 = [number, number, number, number, number, number]; // a b c d e f: x' = a x + c y + e, y' = b x + d y + f
 const PPM = PORTRAIT.ppm;
 const G = PORTRAIT.ground;
 /** cell pixels -> the fighter's local meters (feet on y = FEET_Y, y down) */
 const meters = (q: Pt): [number, number] => [(q[0]! - G[0]!) / PPM, FEET_Y + (q[1]! - G[1]!) / PPM];
-const mul = (a: M6, b: M6): M6 => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
-const inv = (m: M6): M6 => {
+const inv = (m: Mat): Mat => {
   const det = m[0] * m[3] - m[1] * m[2];
   return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det, (m[2] * m[5] - m[3] * m[4]) / det, (m[1] * m[4] - m[0] * m[5]) / det];
 };
 /** the affine frame of a bone's three projected anchors (center, +x, +z), in local meters */
-const anchor = (pts: readonly Pt[]): M6 => {
+const anchor = (pts: readonly Pt[]): Mat => {
   const [c, x, z] = pts.map(meters) as [[number, number], [number, number], [number, number]];
   return [x[0] - c[0], x[1] - c[1], z[0] - c[0], z[1] - c[1], c[0], c[1]];
 };
 const f3 = (n: number) => +n.toFixed(4);
-const mat = (m: M6) => `matrix(${m.map(f3).join(" ")})`;
+const mat = (m: Mat) => `matrix(${m.map(f3).join(" ")})`;
 
-/** The code face's visor in its own meters (bot.ts drawVisor): center line, half width, half height. */
-const FACE_CY = (15.5 - 3.5) * K - FEET_Y;
-const VHW = ((COLS * P + 1.4) / 2) * K;
-const VHH = ((ROWS * P + 1.4) / 2) * K;
-/** The code face -> the rendered visor (as plush-bot.ts: centered between the visor's side points). */
-function faceMatrix(): M6 {
-  const [c0, r, u, l] = PORTRAIT.body.visor.map(meters) as [number, number][];
-  const c = [(r![0] + l![0]) / 2, (r![1] + l![1]) / 2] as const;
-  const a = (r![0] - c[0]) / (0.8 * VHW), b = (r![1] - c[1]) / (0.8 * VHW);
-  const cc = -(u![0] - c0![0]) / (0.78 * VHH), d = -(u![1] - c0![1]) / (0.78 * VHH);
-  return [a, b, cc, d, c[0] - cc * FACE_CY, c[1] - d * FACE_CY];
-}
-const FACE_M = faceMatrix();
+const FACE_M = faceMatrix(PORTRAIT.body.visor.map(meters));
 
 /** The gradient map as an SVG filter: luminance -> the fighter's ramp (deep shadow, shadow, color, highlight). */
 function rampFilter(id: string, color: number): string {
