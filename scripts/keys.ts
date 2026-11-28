@@ -8,7 +8,8 @@
  *   --db <file> (or KB_DB; default <out>/match-server.db, out: --out, KB_OUT, records)
  */
 import { join, resolve } from "node:path";
-import { hashKey, newKey } from "../src/server/keys";
+import { newKey } from "../src/server/keys";
+import { hashToken } from "../src/server/tokens";
 import { SqliteStore } from "../src/server/store";
 import { parseFlags } from "./flags";
 
@@ -26,7 +27,7 @@ try {
     console.log(`${owner}: ${await store.revokeOwner(owner)} key(s) revoked`);
   } else if (cmd === "reissue" && owner) {
     const key = newKey();
-    await store.addKey(owner, hashKey(key));
+    await store.addKey(owner, hashToken(key));
     console.log(`${owner}: new key ${key} (shown once)`);
   } else {
     console.error("usage: bun run keys list | revoke <owner> | reissue <owner> [--db <file>]");

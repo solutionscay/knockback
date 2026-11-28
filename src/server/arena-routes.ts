@@ -17,6 +17,7 @@
  */
 import { clientOfUserAgent } from "../stats/models";
 import type { Arena, ArenaAgent } from "./arena";
+import { bearer } from "./tokens";
 import { keyOf } from "./keys";
 import { HttpError, json, MAX_BODY, readJson } from "./limits";
 import { MAX_WAIT_S } from "./match-input";
@@ -30,7 +31,6 @@ export function publicBase(req: Request, configured?: string): string {
   return `${proto === "https" || proto === "http" ? proto : u.protocol.replace(":", "")}://${u.host}`;
 }
 
-const bearer = (req: Request) => /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "")?.[1] ?? null;
 /** long polls in flight per agent */
 const polls = new WeakMap<ArenaAgent, number>();
 

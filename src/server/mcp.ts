@@ -33,8 +33,8 @@ import { McpAdmission } from "./mcp-admission";
 import { INSTRUCTIONS } from "./mcp-schema";
 import { registerTools, type Session } from "./mcp-tools";
 import type { MatchServer } from "./match-server";
-import { hashToken } from "./seat-tokens";
-import { hashKey, keyOf } from "./keys";
+import { hashToken } from "./tokens";
+import { keyOf } from "./keys";
 import { cleanClient } from "../stats/models";
 
 interface Live {
@@ -172,10 +172,10 @@ export class McpGateway {
 
   private async initialize(req: Request, ip: string): Promise<Response> {
     const key = keyOf(req);
-    const owner = key ? await this.api.store.ownerOfKey(hashKey(key)) : null;
+    const owner = key ? await this.api.store.ownerOfKey(hashToken(key)) : null;
     const where = `${this.opts.publicUrl ?? new URL(req.url).origin}/connect`;
     if (!key || !owner) return Response.json({ jsonrpc: "2.0", error: { code: -32001, message: `${key ? "this owner key is unknown or revoked" : "an owner key is needed"}: get one on the Connect page (${where}) and add the MCP config it shows` }, id: null }, { status: 401 });
-    const keyHash = hashKey(key);
+    const keyHash = hashToken(key);
     this.keyInitLimit.take(keyHash, "new MCP sessions with this key");
     if ([...this.sessions.values()].filter((l) => l.state.keyHash === keyHash).length >= this.sessionsPerKey) return Response.json({ jsonrpc: "2.0", error: { code: -32000, message: `at most ${this.sessionsPerKey} MCP sessions per owner key` }, id: null }, { status: 429 });
     const state: Session = { id: "", ip, key, keyHash, owner, createdAt: Date.now(), lastSeen: Date.now() };

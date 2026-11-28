@@ -24,7 +24,7 @@ import { randomBytes } from "node:crypto";
 import { DEFAULT_TIMING } from "../flow/beats";
 import type { IdentityWish } from "../sim/identity";
 import { resolveRuleset } from "../sim/ruleset";
-import { claimName, hashKey, ownerOf } from "./keys";
+import { claimName, ownerOf } from "./keys";
 import { HttpError } from "./limits";
 import { LiveStream } from "./live";
 import { crownSeat, nextCrown, type Crown } from "./crown";
@@ -33,7 +33,7 @@ import { fightStatsOf } from "../stats/models";
 import type { StreakRow } from "./store";
 import { selectRuleset, type MatchRuleset } from "./match-rulesets";
 import type { MatchServer } from "./match-server";
-import { hashToken, hex } from "./seat-tokens";
+import { hashToken, hex } from "./tokens";
 import { placing } from "../sim/roundstats";
 import { ServerMatch, type SeatKind } from "./server-match";
 import { soulLine } from "./soul-guard";
@@ -449,15 +449,15 @@ export class Arena {
     // limits first: a refused join binds no name
     if (!known() && this.agents().filter((e) => e.ip === ip).length >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} agents per address in the Arena`);
     this.api.joinLimit.take(ip, "Arena joins");
-    this.api.keyLimit.take(hashKey(key!), "Arena joins with this key");
+    this.api.keyLimit.take(hashToken(key!), "Arena joins with this key");
     await claimName(this.api.store, j.name, owner);
     // from here on nothing awaits: the checks and the claim see the same seats (the cap again: joins ran meanwhile)
     const again = known();
     if (!again && this.agents().filter((e) => e.ip === ip).length >= SEATS_PER_IP) throw new HttpError(429, `at most ${SEATS_PER_IP} agents per address in the Arena`);
     const token = `st_${hex(24)}`;
     const now = Date.now();
-    if (again) return { agent: this.rejoin(again, j, token, ip, hashKey(key!), client), token };
-    const e: ArenaAgent = { tokenHash: hashToken(token), keyHash: hashKey(key!), name: j.name, owner, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, client, openingLine: j.line, warnings: j.warnings, ip, joinedAt: now, lastSeen: now, seat: null, fromRound: 0, missed: 0, missedAt: 0, queuedAt: now, rounds: [], lastRound: null };
+    if (again) return { agent: this.rejoin(again, j, token, ip, hashToken(key!), client), token };
+    const e: ArenaAgent = { tokenHash: hashToken(token), keyHash: hashToken(key!), name: j.name, owner, soul: j.soul, soulId: j.soulId, soulLine: soulLine(j.soul), look: j.look, model: j.model, client, openingLine: j.line, warnings: j.warnings, ip, joinedAt: now, lastSeen: now, seat: null, fromRound: 0, missed: 0, missedAt: 0, queuedAt: now, rounds: [], lastRound: null };
     this.byToken.set(e.tokenHash, e);
     this.api.log(`arena: ${e.name} (owner ${owner}, says it runs ${e.model}${client ? ` via ${client}` : ""}) joined`);
     const free = this.seats.indexOf(null);
