@@ -49,6 +49,7 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
   const at = (id: number) => ctx.fighterPos(id) ?? { x: undefined, y: undefined };
   switch (e.type) {
     case "tankBurst": return [cue("tank.burst", e.x, e.y, 1, e.tank === "waterTank" ? 1.2 : 0.8, e.tick + e.entity)];
+    case "teleport": return [cue("pad.warp", e.x, e.y, 0.65, 0.8, e.tick), cue("pad.warp", e.exitX, e.exitY, 0.85, 1.15, e.tick)];
     case "explosion": {
       // bigger blasts: lower and louder; a chain reaction is a little quieter per blast (they stack)
       const pitch = clamp(2.6 / Math.max(0.5, e.radius), 0.7, 1.35);

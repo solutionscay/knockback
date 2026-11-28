@@ -85,6 +85,8 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     kbStack: 0,
     shieldTick: -1,
     padCd: 0,
+    teleportLocked: false,
+    teleportReadyAt: 0,
     crushCd: 0,
     burning: 0,
     burnBy: -1,

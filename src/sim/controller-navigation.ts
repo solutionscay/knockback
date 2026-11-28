@@ -838,7 +838,7 @@ export class ControllerNavigation {
     }
     const from = pool ?? surf;
     if (from) {
-      let plan = nav.fighterPlan(sim.grid, from.id, mp.x);
+      let plan = nav.fighterPlan(sim.grid, from.id, mp.x, sim.tick >= me.teleportReadyAt);
       // the zone is coming and no jump we can make leads into it: a risky jump beats being pushed into the pit
       const [zl, zr] = this.zoneBounds(sim);
       if ((mp.x < zl || mp.x > zr) && !nav.surfaces.some((s) => plan.cost[s.id] !== Infinity && s.x1 > zl && s.x0 < zr)) plan = nav.plan(from.id, mp.x);
@@ -892,7 +892,12 @@ export class ControllerNavigation {
         const link = plan.firstLink[goal.surface];
         if (link) {
           this.edgeLink = link;
-          if (link.kind === "jump") {
+          if (link.kind === "teleport") {
+            // Step clear of the arrival plate before asking it for a return trip.
+            const reset = sim.ruleset.arena.teleport.clearMargin;
+            const inward = Math.sign((from.x0 + from.x1) / 2 - link.takeoffX) || 1;
+            moveTarget = link.takeoffX + (me.teleportLocked ? inward * reset : 0);
+          } else if (link.kind === "jump") {
             moveTarget = link.takeoffX;
             if (runUp(nav, link)) {
               // across a gap (#69): run through the takeoff point at full speed; past it, back up for a run-up

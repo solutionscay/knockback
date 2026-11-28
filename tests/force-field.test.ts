@@ -229,7 +229,9 @@ describe("force field", () => {
   ];
 
   test("replays and bots: a bot picks one up and deploys it against a rocket; the fight replays to the same hash", () => {
-    const f = new Fight(3, PLANS, { ruleset: often });
+    // Keep the original rooftop route for this recorded rocket interception.
+    const ruleset = resolveRuleset({ pickups: { forceField: { dropChance: 1, firstTick: 0 } }, arena: { teleport: { themes: [] } } });
+    const f = new Fight(3, PLANS, { ruleset });
     const ev = events(f);
     const why: string[] = [];
     const prev = f.onEvent!;

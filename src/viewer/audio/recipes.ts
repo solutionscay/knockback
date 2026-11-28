@@ -160,6 +160,10 @@ export const SOUNDS: Record<string, SoundDef> = {
     recipe: { layers: [L({ wave: "triangle", freq: 230, freqEnd: 54, decay: 0.17, gain: 0.4 }), L({ wave: "noise", freq: 4100, lowpass: 4200, lowpassEnd: 620, attack: 0.015, hold: 0.1, decay: 0.55, gain: 0.45 })] },
     group: "tank", max: 3, gap: 0.04, priority: 6,
   },
+  "pad.warp": {
+    recipe: { layers: [L({ wave: "sine", freq: 220, freqEnd: 1400, attack: 0.01, decay: 0.24, gain: 0.33 }), L({ wave: "triangle", freq: 1500, freqEnd: 340, delay: 0.1, decay: 0.18, gain: 0.14 })] },
+    group: "warp", max: 4, gap: 0, priority: 6,
+  },
   "chain.snap": {
     recipe: { layers: [L({ wave: "square", freq: 2200, freqEnd: 900, decay: 0.05, gain: 0.2 }), L({ wave: "noise", freq: 6000, decay: 0.04, highpass: 3000, gain: 0.35 }), L({ wave: "triangle", freq: 1600, decay: 0.25, vibrato: [0.3, 18], gain: 0.12, delay: 0.02 })] },
     group: "chain", max: 3, gap: 0.04, priority: 6,

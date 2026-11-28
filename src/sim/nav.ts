@@ -33,7 +33,7 @@ export const hazardous = (l: number) => l === Liquid.Lava || l === Liquid.Acid;
 export interface Link {
   from: number;
   to: number;
-  kind: "jump" | "drop" | "walk";
+  kind: "jump" | "drop" | "walk" | "teleport";
   takeoffX: number;
   landX: number;
   cost: number;
@@ -68,6 +68,7 @@ export class NavGraph {
   links: Link[] = [];
   out: Link[][] = [];
   points: NavPoint[] = [];
+  teleportSafe?: (link: Link) => boolean;
   /** whether a fighter can fly each link (arcClear), worked out the first time a fighter's plan needs it */
   private readonly flyable = new Map<Link, boolean>();
 
@@ -140,6 +141,12 @@ export class NavGraph {
     return nav;
   }
 
+  addTeleportLink(from: number, to: number, takeoffX: number, landX: number) {
+    const link: Link = { from, to, takeoffX, landX, kind: "teleport", cost: this.ruleset.arena.teleport.routeCost };
+    this.links.push(link);
+    this.out[from]!.push(link);
+  }
+
   private linkUp() {
     this.buildLinks();
     this.out = this.surfaces.map(() => []);
@@ -202,8 +209,8 @@ export class NavGraph {
   }
 
   /** The plan fighters follow (#69): only the jumps and drops a fighter can make (`canFly`). */
-  fighterPlan(grid: Grid, start: number, x: number) {
-    return this.plan(start, x, (l) => this.canFly(grid, l));
+  fighterPlan(grid: Grid, start: number, x: number, canTeleport = true) {
+    return this.plan(start, x, (l) => (canTeleport || l.kind !== "teleport") && this.canFly(grid, l));
   }
 
   /** Can a fighter fly link `l` (arcClear), cached per link: the plan asks for the same links many times. */
@@ -276,7 +283,7 @@ export class NavGraph {
    * ruleset's fighter walk speed, jump speed and air control.
    */
   arcClear(grid: Grid, l: Link): boolean {
-    if (l.kind === "walk") return true;
+    if (l.kind === "walk" || l.kind === "teleport") return true;
     const from = this.surfaces[l.from]!, to = this.surfaces[l.to]!;
     const { gravity, fighter: M } = this.ruleset.combat;
     const dt = 1 / 30;
@@ -370,6 +377,7 @@ export class NavGraph {
       if (u < 0) break;
       done[u] = 1;
       for (const l of this.out[u]!) {
+        if (l.kind === "teleport" && this.teleportSafe && !this.teleportSafe(l)) continue;
         if (usable && !usable(l)) continue;
         const c = cost[u]! + Math.abs(arriveX[u]! - l.takeoffX) + l.cost;
         if (c < cost[l.to]!) {

@@ -1,3 +1,4 @@
+import type { Theme } from "./themes";
 import * as C from "./constants";
 import { AIM_NOISE, PATIENCE, PICKUP, RULE_EVAL, WALL_PURSUIT } from "./controller-tuning";
 import { MAT_DENSITY, MAT_HP, Mat } from "./grid";
@@ -177,6 +178,7 @@ export const RULESET_DEFAULTS = {
   },
   arena: {
     layout: LEVEL, enabledThemes: THEMES, themes: LEVEL_THEMES, spawns: SPAWNS, walls: WALLS,
+    teleport: { themes: ["rooftop", "space"] as readonly Theme[], halfWidth: 0.65, contactHeight: 0.18, rearmTicks: 120, insetShare: 0.28, clearMargin: 1.5, spawnGap: 3, routeCost: 2, ruleReach: 3 },
     propHalf: PROP_HALF, chain: C.CHAIN,
     props: { tank: { cells: 24, radius: 3, washSpeed: 5, density: 1.5 }, barrel: C.BARREL, block, crate, crush: C.CRUSH, gas: C.GAS, glass: C.GLASS, pad: C.PAD, steel: C.STEEL, tnt: C.TNT, weight: C.WEIGHT },
     terrain: { hitPoints: MAT_HP.map(n => Number.isFinite(n) ? n : 0), density: MAT_DENSITY, crumbleDps: C.CRUMBLE_DPS, debris: C.DEBRIS, dig: C.DIG },

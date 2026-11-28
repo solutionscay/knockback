@@ -33,10 +33,11 @@ describe("level generation", () => {
     // #125: the cave joins: seeds pick from seven (again, a seed that keeps its theme keeps its level)
     // #127: space joins: seeds pick from eight (again, a seed that keeps its theme keeps its level)
     // #175: Tanks replace a barrel on beach and construction maps.
+    // #176: Levels with enough room include the linked pads.
     expect(summary(CLASSIC)).toEqual([
       "junkyard/0/57f7b54e",
       "rooftop/1/f7287435",
-      "rooftop/0/ab4f3adb",
+      "rooftop/0/3da28850",
       "cave/0/0e4533d6",
       "cave/0/b878c384",
       "warehouse/0/5dac12fd",
@@ -44,7 +45,7 @@ describe("level generation", () => {
       "construction/5/8c5eaca5",
       "construction/0/422858e3",
       "warehouse/1/c90f8b2c",
-      "space/0/a13f266f",
+      "space/0/7c125b48",
       "junkyard/0/b7c8ed5f",
       "cave/8/6e431863",
       "cave/0/4959ea05",
@@ -62,7 +63,7 @@ describe("level generation", () => {
     expect(summary(CLOSE_QUARTERS)).toEqual([
       "junkyard/0/71079647",
       "rooftop/3/4b74f8f7",
-      "rooftop/0/250465ad",
+      "rooftop/0/97213cd0",
       "cave/0/e9302f4c",
       "cave/1/14ca6597",
       "warehouse/1/fa66af04",
@@ -70,7 +71,7 @@ describe("level generation", () => {
       "construction/1/da7698da",
       "construction/1/2c690602",
       "warehouse/5/8644a1fd",
-      "space/0/2bf8522f",
+      "space/0/7d0847d3",
       "junkyard/2/195d3648",
       "cave/1/794e8fdc",
       "cave/0/e35b214f",
@@ -80,7 +81,7 @@ describe("level generation", () => {
       "beach/0/c0be488d",
       "space/2/97aaf668",
       "warehouse/2/76d57405",
-      "rooftop/1/61b0fed0",
+      "rooftop/1/9451cbcc",
       "cave/1/416583d8",
       "junkyard/0/c7aa2f19",
       "warehouse/5/fec54927",

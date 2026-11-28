@@ -18,6 +18,7 @@ import { Rng } from "./rng";
 import { type PropKind, type Theme } from "./level-config";
 import { validateLevel } from "./level-validate";
 import { CLASSIC, RulesetError, themedRuleset, type Ruleset } from "./ruleset";
+import { placeTeleportPair, type TeleportPair } from "./teleport-pads";
 import { settleGrid } from "./liquid-flow";
 import { spreadSpawns } from "./level-spawns";
 
@@ -46,6 +47,7 @@ export interface LevelDef {
   pits: { x0: number; x1: number }[];
   /** #94: liquid pools: basins dug into the ground, filled to the rim (x0..x1, rim height y, depth in cells) */
   pools?: { x0: number; x1: number; y: number; depth: number; liquid: Liquid }[];
+  teleportPads?: TeleportPair;
   zoneCenter: number;
   platforms: number;
   towers: number;
@@ -368,7 +370,9 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
     }
   }
 
+  const pads = ruleset.arena.teleport.themes.includes(theme) ? placeTeleportPair(nav, props, spawns, W, ruleset) : undefined;
   return {
+    ...(pads ? { teleportPads: pads } : {}),
     seed,
     attempt,
     theme,

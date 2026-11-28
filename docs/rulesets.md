@@ -149,3 +149,9 @@ Bots use `tactics.weapons.reach.freezegun` (minimum 0 m, maximum 5 m, no vertica
 Classic asks for one water tank on a beach and one oil tank on a construction site. Their theme prop ranges are `arena.themes.beach.props.waterTank` and `arena.themes.construction.props.oilTank`. Each tank has half extents of 0.34 by 0.5 m in `arena.propHalf`. Tanks replace barrel sites with enough clearance. Solid ground and other liquids limit the spill.
 
 `arena.props.tank` sets `density` (1.5, positive), `cells` (24, integer 1–64), `radius` (3 m, positive through 6), and `washSpeed` (5 m/s, positive through 12). Water adds sideways speed, falling linearly to zero at the rim. The blast opener receives credit for a resulting washout. A force field blocks the wash across its edge. Oil uses the regular oil grip and fire settings. A plan can use the `near_tank` condition with a fighter as its subject. The condition uses the spill radius.
+
+### Teleport pads
+
+`arena.teleport.themes` selects maps that can have one linked pair. Classic uses rooftop and space. An empty list disables pads. Each side needs a different dry, stable surface with clear space for the fighter. The generator looks in from both ends by `insetShare` of the map width (0.28, strictly between 0 and 0.5). It leaves `clearMargin` (1.5 m, at least the pad half-width and at most 4 m) around a pad and `spawnGap` (3 m, 0–10) at a spawn.
+
+A grounded fighter must step within `halfWidth` (0.65 m, positive through 2 m) and `contactHeight` (0.18 m vertically, positive through 0.5 m). A blocked exit waits until it clears. The pad preserves velocity and rearms when the fighter clears the plate horizontally and its cooldown expires (`rearmTicks` 120, whole ticks from 1 to 600). The route has `routeCost` 2 walking meters. The plan condition `near_pad` uses `ruleReach` 3 m. Both distances must be positive.

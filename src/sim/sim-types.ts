@@ -75,7 +75,7 @@ export type Retaliate = "attacker" | "turn" | "ignore";
  * See docs/rules.md. Validated in src/ai/parse.ts (AI answers) and
  * src/viewer/sanitize.ts (records, live stream); evaluated in controller.ts.
  */
-export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "near_tank", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with", "in_open", "has_long_gun", "in_cover", "my_ammo_below"] as const;
+export const RULE_WHEN = ["holds", "my_health_below", "health_below", "near_ledge", "near_barrel", "near_tank", "near_pad", "on_streak", "chasing_me", "hit_me", "item_near", "alone_with", "in_open", "has_long_gun", "in_cover", "my_ammo_below"] as const;
 export type RuleWhen = (typeof RULE_WHEN)[number];
 export const RULE_DO = ["target", "avoid", "seek", "use", "stance", "retaliate", "drop", "swap", "dig"] as const;
 export type RuleDo = (typeof RULE_DO)[number];
@@ -250,6 +250,8 @@ export interface Fighter {
   kbStack: number;
   shieldTick: number;
   padCd: number;
+  teleportLocked: boolean;
+  teleportReadyAt: number;
   crushCd: number;
   /** on fire (#33): ticks left, who lit it, and what to credit ("flamethrower" or "fire") */
   burning: number;
@@ -362,6 +364,7 @@ export type SimEvent =
   | { type: "hit"; tick: number; target: number; source: number; damage: number; kb: number; x: number; y: number; cause: string; shielded: boolean }
   | { type: "ko"; tick: number; fighter: number; cause: "ringout" | "hp"; by: number; weapon: string; x: number; y: number }
   | { type: "tankBurst"; tick: number; entity: number; tank: "waterTank" | "oilTank"; x: number; y: number; cells: number; washed: number[]; owner: number }
+  | { type: "teleport"; tick: number; fighter: number; x: number; y: number; exitX: number; exitY: number }
   | { type: "break"; tick: number; entity: number; kind: EntityKind; x: number; y: number; hw: number; hh: number }
   | { type: "pickup"; tick: number; fighter: number; item: ItemType; x: number; y: number }
   | { type: "jetpack"; tick: number; fighter: number }
