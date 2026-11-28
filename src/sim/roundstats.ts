@@ -1,3 +1,5 @@
+import { TICK_RATE } from "./constants";
+
 /**
  * Round stats: who damaged whom, how, from which side and range; knockouts;
  * pickups; time near each rival; who each fighter chased. Plus one plain
@@ -78,7 +80,7 @@ export class StatsCollector {
 
   /** `stances` (the stance each fighter plays now) and `cover` (in cover now) feed the per-stance cover time (#38). */
   sample(positions: ({ x: number; y: number } | null)[], targets: number[], stances?: string[], cover?: boolean[]) {
-    const dt = SAMPLE_TICKS / 60;
+    const dt = SAMPLE_TICKS / TICK_RATE;
     for (let i = 0; i < 4; i++) {
       const a = positions[i];
       if (!a) continue;

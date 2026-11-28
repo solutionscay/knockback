@@ -1,6 +1,6 @@
 import { ordinaryWeapons } from "./spread-armory";
 import { dropHeight, makeRoomForWeapon, suddenDeathSpot } from "./weapon-spots";
-import { DT } from "./constants";
+import { TICK_RATE, DT } from "./constants";
 import { type Ruleset } from "./ruleset";
 import type { Sim } from "./sim";
 import { type Fighter } from "./sim-types";
@@ -137,7 +137,7 @@ export class SimZone {
   ahead(sim: Sim, ticks: number): [number, number] {
     const [lo, hi] = this.regular(sim, sim.tick + ticks);
     if (sim.suddenDeath < 0) return [lo, hi];
-    const step = sim.ruleset.zone.suddenDeath.shrinkPerSec * (ticks / 60);
+    const step = sim.ruleset.zone.suddenDeath.shrinkPerSec * (ticks / TICK_RATE);
     const sdLo = Math.min(Math.max(this.sd[0], this.sdEnd[0]), this.sd[0] + step);
     const sdHi = Math.max(Math.min(this.sd[1], this.sdEnd[1]), this.sd[1] - step);
     return [Math.max(lo, sdLo), Math.min(hi, sdHi)];

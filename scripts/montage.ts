@@ -9,6 +9,7 @@
  * Each cut is captured by the teaser pipeline (real viewer, video mode) with its own game sound, crossfaded at the
  * cuts. Out: a 1080x1920 vertical cut and a 1920x1080 cut, H.264 + AAC, +faststart, under 30 MB, and a README.
  */
+import { TICK_RATE } from "../src/sim/constants";
 import { linkSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -251,7 +252,7 @@ const rows = seq.map((s, i) => {
   const file = basename(r.file);
   if (s.part.kind === "cut") {
     const b = s.part.burst;
-    return `| ${i + 1} | ${t} | ${file} | ${b.round + 1} | ${mmss(b.from / 60)}-${mmss(b.to / 60)} | ${describe(b, names)} (score ${b.score.toFixed(1)}) |`;
+    return `| ${i + 1} | ${t} | ${file} | ${b.round + 1} | ${mmss(b.from / TICK_RATE)}-${mmss(b.to / TICK_RATE)} | ${describe(b, names)} (score ${b.score.toFixed(1)}) |`;
   }
   if (s.part.kind === "entrance") {
     const e = r.rec.entrances!.find((x) => x.seat === (s.part as { seat: number }).seat)!;

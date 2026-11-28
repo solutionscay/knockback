@@ -3,6 +3,7 @@
  * matches, or the newest finished match of a running match server. Also the sim pass over a record: dead
  * stretches per round (for the 2x parts), the big moments (for bun run montage) and an action score (for --best-of).
  */
+import { TICK_RATE } from "../../src/sim/constants";
 import { mkdirSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { initPhysics, Match, type MatchRecord } from "../../src/sim";
@@ -71,7 +72,7 @@ export async function matchFacts(rec: MatchRecord): Promise<MatchFacts> {
       for (let i = 0; i < ps.length && !close; i++) for (let j = i + 1; j < ps.length; j++) if (Math.hypot(ps[i]!.x - ps[j]!.x, ps[i]!.y - ps[j]!.y) < 7) close = true;
       near[sim.tick] = close;
     }
-    fightSeconds.push(sim.tick / 60);
+    fightSeconds.push(sim.tick / TICK_RATE);
     endTicks.push(sim.tick);
     moments.push(ms);
     dead.push(deadStretches(sim.tick, acts, near));

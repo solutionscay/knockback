@@ -11,6 +11,7 @@
  *   bun run dev &                      # the viewer must be served
  *   bun scripts/record.ts <outdir> [seed1 seed2 ...] [--camera all] [--url http://localhost:5173]
  */
+import { TICK_RATE } from "../src/sim/constants";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { launchViewerBrowser } from "./viewer-browser";
@@ -130,7 +131,7 @@ for (const [mi, seed] of seeds.entries()) {
       const same = m.record.rounds.map((r) => r.fight.finalHash).join(",") === st.hash;
       report.push(
         `seed ${seed} (${m.level.theme}): browser round hashes ${st.hash}, bun ${m.record.rounds.map((r) => r.fight.finalHash).join(",")} -> ${same ? "MATCH" : "MISMATCH"}; ` +
-          `${m.round} rounds (${m.results.map((r) => (r.ticks / 60).toFixed(0) + " s").join(", ")}), round winners ${m.results.map((r) => m.names[r.winner]).join(", ")}, match winner ${m.names[m.winner]} (${m.decidedBy()})`,
+          `${m.round} rounds (${m.results.map((r) => (r.ticks / TICK_RATE).toFixed(0) + " s").join(", ")}), round winners ${m.results.map((r) => m.names[r.winner]).join(", ")}, match winner ${m.names[m.winner]} (${m.decidedBy()})`,
       );
       m.record.rounds.forEach((r, i) => report.push(`  round ${i + 1} lines: ${r.lines.map((l, j) => `${m.names[j]}: "${l}"`).join(" | ")}`));
     }

@@ -102,7 +102,7 @@ export function weaponHelp(ruleset: Ruleset = CLASSIC): Record<string, string> {
   for (const [w, ammo, label] of [["rocket", table.rocket.ammo, "rockets"], ["shotgun", table.shotgun.ammo, "shells"], ["bat", table.bat.ammo, "hits"], ["grenade", table.grenade.ammo, "grenades"], ["grapple", table.grapple.ammo, "hooks"], ["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"], ["rifle", table.rifle.ammo, "rounds"], ["sniper", table.sniper.ammo, "rounds"], ["crossbow", table.crossbow.ammo, "bolts"], ["lightning", table.lightning.ammo, "bolts"]] as const) {
     if (out[w]) out[w] = out[w].replace(/\d+ (rockets|shells|hits|grenades|hooks|throws|shots|slams|rounds|bolts)/, `${ammo} ${label}`);
   }
-  if (out.flamethrower) out.flamethrower = out.flamethrower.replace(/[\d.]+ s of fuel/, `${+((table.flamethrower.ammo * table.flamethrower.cooldown) / 60).toFixed(1)} s of fuel`);
+  if (out.flamethrower) out.flamethrower = out.flamethrower.replace(/[\d.]+ s of fuel/, `${+((table.flamethrower.ammo * table.flamethrower.cooldown) / TICK_RATE).toFixed(1)} s of fuel`);
   return out;
 }
 
@@ -163,7 +163,7 @@ function topWeapon(stat: HitStat): string | undefined {
 export function whatHappenedLines(st: RoundStats, me: number, names: string[]): string[] {
   const out: string[] = [];
   const ko = st.kos.find((k) => k.victim === me);
-  const at = (t?: number) => (t !== undefined ? ` at ${Math.round(t / 60)} s` : "");
+  const at = (t?: number) => (t !== undefined ? ` at ${Math.round(t / TICK_RATE)} s` : "");
   if (!ko) out.push(`You survived the round.`);
   else if (ko.by >= 0 && ko.by !== me) out.push(`You were ${ko.cause === "ringout" ? "rung out" : "knocked out"} by ${names[ko.by]} (${wname(ko.weapon)})${at(ko.tick)}.`);
   else if (ko.by === me) out.push(`You knocked yourself out (${wname(ko.weapon)})${at(ko.tick)}.`);
@@ -209,7 +209,7 @@ export function lastPlanLines(plan: Strategy, st: RoundStats, me: number, names:
   const got = (w: string) => st.pickupTicks[me]!.find((p) => p.item === w);
   const parts = plan.weapons.map((w) => {
     const g = got(w);
-    return g ? `you got the ${wname(w)} at ${Math.round(g.tick / 60)} s` : `you never got the ${wname(w)}`;
+    return g ? `you got the ${wname(w)} at ${Math.round(g.tick / TICK_RATE)} s` : `you never got the ${wname(w)}`;
   });
   const byW: Record<string, number> = {};
   let total = 0;
@@ -280,7 +280,7 @@ export function ruleResultLine(rules: Strategy["rules"], fired: { fires: number;
   if (!rules?.length) return "YOUR RULES: you wrote none last round.";
   const parts = rules.map((r, i) => {
     const f = fired?.[i];
-    return f && f.fires > 0 ? `'${r.label}' fired ${f.fires} time${f.fires > 1 ? "s" : ""} (${Math.round(f.activeTicks / 60)} s active)` : `'${r.label}' never fired`;
+    return f && f.fires > 0 ? `'${r.label}' fired ${f.fires} time${f.fires > 1 ? "s" : ""} (${Math.round(f.activeTicks / TICK_RATE)} s active)` : `'${r.label}' never fired`;
   });
   return `YOUR RULES: ${parts.join("; ")}.`;
 }

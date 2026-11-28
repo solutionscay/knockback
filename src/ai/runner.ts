@@ -1,4 +1,5 @@
 import { decisionTag, knockoutText } from "./runner-log";
+import { TICK_RATE } from "../sim/constants";
 import type { Ruleset } from "../sim/ruleset";
 /**
  * MatchRunner: one best-of-3 match with any mix of seats (house bot, local AI
@@ -317,7 +318,7 @@ export class MatchRunner {
     this.say(`  -> ${names[f.winner]} wins round ${round} after ${f.seconds.toFixed(0)} s (wins ${match.wins.join("-")})`);
     for (const k of f.stats.kos) this.say(`     ${knockoutText(k, names)}`);
     f.stats.summary.forEach((s, i) => this.say(`     ${names[i]}: ${s}`));
-    const reflexes = match.fight!.controllers.flatMap((c, i) => c.reflexLog.map((r) => `${names[i]} turned on ${names[r.attacker]} (${r.mode}) at ${(r.tick / 60).toFixed(0)} s`));
+    const reflexes = match.fight!.controllers.flatMap((c, i) => c.reflexLog.map((r) => `${names[i]} turned on ${names[r.attacker]} (${r.mode}) at ${(r.tick / TICK_RATE).toFixed(0)} s`));
     if (reflexes.length) this.say(`     reflexes: ${reflexes.join("; ")}`);
     this.say("");
     this.emit({ type: "round", round, winner: f.winner, seconds: f.seconds, reason: f.reason, wins: match.wins.slice(), kos: f.stats.kos, summary: f.stats.summary.slice() });

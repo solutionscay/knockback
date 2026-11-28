@@ -18,6 +18,8 @@ import { exampleSouls, initPhysics, Match, type MatchRecord } from "../src/sim";
 import type { Ruleset } from "../src/sim/ruleset";
 import { StuckDetector, type StuckEpisode } from "../src/stats/stuck";
 
+import { TICK_RATE } from "../src/sim/constants";
+
 export interface FighterRound {
   src: string;
   seed: number;
@@ -246,7 +248,7 @@ function report(files: string[]) {
   if (!a) {
     const eps = b!.fighters.flatMap((r) => r.episodes.map((e) => ({ ...e, src: r.src, round: r.round })));
     eps.sort((x, y) => y.end - y.start - (x.end - x.start));
-    out.push("", "longest episodes:", ...eps.slice(0, 15).map((e) => `  ${e.src} r${e.round} f${e.fighter} ${e.kind} ${((e.end - e.start) / 60).toFixed(1)}s from ${(e.start / 60).toFixed(1)}s at (${e.x}, ${e.y}) jumps ${e.jumps} path ${e.path} fires ${e.fires} ${e.stance}/${e.plan} ${e.weapon} target ${e.target} reach ${e.reachable} cost ${e.routeCost} grounded ${e.grounded}`));
+    out.push("", "longest episodes:", ...eps.slice(0, 15).map((e) => `  ${e.src} r${e.round} f${e.fighter} ${e.kind} ${((e.end - e.start) / TICK_RATE).toFixed(1)}s from ${(e.start / TICK_RATE).toFixed(1)}s at (${e.x}, ${e.y}) jumps ${e.jumps} path ${e.path} fires ${e.fires} ${e.stance}/${e.plan} ${e.weapon} target ${e.target} reach ${e.reachable} cost ${e.routeCost} grounded ${e.grounded}`));
   }
   console.log(out.join("\n"));
 }
