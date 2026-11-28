@@ -75,6 +75,14 @@ export function drawProp(g: Graphics, e: Entity, time: number, out: { blink: boo
   const h = e.hh;
   out.blink = false;
   switch (e.kind) {
+    case "waterTank":
+    case "oilTank": {
+      const w = e.hw, color = e.kind === "waterTank" ? 0x53d3ff : 0x986c34;
+      g.roundRect(-w, -h, 2 * w, 2 * h, 0.18).fill(color).stroke({ color: 0x263440, width: 0.07 });
+      for (const y of [-h * 0.68, h * 0.58]) g.rect(-w, y, 2 * w, 0.09).fill(0x425562);
+      g.moveTo(0, -0.24).quadraticCurveTo(-0.32, 0.18, 0, 0.2).quadraticCurveTo(0.32, 0.18, 0, -0.24).fill(0xf9f4db);
+      return false;
+    }
     case "block":
     case "crate":
     case "steel":

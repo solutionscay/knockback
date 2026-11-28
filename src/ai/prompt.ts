@@ -132,6 +132,8 @@ function levelLine(lv: LevelDef): string {
     lv.pits.length ? `${lv.pits.length} gap${lv.pits.length > 1 ? "s" : ""} to fall into (a jump-through catwalk over it)` : "no gaps (the edges only)",
     `${count("crate")} crates (break them for pickups)`,
     `${count("barrel")} explosive barrels`,
+    count("waterTank") ? `${count("waterTank")} water tanks (blast one to wash nearby fighters away and douse fires)` : "",
+    count("oilTank") ? `${count("oilTank")} oil tanks (blast one to spill slippery, flammable oil)` : "",
     count("tnt") ? `${count("tnt")} TNT` : "",
     count("glass") ? `${count("glass")} glass panes` : "",
     count("pad") ? `${count("pad")} bounce pads` : "",
@@ -271,7 +273,7 @@ export function rulesSection(examples: string[], ruleset: Ruleset = CLASSIC): st
   const usable = `${holds}${ruleset.pickups.forceField.enabled ? ", or forcefield to deploy it" : ""}`;
   return [
     `RULES (optional, max 4, first wins): active while triggered, for at least ${tuning.minOnTicks / TICK_RATE} s. A rule that never fires does nothing.`,
-    'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two) | in_open who (I have a clear shot) | has_long_gun who | in_cover (me)',
+    'when (+ its keys): holds who,item | my_health_below value 10-90 | health_below who,value | near_ledge who | near_barrel who | near_tank who (beside a liquid tank) | on_streak who,value 1-3 (knockouts) | chasing_me who (3 s+) | hit_me who (last 3 s) | item_near item (close) | alone_with (last two) | in_open who (I have a clear shot) | has_long_gun who | in_cover (me)',
     `who: anyone | enemy | target | name. do: target | avoid | seek item | use item (${usable}) | stance "stance": ${RULE_STANCES.join("/")} | retaliate "retaliate": attacker/turn/ignore | dig (dig toward the target through soft ground when no way leads there). target/avoid need a fighter trigger. With holds or item_near, use "do_item" for the action.`,
     `Examples: ${examples.join(" ")}`,
   ].join("\n");

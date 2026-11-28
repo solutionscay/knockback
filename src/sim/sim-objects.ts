@@ -12,7 +12,7 @@ const PROP_FILTER = G.TERRAIN | G.ONEWAY | G.FIGHTER | G.PROP | G.ITEM | G.GRENA
 export function addProp(sim: Sim, kind: PropKind, x: number, yBottom: number, spec?: { ax?: number; ay?: number; len?: number }): Entity {
   const [hw, hh] = sim.ruleset.arena.propHalf[kind];
   const density =
-    kind === "steel" || kind === "weight" ? sim.ruleset.arena.props.steel.density : kind === "pad" ? sim.ruleset.arena.props.pad.density : kind === "block" ? sim.ruleset.arena.props.block.density : kind === "crate" ? sim.ruleset.arena.props.crate.density : kind === "glass" ? 1.2 : 0.9;
+    kind === "waterTank" || kind === "oilTank" ? sim.ruleset.arena.props.tank.density : kind === "steel" || kind === "weight" ? sim.ruleset.arena.props.steel.density : kind === "pad" ? sim.ruleset.arena.props.pad.density : kind === "block" ? sim.ruleset.arena.props.block.density : kind === "crate" ? sim.ruleset.arena.props.crate.density : kind === "glass" ? 1.2 : 0.9;
   const hp =
     kind === "block"
       ? sim.ruleset.arena.props.block.hp
@@ -244,6 +244,8 @@ export function hitProp(sim: Sim, e: Entity, dmg: number, owner: number, cause: 
     case "weight":
       e.hp -= dmg;
       return;
+    case "waterTank":
+    case "oilTank":
     case "steel":
     case "pad":
     case "item":

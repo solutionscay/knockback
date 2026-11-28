@@ -472,6 +472,7 @@ export class Sim {
     }
     for (const e of this.entities.values()) {
       num(e.id);
+      if (e.kind === "waterTank" || e.kind === "oilTank") num(e.kind === "waterTank" ? 1 : 2);
       num(e.ammo ?? -1);
       num(e.hp);
       num(e.fuse ?? -1);
@@ -494,6 +495,7 @@ export class Sim {
     for (const fl of this.fields) for (const value of [fl.id, fl.owner, fl.x, fl.y, fl.r, fl.born, fl.ticks, fl.hp, fl.stopped.length]) num(value);
     for (let i = 0; i < g.flags.length; i++) if (g.flags[i]) num(i * 8 + g.flags[i]!);
     // #94: only a level with liquids, sand, mud or ice hashes them (every other level's hash is as before)
+    num(this.liquids.on ? 1 : 0); // a burst can activate liquid flow on dry ground
     if (this.liquids.on) {
       for (let i = 0; i < g.liq.length; i++) if (g.liq[i]) num(i * 8 + g.liq[i]!);
       for (const [i, fire] of [...this.liquids.oilFires.entries()].sort((a, b) => a[0] - b[0])) {

@@ -54,13 +54,15 @@ const GOLDEN = {
   // hash's new fields
   // #174: Drop and crate draws now include the freeze gun. The hash includes its ammo, cooldown and each fighter’s chill timer.
   // #174 rebased on #200 (the #119 code-health merges, which keep every hash): the hashes stay the same
-  fight: "e1142fad",
-  fightWithUpdate: "64e07536",
-  closeQuarters: "ca151c32",
+  // #175: Tanks change two maps. The hash includes tank contents and whether liquid flow is active.
+  // #175 rebased on #179 (the freeze gun): every hash moves again, new values below
+  fight: "3d3c3586",
+  fightWithUpdate: "f212c5af",
+  closeQuarters: "f1f38415",
   // house bots play their souls' builds (#80)
-  match: ["ac90c754", "33b39db7", "ff9a2114"],
+  match: ["21782fd4", "ac99d2b7", "0ce9d514"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["778ee87e", "474f9510", "75c45747"],
+  neutralMatch: ["5b2f123e", "26ab8150", "b8652227"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

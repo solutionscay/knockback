@@ -1,4 +1,5 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
+import { burstTank, isTank } from "./sim-tanks";
 import { igniteOilNear } from "./sim-liquid";
 import { type Blast } from "./constants";
 import type { Sim } from "./sim";
@@ -35,8 +36,9 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
     const d = length2D(fl.x - x, fl.y - y);
     if (Math.abs(d - fl.r) <= spec.radius) absorbHit(sim, fl, spec.damage, d > 1e-6 ? fl.x + ((x - fl.x) / d) * fl.r : fl.x, d > 1e-6 ? fl.y + ((y - fl.y) / d) * fl.r : fl.y + fl.r, kind, owner);
   }
+  const tanks = found.filter(e => isTank(e.kind)).sort((a, b) => a.id - b.id);
   for (const e of found) {
-    if (e.dead) continue;
+    if (e.dead || isTank(e.kind)) continue;
     const t = e.body.translation();
     const dx = t.x - x;
     const dy = t.y - y;
@@ -74,4 +76,5 @@ export function explode(sim: Sim, x: number, y: number, spec: Blast, kind: Explo
   // what is left standing near the blast may catch fire (#33)
   blastIgnite(sim, x, y, spec.radius, owner);
   igniteOilNear(sim, x, y, spec.radius * sim.ruleset.fire.blastReach, owner);
+  for (const tank of tanks) burstTank(sim, tank, owner);
 }

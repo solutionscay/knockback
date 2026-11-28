@@ -12,7 +12,7 @@ export const PICKUPS: readonly ItemType[] = [...WEAPON_LIST, ...POWER_LIST, FORC
 export const MAX_RULE_LABEL = 40;
 
 /** Triggers about fighters (they have a subject: the fighter that makes them true). */
-export const WHO_TRIGGERS: readonly RuleWhen[] = ["holds", "health_below", "near_ledge", "near_barrel", "on_streak", "chasing_me", "hit_me", "in_open", "has_long_gun"];
+export const WHO_TRIGGERS: readonly RuleWhen[] = ["holds", "health_below", "near_ledge", "near_barrel", "near_tank", "on_streak", "chasing_me", "hit_me", "in_open", "has_long_gun"];
 /** Triggers that have a fighter subject for target/avoid (alone_with: the last rival). */
 export const SUBJECT_TRIGGERS: readonly RuleWhen[] = [...WHO_TRIGGERS, "alone_with"];
 
@@ -67,6 +67,7 @@ export function autoLabel(r: Omit<Rule, "label">, names: string[]): string {
     my_health_below: `below ${r.value}%`,
     health_below: `${who} below ${r.value}%`,
     near_ledge: `${who} at a ledge`,
+    near_tank: `${who} by a liquid tank`,
     near_barrel: `${who} by a barrel`,
     on_streak: `${who} on a streak`,
     chasing_me: `${who} chasing me`,

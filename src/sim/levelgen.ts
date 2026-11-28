@@ -323,7 +323,7 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
   const nCover = rng.int(...L.coverStacks);
   for (let i = 0; i < nCover; i++) place("block", 1, { ground: i < L.groundCoverStacks, cols: rng.int(...L.coverColumns), rows: rng.int(...L.coverRows) });
   for (const [k, r] of Object.entries(T.props) as [PropKind, [number, number]][]) {
-    if (k === "weight") continue;
+    if (k === "weight" || k === "waterTank" || k === "oilTank") continue;
     const n = rng.int(r[0], r[1]);
     if (k === "barrel") {
       // some in pairs so chain reactions happen
@@ -350,6 +350,23 @@ function buildCandidate(seed: number, attempt: number, ruleset: Ruleset): LevelD
 
   // zone center: near a pit close to the middle (ring-outs), else near 0
   const zoneCenter = spreadCenter ?? chooseZoneCenter();
+
+  // Refit single barrel sites. Their original clearance and access lanes stay open.
+  for (const kind of ["waterTank", "oilTank"] as const) {
+    const count = T.props[kind];
+    if (!count || !count[1]) continue;
+    let remaining = rng.int(...count);
+    for (const prop of props.slice().reverse()) {
+      if (!remaining) break;
+      if (prop.kind !== "barrel") continue;
+      const [hw, hh] = propHalf[kind];
+      if (!headroom(prop.x - hw, prop.x + hw, prop.y, 2 * hh)) continue;
+      if (props.some(other => other !== prop && Math.abs(other.x - prop.x) < hw + propHalf[other.kind][0] &&
+        other.y < prop.y + 2 * hh && other.y + 2 * propHalf[other.kind][1] > prop.y)) continue;
+      prop.kind = kind;
+      remaining--;
+    }
+  }
 
   return {
     seed,

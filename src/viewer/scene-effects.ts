@@ -50,6 +50,13 @@ export class SceneEffects {
 
   onEvent(e: SimEvent, sim: Sim, pal: Palette, camera: SceneCamera, fighters: FighterViews, props: PropViews, projectiles: ProjectileViews) {
     switch (e.type) {
+      case "tankBurst": {
+        const water = e.tank === "waterTank";
+        const color = water ? 0x64d5ff : 0x9c713d;
+        this.fx.burst(e.x, e.y, color);
+        this.float(water ? "WATER!" : "OIL!", e.x, e.y + 1, color, 0.85);
+        break;
+      }
       case "explosion": {
         const big = e.kind === "barrel" || e.kind === "tnt";
         camera.hotspot(e.x, e.y, big ? 2.5 : 1.2);

@@ -64,7 +64,7 @@ function aimVector(x: number, y: number): Point {
 }
 
 function breakable(sim: Sim, origin: Point, dir: Point, hit: NonNullable<RayHit>) {
-  if (!hit.terrain) return !!hit.entity && !["fighter", "item", "steel", "pad", "grenade", "weight"].includes(hit.entity.kind);
+  if (!hit.terrain) return !!hit.entity && !["fighter", "item", "steel", "pad", "grenade", "weight", "waterTank", "oilTank"].includes(hit.entity.kind);
   const offset = hit.dist + sim.ruleset.tactics.weapons.wallSampleDepth;
   const g = sim.grid;
   const material = g.matAt(g.cx(origin.x + dir.x * offset), g.cy(origin.y + dir.y * offset));
@@ -132,6 +132,13 @@ export function chooseCombatWeapon(sim: Sim, me: Fighter, position: Point, targe
   const obstruction = !los && ray && ray.entity?.kind !== "fighter" ? ray : null;
   const fighterShot = (w: Weapon): Shot | undefined => {
     if (!hasBand(w)) return;
+    // A tank between us and a nearby rival is a rocket target. Keep outside the wash and blast.
+    const tank = obstruction?.entity;
+    if (w === "rocket" && tank && (tank.kind === "waterTank" || tank.kind === "oilTank")) {
+      const p = tank.body.translation(), radius = ruleset.arena.props.tank.radius;
+      if (length2D(target.atp.x - p.x, target.atp.y - p.y) <= radius &&
+          obstruction!.dist > Math.max(radius, ruleset.weapons.table.rocket.radius)) return { aim: direct };
+    }
     if (w === "railgun") return railCanReach(sim, position, target) ? { aim: direct } : undefined;
     // precision weapons (#38) are hitscan: they need a clear line
     if (isPrecision(w)) return los ? { aim: direct } : undefined;
