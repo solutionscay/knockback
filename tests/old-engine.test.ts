@@ -77,23 +77,6 @@ describe("rounds from an older engine (#88)", () => {
     expect(JSON.parse(readFileSync(join(outDir, paths.keep!.slice("/records/".length)), "utf8")).engine).toBe(stamp);
   });
 
-  test("rounds from before stamps are checked once: the ones that no longer replay are marked older", async () => {
-    makeOlder(ids.old, { stamp: "e-0ld0ld00" });
-    store.db.query("UPDATE matches SET engine = ? WHERE id = ?").run("e-0ld0ld00", ids.old); // stamped by an older engine
-    makeOlder(ids.unstampedOld, { unstamped: true });
-    // a record from before stamps that still replays on this engine
-    const f = join(outDir, paths.unstampedNew!.slice("/records/".length));
-    const j = JSON.parse(readFileSync(f, "utf8"));
-    delete j.engine;
-    writeFileSync(f, JSON.stringify(j));
-    store.db.query("UPDATE matches SET engine = NULL WHERE id IN (?, ?)").run(ids.unstampedOld, ids.unstampedNew);
-
-    expect(await api.stampOldRounds(0)).toEqual({ current: 1, older: 1 });
-    expect(raw("SELECT engine FROM matches WHERE id = ?", ids.unstampedOld)!.engine).toBe(OLDER_ENGINE);
-    expect(raw("SELECT engine FROM matches WHERE id = ?", ids.unstampedNew)!.engine).toBe(engineStamp());
-    expect(await api.stampOldRounds(0)).toEqual({ current: 0, older: 0 }); // once
-  });
-
   test("an older round is left out of every public list", async () => {
     // a restart: nothing in memory, every round comes from storage (as on the LAN after a deploy)
     const fresh = new MatchServer({ outDir, store, pace: "fast" });

@@ -21,7 +21,7 @@ bun run teaser --seed 42 --fast                       # a quick 720p30 preview o
 | `--fast` | A quick preview: 30 fps, 720p only, a fast x264 preset. An explicit `--fps` or `--sizes` wins over it. |
 | `--workers <n>` | Parallel capture pages (default 6; more doesn't help at 1080p, see Speed) |
 | `--work <dir>` | The scratch folder for frames, sound cues, the WAV and the encodes (default: the system temp dir). Keep it on a fast local disk; a `--work` inside `--out` falls back to the temp dir. |
-| `--keep-work` | Keep the scratch folder after the run (`--keep-frames` does the same) |
+| `--keep-work` | Keep the scratch folder after the run |
 | `--gpu swiftshader\|metal\|default` | The capture browser's GPU backend (default `swiftshader`, on the CPU). See [GPU backend](#gpu-backend). |
 
 ## What you get

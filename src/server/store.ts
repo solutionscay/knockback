@@ -75,8 +75,7 @@ export interface MatchRow {
   picksLockedAt?: number | null;
   /**
    * The engine the match was played on (#88: src/sim/engine.ts): the current stamp for a new match; "older" or an
-   * older stamp once it no longer replays on this engine (kept as training data, never shown); null for a match from
-   * before stamps that has not been checked yet (not shown either until it is).
+   * older stamp once it no longer replays on this engine (kept as training data, never shown). A match without a stamp stays out of public results.
    */
   engine?: string | null;
 }
@@ -274,8 +273,6 @@ export interface MatchStore {
    * training, never for a public page.
    */
   allRecords(): Promise<RecordRow[]>;
-  /** finished matches with no engine stamp yet (from before stamps), public tiers first, then newest first */
-  unstampedMatches(limit?: number): Promise<MatchRow[]>;
   /** the crown (#65) and the last Arena round applied to it */
   getCrown(): Promise<CrownRow>;
   /**
@@ -499,9 +496,7 @@ export class SqliteStore implements MatchStore {
   }
 
   /**
-   * `path`: a file, or ":memory:". An empty database gets SCHEMA; one with another schema throws SchemaError, except
-   * v7 and v8, which get the columns added since (#88: matches.engine, empty until checked; #113: the owner profile,
-   * a new id per owner), so their rounds, owners and keys are kept.
+   * `path`: a file, or ":memory:". An empty database gets SCHEMA; one with another schema throws SchemaError.
    * `engine`: the current engine stamp (default: worked out, src/sim/engine.ts).
    */
   constructor(path: string, engine?: string) {
@@ -514,18 +509,6 @@ export class SqliteStore implements MatchStore {
       if (tables === 0) {
         this.db.transaction(() => {
           this.db.exec(SCHEMA);
-          this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-        })();
-      } else if (version === 7 || version === 8) {
-        // the only upgrades, added columns, nothing rewritten: v8 (#88) matches.engine (the old rounds are checked in
-        // the background); v9 (#113) the owner profile: owners keep their handles and keys, each gets a new id
-        this.db.transaction(() => {
-          if (version === 7) this.db.exec("ALTER TABLE matches ADD COLUMN engine TEXT");
-          this.db.exec("ALTER TABLE owners ADD COLUMN id TEXT NOT NULL DEFAULT ''");
-          this.db.exec("ALTER TABLE owners ADD COLUMN nickname TEXT");
-          this.db.exec("ALTER TABLE owners ADD COLUMN url TEXT");
-          for (const r of this.db.query("SELECT handle FROM owners").all() as Row[]) this.db.query("UPDATE owners SET id = ? WHERE handle = ?").run(newOperatorId(), r.handle as string);
-          this.db.exec("CREATE UNIQUE INDEX owners_id ON owners(id)");
           this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
         })();
       } else if (version !== SCHEMA_VERSION) throw new SchemaError(path, version);
@@ -760,12 +743,6 @@ export class SqliteStore implements MatchStore {
   }
   async allRecords() {
     return (this.db.query("SELECT r.*, m.engine FROM records r JOIN matches m ON m.id = r.match_id ORDER BY r.created_at DESC, r.rowid DESC").all() as Row[]).map(recordOf);
-  }
-  async unstampedMatches(limit = 1_000_000) {
-    const rows = this.db
-      .query("SELECT m.* FROM matches m LEFT JOIN records r ON r.match_id = m.id WHERE m.engine IS NULL AND m.status IN ('over','failed') ORDER BY (r.tier IS NOT NULL AND r.tier != 'bot-only') DESC, m.created_at DESC LIMIT ?")
-      .all(limit) as Row[];
-    return rows.map(matchOf);
   }
   async getCrown() {
     const r = this.db.query("SELECT * FROM crown WHERE id = 1").get() as Row;

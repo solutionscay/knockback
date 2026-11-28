@@ -156,8 +156,8 @@ export interface Parsed {
 
 /**
  * `names` are the fighters' names from their souls (targets can be named).
- * Weapons: 1 to 3 different pickups to go for, best first ("loadout" is
- * accepted as an old spelling). Build (#80): {health, weight, power}, whole
+ * Weapons: 1 to 3 different pickups to go for, best first.
+ * Build (#80): {health, weight, power}, whole
  * numbers from -2 to 2 that add up to 0; none is neutral; refused when the
  * ruleset turns builds off.
  */
@@ -169,7 +169,7 @@ export function validatePlan(o: Record<string, unknown>, me: number, names: stri
     const candidate = isPickupWeapon(w) ? w : WEAPON_ALIAS[w];
     return allowedWeapon(ruleset, candidate) ? candidate : null;
   };
-  const rawW = o.weapons ?? o.loadout;
+  const rawW = o.weapons;
   const ws = Array.isArray(rawW) ? rawW.map(weapon) : typeof rawW === "string" ? [weapon(rawW)] : [];
   const weapons = ws.filter((w, i): w is Weapon => !!w && ws.indexOf(w) === i);
   if (!weapons.length || weapons.length !== ws.length || weapons.length > 3) problems.push(`weapons ${JSON.stringify(rawW)}`);

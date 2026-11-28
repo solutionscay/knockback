@@ -299,10 +299,8 @@ export function joinSnippet(tab: JoinTab, mcp: string, key: string): string {
 /** The MCP URL: GET /api/join's `mcp` (the server's public URL, #22), else this server's /mcp. */
 export function mcpUrlFrom(join: unknown, origin: string): string {
   const j = (join && typeof join === "object" ? join : {}) as Record<string, unknown>;
-  for (const k of ["mcp", "mcpUrl", "url"]) {
-    const v = j[k];
-    if (typeof v === "string" && /^https?:\/\/[^\s"'<>]+$/.test(v)) return v.endsWith("/mcp") ? v : `${v.replace(/\/$/, "")}/mcp`;
-  }
+  const v = j.mcp;
+  if (typeof v === "string" && /^https?:\/\/[^\s"'<>]+$/.test(v)) return v.endsWith("/mcp") ? v : `${v.replace(/\/$/, "")}/mcp`;
   const pub = j.publicUrl;
   if (typeof pub === "string" && /^https?:\/\/[^\s"'<>]+$/.test(pub)) return `${pub.replace(/\/$/, "")}/mcp`;
   return `${origin}/mcp`;
