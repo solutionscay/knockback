@@ -16,7 +16,8 @@
  * fighter wading, a column of each forest material (cracked at stages 1 and 2), a tree trunk, a branch and a canopy
  * platform; under it, its prop skins (a tree stump, a beehive, a log pile) at their three damage states.
  */
-import { Application, Container, Sprite, Text } from "pixi.js";
+import { Container, Sprite } from "pixi.js";
+import { idlePose, labCanvas } from "./art-lab";
 import { F_ANCHOR, F_CHARRED, F_ONEWAY, Grid, Liquid, Mat, MAT_HP } from "../sim/grid";
 import { LiquidView } from "./liquidview";
 import { LEVEL_THEMES, PROP_HALF, type Theme } from "../sim/level-config";
@@ -32,15 +33,7 @@ const T0 = Number(q.get("t") ?? "0");
 await initPlushArt();
 await initWorldArt();
 await loadPlushSheets(plushNeeds("balanced", "none"));
-const app = new Application();
-await app.init({ background: 0x141a2e, width: Math.round(S * 14.5), height: Math.round(S * 81), antialias: true, resolution: 1, preference: "webgl" });
-document.body.appendChild(app.canvas);
-
-function label(text: string, x: number, y: number, size = 13) {
-  const t = new Text({ text, style: { fill: 0xb8c2e0, fontSize: size, fontWeight: "700", fontFamily: "system-ui" } });
-  t.position.set(x, y);
-  app.stage.addChild(t);
-}
+const { app, label } = await labCanvas(Math.round(S * 14.5), Math.round(S * 81));
 
 /** A 22 x 8 cell (11 x 4 m) patch: ground of the theme's body with its surface on top, a carved crater, cracked and burned
  * cells, a column of every platform material, and a platform held by a chain anchor. */
@@ -176,7 +169,7 @@ const liquidViews: LiquidView[] = [];
 
 function fighter(x: number, ground: number) {
   const pl = new PlushBot(0x3fa7ff, "none", "balanced");
-  pl.update({ dt: 1 / 12, alive: true, air: false, stunned: false, vx: 0, vy: 0, weapon: "fist", aim: 0, swingT: 0, recoil: 0, hitT: 0, celebrate: false, facing: 1 });
+  pl.update(idlePose);
   const c = new Container();
   c.addChild(pl.back.c, pl.body.c, pl.feet, pl.fist.c, pl.sleeve.c, pl.arm.c);
   c.scale.set(S);
