@@ -10,16 +10,13 @@
 import type { CheckinConfig } from "../ai/checkin";
 import { OlderEngineError } from "../ai/runner";
 import { OLDER_ENGINE } from "../sim/engine";
-import { dedupe, headToHead, leaderboard, type SeatEntry } from "../stats/models";
+import type { SeatEntry } from "../stats/models";
 import { Arena, type ArenaOptions } from "./arena";
 import { errorResponse, HttpError, json, RateLimiter } from "./limits";
 import { apiRoute, health } from "./match-routes";
 import { PICK_MIN_WINDOW_MS, PICKS_PER_ADDRESS } from "./picks";
 import { ServerMatch, tierOf } from "./server-match";
 import { SqliteStore, type MatchStore } from "./store";
-
-/** GET /api/models reads at most this many of the newest records */
-const MODELS_MAX_RECORDS = 5000;
 
 export interface ServerOptions {
   /** where records are written */
@@ -184,30 +181,4 @@ export class MatchServer {
    * Independent of ?min (which only re-ranks in memory), so query strings can't force a rebuild.
    */
   modelsCache: { at: number; kept: SeatEntry[][]; dropped: number } | null = null;
-
-  /**
-   * The model leaderboard from the SQLite record index: each row's per-seat stats, saved
-   * with the record. Records with test providers are left out; copies of one match count once.
-   */
-  async models(min?: number) {
-    if (!this.modelsCache || Date.now() - this.modelsCache.at >= 60_000) {
-      const rows = await this.store.listRecords(MODELS_MAX_RECORDS);
-      const sets: SeatEntry[][] = [];
-      for (const row of rows) {
-        let es: SeatEntry[] = [];
-        try {
-          const v = JSON.parse(row.stats);
-          if (Array.isArray(v)) es = v as SeatEntry[];
-        } catch {
-          /* unreadable stats: left out */
-        }
-        if (es.length && !es.some((e) => e.model?.test)) sets.push(es);
-      }
-      this.modelsCache = { at: Date.now(), ...dedupe(sets) };
-    }
-    const { kept, dropped } = this.modelsCache;
-    const lb = leaderboard(kept, min !== undefined ? { minMatches: min } : {});
-    const h2h = headToHead(kept, lb.rows.map((r) => r.key));
-    return { ...lb, headToHead: h2h, duplicates: dropped, note: "win rate per seat played; ± is the 95% interval; chance is 25% in a 4-fighter round; models below the minimum are provisional; self-reported models are the model ids remote agents gave at join, cleaned so one model is one row" };
-  }
 }

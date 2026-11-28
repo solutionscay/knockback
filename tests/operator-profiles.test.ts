@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { hashToken } from "../src/server/tokens";
 import { checkNickname, checkUrl } from "../src/server/profile";
 import { SqliteStore } from "../src/server/store";
-import { modelsBoardOf } from "../src/server/site";
+import { modelsBoardOf } from "../src/server/boards";
 import { agentsTable, operatorHead, operatorLink } from "../src/site/leaderboard";
 import { operatorOf } from "../src/site/data";
 import { initPhysics } from "../src/sim";

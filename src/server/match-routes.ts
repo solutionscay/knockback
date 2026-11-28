@@ -25,6 +25,7 @@ import { HttpError, json, MAX_BODY, readJson } from "./limits";
 import type { MatchServer } from "./match-server";
 import { spectatorOf } from "./picks";
 import { profilePatch } from "./profile";
+import { modelsOf } from "./boards";
 import { siteRoute } from "./site";
 
 /** Liveness and readiness for the container healthcheck: the process answers and the store can be read. */
@@ -105,7 +106,7 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
   if (path === "/api/models") {
     allow("GET");
     const min = Number(url.searchParams.get("min"));
-    return json(await server.models(Number.isInteger(min) && min >= 1 && min <= 1000 ? min : undefined));
+    return json(await modelsOf(server, Number.isInteger(min) && min >= 1 && min <= 1000 ? min : undefined));
   }
   if (path === "/api/records") {
     allow("GET");
