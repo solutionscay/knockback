@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseMontageArgs } from "../scripts/montage/options";
-import { OptionError, parseTeaserArgs } from "../scripts/teaser/options";
+import { parseTeaserArgs } from "../scripts/teaser/options";
+import { OptionError } from "../scripts/video-options";
 import { DEFAULT_GPU, gpuArgs, launchArgs, resolveGpu } from "../scripts/viewer-browser";
 
 describe("Chromium GPU backend (#165)", () => {

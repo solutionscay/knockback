@@ -1,4 +1,5 @@
 /** Command-line options of `bun run teaser` (docs/video.md). Pure: tested in tests/viewer-browser.test.ts. */
+import { OptionError, serverSource, videoFlags } from "../video-options";
 import { GPU_ENV, resolveGpu, type GpuBackend } from "../viewer-browser";
 
 export type Source = { kind: "record"; file: string } | { kind: "seed"; seed: number } | { kind: "best-of"; n: number } | { kind: "server"; url: string };
@@ -35,20 +36,9 @@ export const USAGE = `bun run teaser [--record <file> | --seed <n> | --best-of <
   --keep-work       keep the scratch folder after the run
   --gpu <backend>   capture browser GPU: swiftshader (default, CPU), metal or default (Chromium picks); env KB_TEASER_GPU`;
 
-export class OptionError extends Error {}
 
 export function parseTeaserArgs(argv: string[], now = new Date(), env: string | undefined = process.env[GPU_ENV]): TeaserOptions {
-  const flags = new Map<string, string>();
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (!a.startsWith("--")) throw new OptionError(`unexpected argument: ${a}`);
-    const [k, inline] = a.slice(2).split("=", 2) as [string, string | undefined];
-    const boolean = k === "fast" || k === "keep-work" || k === "help";
-    const v = boolean ? "true" : (inline ?? argv[++i]);
-    if (v === undefined || (!boolean && v.startsWith("--"))) throw new OptionError(`--${k} needs a value`);
-    if (!["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "work", "keep-work", "gpu", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
-    flags.set(k, v);
-  }
+  const flags = videoFlags(argv, ["record", "seed", "best-of", "server", "out", "sizes", "fps", "fast", "workers", "work", "keep-work", "gpu", "help"], ["fast", "keep-work", "help"]);
   if (flags.has("help")) throw new OptionError(USAGE);
   const sources = ["record", "seed", "best-of", "server"].filter((k) => flags.has(k));
   if (sources.length > 1) throw new OptionError(`pick one source: ${sources.map((s) => `--${s}`).join(", ")}`);
@@ -62,9 +52,7 @@ export function parseTeaserArgs(argv: string[], now = new Date(), env: string | 
   else if (flags.has("seed")) source = { kind: "seed", seed: int("seed", 0, 0xffffffff) };
   else if (flags.has("best-of")) source = { kind: "best-of", n: int("best-of", 1, 12) };
   else if (flags.has("server")) {
-    const url = flags.get("server")!;
-    if (!/^https?:\/\/[\w.-]+(:\d+)?\/?$/.test(url)) throw new OptionError("--server must be a base URL like http://localhost:5176");
-    source = { kind: "server", url: url.replace(/\/$/, "") };
+    source = serverSource(flags.get("server")!);
   } else throw new OptionError(`pick a source: --record, --seed, --best-of or --server\n${USAGE}`);
   const fast = flags.has("fast");
   const fps = flags.has("fps") ? Number(flags.get("fps")) : fast ? 30 : 60;

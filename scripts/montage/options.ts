@@ -1,5 +1,5 @@
 /** Command-line options of `bun run montage` (docs/video.md). */
-import { OptionError } from "../teaser/options";
+import { OptionError, serverSource, videoFlags } from "../video-options";
 import { GPU_ENV, resolveGpu, type GpuBackend } from "../viewer-browser";
 
 export type MontageSource = { kind: "paths"; paths: string[] } | { kind: "server"; url: string };
@@ -25,27 +25,12 @@ export const MONTAGE_USAGE = `bun run montage <records folder | record files...>
 
 export function parseMontageArgs(argv: string[], now = new Date(), env: string | undefined = process.env[GPU_ENV]): MontageOptions {
   const paths: string[] = [];
-  const flags = new Map<string, string>();
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
-    if (!a.startsWith("--")) {
-      paths.push(a);
-      continue;
-    }
-    const [k, inline] = a.slice(2).split("=", 2) as [string, string | undefined];
-    if (!["server", "out", "workers", "work", "keep-work", "gpu", "help"].includes(k)) throw new OptionError(`unknown option --${k}`);
-    const boolean = k === "keep-work" || k === "help";
-    const v = boolean ? "true" : (inline ?? argv[++i]);
-    if (v === undefined || (!boolean && v.startsWith("--"))) throw new OptionError(`--${k} needs a value`);
-    flags.set(k, v);
-  }
+  const flags = videoFlags(argv, ["server", "out", "workers", "work", "keep-work", "gpu", "help"], ["keep-work", "help"], paths);
   if (flags.has("help")) throw new OptionError(MONTAGE_USAGE);
   let source: MontageSource;
   if (flags.has("server")) {
     if (paths.length) throw new OptionError("pick one source: record paths or --server");
-    const url = flags.get("server")!;
-    if (!/^https?:\/\/[\w.-]+(:\d+)?\/?$/.test(url)) throw new OptionError("--server must be a base URL like http://localhost:5176");
-    source = { kind: "server", url: url.replace(/\/$/, "") };
+    source = serverSource(flags.get("server")!);
   } else if (paths.length) source = { kind: "paths", paths };
   else throw new OptionError(`give records (a folder or files) or --server\n${MONTAGE_USAGE}`);
   const workers = flags.has("workers") ? Number(flags.get("workers")) : 3;
