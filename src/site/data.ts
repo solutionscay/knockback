@@ -1,4 +1,4 @@
-import type { MatchStatus, ReplaySummary } from "../api-types";
+import type { MatchStatus, Operator, ReplaySummary } from "../api-types";
 /**
  * The site pages' data mapping (#22, #42): pure functions from the server's JSON to what the pages show.
  * No DOM, no fetch: tested in tests/site-data.test.ts.
@@ -170,14 +170,10 @@ export interface LeaderboardInfo {
 }
 
 /** An operator profile as the site shows it (#113): a nickname and a URL. */
-export interface OperatorInfo {
-  id: string;
-  nickname: string;
-  url: string | null;
-}
+
 
 /** An operator from the API, or null. Checked again here: the URL is kept only when it is plain http(s) (pure). */
-export function operatorOf(v: unknown): OperatorInfo | null {
+export function operatorOf(v: unknown): Operator | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   if (typeof o.id !== "string" || !/^op_[0-9a-f]{16}$/.test(o.id) || typeof o.nickname !== "string" || !o.nickname) return null;

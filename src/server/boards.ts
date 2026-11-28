@@ -1,10 +1,9 @@
-import type { ReplaySummary } from "../api-types";
+import type { Operator, ReplaySummary } from "../api-types";
 import { buildText } from "../sim/build";
 import { arenaBoard } from "../stats/board";
 import { modelBoard, type BoardRound, type ModelBoard, type ModelBoardRow } from "../stats/model-board";
 import { dedupe, headToHead, leaderboard, remoteLabel, type SeatEntry } from "../stats/models";
 import type { MatchServer } from "./match-server";
-import type { Operator } from "./profile";
 import type { RecordRow } from "./store";
 import { SEATS, summaryOf } from "./replays";
 import { operatorsOf } from "./agent-profiles";

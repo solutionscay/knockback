@@ -1,4 +1,4 @@
-import type { MatchStatus, PublicTier, RoundTier } from "../api-types";
+import type { Operator, MatchStatus, PublicTier, RoundTier } from "../api-types";
 /**
  * Match server storage (#27). The server keeps its working state in memory
  * and writes every change through a MatchStore, so a restart can rebuild it:
@@ -21,7 +21,7 @@ import type { PlanUpdate } from "../sim/fight";
 import type { Decision } from "../sim/voice";
 import type { Crown, PlayedRound } from "./crown";
 import { engineStamp } from "../sim/engine";
-import { newOperatorId, type Operator } from "./profile";
+import { newOperatorId } from "./profile";
 
 /** The profile fields an owner sets (#113); undefined leaves a field as it is, null clears it. */
 export interface ProfilePatch {

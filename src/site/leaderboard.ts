@@ -9,16 +9,17 @@
 import type { ModelInfo } from "../stats/models";
 import type { ModelBoard, ModelBoardRow } from "../stats/model-board";
 import { badge } from "./badge";
-import { operatorOf, type LeaderboardInfo, type OperatorInfo } from "./data";
+import type { Operator } from "../api-types";
+import { operatorOf, type LeaderboardInfo } from "./data";
 import { getJson, html, mount, type Raw } from "./dom";
 
 type View = "agents" | "models";
 
 /** The operator's nickname, linked to their URL when they gave one: an outsider's link, so nofollow ugc (pure). */
-export function operatorLink(o: OperatorInfo): Raw {
+export function operatorLink(o: Operator): Raw {
   return o.url ? html`<a class="op" href="${o.url}" rel="nofollow ugc noopener" target="_blank">${o.nickname}</a>` : html`<span class="op">${o.nickname}</span>`;
 }
-const byLine = (ops: OperatorInfo[]): Raw => (ops.length ? html`<div class="opby">by ${ops.map((o, i) => html`${i ? ", " : ""}${operatorLink(o)}`)}</div>` : html``);
+const byLine = (ops: Operator[]): Raw => (ops.length ? html`<div class="opby">by ${ops.map((o, i) => html`${i ? ", " : ""}${operatorLink(o)}`)}</div>` : html``);
 type Board = LeaderboardInfo & { crown: { holder: { kind: string; agent?: string }; streak: number } | null };
 
 const pct = (wins: number, rounds: number) => (rounds ? `${Math.round((wins / rounds) * 100)}%` : "–");
@@ -32,7 +33,7 @@ export function agentsTable(b: Board, only: string | null = null): Raw {
   return html`<div class="lbs"><table class="lb">
     <thead><tr><th></th><th>Agent</th><th>Model</th><th class="num">Wins</th><th class="num">Rounds</th><th class="num">Win rate</th></tr></thead>
     <tbody>${rows.map(
-      (a, i) => html`<tr><td class="dim">${i + 1}</td><td><a class="n" href="/agent/${encodeURIComponent(a.name)}">${a.name}</a>${a.name === holder ? html` <span class="tag crown" title="holds the crown">♛ ${b.crown!.streak}</span>` : ""}${only ? "" : byLine([operatorOf(a.operator)].filter((o): o is OperatorInfo => o !== null))}</td><td>${badge(a.label)}</td><td class="num">${a.vsAgents.wins}</td><td class="num">${a.vsAgents.rounds}</td><td class="num">${pct(a.vsAgents.wins, a.vsAgents.rounds)}</td></tr>`,
+      (a, i) => html`<tr><td class="dim">${i + 1}</td><td><a class="n" href="/agent/${encodeURIComponent(a.name)}">${a.name}</a>${a.name === holder ? html` <span class="tag crown" title="holds the crown">♛ ${b.crown!.streak}</span>` : ""}${only ? "" : byLine([operatorOf(a.operator)].filter((o): o is Operator => o !== null))}</td><td>${badge(a.label)}</td><td class="num">${a.vsAgents.wins}</td><td class="num">${a.vsAgents.rounds}</td><td class="num">${pct(a.vsAgents.wins, a.vsAgents.rounds)}</td></tr>`,
     )}</tbody>
   </table></div>`;
 }
@@ -49,7 +50,7 @@ export function operatorHead(b: Board, id: string): Raw {
 function modelsTable(m: ModelBoard & { rows: (ModelBoardRow & { operators?: unknown[] })[] }): Raw {
   if (!m.rows.length) return html`<div class="empty">No model has played yet.</div>`;
   const row = (r: ModelBoardRow & { operators?: unknown[] }, rank: number) =>
-    html`<tr><td class="dim">${rank}</td><td><a class="mlink" href="/replays?model=${encodeURIComponent(r.key)}">${badge(info(r))}</a>${byLine((r.operators ?? []).map(operatorOf).filter((o): o is OperatorInfo => o !== null).slice(0, 3))}</td><td class="num">${r.wins}</td><td class="num">${r.rounds}</td><td class="num">${pct(r.wins, r.rounds)}</td></tr>`;
+    html`<tr><td class="dim">${rank}</td><td><a class="mlink" href="/replays?model=${encodeURIComponent(r.key)}">${badge(info(r))}</a>${byLine((r.operators ?? []).map(operatorOf).filter((o): o is Operator => o !== null).slice(0, 3))}</td><td class="num">${r.wins}</td><td class="num">${r.rounds}</td><td class="num">${pct(r.wins, r.rounds)}</td></tr>`;
   const rows = [...m.rows].sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.rounds - a.rounds || a.name.localeCompare(b.name));
   return html`<div class="lbs"><table class="lb">
     <thead><tr><th></th><th>Model</th><th class="num">Wins</th><th class="num">Rounds</th><th class="num">Win rate</th></tr></thead>

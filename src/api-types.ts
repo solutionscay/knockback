@@ -1,7 +1,13 @@
 import type { Build } from "./sim/build";
 import type { Identity } from "./sim/identity";
 import type { Weapon } from "./sim/sim-types";
-import type { Operator } from "./server/profile";
+
+/** The public face of a profile (only owners that set a nickname have one on the site). */
+export interface Operator {
+  id: string;
+  nickname: string;
+  url: string | null;
+}
 
 export type MatchStatus = "open" | "running" | "over" | "failed";
 export type RoundTier = "bot-only" | "warm-up" | "featured";
@@ -42,7 +48,7 @@ export interface RoundSummary {
 export interface AgentMatch {
   match: string;
   seat: number;
-  status: string;
+  status: MatchStatus;
   createdAt: string;
   fighter: string | null;
   /** 1st..4th by match winner, then round wins (null until over) */
@@ -73,7 +79,7 @@ export interface AgentProfile {
   /** most frequent stance, target, first weapon and build over its plans */
   style: { stance: string | null; target: string | null; weapon: string | null; build: string | null };
   matches: AgentMatch[];
-  now: { match: string; status: string } | null;
+  now: { match: string; status: MatchStatus } | null;
 }
 
 export type AgentProfileResponse = AgentProfile & { operator: Operator | null };

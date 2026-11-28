@@ -1,12 +1,11 @@
-import type { AgentMatch, AgentProfile, AgentProfileResponse, ReplaySummary } from "../api-types";
-import { buildText, type Build } from "../sim/build";
+import type { Operator, MatchStatus, AgentMatch, AgentProfile, AgentProfileResponse, ReplaySummary } from "../api-types";
+import { buildText } from "../sim/build";
 import type { Identity } from "../sim/identity";
 import { parseSoul } from "../sim/soul";
 import type { Weapon } from "../sim/sim-types";
 import { HttpError } from "./limits";
 import { NAME_RE } from "../names";
 import type { MatchServer } from "./match-server";
-import type { Operator } from "./profile";
 import { SEATS, replayOf } from "./replays";
 
 /** The first plain paragraph of a soul.md, at most ~280 characters (pure: tested). */
@@ -45,7 +44,7 @@ export function placeOf(seat: number, winner: number, wins: number[]): number {
 /** Build an agent's profile from its seats (newest first) and the summaries of those matches (pure: tested). */
 export function buildProfile(
   name: string,
-  seats: { match: string; seat: number; status: string; createdAt: number; soul: string; owner: string; leftRound: number | null; live?: { fighter: string | null; identities: Identity[] | null; names: string[] | null } }[],
+  seats: { match: string; seat: number; status: MatchStatus; createdAt: number; soul: string; owner: string; leftRound: number | null; live?: { fighter: string | null; identities: Identity[] | null; names: string[] | null } }[],
   replays: Map<string, ReplaySummary>,
 ): AgentProfile {
   const matches: AgentMatch[] = [];
