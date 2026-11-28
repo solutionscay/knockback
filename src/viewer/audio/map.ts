@@ -179,7 +179,7 @@ export function cueForBeat(b: { kind: string; value?: number }): Cue | null {
 }
 
 /**
- * The entrance (#66): the sounds of its steps (scene-entrance.ts ENTRANCE_AT), at the landing spot. The drop whistles
+ * The entrance (#66): the sounds of its steps (entrance-timing.ts ENTRANCE_AT), at the landing spot. The drop whistles
  * down, the landing slams, the shout is an angry beep in the agent's voice, the kick lands hard and the bot whooshes
  * off, the twinkle dings. `kick` says which step the kick is ("land": the agent lands on the bot).
  */

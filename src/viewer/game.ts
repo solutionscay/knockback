@@ -9,7 +9,7 @@ import type { SoundDirector } from "./audio/director";
 import type { Application } from "pixi.js";
 import { arrivalBeats, betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
 import type { Entrance } from "../sim/entrance";
-import { stepsBetween } from "./scene-entrance";
+import { stepsBetween } from "./entrance-timing";
 import { Tally } from "../flow/score";
 import type { Identity } from "../sim/identity";
 import type { Soul } from "../sim/soul";

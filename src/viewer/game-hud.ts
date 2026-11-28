@@ -1,7 +1,7 @@
 import type { Entrance } from "../sim/entrance";
 import type { Identity } from "../sim/identity";
 import type { ControlView } from "./autopilot";
-import { ENTRANCE_AT } from "./scene-entrance";
+import { ENTRANCE_AT } from "./entrance-timing";
 import { formatSeconds } from "../format";
 import type { Beat } from "../flow/beats";
 import { POINTS, Tally } from "../flow/score";
