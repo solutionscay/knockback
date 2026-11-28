@@ -5,21 +5,30 @@
  *
  * Pure functions. No sim, no real time, no network, no provider.
  */
+import { nearestRank, sampleQuantile } from "../src/stats/quantiles";
+import { wilson } from "../src/stats/models";
 import { describe, expect, test } from "bun:test";
-import { fisherGreater, holm, wilson } from "../scripts/batch-stats";
+import { fisherGreater, holm } from "../scripts/batch-stats";
 
 describe("batch statistics", () => {
+  test("report percentiles preserve their exact-boundary choices", () => {
+    const sample = [4, 1, 3, 2];
+    expect(nearestRank(sample, 0.5)).toBe(2);
+    expect(sampleQuantile(sample, 0.5)).toBe(3);
+    expect(nearestRank([], 0.95)).toBe(0);
+  });
+
   test("Wilson 95% interval: textbook values, inside [0, 1] at the edges", () => {
     // 10 of 20: 0.5 ± 0.2004 (centre 0.5); 0 of 10: [0, 0.2775]
-    const [lo, hi] = wilson(10, 20);
+    const { low: lo, high: hi } = wilson(10, 20);
     expect(lo).toBeCloseTo(0.2993, 4);
     expect(hi).toBeCloseTo(0.7007, 4);
-    const [lo0, hi0] = wilson(0, 10);
+    const { low: lo0, high: hi0 } = wilson(0, 10);
     expect(lo0).toBe(0);
     expect(hi0).toBeCloseTo(0.2775, 4);
-    expect(wilson(10, 10)[1]).toBe(1);
+    expect(wilson(10, 10).high).toBe(1);
     // more fighter-rounds, a narrower interval around the same rate
-    expect(wilson(100, 400)[1] - wilson(100, 400)[0]).toBeLessThan(wilson(25, 100)[1] - wilson(25, 100)[0]);
+    expect(wilson(100, 400).high - wilson(100, 400).low).toBeLessThan(wilson(25, 100).high - wilson(25, 100).low);
   });
 
   test("Fisher's exact test, one-sided: the hypergeometric tail", () => {

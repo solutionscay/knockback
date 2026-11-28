@@ -7,13 +7,15 @@
  *   - round length and ring-outs
  *   bun scripts/stance-batch.ts [count=200] [startSeed=1] [--json out.json] [--souls] (--souls: the souls' own plans)
  */
+import { optionValue } from "./batch-options";
+import { median, percent } from "./batch-stats";
 import { writeFileSync } from "node:fs";
 import { houseBrain, initPhysics, Match, RULE_STANCES, TICK_RATE, WEAPON_LIST, type Brain, type Stance, type Weapon } from "../src/sim";
 
 await initPhysics();
 const args = process.argv.slice(2);
 const jsonIdx = args.indexOf("--json");
-const jsonOut = jsonIdx >= 0 ? args[jsonIdx + 1] : null;
+const jsonOut = optionValue(args, "--json");
 const ownPlans = args.includes("--souls");
 const pos = args.filter((a, i) => !a.startsWith("--") && (jsonIdx < 0 || i !== jsonIdx + 1));
 const N = Number(pos[0] ?? 200);
@@ -90,10 +92,10 @@ for (let i = 0; i < N; i++) {
   }
 }
 
-const pct = (a: number, b: number) => (b > 0 ? `${((100 * a) / b).toFixed(1)}%` : "-");
+const pct = (a: number, b: number) => (b > 0 ? percent(a, b, 1) : "-");
 const out: string[] = [];
 out.push(`stance batch (#38): ${N} best-of-3 matches (seeds ${start}..${start + N - 1}), ${rounds} rounds, ${((performance.now() - t0) / 1000).toFixed(1)} s wall${ownPlans ? ", the souls' own plans" : ", rotating stances and lead weapons"}`);
-out.push(`round length: ${(roundTicks / rounds / TICK_RATE).toFixed(1)} s avg, median ${roundLengths.sort((a, b) => a - b)[Math.floor(roundLengths.length / 2)]!.toFixed(1)} s, time-outs ${pct(timeouts, rounds)}`);
+out.push(`round length: ${(roundTicks / rounds / TICK_RATE).toFixed(1)} s avg, median ${median(roundLengths).toFixed(1)} s, time-outs ${pct(timeouts, rounds)}`);
 out.push(`ring-outs: ${(ringouts / N).toFixed(2)} per match, ${(ringouts / rounds).toFixed(2)} per round`);
 out.push(`knockouts by a fighter: ${kos}; long-range (knocking-out hit from ${LONG_M} m or more): ${longKos} (${pct(longKos, kos)})`);
 out.push(`  long-range KOs by weapon: ${Object.entries(koRange).filter(([, r]) => r.long).sort((a, b) => b[1].long - a[1].long).map(([w, r]) => `${w} ${r.long}/${r.all}`).join(", ") || "none"}`);

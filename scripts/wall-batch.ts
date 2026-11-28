@@ -3,6 +3,8 @@
  * bun scripts/wall-batch.ts [matches=200] [firstSeed=1] [minSeconds=1]
  * The observer samples every tenth tick without changing match inputs.
  */
+import { nearestRank } from "../src/stats/quantiles";
+import { sum } from "./batch-stats";
 import { initPhysics, Match, TICK_RATE } from "../src/sim";
 
 const [count, first, minimum] = process.argv.slice(2).map(Number);
@@ -77,11 +79,10 @@ for (let seed = firstSeed; seed < firstSeed + matches; seed++) {
 }
 
 function stats(values: number[]) {
-  const sorted = values.slice().sort((a, b) => a - b);
   return {
-    mean: values.reduce((a, b) => a + b, 0) / Math.max(1, values.length),
-    p95: sorted[Math.ceil(sorted.length * 0.95) - 1] ?? 0,
-    max: sorted.at(-1) ?? 0,
+    mean: sum(values) / Math.max(1, values.length),
+    p95: nearestRank(values, 0.95),
+    max: values.reduce((a, b) => Math.max(a, b), 0),
   };
 }
 

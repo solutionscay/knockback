@@ -3,6 +3,7 @@
  * the round end, the win screen and scoreboard. Needs the dev server (bun run dev).
  *   bun scripts/model-shots.ts <outdir> /records/<file>.json [--sizes 1280x720,1920x1080] [--cards 2] [--base http://localhost:5173]
  */
+import { optionValue } from "./batch-options";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
@@ -11,9 +12,8 @@ const args = process.argv.slice(2);
 const out = args[0] ?? "out/model-shots";
 const rec = args.find((a) => a.startsWith("/records/"));
 if (!rec) throw new Error("usage: bun scripts/model-shots.ts <outdir> /records/<file>.json");
-const opt = (k: string) => (args.indexOf(k) >= 0 ? args[args.indexOf(k) + 1] : undefined);
-const sizes = (opt("--sizes") ?? "1280x720,1920x1080").split(",").map((s) => s.split("x").map(Number) as [number, number]);
-const base = opt("--base") ?? "http://localhost:5173";
+const sizes = (optionValue(args, "--sizes") ?? "1280x720,1920x1080").split(",").map((s) => s.split("x").map(Number) as [number, number]);
+const base = optionValue(args, "--base") ?? "http://localhost:5173";
 mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
 for (const [w, h] of sizes) {
@@ -38,7 +38,7 @@ for (const [w, h] of sizes) {
     const s = await st();
     if (s.beatIndex !== lastBeat) {
       lastBeat = s.beatIndex;
-      if (s.beat === "dialogue" && ++dialogues <= (Number(opt("--cards")) || 2)) {
+      if (s.beat === "dialogue" && ++dialogues <= (Number(optionValue(args, "--cards")) || 2)) {
         await adv(1.6); // the line types out
         await shot(`card-${dialogues}`);
       }

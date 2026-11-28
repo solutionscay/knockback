@@ -3,15 +3,12 @@
  * correction for many comparisons, and a least-squares fit. Pure functions, no sim.
  */
 
-/** Wilson score interval for w successes in n trials, 95% by default. [0, 1] when n is 0. */
-export function wilson(w: number, n: number, z = 1.96): [number, number] {
-  if (n === 0) return [0, 1];
-  const p = w / n;
-  const d = 1 + (z * z) / n;
-  const c = (p + (z * z) / (2 * n)) / d;
-  const h = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
-  return [Math.max(0, c - h), Math.min(1, c + h)];
-}
+import { sampleQuantile } from "../src/stats/quantiles";
+
+export const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
+export const median = (values: number[]) => values.length ? sampleQuantile(values, 0.5) : NaN;
+export const percent = (value: number, total = 1, digits = 1) => `${((100 * value) / total).toFixed(digits)}%`;
+export const seatWinBand = (rounds: number) => 1.96 * Math.sqrt((0.25 * 0.75) / rounds);
 
 const logFact: number[] = [0];
 function lf(n: number): number {

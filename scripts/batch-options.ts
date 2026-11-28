@@ -1,3 +1,4 @@
+import { CLASSIC, CLOSE_QUARTERS, validateRuleset, type Ruleset } from "../src/sim/ruleset";
 import { NEUTRAL_BUILD, randomBuild } from "../src/sim/build";
 import { Rng } from "../src/sim/rng";
 import type { Brain } from "../src/sim/voice";
@@ -20,11 +21,21 @@ export function mergeOverrides(base: unknown, over: unknown): unknown {
   return Object.fromEntries([...new Set([...Object.keys(b), ...Object.keys(o)])].map((k) => [k, mergeOverrides(b[k], o[k])]));
 }
 
-/** Bucket by index in the sorted sample, clamped to the last value. */
-export function sampleQuantile(values: number[], fraction: number): number {
-  const sorted = values.slice().sort((x, y) => x - y);
-  return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))]!;
+export function optionValue(argv: readonly string[], name: string): string | undefined {
+  const i = argv.indexOf(name);
+  return i < 0 ? undefined : argv[i + 1];
 }
+
+/** A batch can select a preset or supply JSON overrides, inline or in a file. */
+export async function batchRuleset(value?: string, base = CLASSIC): Promise<Ruleset> {
+  if (value === undefined) return base;
+  if (value === "classic") return CLASSIC;
+  if (value === "close-quarters") return CLOSE_QUARTERS;
+  const overrides = value.trimStart().startsWith("{") ? JSON.parse(value) : await Bun.file(value).json();
+  return validateRuleset(mergeOverrides(base, overrides));
+}
+
+export const seatOrder = (offset: number) => [0, 1, 2, 3].map((i) => (i + offset) % 4);
 
 /** How the fighters of a batch get their builds (#79, #80, #82). */
 export type BuildsOption = { kind: "neutral" } | { kind: "souls" } | { kind: "random"; seed: number };

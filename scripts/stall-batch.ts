@@ -1,3 +1,4 @@
+import { sampleQuantile } from "../src/stats/quantiles";
 /**
  * Stalemate check: N headless house-bot matches (souls rotated across seats).
  * Per round: the longest stretch without fighter-on-fighter damage, round
@@ -5,7 +6,7 @@
  *   bun scripts/stall-batch.ts [N=200] [firstSeed=1]
  */
 import { exampleSouls, FIGHT_TICKS, initPhysics, Match } from "../src/sim";
-import { comparisonBatchOptions, sampleQuantile } from "./batch-options";
+import { seatOrder, comparisonBatchOptions } from "./batch-options";
 
 await initPhysics();
 const { count: N, first, houseRules } = comparisonBatchOptions(process.argv);
@@ -19,7 +20,7 @@ let rounds = 0;
 const t0 = performance.now();
 for (let k = 0; k < N; k++) {
   const seed = first + k;
-  const order = [0, 1, 2, 3].map((i) => (i + k) % 4);
+  const order = seatOrder(k);
   const m = new Match(seed, { souls: order.map((i) => souls[i]!), houseRules });
   while (!m.over) {
     m.prepareRound();

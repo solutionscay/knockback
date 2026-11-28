@@ -16,15 +16,16 @@
  * share (1 / fighters alive when it went up), next to the holder that never deployed (1 / alive at its pickup).
  *
  *   bun scripts/behavior.ts record.json [--rounds]          a recorded match (the record's plans on the current sim)
- *   bun scripts/behavior.ts [count=200] [first=1] [--ruleset classic|close-quarters] [--theme <map>] [--stances] [--builds neutral|souls|random:SEED] [--json out.json]
+ *   bun scripts/behavior.ts [count=200] [first=1] [--ruleset preset|overrides.json] [--theme <map>] [--stances] [--builds neutral|souls|random:SEED] [--json out.json]
  *     --stances: every fighter plays a rotating stance (all stances show up); default: the house bots' own plans
  *     --builds: neutral (default), souls (each house bot plays its soul's build) or random:SEED (a seeded random
  *     legal build per seat and round, #79)
  */
+import { median, percent } from "./batch-stats";
 import { readFileSync, writeFileSync } from "node:fs";
 import { houseBrain, initPhysics, Match, RULE_STANCES, TICK_RATE, type Brain, type Input, type Stance, type Weapon } from "../src/sim";
-import { CLASSIC, CLOSE_QUARTERS, validateRuleset } from "../src/sim/ruleset";
-import { buildsLabel, buildsOption, withBuilds } from "./batch-options";
+import { validateRuleset } from "../src/sim/ruleset";
+import { batchRuleset, optionValue, buildsLabel, buildsOption, withBuilds } from "./batch-options";
 
 const LONG: readonly Weapon[] = ["rocket", "railgun", "rifle", "sniper", "crossbow"];
 const STILL_MS = 0.6;
@@ -220,8 +221,7 @@ export function scoreRound(m: Match, card: Scorecard, seed: number, names?: stri
   }
 }
 
-const median = (xs: number[]) => (xs.length ? xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)]! : NaN);
-const pct = (a: number, b: number) => (b > 0 ? `${((100 * a) / b).toFixed(0)}%` : "-");
+const pct = (a: number, b: number) => (b > 0 ? percent(a, b, 0) : "-");
 
 export function report(card: Scorecard, title: string): string {
   const out = [title, ""];
@@ -271,7 +271,6 @@ function row(s: string, b: Bucket) {
 if (import.meta.main) {
   await initPhysics();
   const args = process.argv.slice(2);
-  const opt = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
   const valued = new Set(["--ruleset", "--json", "--builds", "--theme"]);
   const builds = buildsOption(args);
   const pos = args.filter((a, i) => !a.startsWith("--") && !valued.has(args[i - 1] ?? ""));
@@ -291,9 +290,9 @@ if (import.meta.main) {
     for (const fl of card.falls) console.log(`fell: round ${fl.round} ${names[fl.fighter]} tick ${fl.tick} (${fl.stance}) last at x ${fl.x.toFixed(1)} y ${fl.y.toFixed(1)}`);
   } else {
     const count = Number(pos[0] ?? 200), first = Number(pos[1] ?? 1);
-    const rulesetName = opt("--ruleset") ?? "classic";
-    const theme = opt("--theme");
-    const base = rulesetName === "close-quarters" ? CLOSE_QUARTERS : CLASSIC;
+    const rulesetName = optionValue(args, "--ruleset") ?? "classic";
+    const theme = optionValue(args, "--theme");
+    const base = await batchRuleset(rulesetName);
     // --theme: every match on one map
     const ruleset = theme ? validateRuleset({ ...base, arena: { ...base.arena, enabledThemes: [theme] } }) : base;
     const rotate = args.includes("--stances");
@@ -314,7 +313,7 @@ if (import.meta.main) {
       }
     }
     console.log(report(card, `behavior (#69): ${count} house-bot matches, seeds ${first}..${first + count - 1}, ${rulesetName}${theme ? ` on ${theme}` : ""}${rotate ? ", rotating stances" : ", the house bots' own plans"}, ${buildsLabel(builds)} (${((performance.now() - t0) / 1000).toFixed(0)} s)`));
-    const json = opt("--json");
+    const json = optionValue(args, "--json");
     const flat = <B extends Bucket>(b: B) => ({ ...b, longRatio: median(b.longRatio), longDist: median(b.longDist) });
     if (json) writeFileSync(json, JSON.stringify({ ...card, byStance: Object.fromEntries(Object.entries(card.byStance).map(([k, b]) => [k, flat(b)])), byMap: Object.fromEntries(Object.entries(card.byMap).map(([k, b]) => [k, { ...flat(b), roundSeconds: median(b.roundSeconds) }])) }, null, 2));
     if (card.falls.length) console.log("\nfalls with no attacker:\n" + card.falls.map((f) => `  seed ${f.seed} round ${f.round} seat ${f.fighter} tick ${f.tick} (${f.stance}${f.zone ? ", zone" : ""}) at x ${f.x.toFixed(1)} y ${f.y.toFixed(1)}`).join("\n"));

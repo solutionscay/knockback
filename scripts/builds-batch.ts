@@ -1,3 +1,4 @@
+import { sampleQuantile } from "../src/stats/quantiles";
 /**
  * Builds balance batch (#82): house-bot matches where every seat plays a seeded random legal build each round, souls
  * rotated across seats as in equal-batch.ts. Reports, for each attribute level, the round-win rate with its 95%
@@ -6,7 +7,7 @@
  * scorecard (behavior.ts scoreRound).
  *
  *   bun scripts/builds-batch.ts [N=400] [firstSeed=1] [--builds neutral|souls|random:SEED] [--close]
- *       [--ruleset overrides.json] [--workers W (default: cores - 2)] [--json out.json]
+ *       [--ruleset preset|overrides.json] [--workers W (default: cores - 2)] [--json out.json]
  *
  * --builds as in batch-options.ts (default neutral: the reference for round length and the scorecard).
  * --workers splits the seeds over W processes (seed k goes to process k mod W). The report is the same for any W.
@@ -22,10 +23,11 @@
  *    on the three levels; a point moved from attribute B to attribute A changes the win rate by value(A) - value(B).
  *    The values are shown against the average attribute (they add up to 0), with 95% intervals.
  */
+import { wilson } from "../src/stats/models";
 import { BUILD_ATTRIBUTES, BUILD_MAX, BUILD_MIN, LEGAL_BUILDS, type Build } from "../src/sim/build";
-import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, validateRuleset } from "../src/sim";
-import { buildsLabel, buildsOption, mergeOverrides, sampleQuantile, withBuilds } from "./batch-options";
-import { fisherGreater, holm, leastSquares, wilson } from "./batch-stats";
+import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match } from "../src/sim";
+import { seatOrder, batchRuleset, optionValue, buildsLabel, buildsOption, withBuilds } from "./batch-options";
+import { percent, seatWinBand, sum, fisherGreater, holm, leastSquares } from "./batch-stats";
 import { newScorecard, report, scoreRound, type Scorecard } from "./behavior";
 
 /** One fighter in one round. */
@@ -33,26 +35,25 @@ type Row = { seed: number; round: number; seat: number; build: number; won: 0 | 
 type Shard = { rows: Row[]; roundSeconds: number[]; seatWins: number[]; card: Scorecard };
 
 const argv = process.argv.slice(2);
-const opt = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
 const valued = new Set(["--builds", "--ruleset", "--workers", "--json", "--shard"]);
 const pos = argv.filter((a, i) => !a.startsWith("--") && !valued.has(argv[i - 1] ?? ""));
 const N = Number(pos[0] ?? 400), first = Number(pos[1] ?? 1);
 const builds = buildsOption(argv);
 const close = argv.includes("--close");
-const rulesetFile = opt("--ruleset");
+const rulesetFile = optionValue(argv, "--ruleset");
 const buildKey = (b: Build) => BUILD_ATTRIBUTES.map((a) => b[a]).join(",");
 const buildIndex = new Map(LEGAL_BUILDS.map((b, i) => [buildKey(b), i]));
 
 async function runShard(shard: number, of: number): Promise<Shard> {
   await initPhysics();
   const base = close ? CLOSE_QUARTERS : CLASSIC;
-  const ruleset = rulesetFile ? validateRuleset(mergeOverrides(base, await Bun.file(rulesetFile).json())) : base;
+  const ruleset = await batchRuleset(rulesetFile, base);
   const souls = exampleSouls();
   const out: Shard = { rows: [], roundSeconds: [], seatWins: [0, 0, 0, 0], card: newScorecard() };
   for (let k = shard; k < N; k += of) {
     const seed = first + k;
     const rot = (seed - 1) % 4;
-    const order = [0, 1, 2, 3].map((i) => (i + rot) % 4);
+    const order = seatOrder(rot);
     const m = new Match(seed, { souls: order.map((i) => souls[i]!), ruleset, brains: withBuilds(order.map(() => houseBrain), builds, seed) });
     while (!m.over) {
       m.prepareRound();
@@ -90,7 +91,7 @@ function mergeCards(cards: Scorecard[]): Scorecard {
   return all;
 }
 
-const shardArg = opt("--shard");
+const shardArg = optionValue(argv, "--shard");
 if (shardArg) {
   const [i, n] = shardArg.split("/").map(Number) as [number, number];
   await Bun.write(Bun.stdout, JSON.stringify(await runShard(i, n)));
@@ -98,7 +99,7 @@ if (shardArg) {
 }
 
 const t0 = performance.now();
-const W = Math.max(1, Math.min(N, Number(opt("--workers") ?? Math.max(1, navigator.hardwareConcurrency - 2))));
+const W = Math.max(1, Math.min(N, Number(optionValue(argv, "--workers") ?? Math.max(1, navigator.hardwareConcurrency - 2))));
 const passOn = argv.filter((a, i) => !["--workers", "--json"].includes(a) && !["--workers", "--json"].includes(argv[i - 1] ?? ""));
 const shards: Shard[] = await Promise.all(
   Array.from({ length: W }, async (_, i) => {
@@ -123,12 +124,10 @@ function scoreSummary(c: Scorecard) {
   return { falls: c.falls.length, zoneFalls: c.falls.filter((f) => f.zone).length, longGunMedianStandOff: sampleQuantile(ratios, 0.5), longGunUnder4m: t("longClose") / t("longTicks"), noGunUnder4m: t("noGunClose") / t("noGunTicks"), staring: t("stare") / t("alive"), fighterRounds: c.fighterRounds };
 }
 
-const pct = (x: number, d = 1) => `${(100 * x).toFixed(d)}%`;
 const ci = (w: number, n: number) => {
-  const [lo, hi] = wilson(w, n);
-  return `${pct(w / Math.max(1, n))} (${pct(lo)}–${pct(hi)})`;
+  const { low: lo, high: hi } = wilson(w, n);
+  return `${percent(w / Math.max(1, n))} (${percent(lo)}–${percent(hi)})`;
 };
-const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const out: string[] = [];
 out.push(`# Builds batch (#82): ${N} matches, seeds ${first}..${first + N - 1}, ${close ? "Close Quarters" : "Classic"}${rulesetFile ? `, ruleset ${rulesetFile}` : ""}, ${buildsLabel(builds)}`);
 out.push("");
@@ -153,12 +152,12 @@ if (builds.kind === "random") {
     levelJson[a] = {};
     for (const l of levels) {
       const g = agg(rows.filter((r) => LEGAL_BUILDS[r.build]![a] === l));
-      const [lo, hi] = wilson(g.w, g.n);
+      const { low: lo, high: hi } = wilson(g.w, g.n);
       const outside = hi < 0.2 || lo > 0.3;
       if (outside) outsideCount++;
       levelJson[a]![l] = { ...g, lo, hi, outside };
       const point = g.w / g.n;
-      out.push(`| ${a} | ${l > 0 ? "+" : ""}${l} | ${g.n} | ${ci(g.w, g.n)} | ${outside ? "**OUTSIDE**" : point < 0.2 || point > 0.3 ? "point outside, interval reaches the band" : "no"} | ${(g.kos / g.n).toFixed(3)} | ${pct(g.ko / g.n)} | ${pct(g.ringout / g.n)} | ${pct(g.fall / g.n)} | ${(g.damage / g.n).toFixed(1)} |`);
+      out.push(`| ${a} | ${l > 0 ? "+" : ""}${l} | ${g.n} | ${ci(g.w, g.n)} | ${outside ? "**OUTSIDE**" : point < 0.2 || point > 0.3 ? "point outside, interval reaches the band" : "no"} | ${(g.kos / g.n).toFixed(3)} | ${percent(g.ko / g.n)} | ${percent(g.ringout / g.n)} | ${percent(g.fall / g.n)} | ${(g.damage / g.n).toFixed(1)} |`);
     }
   }
   out.push("");
@@ -227,20 +226,20 @@ if (builds.kind === "random") {
 }
 
 // seats, round length, scorecard
-const band = 1.96 * Math.sqrt((0.25 * 0.75) / R);
+const band = seatWinBand(R);
 const seatDev = Math.max(...seatWins.map((w) => Math.abs(w / R - 0.25)));
 out.push("## Seats, round length, scorecard");
 out.push("");
-out.push(`Round wins per seat: ${seatWins.map((w, i) => `seat ${i + 1} ${pct(w / R)}`).join(", ")} (95% band 25% ± ${pct(band)}; largest gap ${pct(seatDev)}: ${seatDev <= band ? "within noise" : "OUTSIDE noise"}).`);
+out.push(`Round wins per seat: ${seatWins.map((w, i) => `seat ${i + 1} ${percent(w / R)}`).join(", ")} (95% band 25% ± ${percent(band)}; largest gap ${percent(seatDev)}: ${seatDev <= band ? "within noise" : "OUTSIDE noise"}).`);
 out.push(`Round length: median ${sampleQuantile(roundSeconds, 0.5).toFixed(1)} s, mean ${(sum(roundSeconds) / R).toFixed(1)} s.`);
 out.push("");
 out.push(report(card, "### Scorecard (#69)"));
 const sc = scoreSummary(card);
 out.push("");
-out.push(`Scorecard summary: falls with no attacker ${sc.falls} (${sc.zoneFalls} zone pushes) in ${sc.fighterRounds} fighter-rounds; long gun median ${pct(sc.longGunMedianStandOff, 0)} of standOff, ${pct(sc.longGunUnder4m, 0)} under 4 m; no long gun ${pct(sc.noGunUnder4m, 0)} under 4 m; staring ${pct(sc.staring, 1)}.`);
+out.push(`Scorecard summary: falls with no attacker ${sc.falls} (${sc.zoneFalls} zone pushes) in ${sc.fighterRounds} fighter-rounds; long gun median ${percent(sc.longGunMedianStandOff, 1, 0)} of standOff, ${percent(sc.longGunUnder4m, 1, 0)} under 4 m; no long gun ${percent(sc.noGunUnder4m, 1, 0)} under 4 m; staring ${percent(sc.staring, 1, 1)}.`);
 console.log(out.join("\n"));
 
-const jsonOut = opt("--json");
+const jsonOut = optionValue(argv, "--json");
 if (jsonOut)
   await Bun.write(jsonOut, JSON.stringify({
     matches: N, firstSeed: first, builds, close, ruleset: rulesetFile ?? null, workers: W, seconds: secs, rounds: R, fighterRounds: rows.length,
