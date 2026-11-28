@@ -1,3 +1,7 @@
+import type { Entrance } from "../sim/entrance";
+import type { Identity } from "../sim/identity";
+import type { ControlView } from "./autopilot";
+import { ENTRANCE_AT } from "./scene-entrance";
 import { formatSeconds } from "../format";
 import type { Beat } from "../flow/beats";
 import { POINTS, Tally } from "../flow/score";
@@ -219,4 +223,68 @@ export function renderRoundClock(el: HTMLElement, match: Match, tick: number) {
   const txt = `${round}${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")}${pipsHtml(match, "small")}`;
   if (el.innerHTML !== txt) el.innerHTML = txt;
   el.className = left < 10 ? "show low" : "show";
+}
+
+function hudElement(id: string): HTMLElement {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = id;
+    (document.getElementById("hud") ?? document.body).appendChild(el);
+  }
+  return el;
+}
+
+export function hideControl() {
+  document.getElementById("autopilot-callout")?.classList.remove("show");
+}
+
+export function showControl(e: ControlView, color: number | undefined) {
+  const el = hudElement("autopilot-callout");
+  if (color !== undefined) el.style.setProperty("--c", hex(color));
+  el.innerHTML = `<small>${e.mode === "autopilot" ? "AUTOPILOT" : "BACK IN CONTROL"}</small>${esc(e.line)}`;
+  restart(el, "show");
+}
+
+export function hideEntranceBanner() {
+  const el = document.getElementById("entrance");
+  if (el) {
+    el.className = "";
+    el.style.opacity = "";
+  }
+}
+
+/** The entrance banner: who enters, its shout, who is out. Its parts show as the beat reaches them (renderEntrance). */
+export function showEntranceBanner(e: Entrance, who: Identity, label: string, waiting: boolean) {
+  const el = hudElement("entrance");
+  el.style.setProperty("--c", hex(who.color));
+  if (e.evicted) el.style.setProperty("--k", hex(e.evicted.color));
+  el.innerHTML = `
+    <div class="ent-kicker">AN AGENT TAKES SEAT ${e.seat + 1}</div>
+    <div class="ent-name">${esc(who.name.toUpperCase())}<span class="ent-model">${modelBadgeHtml(label, "lg")}</span></div>
+    <div class="ent-shout">${esc(e.line)}</div>
+    ${e.evicted ? `<div class="ent-out"><b>${esc(e.evicted.name.toUpperCase())}</b> · HOUSE BOT · KICKED OUT</div>` : ""}
+    ${waiting ? `<div class="ent-thinking thinking">the fighters are thinking</div>` : ""}`;
+  el.className = "show";
+}
+
+/** Each frame of the entrance: the banner's parts by the beat's clock (not CSS time: a capture steps frames). */
+export function renderEntrance(u: number, duration: number, kickOnLand: boolean, waiting: boolean) {
+  const el = document.getElementById("entrance");
+  if (!el) return;
+  const A = ENTRANCE_AT;
+  const part = (sel: string, from: number, pop: number) => {
+    const p = el.querySelector<HTMLElement>(sel);
+    if (!p) return;
+    const k = Math.max(0, Math.min(1, (u - from) / pop));
+    const over = k < 1 ? 1 + (1 - k) * (1 - k) * 1.6 : 1;
+    p.style.opacity = String(k > 0 ? 1 : 0);
+    p.style.transform = `scale(${over.toFixed(3)})`;
+  };
+  part(".ent-kicker", 0, 0.2);
+  part(".ent-name", 0.2, 0.25); // after the kicker has settled
+  part(".ent-shout", A.shout, 0.18);
+  part(".ent-out", kickOnLand ? A.land : A.kick, 0.2);
+  part(".ent-thinking", A.step + 0.7, 0.3);
+  el.style.opacity = u > duration - 0.25 && !waiting ? String(Math.max(0, (duration - u) / 0.25)) : "1";
 }

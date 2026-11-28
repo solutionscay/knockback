@@ -9,7 +9,7 @@ import type { SoundDirector } from "./audio/director";
 import type { Application } from "pixi.js";
 import { arrivalBeats, betweenBeats, betweenOrder, closingBeats, FlowRunner, introOrder, openingBeats, roundBeats, simRuns, type Beat } from "../flow/beats";
 import type { Entrance } from "../sim/entrance";
-import { ENTRANCE_AT, stepsBetween } from "./scene-entrance";
+import { stepsBetween } from "./scene-entrance";
 import { Tally } from "../flow/score";
 import type { Identity } from "../sim/identity";
 import type { Soul } from "../sim/soul";
@@ -23,7 +23,7 @@ import { sanitizeDecision, sanitizePlanUpdate } from "./sanitize";
 import type { PlanUpdate } from "../sim/fight";
 import { Scene } from "./scene";
 import type { CamMode } from "./scene-camera";
-import { celebrateHtml, dialogueHtml, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, renderDialogueLine, renderRoundClock, restart, saveCamera, saveTally, type Hud } from "./game-hud";
+import { hideControl, showControl, hideEntranceBanner, renderEntrance, showEntranceBanner, celebrateHtml, dialogueHtml, loadCamera, loadTally, pipsHtml, recapHtml, renderCamBar, renderDialogueLine, renderRoundClock, restart, saveCamera, saveTally, type Hud } from "./game-hud";
 import { GamePlans } from "./game-plans";
 import { ensureModelBadgeCss, modelBadgeHtml } from "./model-badge";
 import { AutopilotTrack, sanitizeControl, sanitizeOne, type ControlView } from "./autopilot";
@@ -164,7 +164,7 @@ export class Game {
    */
   newMatch(seed: number, opts: { recorded?: MatchRecord; live?: boolean; labels?: string[]; souls?: Soul[]; identities?: Identity[]; suitUp?: SuitUpEntry[]; control?: unknown; ruleset?: Ruleset; entrances?: Entrance[] } = {}) {
     this.apUntil = 0;
-    document.getElementById("autopilot-callout")?.classList.remove("show");
+    hideControl();
     this.endEntrance();
     // live: the server settled the identities (and how the seats suited up, #19): taken exactly as they are
     this.match = new Match(seed, { session: this.session, recorded: opts.recorded, ruleset: opts.ruleset, souls: opts.souls, ...(opts.identities ? { identities: opts.identities } : {}), ...(opts.suitUp ? { suitUp: opts.suitUp } : {}), ...(opts.entrances ? { entrances: opts.entrances } : {}) });
@@ -228,16 +228,7 @@ export class Game {
   }
 
   private showControl(e: ControlView) {
-    let el = document.getElementById("autopilot-callout");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "autopilot-callout";
-      (document.getElementById("hud") ?? document.body).appendChild(el);
-    }
-    const c = this.match.identities[e.seat]?.color;
-    if (c !== undefined) el.style.setProperty("--c", hex(c));
-    el.innerHTML = `<small>${e.mode === "autopilot" ? "AUTOPILOT" : "BACK IN CONTROL"}</small>${esc(e.line)}`;
-    restart(el, "show");
+    showControl(e, this.match.identities[e.seat]?.color);
     this.apUntil = this.clock + 4.5;
   }
 
@@ -352,7 +343,8 @@ export class Game {
         this.scene.camera.focus = { id: b.seat, offsetX: 0, heightM: 12 };
         this.scene.startEntrance(b.seat, e.evicted);
         this.entrance = { seat: b.seat, u: 0 };
-        this.showEntranceBanner(e);
+        showEntranceBanner(e, this.match.identities[e.seat]!, this.seatLabels()[e.seat]!, this.live && this.waitingRound === 1);
+        this.renderEntrance(0);
         break;
       }
       case "level": {
@@ -459,59 +451,11 @@ export class Game {
     if (!this.entrance) return;
     this.entrance = null;
     this.scene.endEntrance();
-    const el = document.getElementById("entrance");
-    if (el) {
-      el.className = "";
-      el.style.opacity = "";
-    }
+    hideEntranceBanner();
   }
 
-  private entranceEl(): HTMLElement {
-    let el = document.getElementById("entrance");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "entrance";
-      (document.getElementById("hud") ?? document.body).appendChild(el);
-    }
-    return el;
-  }
-
-  /** The entrance banner: who enters, its shout, who is out. Its parts show as the beat reaches them (renderEntrance). */
-  private showEntranceBanner(e: Entrance) {
-    const el = this.entranceEl();
-    const who = this.match.identities[e.seat]!;
-    const label = this.seatLabels()[e.seat]!;
-    el.style.setProperty("--c", hex(who.color));
-    if (e.evicted) el.style.setProperty("--k", hex(e.evicted.color));
-    el.innerHTML = `
-      <div class="ent-kicker">AN AGENT TAKES SEAT ${e.seat + 1}</div>
-      <div class="ent-name">${esc(who.name.toUpperCase())}<span class="ent-model">${modelBadgeHtml(label, "lg")}</span></div>
-      <div class="ent-shout">${esc(e.line)}</div>
-      ${e.evicted ? `<div class="ent-out"><b>${esc(e.evicted.name.toUpperCase())}</b> · HOUSE BOT · KICKED OUT</div>` : ""}
-      ${this.live && this.waitingRound === 1 ? `<div class="ent-thinking thinking">the fighters are thinking</div>` : ""}`;
-    el.className = "show";
-    this.renderEntrance(0);
-  }
-
-  /** Each frame of the entrance: the banner's parts by the beat's clock (not CSS time: a capture steps frames). */
   private renderEntrance(u: number) {
-    const el = document.getElementById("entrance");
-    if (!el) return;
-    const A = ENTRANCE_AT;
-    const part = (sel: string, from: number, pop: number) => {
-      const p = el.querySelector<HTMLElement>(sel);
-      if (!p) return;
-      const k = Math.max(0, Math.min(1, (u - from) / pop));
-      const over = k < 1 ? 1 + (1 - k) * (1 - k) * 1.6 : 1;
-      p.style.opacity = String(k > 0 ? 1 : 0);
-      p.style.transform = `scale(${over.toFixed(3)})`;
-    };
-    part(".ent-kicker", 0, 0.2);
-    part(".ent-name", 0.2, 0.25); // after the kicker has settled
-    part(".ent-shout", A.shout, 0.18);
-    part(".ent-out", this.scene.entranceInfo?.kick === "land" ? A.land : A.kick, 0.2);
-    part(".ent-thinking", A.step + 0.7, 0.3);
-    el.style.opacity = u > (this.flow.beat.duration ?? 0) - 0.25 && !(this.live && this.waitingRound === 1) ? String(Math.max(0, ((this.flow.beat.duration ?? 0) - u) / 0.25)) : "1";
+    renderEntrance(u, this.flow.beat.duration ?? 0, this.scene.entranceInfo?.kick === "land", this.live && this.waitingRound === 1);
   }
 
   /** Each frame of the entrance beat: the scene's clock, the banner, the sounds of the steps passed. */
@@ -602,7 +546,7 @@ export class Game {
     for (const e of this.ap.update(onScreen, beat.kind, this.shown.sim.tick)) this.showControl(e);
     if (this.apUntil && this.clock > this.apUntil) {
       this.apUntil = 0;
-      document.getElementById("autopilot-callout")?.classList.remove("show");
+      hideControl();
     }
     this.scene.autopilot = this.ap.on;
     this.plans.autopilot = this.ap.on;
