@@ -15,50 +15,50 @@
  *
  * Record files never change once written, so their summaries are cached by path.
  */
-import { HttpError } from "./limits";
+import { allow, json, HttpError } from "./limits";
 import type { MatchServer } from "./match-server";
 import { shareCardSvg } from "./share-card";
 import { pageReplays, replayOf } from "./replays";
 import { agentProfile } from "./agent-profiles";
 import { modelsBoardOf, leaderboardOf } from "./boards";
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+const siteJson = (body: unknown) => json(body, 200, { "content-type": "application/json", "cache-control": "no-cache" }, 0);
 
 /** The site's read-only endpoints; null for any other path. Errors are thrown as HttpError (the caller answers them). */
 export async function siteRoute(server: MatchServer, req: Request, path: string, url: URL): Promise<Response | null> {
   if (path === "/api/replays") {
-    if (req.method !== "GET") throw new HttpError(405, "use GET for /api/replays", undefined, { allow: "GET" });
+    allow(req.method, "GET", "/api/replays");
     const n = Number(url.searchParams.get("limit") ?? "30");
     const b = Number(url.searchParams.get("before"));
     const t = url.searchParams.get("tier");
     if (t !== null && t !== "featured" && t !== "warm-up") throw new HttpError(400, "tier: featured or warm-up");
-    return json({ ...(await pageReplays(server, Number.isFinite(n) ? n : 30, url.searchParams.has("before") && Number.isFinite(b) ? b : undefined, t ?? undefined)) });
+    return siteJson({ ...(await pageReplays(server, Number.isFinite(n) ? n : 30, url.searchParams.has("before") && Number.isFinite(b) ? b : undefined, t ?? undefined)) });
   }
   const rp = /^\/api\/replays\/(m_[0-9a-f]{8})$/.exec(path);
   if (rp) {
-    if (req.method !== "GET") throw new HttpError(405, "use GET for /api/replays/:id", undefined, { allow: "GET" });
+    allow(req.method, "GET", "/api/replays/:id");
     const sum = await replayOf(server, rp[1]!);
     if (!sum) throw new HttpError(404, `no saved match ${rp[1]}`);
-    return json({ replay: sum });
+    return siteJson({ replay: sum });
   }
   const ag = /^\/api\/agents\/([^/]{1,80})$/.exec(path);
   if (ag) {
-    if (req.method !== "GET") throw new HttpError(405, "use GET for /api/agents/:name", undefined, { allow: "GET" });
+    allow(req.method, "GET", "/api/agents/:name");
     let name: string;
     try {
       name = decodeURIComponent(ag[1]!);
     } catch {
       throw new HttpError(400, "bad agent name");
     }
-    return json(await agentProfile(server, name));
+    return siteJson(await agentProfile(server, name));
   }
   if (path === "/api/models/board") {
-    if (req.method !== "GET") throw new HttpError(405, "use GET for /api/models/board", undefined, { allow: "GET" });
-    return json(await modelsBoardOf(server));
+    allow(req.method, "GET", "/api/models/board");
+    return siteJson(await modelsBoardOf(server));
   }
   if (path === "/api/leaderboard") {
-    if (req.method !== "GET") throw new HttpError(405, "use GET for /api/leaderboard", undefined, { allow: "GET" });
-    return json(await leaderboardOf(server));
+    allow(req.method, "GET", "/api/leaderboard");
+    return siteJson(await leaderboardOf(server));
   }
   const sh = /^\/share\/(m_[0-9a-f]{8})\.svg$/.exec(path);
   if (sh) {

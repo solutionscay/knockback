@@ -1,3 +1,4 @@
+import { publicRecordFile } from "./record-path";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildProblem, strategyBuild, type Build } from "../sim/build";
@@ -111,8 +112,8 @@ export class RecordCache {
 
   /** the record JSON at /records/<file>.json, or null */
   raw(path: string): Promise<unknown | null> {
-    const name = /^\/records\/([\w-][\w.-]*\.json)$/.exec(path)?.[1];
-    if (!name) return Promise.resolve(null);
+    const name = publicRecordFile(path);
+    if (!name || !/^[\w-][\w.-]*\.json$/.test(name)) return Promise.resolve(null);
     let p = this.cache.get(name);
     if (!p) {
       p = readFile(join(this.outDir, name), "utf8").then(
