@@ -5,7 +5,7 @@
  */
 import { chromium } from "playwright";
 import { hsl, lightnessFloor, MAJOR_MARKS, type Identity, type Mark } from "../src/sim/identity";
-import { portraitSvg, type Mood } from "../src/viewer/portrait";
+import { portraitSvg, type Mood } from "../src/art/portrait";
 
 const out = process.argv[2] ?? "portraits.png";
 const hue = (h: number) => hsl(h, 0.75, Math.min(0.8, lightnessFloor(h, 0.75) + 0.09));

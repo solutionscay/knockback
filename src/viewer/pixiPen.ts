@@ -9,7 +9,7 @@
  * width; the bot only scales uniformly).
  */
 import { Graphics, GraphicsPath } from "pixi.js";
-import type { Pen } from "./bot";
+import type { Pen } from "../art/bot";
 
 type Mat = [number, number, number, number, number, number];
 const mul = (m: Mat, n: Mat): Mat => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];

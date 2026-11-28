@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { oklch } from "../src/sim/color";
 import { hsl } from "../src/sim/identity";
-import { plushRamp } from "../src/viewer/plush-ramp";
+import { plushRamp } from "../src/art/plush-ramp";
 
 const deg = (c: number) => ((oklch(c).h * 180) / Math.PI + 360) % 360;
 

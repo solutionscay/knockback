@@ -17,7 +17,7 @@ import { placing } from "../sim/roundstats";
 import { parseSoul, type Soul } from "../sim/soul";
 import { exampleSouls } from "../sim/souls";
 import { modelOf, remoteLabel, seatEntries } from "../stats/models";
-import { portraitSvg } from "../viewer/portrait";
+import { portraitSvg } from "../art/portrait";
 import { AUTOPILOT_LINES, BACK_LINES, LEFT_LINES, pickLine } from "./autopilot";
 import { HttpError } from "./limits";
 import { LiveStream } from "./live";

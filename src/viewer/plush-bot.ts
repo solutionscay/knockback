@@ -32,10 +32,10 @@ import { Assets, Container, defaultFilterVert, Filter, getSupportedTextureFormat
 import "pixi.js/ktx2";
 import { buildShape, type Build } from "../sim/build";
 import type { Mark } from "../sim/identity";
-import { COLS, FEET_Y, K, P, ROWS } from "./bot";
+import { COLS, FEET_Y, K, P, ROWS } from "../art/bot";
 import { PLUSH_LAYOUT, PLUSH_URLS } from "./art/plush/layout";
-import { plushRamp, RAMP_STOPS } from "./plush-ramp";
-import { BEHIND_MARKS, markFrame, TORSO_MARKS } from "./plush-motion";
+import { plushRamp, RAMP_STOPS } from "../art/plush-ramp";
+import { BEHIND_MARKS, markFrame, TORSO_MARKS } from "../art/plush-motion";
 // the KTX2 transcoder pixi.js ships (not in its package exports): bundled as file URLs, served with the viewer
 // @ts-expect-error: a file URL (Bun's file loader), not a module to type
 import ktxJsUrl from "../../node_modules/pixi.js/transcoders/ktx/libktx.js" with { type: "file" };

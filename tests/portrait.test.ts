@@ -1,7 +1,7 @@
 // #85: the portraits (cards, chips, site, share images) are the plush brawler, self-contained SVG.
 import { expect, test } from "bun:test";
 import type { Identity } from "../src/sim/identity";
-import { portraitSvg } from "../src/viewer/portrait";
+import { portraitSvg } from "../src/art/portrait";
 
 const look: Identity = { name: "Zapko", shape: "squircle", eyes: "tall", mark: "crown", minor: "scarf", color: 0x4f8ff7 };
 

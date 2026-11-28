@@ -3,7 +3,7 @@
  * tests/sound.test.ts); the sim is only read, never changed, so sound can't touch determinism.
  */
 import { ALL_WEAPONS, type SimEvent } from "../../sim/sim-types";
-import { hash } from "../hash";
+import { hash } from "../../art/hash";
 
 /** One sound to play: a name from the sound book, where (world meters, or none for the show sounds), how. */
 export interface Cue {

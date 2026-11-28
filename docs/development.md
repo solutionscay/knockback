@@ -18,7 +18,7 @@ middle, always with a jump-through catwalk over it. Fighters wall-jump out of ho
 digging punches. Ring-outs come from the gap, the level's edges and the zone.
 
 The fighters are plush bots rendered in Blender (#85, sprite sheets per build in `src/viewer/art/plush`, drawn by
-`src/viewer/plush-bot.ts`). Their LED visor faces are drawn in code (`src/viewer/bot.ts`) and show morale (cocky,
+`src/viewer/plush-bot.ts`). Their LED visor faces are drawn in code (`src/art/bot.ts`) and show morale (cocky,
 confident, rattled, furious, desperate) and events (hit, stunned, knocked out, win); the same drawing makes the
 dialogue-card portraits (as SVG).
 
