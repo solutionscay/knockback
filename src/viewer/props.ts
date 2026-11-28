@@ -25,6 +25,11 @@ export function drawPickup(g: Graphics, it: string, time: number) {
   g.circle(0, 0, r - 0.04).fill(power ? col : 0xfff3d6).stroke({ width: 0.08, color: power ? shade(col, 0.75) : 0xffa21f });
   if (power) g.circle(0, 0, r - 0.13).fill({ color: 0xffffff, alpha: 0.55 });
   // the force field (#40) has no plush sprite: a small dome on its badge, drawn here (y down)
+  if (it === "freezegun") {
+    g.roundRect(-0.32, -0.11, 0.67, 0.2, 0.06).fill(0x285474);
+    g.roundRect(-0.18, 0, 0.12, 0.25, 0.04).fill(0x285474);
+    g.circle(-0.09, -0.09, 0.16).fill(0x71e0fa).stroke({ width: 0.04, color: 0x285474 });
+  }
   if (it === "forcefield") {
     g.arc(0, 0.16, 0.3, Math.PI, 0).stroke({ width: 0.09, color: shade(col, 0.55) });
     g.arc(0, 0.16, 0.18, Math.PI, 0).stroke({ width: 0.06, color: shade(col, 0.7), alpha: 0.8 });

@@ -22,7 +22,7 @@ import { lowOnAmmo } from "./sim-items";
 import { FieldTactics, fightsClose, shieldedFrom } from "./controller-field";
 
 /** Weapons that are for close range anyway: saving their last uses for later means nothing (#95). */
-const CLOSE_WEAPONS: readonly Weapon[] = ["bat", "hammer", "flamethrower", "lightning", "shotgun"];
+const CLOSE_WEAPONS: readonly Weapon[] = ["bat", "hammer", "freezegun", "flamethrower", "lightning", "shotgun"];
 
 
 const NO_FIRE: Input = { ...NO_INPUT };
@@ -276,6 +276,7 @@ export class Controller {
     // the lightning sword (#72): the slash up close, a bolt at middle range with a clear line
     if (has("lightning") && inReach("lightning", dist, los, sim.ruleset, me.ammo.lightning)) return "lightning";
     // flamethrower (#32): up close with a clear line, it outdamages everything else
+    if (has("freezegun") && inReach("freezegun", dist, los, sim.ruleset, me.ammo.freezegun)) return "freezegun";
     if (has("flamethrower") && los && dist < sim.ruleset.weapons.table.flamethrower.range - 0.4) return "flamethrower";
     if (dist < 1.5 && !has("shotgun")) return "fist";
     if (ready("grapple") && los && dist > 3.5 && dist < 14 && (this.onLedge(sim, target, mp.x, mp.y) || has("bat") || has("shotgun"))) return "grapple";

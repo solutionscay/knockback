@@ -120,8 +120,8 @@ describe("fire", () => {
     expect(again.stats).toEqual(sim.stats);
     const { firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited } = sim.stats;
     expect({ hash: sim.hash(), firesStarted, cellsIgnited, cellsBurnedDown, cellsBurnedOut, propsIgnited, propsBurnedOff, fightersIgnited }).toEqual({
-      // #40: the state hash covers the force field state and its drop stream (no force field in this scene)
-      hash: "66f421d6",
+      // #174: the freeze gun ammo, cooldown and chill timer enter the hash even in this dry scene
+      hash: "37c90d16",
       firesStarted: 10,
       cellsIgnited: 31,
       cellsBurnedDown: 10,

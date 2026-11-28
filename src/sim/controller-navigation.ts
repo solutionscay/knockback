@@ -461,7 +461,7 @@ export class ControllerNavigation {
     // overwatch and distance want a weapon that fights from range; without one they keep away and go for one (#69)
     const ranged = me.weapons.some((w) => isRanged(sim, w));
     const hangBack = (stance === "overwatch" || stance === "distance") && !ranged;
-    const close = me.weapons.includes("hammer") || me.weapons.includes("bat") || me.weapons.includes("shotgun") || me.weapons.includes("flamethrower");
+    const close = me.weapons.includes("hammer") || me.weapons.includes("bat") || me.weapons.includes("shotgun") || me.weapons.includes("flamethrower") || me.weapons.includes("freezegun");
 
     // arm up: go for the pickups this fighter wants (fists only = go far for anything; low on ammo = re-arm, #95)
     const armed = me.weapons.some((w) => w !== "fist");

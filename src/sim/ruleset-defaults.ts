@@ -65,6 +65,7 @@ const TACTICAL_WEAPONS = {
     grapple: { min: 3.5, max: 14, maxDy: 0, standOff: 8 },
     mine: { min: 2.8, max: 9, maxDy: 0, standOff: 5 },
     railgun: { min: C.WEAPONS.railgun.minRange, max: C.WEAPONS.railgun.range, maxDy: 0, standOff: 12 },
+    freezegun: { min: 0, max: C.WEAPONS.freezegun.range, maxDy: 0, standOff: 3 },
     flamethrower: { min: 0, max: 3.5, maxDy: 0, standOff: 2.6 },
     rifle: { min: 0, max: C.WEAPONS.rifle.range, maxDy: 0, standOff: 12 },
     sniper: { min: C.WEAPONS.sniper.minRange, max: C.WEAPONS.sniper.range, maxDy: 0, standOff: 20 },

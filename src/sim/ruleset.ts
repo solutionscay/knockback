@@ -126,6 +126,9 @@ export function validateRuleset(input: unknown): Ruleset {
   require(r.weapons.table.railgun.minRange < r.weapons.table.railgun.range, "weapons.table.railgun.minRange", "must be below range");
   require(r.weapons.table.sniper.minRange < r.weapons.table.sniper.range, "weapons.table.sniper.minRange", "must be below range");
   require(r.weapons.table.crossbow.pinReach <= 4, "weapons.table.crossbow.pinReach", "expected 0 to 4 meters");
+  const freeze = r.weapons.table.freezegun;
+  require(freeze.range > 0 && freeze.range <= 12 && freeze.spread <= 1, "weapons.table.freezegun", "range must be within 12 meters and spread at most 1");
+  require(freeze.speedMul > 0 && freeze.speedMul < 1 && freeze.chillTicks > 0 && freeze.chillTicks <= 600, "weapons.table.freezegun", "chill must slow movement for 1 to 600 ticks");
   const lightning = r.weapons.table.lightning;
   require(lightning.boltMinRange < lightning.range, "weapons.table.lightning.boltMinRange", "must be below range");
   require(lightning.groundWidth <= 12 && lightning.groundDrop <= 8, "weapons.table.lightning", "groundWidth expected 0 to 12 meters, groundDrop 0 to 8");

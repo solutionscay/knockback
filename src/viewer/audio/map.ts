@@ -55,7 +55,7 @@ export function cuesForEvent(e: SimEvent, ctx: MapContext): Cue[] {
       return [cue(e.kind === "mine" ? "mine.blast" : explosionSound(e.radius), e.x, e.y, gain, pitch, e.tick * 31 + Math.round(e.x * 7))];
     }
     case "fire": {
-      const s = { rocket: "rocket.launch", shotgun: "shotgun.fire", grenade: "grenade.throw", grapple: "grapple.shoot", flamethrower: "flame.whoosh", mine: "mine.throw" }[e.weapon as string];
+      const s = { rocket: "rocket.launch", shotgun: "shotgun.fire", grenade: "grenade.throw", grapple: "grapple.shoot", flamethrower: "flame.whoosh", freezegun: "freeze.hiss", mine: "mine.throw" }[e.weapon as string];
       return s ? [cue(s, e.x, e.y, 1, 1, e.tick + e.fighter)] : []; // bat and fist sound on their swing
     }
     case "mineStick":

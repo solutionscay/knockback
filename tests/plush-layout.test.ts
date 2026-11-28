@@ -57,8 +57,8 @@ test("the weapon arm is split: one shared weapon layer per weapon (pinned at the
   expect(Object.keys(sheets).some((n) => n.includes("-arm-"))).toBe(false);
 });
 
-test("every weapon in the game has a plush weapon layer (all 13 are rendered)", () => {
-  const game = (WEAPON_LIST as readonly string[]).filter((w) => w !== "fist");
+test("all weapons except the code-drawn freeze gun have plush layers", () => {
+  const game = WEAPON_LIST.filter(w => w !== "fist" && w !== "freezegun");
   expect(game.length).toBe(13);
   for (const w of game) expect(sheets[`weapon-${w}`], `weapon-${w}`).toBeDefined();
   expect([...WEAPONS].sort()).toEqual([...game].sort());

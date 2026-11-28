@@ -108,3 +108,5 @@ A record replays only when each round reaches its recorded final state hash. A r
 - **Gaps, not pits:** a level has at most one generated gap, near the middle, with a jump-through catwalk over it; most holes come from play.
 - **Soft over hard:** the ground is a soft top (the theme's dirt, concrete or brick) over a hard frame (rock or steel), with bedrock at the bottom. Digging punches only break soft materials; blasts and heavy weapons wear the frame down slowly.
 - **Wall jump:** in the air against a wall, jump again to kick off it (up and away). Not off the same side twice before standing again, not while stunned or just after being knocked (a fighter knocked off an edge is not saved by the wall), never over the void.
+
+In Classic, freeze guns arrive in drops and crates. A freeze gun sprays a short fan of coolant. Each pulse slows a rival’s walk for one second. Repeated hits refresh the chill. Water touched by the spray turns to slippery ice. Ice can support a fighter over water and breaks like other ice. Walls and force fields stop the spray.

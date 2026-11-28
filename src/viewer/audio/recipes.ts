@@ -139,6 +139,10 @@ export const SOUNDS: Record<string, SoundDef> = {
     recipe: { layers: [L({ wave: "noise", freq: 5000, attack: 0.03, hold: 0.25, decay: 0.2, highpass: 1500, lowpass: 6000, gain: 0.25 }), L({ wave: "saw", freq: 90, attack: 0.03, hold: 0.25, decay: 0.2, vibrato: [0.5, 20], lowpass: 400, gain: 0.08 })] },
     group: "jetpack", max: 4, gap: 0.12, priority: 3,
   },
+  "freeze.hiss": {
+    recipe: { layers: [L({ wave: "noise", freq: 6200, highpass: 2400, attack: 0.015, decay: 0.18, gain: 0.28 }), L({ wave: "triangle", freq: 1900, freqEnd: 2800, decay: 0.09, gain: 0.1 })] },
+    group: "freeze", max: 3, gap: 0.1, priority: 5,
+  },
   "flame.whoosh": {
     recipe: { layers: [L({ wave: "noise", freq: 1800, attack: 0.05, hold: 0.3, decay: 0.3, lowpass: 1500, lowpassEnd: 900, gain: 0.35 }), ...pops([0.08, 0.2, 0.33], 0.12)] },
     group: "flame", max: 3, gap: 0.18, priority: 5,
