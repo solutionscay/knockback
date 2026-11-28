@@ -40,8 +40,8 @@ export interface Soul {
   lines: LineTemplate[];
 }
 
-const TEMPERAMENTS: readonly Temperament[] = ["cocky", "confident", "calm", "nervous"];
-const VOICES: readonly Voice[] = ["brash", "smug", "nervous", "sly", "plain"];
+export const TEMPERAMENTS: readonly Temperament[] = ["cocky", "confident", "calm", "nervous"];
+export const VOICES: readonly Voice[] = ["brash", "smug", "nervous", "sly", "plain"];
 const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", "grappling hook": "grapple", grenades: "grenade", rockets: "rocket", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower" };
 
 /** Morale baseline from temperament (morale itself still comes from match events). */

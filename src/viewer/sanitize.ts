@@ -6,14 +6,12 @@ import { MORALE_STATES } from "../sim/morale";
 import { checkRule, MAX_RULE_LABEL, RULE_RETALIATE, RULE_STANCES } from "../sim/rules";
 import { isPickupWeapon, MAX_RULES, TARGET_PREFERENCES, type Rule, type Strategy } from "../sim/sim-types";
 import { generateIdentities, sanitizeIdentity, type Identity } from "../sim/identity";
-import type { LineTemplate, Soul } from "../sim/soul";
+import { TEMPERAMENTS, VOICES, type LineTemplate, type Soul } from "../sim/soul";
 import type { Decision } from "../sim/voice";
 import { ENTRANCE_LINE_MAX, type Entrance } from "../sim/entrance";
 import { buildProblem, NEUTRAL_BUILD, strategyBuild, type Build } from "../sim/build";
 
 const SAFE_TARGETS = [...TARGET_PREFERENCES, "grudge"];
-const SAFE_TEMPER = ["cocky", "confident", "calm", "nervous"];
-const SAFE_VOICE = ["brash", "smug", "nervous", "sly", "plain"];
 
 const str = (v: unknown, max: number, def = "") => (typeof v === "string" ? v.slice(0, max) : def);
 const oneOf = <T extends string>(v: unknown, list: readonly string[], def: T): T => (list.includes(v as string) ? (v as T) : def);
@@ -80,8 +78,8 @@ export function sanitizeSoul(v: unknown, seat: number): Soul {
   const ws = (Array.isArray(o.weapons) ? o.weapons : []).filter((w) => isPickupWeapon(w)).slice(0, 3) as Soul["weapons"];
   return {
     id: str(o.id, 24).replace(/[^a-z0-9_-]/g, "") || `soul${seat + 1}`,
-    temperament: oneOf(o.temperament, SAFE_TEMPER, "confident"),
-    voice: oneOf(o.voice, SAFE_VOICE, "plain"),
+    temperament: oneOf(o.temperament, TEMPERAMENTS, "confident"),
+    voice: oneOf(o.voice, VOICES, "plain"),
     values: (Array.isArray(o.values) ? o.values : []).filter((x) => typeof x === "string").slice(0, 8).map((x) => (x as string).slice(0, 80)),
     weapons: ws.length ? ws : ["shotgun", "rocket"],
     stance: oneOf(o.stance, RULE_STANCES, "rush"),
