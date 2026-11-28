@@ -9,7 +9,7 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hashKey } from "../src/server/keys";
+import { hashToken } from "../src/server/tokens";
 import { checkNickname, checkUrl } from "../src/server/profile";
 import { SqliteStore } from "../src/server/store";
 import { modelsBoardOf } from "../src/server/site";
@@ -62,15 +62,15 @@ describe("the operator token", () => {
     expect(r.status).toBe(201);
     const key = r.data.key as string;
     expect(r.data.profile).toMatchObject({ nickname: "Hasher", url: "https://hash.dev/" });
-    expect(hashKey(key)).toMatch(/^[0-9a-f]{64}$/);
-    expect(await api.store.ownerOfKey(hashKey(key))).toBe("Hash");
+    expect(hashToken(key)).toMatch(/^[0-9a-f]{64}$/);
+    expect(await api.store.ownerOfKey(hashToken(key))).toBe("Hash");
     expect(await api.store.ownerOfKey(key)).toBeNull();
     // the key itself is nowhere in the database
     const db = new Database(path, { readonly: true });
     const dump = JSON.stringify([db.query("SELECT * FROM owner_keys").all(), db.query("SELECT * FROM owners").all()]);
     db.close();
     expect(dump).not.toContain(key);
-    expect(dump).toContain(hashKey(key));
+    expect(dump).toContain(hashToken(key));
   });
 
   test("an edit needs the key; bad fields get 400; the id stays the same", async () => {

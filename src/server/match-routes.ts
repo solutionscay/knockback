@@ -19,7 +19,8 @@
 import { lookOptions } from "../ai/looks";
 import { apiIndex } from "./api-index";
 import { arenaRoute } from "./arena-routes";
-import { checkOwnerHandle, hashKey, keyOf, newKey, ownerOf } from "./keys";
+import { checkOwnerHandle, keyOf, newKey, ownerOf } from "./keys";
+import { hashToken } from "./tokens";
 import { HttpError, json, MAX_BODY, readJson } from "./limits";
 import type { MatchServer } from "./match-server";
 import { spectatorOf } from "./picks";
@@ -74,7 +75,7 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
     const owner = checkOwnerHandle(body.owner);
     const profile = profilePatch(body);
     const key = newKey();
-    if (!(await server.store.createOwner(owner, hashKey(key), profile))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the Connect page keeps it in this browser); otherwise pick another handle`);
+    if (!(await server.store.createOwner(owner, hashToken(key), profile))) throw new HttpError(409, `the owner handle ${owner} is taken: if it is yours, use the key you got for it (the Connect page keeps it in this browser); otherwise pick another handle`);
     server.log(`owner ${owner}: key issued`);
     return json({ owner, key, profile: await profileView(server, owner), use: "send it as Authorization: Bearer <key>; it is shown once" }, 201);
   }
@@ -82,8 +83,8 @@ export async function apiRoute(server: MatchServer, req: Request, url: URL, ip: 
     const key = keyOf(req);
     const owner = await ownerOf(server.store, key);
     if (method === "DELETE") {
-      await server.store.revokeKey(hashKey(key!));
-      await server.arena.revokeKey(hashKey(key!)); // its agents leave the Arena
+      await server.store.revokeKey(hashToken(key!));
+      await server.arena.revokeKey(hashToken(key!)); // its agents leave the Arena
       server.log(`owner ${owner}: a key was revoked`);
       return json({ revoked: true, owner });
     }
