@@ -7,7 +7,8 @@
  *   row "moments": jump, flinch, KO, celebrate, launched, run frames; and the weapons.
  * View only.
  */
-import { Application, Container, Graphics, Text } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
+import { idlePose, labCanvas } from "./art-lab";
 import { hsl, lightnessFloor, MAJOR_MARKS, type Identity, type Mark } from "../sim/identity";
 import { drawVisor, faceFor, koFace, lodFor, type FaceMood } from "../art/bot";
 import { hash } from "../art/hash";
@@ -20,18 +21,10 @@ const S = Number(q.get("s") ?? "45");
 const lod = lodFor(S);
 await initPlushArt();
 await loadPlushSheets(Object.keys(PLUSH_LAYOUT.sheets) as SheetName[]);
-const app = new Application();
-await app.init({ background: 0x141a2e, width: 2400, height: 1700, antialias: true, resolution: 1, preference: "webgl" });
-document.body.appendChild(app.canvas);
+const { app, label } = await labCanvas(2400, 1700);
 
 const hue = (h: number) => hsl(h, 0.75, Math.min(0.8, lightnessFloor(h, 0.75) + 0.09));
 const look = (color: number, mark: Mark = "antenna", name = "Lab", minor: Mark = "none"): Identity => ({ name, shape: "squircle", eyes: "tall", mark, minor, color });
-
-function label(text: string, x: number, y: number, size = 13) {
-  const t = new Text({ text, style: { fill: 0xb8c2e0, fontSize: size, fontWeight: "700", fontFamily: "system-ui" } });
-  t.position.set(x, y);
-  app.stage.addChild(t);
-}
 
 /** A plush bot stepped through `steps` updates (each a partial PlushInput over a base pose). */
 function plushBot(lk: Identity, mood: FaceMood, steps: Partial<PlushInput>[] = [{}], facing = 1, build = "balanced", feet?: FeetOffsets): Container {
@@ -43,7 +36,7 @@ function plushBot(lk: Identity, mood: FaceMood, steps: Partial<PlushInput>[] = [
   const face = new Graphics();
   drawVisor(pixiPen(face), lk, mood === "ko" ? koFace(1) : faceFor(mood, 0.3, hash(lk.name), lk.eyes, { lookX: 1 }), lod, false);
   let m = null;
-  for (const st of steps) m = pl.update({ dt: 1 / 12, alive: true, air: false, stunned: false, vx: 0, vy: 0, weapon: "fist", aim: 0, swingT: 0, recoil: 0, hitT: 0, celebrate: false, facing, ...st });
+  for (const st of steps) m = pl.update({ ...idlePose, facing, ...st });
   if (feet) pl.setFeet(feet);
   face.setFromMatrix(m!);
   root.addChild(outline, pl.back.c, pl.body.c, pl.feet, pl.minor.c, face, pl.mark.c, pl.fist.c, pl.sleeve.c, pl.arm.c);
@@ -206,7 +199,7 @@ y += 20 + S * 1.2;
 {
   const lk2 = look(hue(300), "horns", "Fx");
   const pl = new PlushBot(lk2.color, lk2.mark);
-  pl.update({ dt: 1 / 12, alive: true, air: false, stunned: false, vx: 0, vy: 0, weapon: "fist", aim: 0, swingT: 0, recoil: 0, hitT: 0, celebrate: false, facing: 1 });
+  pl.update(idlePose);
   const root = new Container();
   const halo = pl.makeSil();
   halo.tint = 0x56e39a;
@@ -219,7 +212,7 @@ y += 20 + S * 1.2;
   put(root, 40, y);
   const root2 = new Container();
   const pl2 = new PlushBot(lk2.color, lk2.mark);
-  pl2.update({ dt: 1 / 12, alive: true, air: false, stunned: false, vx: 0, vy: 0, weapon: "fist", aim: 0, swingT: 0, recoil: 0, hitT: 0, celebrate: false, facing: 1 });
+  pl2.update(idlePose);
   const halo2 = pl2.makeSil();
   halo2.tint = 0x56e39a;
   halo2.alpha = 0.6;
