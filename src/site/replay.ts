@@ -1,3 +1,4 @@
+import type { ReplaySummary } from "../api-types";
 /**
  * /replay/:id (#22, #106): a finished match from its record in the real viewer, with a scrubber (round segments, event
  * pins for ring-outs, K.O.s and the win, in the victim's or winner's color) and 1x / 2x; under it the seat row.
@@ -6,7 +7,7 @@
  * (src/flow/pacing.ts), the same numbers the server paces broadcasts with.
  */
 import { cleanIdentity, colorVars } from "./bots";
-import { cap, clock, posAtTime, timeOfPos, timeline, type MatchInfo, type ReplayInfo, type ReportRound, type Timeline } from "./data";
+import { cap, clock, posAtTime, timeOfPos, timeline, type MatchInfo, type ReportRound, type Timeline } from "./data";
 import { $, getJson, html, mount, raw } from "./dom";
 import { PlanCard } from "./plan-card";
 import { when as dateOf } from "./replays";
@@ -17,7 +18,7 @@ import type { Identity } from "../sim/identity";
 export async function replayPage(root: HTMLElement, id: string) {
   mount(root, html`<div class="wrap"><div class="meta">Loading replay ${id}…</div></div>`);
   // one match by id (#22: every finished match is replayable)
-  const [one, info] = await Promise.all([getJson<{ replay: ReplayInfo }>(`/api/replays/${encodeURIComponent(id)}`), getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`)]);
+  const [one, info] = await Promise.all([getJson<{ replay: ReplaySummary }>(`/api/replays/${encodeURIComponent(id)}`), getJson<MatchInfo>(`/api/matches/${encodeURIComponent(id)}`)]);
   const rp = one.ok ? one.data.replay : undefined;
   if (!info.ok && !rp) return mount(root, html`<div class="wrap"><div class="wbar"><span class="meta">No match ${id}</span></div><a class="btn" href="/replays">All replays</a></div>`);
   const record = rp?.record ?? (info.ok ? info.data.record : null);

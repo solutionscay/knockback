@@ -1,46 +1,13 @@
 import { publicRecordFile } from "./record-path";
 import { readFile } from "node:fs/promises";
+import type { PublicTier, ReplaySummary, RoundSummary } from "../api-types";
 import { join } from "node:path";
 import { buildProblem, strategyBuild, type Build } from "../sim/build";
 import type { Identity } from "../sim/identity";
 import { matchIdentities, type MatchRecord } from "../sim/match";
 import type { Weapon } from "../sim/sim-types";
 import type { MatchServer } from "./match-server";
-import type { RecordRow, RoundTier } from "./store";
-
-/** The tiers the public sees (#67): a bot-only round is never shown after it is over. */
-export type PublicTier = Exclude<RoundTier, "bot-only">;
-
-/** A saved match as the site pages show it (plain values; names and lines are not escaped). */
-export interface ReplaySummary {
-  match: string;
-  record: string;
-  /** featured (2+ agents) or warm-up (1 agent and house bots) (#67) */
-  tier: PublicTier;
-  createdAt: string;
-  seed: number;
-  theme: string;
-  names: string[];
-  /** provider label per seat ("claude/haiku", "remote/Brixel", "house") */
-  labels: string[];
-  identities: Identity[];
-  /** a weapon each fighter went for (for portraits) */
-  weapons: Weapon[];
-  winner: number;
-  wins: number[];
-  rounds: RoundSummary[];
-  /** autopilot changes (#22), in order */
-  control: { seat: number; mode: "autopilot" | "agent"; round: number }[];
-}
-
-export interface RoundSummary {
-  winner: number;
-  lines: string[];
-  /** each seat's plan; build null when the record has none it can trust (#80) */
-  plans: { stance: string; target: string; weapons: string[]; build: Build | null }[];
-  /** mid-round plan changes per seat */
-  planChanges: number[];
-}
+import type { RecordRow } from "./store";
 
 const str = (v: unknown, max = 200) => (typeof v === "string" ? v.slice(0, max) : "");
 const int = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : d);

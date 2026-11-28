@@ -1,3 +1,4 @@
+import type { ReplaySummary } from "../api-types";
 /**
  * Replays (/replays, #22, #67, #106): the library of saved rounds, newest first, one row each: the winner, the four
  * fighters with their models, the map and the date. One filter (a model or an agent: ?model=<key>, ?agent=<name>)
@@ -7,7 +8,7 @@
 import { modelOf } from "../stats/models";
 import { badge } from "./badge";
 import { cleanIdentity, colorVars, head } from "./bots";
-import { cap, galleryReplays, type ReplayInfo } from "./data";
+import { cap, galleryReplays } from "./data";
 import { getJson, html, mount, type Raw } from "./dom";
 
 /** "23 Nov · 22:29" */
@@ -16,7 +17,7 @@ export const when = (iso: string) => {
   return `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
 };
 
-const row = (x: ReplayInfo): Raw => {
+const row = (x: ReplaySummary): Raw => {
   const w = x.winner >= 0 ? x.winner : 0;
   const ids = x.identities.map((v, i) => cleanIdentity(v, i));
   return html`<a class="rrow" href="/replay/${x.match}" style="${colorVars(ids[w]!.color)}">
@@ -32,16 +33,16 @@ export interface Filter {
 }
 
 /** Keep the rounds a model (its key from modelOf) or an agent played; every round with no filter (pure: tested). */
-export const withFilter = (rs: ReplayInfo[], f: Filter) =>
+export const withFilter = (rs: ReplaySummary[], f: Filter) =>
   rs.filter((r) => r.labels.some((l) => {
     const m = modelOf(l);
     return (!f.model || m.key === f.model) && (!f.agent || m.agent?.toLowerCase() === f.agent.toLowerCase());
   }));
 /** Keep the rounds a model played (#96; pure: tested). */
-export const withModel = (rs: ReplayInfo[], key: string) => withFilter(rs, { model: key, agent: "" });
+export const withModel = (rs: ReplaySummary[], key: string) => withFilter(rs, { model: key, agent: "" });
 
 /** The filter's choices from the rounds loaded: models and agents, A to Z (pure). */
-export function filterChoices(rs: ReplayInfo[]): { models: [string, string][]; agents: string[] } {
+export function filterChoices(rs: ReplaySummary[]): { models: [string, string][]; agents: string[] } {
   const models = new Map<string, string>();
   const agents = new Set<string>();
   for (const r of rs)
@@ -59,13 +60,13 @@ const PAGE = 40;
 export async function replaysPage(root: HTMLElement) {
   const q = new URLSearchParams(location.search);
   const filter: Filter = { model: q.get("model")?.slice(0, 80) ?? "", agent: q.get("agent")?.slice(0, 24) ?? "" };
-  const all: ReplayInfo[] = [];
+  const all: ReplaySummary[] = [];
   let next: number | null = null;
   let failed = false;
   let loading = true;
 
   const page = async () => {
-    const r = await getJson<{ replays: ReplayInfo[]; next?: number | null }>(`/api/replays?limit=${PAGE}${next !== null ? `&before=${next}` : ""}`);
+    const r = await getJson<{ replays: ReplaySummary[]; next?: number | null }>(`/api/replays?limit=${PAGE}${next !== null ? `&before=${next}` : ""}`);
     if (!r.ok) return void (failed = true);
     all.push(...galleryReplays(r.data.replays));
     next = typeof r.data.next === "number" ? r.data.next : null;

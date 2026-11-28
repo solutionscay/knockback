@@ -1,3 +1,4 @@
+import type { ReplaySummary } from "../api-types";
 import { buildText } from "../sim/build";
 import { arenaBoard } from "../stats/board";
 import { modelBoard, type BoardRound, type ModelBoard, type ModelBoardRow } from "../stats/model-board";
@@ -5,7 +6,7 @@ import { dedupe, headToHead, leaderboard, remoteLabel, type SeatEntry } from "..
 import type { MatchServer } from "./match-server";
 import type { Operator } from "./profile";
 import type { RecordRow } from "./store";
-import { SEATS, summaryOf, type ReplaySummary } from "./replays";
+import { SEATS, summaryOf } from "./replays";
 import { operatorsOf } from "./agent-profiles";
 
 /** The Arena leaderboard: agents and owners by rounds (agent seats only), best streaks, and the crown now. */

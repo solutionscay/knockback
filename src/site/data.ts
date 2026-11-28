@@ -1,10 +1,10 @@
+import type { MatchStatus, ReplaySummary } from "../api-types";
 /**
  * The site pages' data mapping (#22, #42): pure functions from the server's JSON to what the pages show.
  * No DOM, no fetch: tested in tests/site-data.test.ts.
  */
 import { fightSecondsAt, roundPlayback } from "../flow/pacing";
 import { DEFAULT_TIMING } from "../flow/beats";
-import type { Identity } from "../sim/identity";
 import type { PlaybackPos } from "../viewer/embed";
 import { NAME_RE } from "../names";
 import { modelOf } from "../stats/models";
@@ -27,7 +27,7 @@ export interface SeatInfo {
 export interface MatchInfo {
   id: string;
   arenaRound: number;
-  status: "open" | "running" | "over" | "failed";
+  status: MatchStatus;
   seed: number;
   createdAt: string;
   seats: SeatInfo[];
@@ -35,23 +35,6 @@ export interface MatchInfo {
   wins: number[] | null;
   winner: string | null;
   record: string | null;
-}
-export interface ReplayInfo {
-  match: string;
-  record: string;
-  /** featured (2+ agents) or warm-up (1 agent, house bots in the other seats) (#67) */
-  tier: "featured" | "warm-up";
-  createdAt: string;
-  seed: number;
-  theme: string;
-  names: string[];
-  labels: string[];
-  identities: Identity[];
-  weapons: string[];
-  winner: number;
-  wins: number[];
-  rounds: { winner: number; lines: string[]; plans: { stance: string; target: string; weapons: string[] }[]; planChanges: number[] }[];
-  control: { seat: number; mode: "autopilot" | "agent"; round: number }[];
 }
 export interface ReportRound {
   round: number;
@@ -253,10 +236,10 @@ export function isGalleryMatch(labels: string[]): boolean {
     return k.provider === "house" || (!k.test && /^remote\//i.test(l.trim()));
   });
 }
-export const galleryReplays = (rs: ReplayInfo[]) => rs.filter((r) => isGalleryMatch(r.labels));
+export const galleryReplays = (rs: ReplaySummary[]) => rs.filter((r) => isGalleryMatch(r.labels));
 
 /** Featured rounds (2+ agents) first, then warm-ups; newest first within each (pure, #67). */
-export const featuredFirst = (rs: ReplayInfo[]) => [...rs.filter((r) => r.tier === "featured"), ...rs.filter((r) => r.tier !== "featured")];
+export const featuredFirst = (rs: ReplaySummary[]) => [...rs.filter((r) => r.tier === "featured"), ...rs.filter((r) => r.tier !== "featured")];
 
 export function scoreline(wins: number[]): string {
   const s = [...wins].sort((a, b) => b - a);

@@ -1,3 +1,4 @@
+import type { ReplaySummary } from "../src/api-types";
 /**
  * The /models page (#96): the board built from rounds (pure), its sort, its route, and GET /api/models/board on an
  * in-process Arena: empty (house bots only: no rows, the agents that joined), then with
@@ -11,7 +12,6 @@ import { initPhysics } from "../src/sim";
 import { modelBoard, type BoardRound, type BoardSeat, type ModelBoard } from "../src/stats/model-board";
 import { filterChoices, withFilter, withModel } from "../src/site/replays";
 import { REDIRECTS, route, SITE_PATHS } from "../src/site/route";
-import type { ReplayInfo } from "../src/site/data";
 import type { SqliteStore } from "../src/server/store";
 import { arenaServer, call, enter, round } from "./helpers/arena";
 
@@ -99,13 +99,13 @@ describe("the site: four pages (#106)", () => {
     for (const p of Object.keys(REDIRECTS)) expect(SITE_PATHS as readonly string[]).not.toContain(p);
   });
   test("replays of one model", () => {
-    const r = (match: string, labels: string[]) => ({ match, labels }) as ReplayInfo;
+    const r = (match: string, labels: string[]) => ({ match, labels }) as ReplaySummary;
     const rs = [r("a", ["remote/Ann@claude-opus-5-5", "house", "house", "house"]), r("b", ["remote/Ben@gpt-6-luna", "house", "house", "house"])];
     expect(withModel(rs, "self:claude-opus-5-5").map((x) => x.match)).toEqual(["a"]);
     expect(withModel(rs, "").length).toBe(2);
   });
   test("replays of one agent; the filter's choices", () => {
-    const r = (match: string, labels: string[]) => ({ match, labels }) as ReplayInfo;
+    const r = (match: string, labels: string[]) => ({ match, labels }) as ReplaySummary;
     const rs = [r("a", ["remote/Ann@claude-opus-5-5", "house", "house", "house"]), r("b", ["remote/Ben@gpt-6-luna", "remote/Ann@claude-opus-5-5", "house", "house"])];
     expect(withFilter(rs, { model: "", agent: "ann" }).map((x) => x.match)).toEqual(["a", "b"]);
     expect(withFilter(rs, { model: "", agent: "Ben" }).map((x) => x.match)).toEqual(["b"]);

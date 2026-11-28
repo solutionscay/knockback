@@ -1,3 +1,4 @@
+import type { MatchStatus } from "../api-types";
 /**
  * Wait until the Arena is idle (#167): the step a deploy runs before it stops the server, so that no round is cut
  * off and resumed on a new version (a sim change makes that resumed round fail). The state comes from
@@ -10,7 +11,7 @@
 /** The `arena` part of GET /api/health. */
 export interface ArenaState {
   round: number | null;
-  status: "open" | "running" | "over" | "failed" | null;
+  status: MatchStatus | null;
   drain: { held: boolean; until: string } | null;
   idle: boolean;
 }
