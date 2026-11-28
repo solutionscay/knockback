@@ -1,3 +1,4 @@
+import { faceMatrix } from "../art/visor-geometry";
 /**
  * The fighters (#85): the plush brawler rendered in Blender (tools/art/plush_sprites.py) as sprite sheets. View only.
  *
@@ -32,7 +33,7 @@ import { Assets, Container, defaultFilterVert, Filter, getSupportedTextureFormat
 import "pixi.js/ktx2";
 import { buildShape, type Build } from "../sim/build";
 import type { Mark } from "../sim/identity";
-import { COLS, FEET_Y, K, P, ROWS } from "../art/bot";
+import { FEET_Y } from "../art/bot";
 import { PLUSH_LAYOUT, PLUSH_URLS } from "./art/plush/layout";
 import { plushRamp, RAMP_STOPS } from "../art/plush-ramp";
 import { BEHIND_MARKS, markFrame, TORSO_MARKS } from "../art/plush-motion";
@@ -254,18 +255,13 @@ export function rampFilter(color: number): Filter {
 // ------------------------------------------------------------------ geometry
 
 const PPM = PLUSH_LAYOUT.ppm;
-/** The code face's visor (bot.ts drawVisor, squircle head): its center line in local meters, half width, half height. */
-const FACE_CY = (15.5 - 3.5) * K - FEET_Y;
-const VHW = ((COLS * P + 1.4) / 2) * K;
-const VHH = ((ROWS * P + 1.4) / 2) * K;
-
 /** Sheet pixel -> the fighter's local meters (feet on y = FEET_Y, facing right, y down). */
 function meters(L: SheetMeta, q: Pt): [number, number] {
   return [(q[0]! - L.ground[0]!) / PPM, FEET_Y + (q[1]! - L.ground[1]!) / PPM];
 }
 /** a ∘ b: apply b, then a. */
 function mul(a: Matrix, b: Matrix): Matrix {
-  return new Matrix(a.a * b.a + a.c * b.b, a.b * b.a + a.d * b.b, a.a * b.c + a.c * b.d, a.b * b.c + a.d * b.d, a.a * b.tx + a.c * b.ty + a.tx, a.b * b.tx + a.d * b.ty + a.ty);
+  return a.clone().append(b);
 }
 /** Sheet pixels -> local meters for a sheet placed as rendered. */
 const place = (L: SheetMeta) => {
@@ -617,11 +613,6 @@ export class PlushBot {
     // the code face, mapped onto this frame's visor. The rendered points sit at 0.42 of the visor's width either side
     // of its middle (screen right r, screen left l) and 0.4 of its height above (u). The glass wraps around the turned
     // head, so the face is centered between r and l, not on the glass's 3D center.
-    const [c0, r, u, l] = fr.visor.map((q) => meters(L, q)) as [number, number][];
-    const c = [(r![0] + l![0]) / 2, (r![1] + l![1]) / 2];
-    const up = [u![0] - c0![0], u![1] - c0![1]];
-    const a = (r![0] - c[0]!) / (0.8 * VHW), b = (r![1] - c[1]!) / (0.8 * VHW);
-    const cc = -up[0]! / (0.78 * VHH), d = -up[1]! / (0.78 * VHH);
-    return new Matrix(a, b, cc, d, c[0]! - cc * FACE_CY, c[1]! - d * FACE_CY);
+    return new Matrix(...faceMatrix(fr.visor.map((q) => meters(L, q))));
   }
 }
