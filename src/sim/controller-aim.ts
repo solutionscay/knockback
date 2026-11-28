@@ -25,7 +25,7 @@ export function railCanReach(sim: Sim, p: ReturnType<Sim["pos"]>, target: Return
   if (distance < 0.1 || distance > sim.ruleset.weapons.table.railgun.range) return false;
   if (target.los) return true;
   if (target.sight && !target.sight.terrain && target.sight.entity?.kind !== "fighter") return false;
-  return traceRail(sim.grid, p.x, y, dx / distance, dy / distance, distance, undefined, sim.ruleset.weapons.table.railgun.terrainPenetration) >= distance;
+  return traceRail(sim.grid, p.x, y, dx / distance, dy / distance, distance, sim.ruleset.weapons.table.railgun.terrainPenetration) >= distance;
 }
 
 export function aimAndFire(
