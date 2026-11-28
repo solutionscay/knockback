@@ -40,8 +40,8 @@ export interface Soul {
   lines: LineTemplate[];
 }
 
-export const TEMPERAMENTS: readonly Temperament[] = ["cocky", "confident", "calm", "nervous"];
-export const VOICES: readonly Voice[] = ["brash", "smug", "nervous", "sly", "plain"];
+const TEMPERAMENTS: readonly Temperament[] = ["cocky", "confident", "calm", "nervous"];
+const VOICES: readonly Voice[] = ["brash", "smug", "nervous", "sly", "plain"];
 const WEAPON_ALIAS: Record<string, Weapon> = { hook: "grapple", "grappling hook": "grapple", grenades: "grenade", rockets: "rocket", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower" };
 
 /** Morale baseline from temperament (morale itself still comes from match events). */
@@ -182,3 +182,5 @@ export function parseSoul(text: string, seat = 0, id = `soul${seat + 1}`): SoulP
 export function soulRecord(s: Soul): Soul {
   return { ...s, values: s.values.slice(), weapons: s.weapons.slice(), build: { ...s.build }, lines: s.lines.map((l) => [l[0], l[1] === "*" ? "*" : l[1].slice(), l[2]] as LineTemplate) };
 }
+
+export { TEMPERAMENTS, VOICES };
