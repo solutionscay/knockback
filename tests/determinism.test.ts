@@ -53,6 +53,7 @@ const GOLDEN = {
   // round 1 left: morale and plans); fight 1001, the plan update and Close Quarters see no drop and move only by the
   // hash's new fields
   // #174: Drop and crate draws now include the freeze gun. The hash includes its ammo, cooldown and each fighter’s chill timer.
+  // #174 rebased on #200 (the #119 code-health merges, which keep every hash): the hashes stay the same
   fight: "e1142fad",
   fightWithUpdate: "64e07536",
   closeQuarters: "ca151c32",
