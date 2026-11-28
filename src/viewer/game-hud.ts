@@ -10,7 +10,7 @@ import type { Strategy } from "../sim/sim-types";
 import type { Decision } from "../sim/voice";
 import { bestRule, type KoEvent, type RuleFiring } from "./callouts";
 import { esc, hex } from "../html";
-import { portraitSvg } from "./portrait";
+import { portraitSvg } from "../art/portrait";
 import { modelBadgeHtml } from "./model-badge";
 import { buildChipHtml } from "./build-view";
 import { strategyBuild } from "../sim/build";

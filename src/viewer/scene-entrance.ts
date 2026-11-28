@@ -10,9 +10,9 @@
 import { Container, Graphics } from "pixi.js";
 import type { Identity } from "../sim/identity";
 import type { Sim } from "../sim/sim";
-import { drawVisor, faceFor, FEET_Y, type FaceMood } from "./bot";
+import { drawVisor, faceFor, FEET_Y, type FaceMood } from "../art/bot";
 import type { Fx } from "./fx";
-import { hash } from "./hash";
+import { hash } from "../art/hash";
 import { pixiPen } from "./pixiPen";
 import { loadPlushSheets, PlushBot, plushNeeds } from "./plush-bot";
 import type { CameraFrame, SceneCamera } from "./scene-camera";

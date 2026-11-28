@@ -1,6 +1,6 @@
 // Art trial (#85): the plush marks in motion pick their frames sensibly.
 import { expect, test } from "bun:test";
-import { markFrame } from "../src/viewer/plush-motion";
+import { markFrame } from "../src/art/plush-motion";
 
 test("flapping marks ping-pong through their frames, faster at a run", () => {
   const seq = Array.from({ length: 8 }, (_, i) => markFrame("cape", 3, i / 5, 0, 0));

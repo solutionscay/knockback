@@ -1,11 +1,11 @@
 /**
- * The bots on the site pages: the game's own portraits (src/viewer/portrait.ts), recorded to SVG, and their
+ * The bots on the site pages: the game's own portraits (src/art/portrait.ts), recorded to SVG, and their
  * colors as CSS variables (--c the identity color for bars and borders, --ci a readable ink for names).
  */
 import { sanitizeIdentity, generateIdentities, type Identity } from "../sim/identity";
 import { nameInk } from "../viewer/palette";
 import { hex } from "../html";
-import { portraitSvg, type Mood } from "../viewer/portrait";
+import { portraitSvg, type Mood } from "../art/portrait";
 import { html, raw, type Raw } from "./dom";
 
 export type SiteMood = "fight" | "cocky" | "win" | "ko" | "sleepy";

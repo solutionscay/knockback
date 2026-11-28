@@ -11,7 +11,7 @@ Scene units: the bot stands on z = 0 and is about 2.25 units tall with its anten
 so the Blender front view sees its face; +X is the bot's left.
 
 Parts
-- head:   the squircle outline from src/viewer/bot.ts (the SVG path, sampled) as the front profile,
+- head:   the squircle outline from src/art/bot.ts (the SVG path, sampled) as the front profile,
           rounded front to back into a soft volume; 4 plush panels with pinched, stitched seams.
 - visor:  dark glossy glass that follows the head, a raised rim (tinted vinyl), an LED dot grid
           (emissive dots; one dot object per expression, so a pose can change the face).

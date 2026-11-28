@@ -1,5 +1,5 @@
 import { esc, hex } from "../html";
-import { portraitSvg, type Mood } from "../viewer/portrait";
+import { portraitSvg, type Mood } from "../art/portrait";
 import { modelOf } from "../stats/models";
 import { type ReplaySummary } from "./replays";
 

@@ -4,7 +4,7 @@ import type { Fighter, SimEvent, Strategy } from "../sim/sim-types";
 import type { Decision } from "../sim/voice";
 import { CALLOUT, CalloutManager, planChangeText, ruleTagText, targetText, type KoEvent, type RuleFiring } from "./callouts";
 import { esc, hex } from "../html";
-import { portraitSvg } from "./portrait";
+import { portraitSvg } from "../art/portrait";
 import { modelBadgeHtml } from "./model-badge";
 import { buildTagHtml } from "./build-view";
 

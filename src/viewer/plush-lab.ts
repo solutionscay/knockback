@@ -9,8 +9,8 @@
  */
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { hsl, lightnessFloor, MAJOR_MARKS, type Identity, type Mark } from "../sim/identity";
-import { drawVisor, faceFor, koFace, lodFor, type FaceMood } from "./bot";
-import { hash } from "./hash";
+import { drawVisor, faceFor, koFace, lodFor, type FaceMood } from "../art/bot";
+import { hash } from "../art/hash";
 import { pixiPen } from "./pixiPen";
 import { initPlushArt, loadPlushSheets, plushFormat, plushMemory, PlushBot, type FeetOffsets, type PlushInput, type SheetName } from "./plush-bot";
 import { PLUSH_LAYOUT } from "./art/plush/layout";

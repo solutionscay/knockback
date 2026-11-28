@@ -6,7 +6,7 @@
  *
  * The identity is display data. The sim carries it on each Fighter but never
  * reads it, and it is not part of the state hash. Drawing it is the viewer's
- * job (src/viewer/bot.ts).
+ * job (src/art/bot.ts).
  *
  * A fighter's AI may choose its own identity (#19, the "suit up" step in
  * src/ai/suitup.ts): its wishes go to `assignIdentities`. Valid, unclaimed
