@@ -21,15 +21,14 @@ import { bursts, cropLeft, cutFrames, describe, montageOrder, pickCuts, type Bur
 import { MONTAGE_USAGE, parseMontageArgs, type MontageOptions } from "./montage/options";
 import { captureFrames, launch, planCaption, scanTimeline, serveViewer, type CaptureResult, END_TEXT, END_TITLE } from "./teaser/capture";
 import { webglRenderer } from "./viewer-browser";
-import { ffmpeg, fitKbps } from "./teaser/media";
-import { OptionError } from "./teaser/options";
+import { MAX_720_BYTES, ffmpeg, fitKbps } from "./teaser/media";
+import { OptionError } from "./video-options";
 import { cleanup, deliver, teaserPaths } from "./teaser/paths";
 import { beatRanges, cardWindow, type Caption, type Plan } from "./teaser/plan";
-import { matchFacts, type MatchFacts } from "./teaser/source";
+import { newestRecords, matchFacts, type MatchFacts } from "./teaser/source";
 
 const FPS = 60;
 const TITLE_S = 2.5;
-const MAX_BYTES = 29.5e6;
 /** the landscape capture; the vertical cut is a 9:16 window of it around the action (below the HUD chips), scaled to fill 1080x1920 */
 const L = { w: 1920, h: 1080 };
 const V = { w: 1080, h: 1920 };
@@ -58,9 +57,7 @@ async function loadRecords(): Promise<{ file: string; rec: Rec }[]> {
     const files = src.paths.flatMap((p) => (statSync(p).isDirectory() ? readdirSync(p).filter((f) => f.endsWith(".json") && !f.endsWith(".prompts.json")).sort().map((f) => join(p, f)) : [p]));
     return Promise.all(files.map(async (f) => ({ file: resolve(f), rec: JSON.parse(await Bun.file(f).text()) as Rec })));
   }
-  const res = await fetch(`${src.url}/api/records`);
-  if (!res.ok) throw new Error(`${src.url}/api/records: HTTP ${res.status}`);
-  const list = (((await res.json()) as { records?: { path: string; createdAt: number }[] }).records ?? []).sort((a, b) => b.createdAt - a.createdAt).slice(0, 40);
+  const list = (await newestRecords(src.url)).slice(0, 40);
   const out: { file: string; rec: Rec }[] = [];
   for (const r of list) {
     if (out.length >= 16) break;
@@ -236,8 +233,8 @@ async function encode(dir: string, file: string) {
   const enc = (rate: string[]) =>
     ffmpeg(["-framerate", String(FPS), "-i", join(dir, "%06d.jpg"), "-i", wav, "-c:v", "libx264", "-preset", "medium", ...rate, "-profile:v", "high", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", file]);
   await enc(["-crf", "20"]);
-  if (statSync(file).size > MAX_BYTES) {
-    const kbps = fitKbps(length, MAX_BYTES);
+  if (statSync(file).size > MAX_720_BYTES) {
+    const kbps = fitKbps(length, MAX_720_BYTES);
     await enc(["-b:v", `${kbps}k`, "-maxrate", `${Math.round(kbps * 1.4)}k`, "-bufsize", `${kbps * 2}k`]);
   }
   return { file, bytes: statSync(file).size };

@@ -92,6 +92,13 @@ export interface Got {
 
 const readJson = async (file: string) => JSON.parse(await Bun.file(file).text());
 
+export async function newestRecords(url: string): Promise<{ path: string; createdAt: number }[]> {
+  const res = await fetch(`${url}/api/records`);
+  if (!res.ok) throw new Error(`${url}/api/records: HTTP ${res.status}`);
+  const { records = [] } = await res.json() as { records?: { path: string; createdAt: number }[] };
+  return (records ?? []).sort((a, b) => b.createdAt - a.createdAt);
+}
+
 /** Get the match record for a source. `work` = a scratch folder (AI match records land there). */
 export async function getRecord(src: Source, work: string, log: (s: string) => void): Promise<Got> {
   switch (src.kind) {
@@ -104,10 +111,7 @@ export async function getRecord(src: Source, work: string, log: (s: string) => v
       return { rec: JSON.parse(JSON.stringify(m.record)), from: `house-bot match, seed ${src.seed}` };
     }
     case "server": {
-      const res = await fetch(`${src.url}/api/records`);
-      if (!res.ok) throw new Error(`${src.url}/api/records: HTTP ${res.status}`);
-      const list = ((await res.json()) as { records?: { path: string; createdAt: number }[] }).records ?? [];
-      const newest = list.sort((a, b) => b.createdAt - a.createdAt)[0];
+      const [newest] = await newestRecords(src.url);
       if (!newest) throw new Error(`${src.url} has no finished match recorded yet`);
       const r = await fetch(`${src.url}${newest.path}`);
       if (!r.ok) throw new Error(`${src.url}${newest.path}: HTTP ${r.status}`);
