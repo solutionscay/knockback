@@ -32,9 +32,9 @@ export function fireRailgun(sim: Sim, f: Fighter, x: number, y: number, dx: numb
     obstacle.entity = null;
     absorbHit(sim, cut.field, spec.damage, x + dx * cut.dist, y + dy * cut.dist, "railgun", f.id);
   }
-  const distance = traceRail(sim.grid, x, y, dx, dy, obstacle.distance, (cx, cy) => {
+  const distance = traceRail(sim.grid, x, y, dx, dy, obstacle.distance, spec.terrainPenetration, (cx, cy) => {
     damageTerrainCell(sim, cx, cy, sim.grid.matAt(cx, cy), spec.terrainDamage);
-  }, spec.terrainPenetration);
+  });
   for (const [e, d] of [...fighters].sort((a, b) => a[1] - b[1] || a[0].id - b[0].id)) {
     if (d > distance) break;
     sim.damageFighter(e.fighter!, spec.damage, f.id, dx * spec.knockback, dy * spec.knockback + spec.lift, "railgun", x + dx * d, y + dy * d);
