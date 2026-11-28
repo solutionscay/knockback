@@ -116,9 +116,6 @@ export class CalloutManager {
 
 // ------------------------------------------------------------------ texts
 
-const ITEM: Record<string, string> = { grapple: "hook" };
-const it = (w?: string) => (w ? (ITEM[w] ?? w) : "");
-
 export function targetText(s: Strategy, names: string[]): string {
   return s.target === "grudge" && s.grudge !== undefined ? (names[s.grudge] ?? "?") : s.target;
 }
@@ -130,8 +127,8 @@ export function targetText(s: Strategy, names: string[]): string {
  */
 export function planChangeText(prev: Strategy, next: Strategy, names: string[]): string | null {
   if (targetText(prev, names) !== targetText(next, names)) return `→ target ${targetText(next, names)}`;
-  if (prev.stance !== next.stance) return `→ ${next.stance === "item" ? "grab pickups" : next.stance === "distance" ? "keep distance" : next.stance === "cover" ? "take cover" : "rush in"}`;
-  if ((prev.weapons[0] ?? "") !== (next.weapons[0] ?? "")) return `→ go for the ${it(next.weapons[0])}`;
+  if (prev.stance !== next.stance) return `→ ${stanceText(next.stance)}`;
+  if ((prev.weapons[0] ?? "") !== (next.weapons[0] ?? "")) return `→ go for the ${itemWord(next.weapons[0], "")}`;
   if ((prev.retaliate ?? "turn") !== (next.retaliate ?? "turn")) return `→ retaliate: ${next.retaliate ?? "turn"}`;
   const pr = (prev.rules ?? []).map((r) => r.label).join("|");
   const nr = (next.rules ?? []).map((r) => r.label).join("|");
@@ -148,7 +145,7 @@ export function ruleTagText(rule: Rule | undefined): string {
 // ------------------------------------------------------------------ plain words (#104)
 
 const ITEM_WORD: Partial<Record<string, string>> = { grapple: "hook", flamethrower: "flamer", lightning: "sword" };
-const itemWord = (x?: string) => (x ? (ITEM_WORD[x] ?? x) : "a pickup");
+const itemWord = (x?: string, fallback = "a pickup") => (x ? (ITEM_WORD[x] ?? x) : fallback);
 /** a/an + item ("a rocket", "an ice ...") */
 const an = (x?: string) => {
   const w = itemWord(x);
