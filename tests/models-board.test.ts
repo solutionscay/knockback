@@ -125,7 +125,7 @@ describe("GET /api/models/board", () => {
   test("empty, then with agent rounds; older-engine rounds never count", async () => {
     const api = arenaServer(join(outDir, "a"));
     const board = async () => {
-      const { modelsBoardOf } = await import("../src/server/site");
+      const { modelsBoardOf } = await import("../src/server/boards");
       return (await modelsBoardOf(api, true)) as ModelBoard;
     };
     expect((await call(api, "GET", "/api/models/board")).status).toBe(200);
