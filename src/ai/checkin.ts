@@ -16,7 +16,7 @@ import { FIGHT_TICKS, TICK_RATE } from "../sim/constants";
 import { planKey, type Fight } from "../sim/fight";
 import type { Strategy } from "../sim/sim-types";
 import type { Soul } from "../sim/soul";
-import { cleanLine, cleanWhy, jsonObjects, parseRules, validatePlan } from "./parse";
+import { cleanLine, cleanWhy, clipWords, jsonObjects, parseRules, validatePlan } from "./parse";
 import { autoLabel, RULE_STANCES } from "../sim/rules";
 import { fightTactics, fightTacticsLine, type FightTactics } from "./tactics";
 
@@ -345,11 +345,11 @@ const PLAN_FIELDS = ["target", "stance", "weapons", "retaliate", "rules"] as con
  * A merge that changes nothing is a keep too.
  */
 export function parseCheckin(text: string, me: number, names: string[], current: Strategy, cfg: CheckinConfig = CHECKIN, ruleset: Ruleset = CLASSIC): CheckinAnswer {
-  const objs = jsonObjects(text).filter((o): o is Record<string, unknown> => !!o && typeof o === "object" && !Array.isArray(o));
+  const objs = jsonObjects(text);
   if (!objs.length) return { kind: "invalid", problems: ["no JSON object"] };
   const o = objs.find((x) => PLAN_FIELDS.some((k) => x[k] !== undefined)) ?? objs[0]!;
   const lineRaw = cleanLine(o.line ?? o.say);
-  const line = lineRaw ? (lineRaw.length > cfg.maxLine ? lineRaw.slice(0, cfg.maxLine - 1).replace(/\s+\S*$/, "") + "…" : lineRaw) : undefined;
+  const line = lineRaw ? clipWords(lineRaw, cfg.maxLine) : undefined;
   const why = cleanWhy(o.why ?? o.reason) ?? undefined;
   const extra = { ...(line ? { line } : {}), ...(why ? { why } : {}) };
   // the build is the body for the whole round (#80)

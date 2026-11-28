@@ -183,4 +183,4 @@ export function soulRecord(s: Soul): Soul {
   return { ...s, values: s.values.slice(), weapons: s.weapons.slice(), build: { ...s.build }, lines: s.lines.map((l) => [l[0], l[1] === "*" ? "*" : l[1].slice(), l[2]] as LineTemplate) };
 }
 
-export { TEMPERAMENTS, VOICES };
+export { TEMPERAMENTS, VOICES, WEAPON_ALIAS as SOUL_WEAPON_ALIASES };

@@ -68,7 +68,7 @@ export function suitUpPrompt(soul: Soul, ruleset: Ruleset = CLASSIC): string {
 
 /** A suit-up answer -> wish fields (strings and a color number), line and why. Pure. */
 export function parseSuitUp(text: string): { wish: IdentityWish; line?: string; why?: string } | null {
-  const objs = jsonObjects(text).filter((o): o is Record<string, unknown> => !!o && typeof o === "object" && !Array.isArray(o));
+  const objs = jsonObjects(text);
   const o = objs.find((x) => FIELDS.some((f) => f in x)) ?? null;
   if (!o) return null;
   const wish: IdentityWish = {};

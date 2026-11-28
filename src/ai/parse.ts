@@ -1,3 +1,4 @@
+import { SOUL_WEAPON_ALIASES } from "../sim/soul";
 import { buildProblem, buildsOn, NEUTRAL_BUILD, strategyBuild, type Build } from "../sim/build";
 import { allowedWeapon, CLASSIC, type Ruleset } from "../sim/ruleset";
 /**
@@ -9,15 +10,15 @@ import { allowedWeapon, CLASSIC, type Ruleset } from "../sim/ruleset";
 import { autoLabel, checkRule, MAX_RULE_LABEL, PICKUPS, ruleKey, RULE_RETALIATE, RULE_STANCES, WHO_TRIGGERS } from "../sim/rules";
 import { isPickupWeapon, MAX_RULES, RULE_DO, RULE_WHEN, TARGET_PREFERENCES, type ItemType, type Retaliate, type Rule, type RuleWho, type Stance, type Strategy, type TargetPref, type Weapon } from "../sim/sim-types";
 
-const WEAPON_ALIAS: Record<string, Weapon> = { "lightning sword": "lightning", sword: "lightning", hook: "grapple", grappling: "grapple", "grappling hook": "grapple", "baseball bat": "bat", rockets: "rocket", grenades: "grenade", launcher: "rocket", flamer: "flamethrower", "flame thrower": "flamethrower", flames: "flamethrower", "sticky mine": "mine", "rail gun": "railgun", "shockwave hammer": "hammer", marksman: "crossbow", bow: "crossbow", "sniper rifle": "sniper", "assault rifle": "rifle" };
+const WEAPON_ALIAS: Record<string, Weapon> = { ...SOUL_WEAPON_ALIASES, "lightning sword": "lightning", sword: "lightning", grappling: "grapple", "baseball bat": "bat", flames: "flamethrower", "sticky mine": "mine", "rail gun": "railgun", "shockwave hammer": "hammer", marksman: "crossbow", bow: "crossbow", "sniper rifle": "sniper", "assault rifle": "rifle" };
 
 export const MAX_LINE = 120;
 /** the optional "why" (#3): one sentence in game terms */
 export const MAX_WHY = 100;
 
 /** Every balanced {...} object in the text that parses as JSON, in order. */
-export function jsonObjects(text: string): unknown[] {
-  const out: unknown[] = [];
+export function jsonObjects(text: string): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
   for (let start = text.indexOf("{"); start >= 0; start = text.indexOf("{", start + 1)) {
     let depth = 0;
     let quoted = false;
@@ -43,18 +44,21 @@ export function jsonObjects(text: string): unknown[] {
   return out;
 }
 
+export function clipWords(s: string, limit: number): string {
+  return s.length > limit ? s.slice(0, limit - 1).replace(/\s+\S*$/, "") + "…" : s;
+}
+
 export function cleanLine(v: unknown): string | null {
   if (typeof v !== "string") return null;
-  let s = v.replace(/\s+/g, " ").trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
+  const s = v.replace(/\s+/g, " ").trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
   if (!s) return null;
-  if (s.length > MAX_LINE) s = s.slice(0, MAX_LINE - 1).replace(/\s+\S*$/, "") + "…";
-  return s;
+  return clipWords(s, MAX_LINE);
 }
 
 export function cleanWhy(v: unknown): string | null {
   const s = cleanLine(v);
   if (!s) return null;
-  return s.length > MAX_WHY ? s.slice(0, MAX_WHY - 1).replace(/\s+\S*$/, "") + "…" : s;
+  return clipWords(s, MAX_WHY);
 }
 
 const ITEM_ALIAS: Record<string, ItemType> = { ...WEAPON_ALIAS, heal: "health", medkit: "health", hp: "health", "force field": "forcefield", force_field: "forcefield", field: "forcefield", bubble: "forcefield" };
@@ -203,7 +207,7 @@ export function validatePlan(o: Record<string, unknown>, me: number, names: stri
 }
 
 export function parseAnswer(text: string, me: number, names: string[], ruleset: Ruleset = CLASSIC): Parsed {
-  const objs = jsonObjects(text).filter((o): o is Record<string, unknown> => !!o && typeof o === "object" && !Array.isArray(o));
+  const objs = jsonObjects(text);
   if (!objs.length) return { strategy: null, line: null, problems: ["no JSON object"] };
   let best: Parsed | null = null;
   for (const o of objs) {
