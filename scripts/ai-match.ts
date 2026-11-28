@@ -111,7 +111,7 @@ await initPhysics();
 const su = flags["suit-up"] === "off" || !seats.some((s) => s.provider) ? null : await suitUp(seed, seats.map((s) => ({ provider: s.provider, soul: s.soul })), { ...(selection ? { ruleset: selection.ruleset } : {}), log: (s) => console.log(s) });
 const runner = new MatchRunner({ seed, seats, ...selection, deadlineMs: deadline, lineup, checkins, ...(su ? { suitUp: su } : {}), onEvent: (e) => live.broadcast(e), onLog: (s) => console.log(s) });
 const { labels, match } = runner;
-console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}${runner.checkin ? `  check-ins every ${runner.checkin.everyS} s (each waits for its answer; hung calls stop at ${runner.checkin.capMs / 1000} s)` : ""}`);
+console.log(`\nKNOCKBACK AI MATCH  seed ${seed}  deadline ${deadlineText}${runner.checkins.config ? `  check-ins every ${runner.checkins.config.everyS} s (each waits for its answer; hung calls stop at ${runner.checkins.config.capMs / 1000} s)` : ""}`);
 match.identities.forEach((id, i) => console.log(`  ${id.name.padEnd(12)} ${labels[i]!.padEnd(18)} soul ${loaded[i]!.file}  (${id.shape} head, ${id.eyes} eyes, ${id.mark}, #${id.color.toString(16).padStart(6, "0")})`));
 runner.start();
 console.log(`  level: ${match.level.theme}, ${match.level.width} m, ${match.level.platforms} platforms\n`);

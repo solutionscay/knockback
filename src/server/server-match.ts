@@ -232,7 +232,7 @@ export class ServerMatch {
     a.autopilot = reason;
     this.remote[seat]?.setAutopilot(reason);
     // during the seat's open check-in: stamped at that check-in's tick (phase "checkin")
-    this.control({ seat, mode: "autopilot", ...(at ?? this.runner.checkinAt(seat) ?? this.runner.position()), reason, line: pickLine(AUTOPILOT_LINES, this.fighter(seat)) });
+    this.control({ seat, mode: "autopilot", ...(at ?? this.runner.checkins.at(seat) ?? this.runner.position()), reason, line: pickLine(AUTOPILOT_LINES, this.fighter(seat)) });
   }
 
   /** Any request from a seat: it is present; an agent on autopilot gets its fighter back (check-ins; a plan if one is still asked). */
@@ -368,7 +368,7 @@ export class ServerMatch {
     const seats: Seat[] = this.kinds.map((_, i) => {
       const rs = this.remote[i];
       // a check-in goes to the agent with the runner's check-in deadline
-      if (rs) return { providerName: "remote", provider: rs.provider, soul: souls[i]!, checkin: (prompt, st, signal) => rs.askCheckin(prompt, st, signal, runner.checkin?.capMs) };
+      if (rs) return { providerName: "remote", provider: rs.provider, soul: souls[i]!, checkin: (prompt, st, signal) => rs.askCheckin(prompt, st, signal, runner.checkins.config?.capMs) };
       return { providerName: "house", provider: null, soul: souls[i]! };
     });
     // the agents' join looks (#19); the entries go into the record
