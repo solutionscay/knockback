@@ -66,6 +66,7 @@ export class Scene {
   private readonly fireView = new FireView();
   private readonly projectiles = new ProjectileViews();
   /** force fields (#40): the bubble in front of the fighters it covers */
+  private readonly padGraphics = new Graphics();
   private readonly fieldView = new FieldView();
   private readonly calloutViews = new CalloutViews();
   /** the entrance (#66): an agent drops in and kicks the house bot out */
@@ -81,7 +82,7 @@ export class Scene {
 
   constructor(private readonly app: Application) {
     app.stage.addChild(this.sky, this.backdrop, this.hills, this.world, this.overlay, this.effects.flashScreen);
-    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.fieldView.graphics, this.liquidLayer, this.entrance.layer, this.projectiles.graphics, this.projectiles.sprites, this.effects.front);
+    this.world.addChild(this.abyss, this.zoneG, this.chainLayer, this.terrainLayer, this.effects.back, this.padGraphics, this.props.layer, this.chainFront, this.props.marks, this.fighters.layer, this.fieldView.graphics, this.liquidLayer, this.entrance.layer, this.projectiles.graphics, this.projectiles.sprites, this.effects.front);
     this.overlay.addChild(this.fighters.barsG, this.effects.textLayer, this.calloutViews.lines, this.calloutViews.layer);
     this.projectiles.muzzleOf = (id) => this.fighters.muzzle(id); // rockets, mines, the grapple line leave the plush hand
     this.props.muzzleOf = (id) => this.fighters.muzzle(id); // ... and grenades
@@ -496,6 +497,7 @@ export class Scene {
   }
 
   onEvent(e: SimEvent) {
+    if (e.type === "teleport") this.prev.delete(this.sim.fighters[e.fighter]!.entity.id);
     this.liquidView?.event(e);
     this.effects.onEvent(e, this.sim, this.pal, this.camera, this.fighters, this.props, this.projectiles);
     this.fieldView.onEvent(e, this.effects.fx, (text, x, y, color, scale) => this.effects.float(text, x, y, color, scale));
@@ -573,6 +575,17 @@ export class Scene {
       this.entranceDrawn = this.entranceU;
     }
     this.fighters.render(sim, fx, this.camera, frame, W, H, this.time, dt, alpha, fxDt, this.xform);
+    this.padGraphics.clear();
+    for (const pad of sim.level.teleportPads ?? []) {
+      const w = sim.ruleset.arena.teleport.halfWidth;
+      const live = sim.grid.solidAt(pad.x, pad.y - 0.01);
+      this.padGraphics.roundRect(pad.x - w, -pad.y - 0.12, 2 * w, 0.18, 0.08).fill(0x30354f);
+      if (live) {
+        this.padGraphics.ellipse(pad.x, -pad.y - 0.12, w, 0.13).stroke({ width: 0.07, color: 0x63edff });
+        const wave = this.time % 1;
+        this.padGraphics.ellipse(pad.x, -pad.y - wave, w * (1 - wave / 2), 0.13).stroke({ width: 0.06, color: 0xb991ff, alpha: 1 - wave });
+      }
+    }
     this.fieldView.render(sim, this.time, dt);
     this.props.drawDropMarks(sim, this.time, alpha, this.xform);
     this.calloutViews.render(sim, this.fighters, W, this.ui, this.calloutTop);

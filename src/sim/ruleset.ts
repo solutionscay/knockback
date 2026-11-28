@@ -24,6 +24,7 @@ const lists: Readonly<Record<string, readonly (string | number)[]>> = {
   "tactics.stances.longGuns": WEAPON_LIST,
   "pickups.enabled": RULESET_DEFAULTS.pickups.enabled,
   "arena.enabledThemes": ALL_THEMES,
+  "arena.teleport.themes": ALL_THEMES,
   "fire.materials": [Mat.Dirt, Mat.Rock, Mat.Wood, Mat.Steel, Mat.Concrete, Mat.Crumble, Mat.Brick, Mat.Sand, Mat.Mud, Mat.Ice],
   "fire.props": RULESET_DEFAULTS.fire.props,
 };
@@ -131,6 +132,10 @@ export function validateRuleset(input: unknown): Ruleset {
   require(freeze.speedMul > 0 && freeze.speedMul < 1 && freeze.chillTicks > 0 && freeze.chillTicks <= 600, "weapons.table.freezegun", "chill must slow movement for 1 to 600 ticks");
   const tank = r.arena.props.tank;
   require(tank.cells >= 1 && tank.cells <= 64 && tank.radius > 0 && tank.radius <= 6 && tank.washSpeed > 0 && tank.washSpeed <= 12 && tank.density > 0, "arena.props.tank", "use 1–64 liquid cells, radius through 6 m, wash speed through 12 m/s and positive density");
+  const pad = r.arena.teleport;
+  require(pad.halfWidth > 0 && pad.halfWidth <= 2 && pad.contactHeight > 0 && pad.contactHeight <= 0.5, "arena.teleport", "use a positive half width through 2 m and contact height through 0.5 m");
+  require(pad.rearmTicks > 0 && pad.rearmTicks <= 600, "arena.teleport.rearmTicks", "expected 1 to 600 ticks");
+  require(pad.insetShare > 0 && pad.insetShare < 0.5 && pad.clearMargin >= pad.halfWidth && pad.clearMargin <= 4 && pad.spawnGap <= 10 && pad.routeCost > 0 && pad.ruleReach > 0, "arena.teleport", "pads must be opposite, with clearance, positive route cost and rule reach");
   const lightning = r.weapons.table.lightning;
   require(lightning.boltMinRange < lightning.range, "weapons.table.lightning.boltMinRange", "must be below range");
   require(lightning.groundWidth <= 12 && lightning.groundDrop <= 8, "weapons.table.lightning", "groundWidth expected 0 to 12 meters, groundDrop 0 to 8");

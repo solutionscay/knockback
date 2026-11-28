@@ -57,6 +57,11 @@ export class SceneEffects {
         this.float(water ? "WATER!" : "OIL!", e.x, e.y + 1, color, 0.85);
         break;
       }
+      case "teleport":
+        this.fx.sparks(e.x, e.y, 0, 1, 0xa995ff, 18);
+        this.fx.sparks(e.exitX, e.exitY, 0, 1, 0x79efff, 24);
+        this.float("WARP!", e.exitX, e.exitY + 1.2, 0x79efff, 0.8);
+        break;
       case "explosion": {
         const big = e.kind === "barrel" || e.kind === "tnt";
         camera.hotspot(e.x, e.y, big ? 2.5 : 1.2);

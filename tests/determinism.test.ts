@@ -56,13 +56,15 @@ const GOLDEN = {
   // #174 rebased on #200 (the #119 code-health merges, which keep every hash): the hashes stay the same
   // #175: Tanks change two maps. The hash includes tank contents and whether liquid flow is active.
   // #175 rebased on #179 (the freeze gun): every hash moves again, new values below
-  fight: "3d3c3586",
-  fightWithUpdate: "f212c5af",
-  closeQuarters: "f1f38415",
+  // #176: The hash includes pad locations, the return lock and the rearm time. Routes and trips can change rooftop and space fights.
+  // #176 rebased on #180 (freeze gun and tanks): every hash moves again, new values below
+  fight: "b173b886",
+  fightWithUpdate: "492035a2",
+  closeQuarters: "f6664155",
   // house bots play their souls' builds (#80)
-  match: ["21782fd4", "ac99d2b7", "0ce9d514"],
+  match: ["d2779954", "2c3b9c77", "4b2414d4"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["5b2f123e", "26ab8150", "b8652227"],
+  neutralMatch: ["a56e36be", "76051e50", "f23c0de7"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

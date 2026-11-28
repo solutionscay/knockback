@@ -77,6 +77,9 @@ export class RuleEngine {
           return Math.hypot(p.x - q.x, p.y - q.y) <= sim.ruleset.arena.props.tank.radius;
         })));
       }
+      case "near_pad":
+        return this.some(cand().filter(f => sim.level.teleportPads?.some(p =>
+          Math.hypot(sim.pos(f).x - p.x, sim.feetY(f) - p.y) <= sim.ruleset.arena.teleport.ruleReach)));
       case "near_barrel": {
         const barrels: { x: number; y: number }[] = [];
         for (const e of sim.entities.values()) if (!e.dead && (e.kind === "barrel" || e.kind === "tnt")) barrels.push(e.body.translation());

@@ -15,6 +15,7 @@ import { type PropKind } from "./level-config";
 import { NavGraph } from "./nav";
 import { strategyBuild, type Build } from "./build";
 import { CLASSIC, themedRuleset, type Ruleset } from "./ruleset";
+import { addTeleportLinks, useTeleportPad } from "./teleport-pads";
 import { LiquidState, updateLiquids } from "./sim-liquid";
 import { oneWayHooks, updateOneWay } from "./sim-oneway";
 import { Rng } from "./rng";
@@ -167,6 +168,7 @@ export class Sim {
     this.chains = buildChains(this);
     for (const ch of this.chains) this.chainByCell.set(this.grid.idx(ch.cx, ch.cy), ch);
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
+    addTeleportLinks(this);
     this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.topY = this.nav.surfaces.reduce((top, s) => Math.max(top, s.y), 0);
     this.navVersion = this.terrain.version;
@@ -364,8 +366,9 @@ export class Sim {
     for (let k = 0; k < n; k++) {
       const f = this.fighters[actSeat(tick, k, n)]!;
       if (f.removed || !f.alive) continue;
-      const p = this.pos(f);
-      checkPickups(this, f, p.x, p.y);
+      if (this.level.teleportPads) useTeleportPad(this, f);
+      const here = this.pos(f);
+      checkPickups(this, f, here.x, here.y);
     }
     // world-out and debris cleanup
     for (const e of [...this.entities.values()]) {
@@ -399,6 +402,7 @@ export class Sim {
 
   private rebuildNav() {
     this.nav = NavGraph.fromGrid(this.grid, 2, this.ruleset);
+    addTeleportLinks(this);
     this.tactical = new TacticalMap(this.grid, this.nav, this.ruleset.tactics.stances.map, bodyHeights(this.ruleset));
     this.navVersion = this.terrain.version;
     this.lastNavTick = this.tick;
@@ -431,6 +435,7 @@ export class Sim {
       for (let i = 0; i < 8; i++) mix(buf.getUint8(i));
     };
     num(this.tick);
+    for (const pad of this.level.teleportPads ?? []) { num(pad.x); num(pad.y); }
     num(this.suddenDeath);
     num(this.lastClashTick);
     for (const f of this.fighters) {
@@ -452,6 +457,8 @@ export class Sim {
       num(f.pinned);
       num(f.chilled);
       num(f.shockCd);
+      num(f.teleportLocked ? 1 : 0);
+      num(f.teleportReadyAt);
       num(f.dropTicks * 4 + f.wallSide + 1);
       num(f.forceField);
       for (const weapon of AMMO_WEAPONS) num(f.ammo[weapon]);

@@ -123,7 +123,9 @@ describe("fire", () => {
       // #174: the freeze gun ammo, cooldown and chill timer enter the hash even in this dry scene
       // #175: the hash now includes whether liquid flow is active, even in a dry scene
       // #175 rebased on #179 (the freeze gun's hash fields as well)
-      hash: "23287f96",
+      // #176: the state hash covers the teleport return lock of each fighter, including on a level without pads
+      // #176 rebased on #180 (the freeze gun and tank hash fields as well)
+      hash: "4870bd96",
       firesStarted: 10,
       cellsIgnited: 31,
       cellsBurnedDown: 10,
