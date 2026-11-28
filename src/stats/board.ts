@@ -8,7 +8,7 @@
  * - Ranked by wins against agents, then win rate against agents, then wins against house bots.
  */
 
-export interface Tally {
+export interface RoundTally {
   rounds: number;
   wins: number;
 }
@@ -18,16 +18,16 @@ export interface BoardAgent {
   owner: string;
   /** the newest seat's claimed model and client, as a seat label (remote/<agent>@<model>|<client>) for the badge */
   label: string;
-  vsAgents: Tally;
-  vsHouse: Tally;
+  vsAgents: RoundTally;
+  vsHouse: RoundTally;
   bestStreak: number;
 }
 
 export interface BoardOwner {
   owner: string;
   agents: number;
-  vsAgents: Tally;
-  vsHouse: Tally;
+  vsAgents: RoundTally;
+  vsHouse: RoundTally;
   bestStreak: number;
   /** the agent that holds the owner's best streak */
   bestBy: string | null;
@@ -38,8 +38,8 @@ export interface Board {
   owners: BoardOwner[];
 }
 
-const rate = (t: Tally) => (t.rounds ? t.wins / t.rounds : 0);
-const order = <T extends { vsAgents: Tally; vsHouse: Tally }>(key: (x: T) => string) => (a: T, b: T) =>
+const rate = (t: RoundTally) => (t.rounds ? t.wins / t.rounds : 0);
+const order = <T extends { vsAgents: RoundTally; vsHouse: RoundTally }>(key: (x: T) => string) => (a: T, b: T) =>
   b.vsAgents.wins - a.vsAgents.wins || rate(b.vsAgents) - rate(a.vsAgents) || b.vsHouse.wins - a.vsHouse.wins || key(a).localeCompare(key(b));
 
 /** The board from per-agent round counts per tier, each agent's newest seat label, and best streaks. */
