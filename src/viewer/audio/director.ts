@@ -5,6 +5,7 @@
  */
 import type { Sim } from "../../sim/sim";
 import type { SimEvent } from "../../sim/sim-types";
+import { TICK_RATE } from "../../sim/constants";
 import type { AudioEngine } from "./engine";
 import { blipsFor, cueForBeat, cueForMood, cuesForEntrance, cuesForEvent, voiceHz, type Cue, type Listener } from "./map";
 
@@ -57,7 +58,7 @@ export class SoundDirector {
       },
     };
     for (const c of cuesForEvent(e, ctx)) this.play(c, clock);
-    if (e.type === "platformFall") this.falling.set(e.entity, { vy: 0, until: e.tick + 8 * 60 });
+    if (e.type === "platformFall") this.falling.set(e.entity, { vy: 0, until: e.tick + 8 * TICK_RATE });
     if (e.type === "jetpack") this.jets.set(e.fighter, e.tick + 24);
   }
 

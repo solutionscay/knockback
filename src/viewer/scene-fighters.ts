@@ -1,4 +1,5 @@
 import { Container, Graphics } from "pixi.js";
+import { TICK_RATE } from "../sim/constants";
 import type { Sim } from "../sim/sim";
 import type { Entity, Fighter } from "../sim/sim-types";
 import type { CameraFrame, SceneCamera } from "./scene-camera";
@@ -243,7 +244,7 @@ export class FighterViews {
                 : this.autopilot[f.id]
                   ? "sleepy"
                   : ((this.morale[f.id] ?? "confident") as FaceMood);
-      const look = { lookX: aimLocalX > 0.3 ? 1 : aimLocalX < -0.3 ? -1 : 0, lookY: aimLocalY < -0.5 ? -1 : aimLocalY > 0.5 ? 1 : 0, koT: (sim.tick - f.koTick) / 60 };
+      const look = { lookX: aimLocalX > 0.3 ? 1 : aimLocalX < -0.3 ? -1 : 0, lookY: aimLocalY < -0.5 ? -1 : aimLocalY > 0.5 ? 1 : 0, koT: (sim.tick - f.koTick) / TICK_RATE };
       const lod = lodFor(s);
       if (mood !== v.mood) {
         if (v.mood) this.onMood?.(f.id, mood, p.x, p.y);

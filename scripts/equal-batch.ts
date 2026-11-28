@@ -14,6 +14,8 @@ import { percent, seatWinBand, sum } from "./batch-stats";
 import { CLASSIC, CLOSE_QUARTERS, exampleSouls, houseBrain, initPhysics, Match, WEAPON_LIST, type Weapon } from "../src/sim";
 import { seatOrder, batchRuleset, optionValue, buildsLabel, buildsOption, comparisonBatchOptions, withBuilds } from "./batch-options";
 
+import { TICK_RATE } from "../src/sim/constants";
+
 /** A rival this close at a fighter's first weapon pickup makes that pickup contested (meters, roundstats NEAR_M). */
 const CONTEST_RANGE = 7;
 /** A start weapon is a fighter's own when its spawn is nearer than this share of the nearest rival spawn's distance. */
@@ -68,7 +70,7 @@ for (let k = 0; k < N; k++) {
         if (WEAPON_LIST.includes(e.item as Weapon)) {
           wpicks++;
           if (fw[e.fighter]! < 0) {
-            fw[e.fighter] = e.tick / 60;
+            fw[e.fighter] = e.tick / TICK_RATE;
             const sim = m.fight!.sim;
             if (sim.alive().some((f) => f.id !== e.fighter && Math.hypot(sim.pos(f).x - e.x, sim.pos(f).y - e.y) < CONTEST_RANGE)) contested++;
             const start = startItems.find((it) => it.type === e.item && Math.hypot(it.x - e.x, it.y - e.y) < 2);
@@ -82,7 +84,7 @@ for (let k = 0; k < N; k++) {
       }
       if (e.type === "ko") {
         kills[e.weapon] = (kills[e.weapon] ?? 0) + 1;
-        if (fw[e.fighter]! < 0) unarmedKos.push(e.tick / 60);
+        if (fw[e.fighter]! < 0) unarmedKos.push(e.tick / TICK_RATE);
       }
     };
     for (const [i, d] of m.decisions.entries()) {

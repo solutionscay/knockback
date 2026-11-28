@@ -5,6 +5,7 @@
  *     [--replay-plans]                                  play the recorded plans even where the hash moved (an after run)
  *   bun scripts/idle-bare.ts sims [count=50] [first=1]  Arena-style house-bot rounds on Classic
  */
+import { TICK_RATE } from "../src/sim/constants";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { exampleSouls, initPhysics, Match, type MatchRecord } from "../src/sim";
@@ -59,6 +60,6 @@ if (mode === "records") {
   }
 }
 const total = out.reduce((a, s) => a + s.end - s.start, 0);
-console.log(`rounds ${rounds} (diverged ${diverged}); bare-handed and still (>= ${IDLE_MIN_TICKS / 60} s): ${out.length} spells, ${(total / 60).toFixed(1)} s in all`);
+console.log(`rounds ${rounds} (diverged ${diverged}); bare-handed and still (>= ${IDLE_MIN_TICKS / TICK_RATE} s): ${out.length} spells, ${(total / TICK_RATE).toFixed(1)} s in all`);
 for (const s of out.sort((a, b) => b.end - b.start - (a.end - a.start)))
-  console.log(`${s.src}  f${s.fighter}  ${(s.start / 60).toFixed(1)}-${(s.end / 60).toFixed(1)} s (${((s.end - s.start) / 60).toFixed(1)} s)  plan ${s.plan} played ${s.played}  at (${s.x}, ${s.y})  loose ${s.loose}  goalItem ${s.goalItem}  target f${s.target} ${s.targetDist} m`);
+  console.log(`${s.src}  f${s.fighter}  ${(s.start / TICK_RATE).toFixed(1)}-${(s.end / TICK_RATE).toFixed(1)} s (${((s.end - s.start) / TICK_RATE).toFixed(1)} s)  plan ${s.plan} played ${s.played}  at (${s.x}, ${s.y})  loose ${s.loose}  goalItem ${s.goalItem}  target f${s.target} ${s.targetDist} m`);

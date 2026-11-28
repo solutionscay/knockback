@@ -13,7 +13,7 @@ import { stepsBetween } from "./entrance-timing";
 import { Tally } from "../flow/score";
 import type { Identity } from "../sim/identity";
 import type { Soul } from "../sim/soul";
-import { DT } from "../sim/constants";
+import { DT, TICK_RATE } from "../sim/constants";
 import type { Fight } from "../sim/fight";
 import { Match, type DecisionMeta, type MatchRecord, type SuitUpEntry } from "../sim/match";
 import type { SimEvent } from "../sim/sim-types";
@@ -491,7 +491,7 @@ export class Game {
       const f = this.shown.sim.fighters[e.fighter]!;
       const rule = (this.shown.controllers[e.fighter]?.strategy ?? this.match.decisions[e.fighter]?.strategy)?.rules?.[e.rule];
       const who = e.subject >= 0 ? ` -> ${this.match.names[e.subject]}` : "";
-      console.info(`[rule] ${(e.tick / 60).toFixed(1)} s ${f.name} rule ${e.rule + 1} '${rule?.label ?? "?"}' ${e.on ? "ON" : "off"}${who}`);
+      console.info(`[rule] ${(e.tick / TICK_RATE).toFixed(1)} s ${f.name} rule ${e.rule + 1} '${rule?.label ?? "?"}' ${e.on ? "ON" : "off"}${who}`);
       if (e.on && !f.removed) {
         const p = this.shown.sim.pos(f);
         this.scene.float(`${rule?.label ?? "rule"}${who}`, p.x, p.y + 2.4, f.color, 0.7);

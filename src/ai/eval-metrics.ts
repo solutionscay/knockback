@@ -1,6 +1,7 @@
 import { nearestRank } from "../stats/quantiles";
 import { ruleKey } from "../sim/rules";
 import { isPickupWeapon, type Strategy } from "../sim/sim-types";
+import { TICK_RATE } from "../sim/constants";
 import { checkLine } from "./factcheck";
 import { NA, type ChangeStats, type EvalDecision, type EvalMatch, type EvalReport, type FactCheck, type FieldVariety, type FollowStats, type LookStats, type ProviderReliability, type RulesStats, type VarietyGroup } from "./eval-types";
 
@@ -222,7 +223,7 @@ export function rulesOf(matches: EvalMatch[], role: Role): RulesStats | NA {
     fired,
     firedRate: written ? r3(fired / written) : 0,
     firingsPerRound: r3(firings / Math.max(1, rounds)),
-    activeSecondsPerRule: written ? r3(activeTicks / 60 / written) : 0,
+    activeSecondsPerRule: written ? r3(activeTicks / TICK_RATE / written) : 0,
     byWhen,
     byDo,
     neverFired: never,

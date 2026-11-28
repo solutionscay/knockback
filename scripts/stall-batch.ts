@@ -8,6 +8,8 @@ import { sampleQuantile } from "../src/stats/quantiles";
 import { exampleSouls, FIGHT_TICKS, initPhysics, Match } from "../src/sim";
 import { seatOrder, comparisonBatchOptions } from "./batch-options";
 
+import { TICK_RATE } from "../src/sim/constants";
+
 await initPhysics();
 const { count: N, first, houseRules } = comparisonBatchOptions(process.argv);
 const souls = exampleSouls();
@@ -51,11 +53,11 @@ for (let k = 0; k < N; k++) {
     }
     const f = m.finishRound();
     rounds++;
-    gaps.push(gap / 60);
-    lens.push(end / 60);
+    gaps.push(gap / TICK_RATE);
+    lens.push(end / TICK_RATE);
     if (end >= FIGHT_TICKS) timeouts++;
     if (sd) sudden++;
-    worst.push({ seed, round: f.round, gap: gap / 60, at: gapAt / 60 });
+    worst.push({ seed, round: f.round, gap: gap / TICK_RATE, at: gapAt / TICK_RATE });
   }
 }
 const hist = [20, 30, 45, 60, 75, 90].map((hi, i, arr) => {

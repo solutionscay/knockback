@@ -1,3 +1,4 @@
+import { TICK_RATE } from "../sim/constants";
 import { formatSeconds } from "../format";
 import { tickAtFightSeconds, VIEWER_KO_EXTRA_S } from "../flow/pacing";
 import type { Fight, PlanUpdate } from "../sim/fight";
@@ -62,7 +63,7 @@ export class RunnerCheckins {
     const watchTick = () => {
       if (realTime()) return viewerTick();
       let t = Infinity;
-      for (const o of open.values()) t = Math.min(t, o.askedTick + Math.floor(((performance.now() - o.t0) / 1000) * 60));
+      for (const o of open.values()) t = Math.min(t, o.askedTick + Math.floor(((performance.now() - o.t0) / 1000) * TICK_RATE));
       return t;
     };
     const ctx: CheckinLoop = {
@@ -70,7 +71,7 @@ export class RunnerCheckins {
       fight,
       open,
       metas,
-      leadTicks: () => (realTime() ? Math.round(cfg.leadS * 60) : 0),
+      leadTicks: () => (realTime() ? Math.round(cfg.leadS * TICK_RATE) : 0),
       answeredTick: (o, ms) => Math.max(fight.sim.tick, realTime() ? viewerTick() : answeredTickFast(o.askedTick, ms)),
       realTime,
       wake: () => wake?.(),
@@ -145,8 +146,8 @@ export class RunnerCheckins {
       this.openCheckins.delete(seat);
       ctx.metas.push(meta);
       this.prompts.push({ round, tick, seat, prompt, raw });
-      const skipped = meta.skipped?.length ? `, skipped ${meta.skipped.map((t) => `${t / 60} s`).join(", ")}` : "";
-      if (meta.outcome !== "update") this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${meta.outcome.toUpperCase()}${meta.detail ? ` (${meta.detail})` : ""}${skipped}`);
+      const skipped = meta.skipped?.length ? `, skipped ${meta.skipped.map((t) => `${t / TICK_RATE} s`).join(", ")}` : "";
+      if (meta.outcome !== "update") this.say(`  check-in ${(tick / TICK_RATE).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${meta.outcome.toUpperCase()}${meta.detail ? ` (${meta.detail})` : ""}${skipped}`);
       // how it went (#104): spectators show it once playback reaches answeredTick
       const { outcome, ms, answeredTick, applyTick, line, why, wanted } = meta;
       this.emit({ type: "checkinEnd", round, tick, seat, outcome, ms, ...(answeredTick !== undefined ? { answeredTick } : {}), ...(applyTick !== undefined ? { applyTick } : {}), ...(line ? { line } : {}), ...(why ? { why } : {}), ...(wanted ? { wanted } : {}) });
@@ -188,8 +189,8 @@ export class RunnerCheckins {
           match.addUpdate(u);
           Object.assign(meta, { outcome: "update", applyTick: at, changed: a.changed, ...(a.ruleProblems ? { detail: `rules dropped: ${a.ruleProblems.join("; ").slice(0, 160)}` } : {}) });
           this.emit({ type: "planUpdate", round, update: u });
-          const skipped = meta.skipped?.length ? `; skipped ${meta.skipped.map((t) => `${t / 60} s`).join(", ")}` : "";
-          this.say(`  check-in ${(tick / 60).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${planChangeSummary(current, a.strategy, names)}, applies at ${(at / 60).toFixed(1)} s${a.line ? ` "${a.line}"` : ""}${a.why ? ` (${a.why})` : ""}${skipped}`);
+          const skipped = meta.skipped?.length ? `; skipped ${meta.skipped.map((t) => `${t / TICK_RATE} s`).join(", ")}` : "";
+          this.say(`  check-in ${(tick / TICK_RATE).toFixed(0)} s: ${names[seat]} [${provider} ${formatSeconds(meta.ms)}] ${planChangeSummary(current, a.strategy, names)}, applies at ${(at / TICK_RATE).toFixed(1)} s${a.line ? ` "${a.line}"` : ""}${a.why ? ` (${a.why})` : ""}${skipped}`);
         }
         finish();
       },

@@ -326,17 +326,17 @@ export const ITEM = { size: 0.5, pickupRange: 1.1, healAmount: 35, reachBelow: 0
 export const SPEED_ACCEL_MUL = 1.3;
 
 export const POWER = {
-  shield: { ticks: 7 * 60, hits: 3, damageMul: 0.15, kbMul: 0.25 },
-  speed: { ticks: 8 * 60, mul: 1.45 },
-  heavy: { ticks: 10 * 60, kbMul: 0.5, speedMul: 0.82, densityMul: 3 },
-  damage: { ticks: 8 * 60, mul: 2, kbMul: 1.25 },
-  jump: { ticks: 12 * 60 },
+  shield: { ticks: 7 * TICK_RATE, hits: 3, damageMul: 0.15, kbMul: 0.25 },
+  speed: { ticks: 8 * TICK_RATE, mul: 1.45 },
+  heavy: { ticks: 10 * TICK_RATE, kbMul: 0.5, speedMul: 0.82, densityMul: 3 },
+  damage: { ticks: 8 * TICK_RATE, mul: 2, kbMul: 1.25 },
+  jump: { ticks: 12 * TICK_RATE },
   /** ceiling: meters above the highest platform where thrust has faded out (#41); fade: meters below it where thrust starts to fade */
   jetpack: { fuelTicks: 180, thrust: 44, riseSpeed: 9, speedMul: 1.35, ceiling: 4, fade: 1.5 },
 };
 
 /** Loose terrain pieces this small are cleared after this long (keeps body count down). */
-export const DEBRIS = { smallCells: 2, smallTicks: 6 * 60 };
+export const DEBRIS = { smallCells: 2, smallTicks: 6 * TICK_RATE };
 
 /** Collision groups. */
 export const G = {

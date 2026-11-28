@@ -30,6 +30,8 @@ import { seatOrder, batchRuleset, optionValue, buildsLabel, buildsOption, withBu
 import { percent, seatWinBand, sum, fisherGreater, holm, leastSquares } from "./batch-stats";
 import { newScorecard, report, scoreRound, type Scorecard } from "./behavior";
 
+import { TICK_RATE } from "../src/sim/constants";
+
 /** One fighter in one round. */
 type Row = { seed: number; round: number; seat: number; build: number; won: 0 | 1; kos: number; ko: 0 | 1; ringout: 0 | 1; fall: 0 | 1; damage: number };
 type Shard = { rows: Row[]; roundSeconds: number[]; seatWins: number[]; card: Scorecard };
@@ -63,7 +65,7 @@ async function runShard(shard: number, of: number): Promise<Shard> {
       const sim = m.fight!.sim;
       const res = m.fight!.result();
       m.finishRound();
-      out.roundSeconds.push(res.ticks / 60);
+      out.roundSeconds.push(res.ticks / TICK_RATE);
       out.seatWins[res.winner]!++;
       out.card.seatWins[res.winner]!++;
       for (const f of sim.fighters)

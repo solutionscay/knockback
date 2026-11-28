@@ -19,6 +19,8 @@ import { isPickupWeapon } from "../src/sim/sim-types";
 import { StuckDetector } from "../src/stats/stuck";
 import { IdleBareTracker } from "../src/stats/idle-bare";
 
+import { TICK_RATE } from "../src/sim/constants";
+
 interface FighterRow {
   aliveTicks: number;
   bareTicks: number;
@@ -178,8 +180,8 @@ function summary(rows: RoundRow[]) {
     rounds: rows.length,
     bare: (100 * sum(fr.map((f) => f.bareTicks))) / alive,
     bareBefore: (100 * sum(fr.map((f) => Math.min(f.bareTicks, f.toFirst)))) / alive,
-    toFirstMedian: median(got.map((f) => f.firstWeapon)) / 60,
-    toFirstMean: sum(got.map((f) => f.firstWeapon)) / Math.max(1, got.length) / 60,
+    toFirstMedian: median(got.map((f) => f.firstWeapon)) / TICK_RATE,
+    toFirstMean: sum(got.map((f) => f.firstWeapon)) / Math.max(1, got.length) / TICK_RATE,
     never: (100 * (fr.length - got.length)) / fr.length,
     pickups: sum(fr.map((f) => f.weaponPickups)) / fr.length,
     empties: sum(fr.map((f) => f.empties)) / fr.length,
@@ -191,8 +193,8 @@ function summary(rows: RoundRow[]) {
     koWeapon: (100 * kos.weapon) / Math.max(1, kos.weapon + kos.fist + kos.other),
     koFist: (100 * kos.fist) / Math.max(1, kos.weapon + kos.fist + kos.other),
     dmgPerMin: (dmg.weapon + dmg.fist + dmg.other) / (alive / 3600),
-    lengthMean: sum(rows.map((r) => r.ticks)) / rows.length / 60,
-    lengthMedian: median(rows.map((r) => r.ticks)) / 60,
+    lengthMean: sum(rows.map((r) => r.ticks)) / rows.length / TICK_RATE,
+    lengthMedian: median(rows.map((r) => r.ticks)) / TICK_RATE,
     timeouts: (100 * rows.filter((r) => r.ticks >= CLASSIC.round.fightTicks).length) / rows.length,
     startWeapons: sum(rows.map((r) => r.startWeapons)) / rows.length,
     looseMean: sum(rows.map((r) => r.looseSum)) / Math.max(1, sum(rows.map((r) => r.looseSamples))),
