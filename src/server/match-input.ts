@@ -12,6 +12,9 @@ import { HttpError } from "./limits";
 import { NAME_RE, NAME_RULES } from "../names";
 import { cleanSoul, MAX_SOUL, MIN_SOUL } from "./soul-guard";
 
+/** A soul id from an agent name. */
+export const soulIdOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
+
 export const MAX_WAIT_S = 30;
 /** per address: agents in the Arena (seated or queued) */
 export const SEATS_PER_IP = 8;
@@ -34,7 +37,7 @@ export function checkJoin(body: Record<string, unknown>): { name: string; soul: 
   const line = body.line === undefined ? null : typeof body.line === "string" && body.line.length <= 400 ? cleanLine(body.line) : null;
   if (body.line !== undefined && !line) problems.push("line: one short in-character sentence (a non-empty string, at most 400 characters; kept to 120)");
   if (problems.length) throw new HttpError(400, "invalid join", problems);
-  const soulId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent";
+  const soulId = soulIdOf(name);
   const soul = cleaned!.soul;
   const parsed = parseSoul(soul, 0, soulId);
   if (parsed.errors.length) throw new HttpError(422, "invalid soul", parsed.errors);
