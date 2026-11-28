@@ -79,7 +79,7 @@ describe("level generation", () => {
       "forest/1/6bc9c412",
       "warehouse/0/867a26d6",
       "beach/0/c0be488d",
-      "space/2/97aaf668",
+      "space/2/9d89297f",
       "warehouse/2/76d57405",
       "rooftop/1/9451cbcc",
       "cave/1/416583d8",
