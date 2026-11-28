@@ -86,6 +86,7 @@ export const WEAPON_HELP: Record<string, string> = {
   bat: "melee launch for ring-outs (8 hits)",
   grenade: "bounces around cover (8 grenades)",
   grapple: "hook pulls rivals off ledges (8 hooks)",
+  freezegun: "coolant spray slows rivals and freezes water into footholds",
   flamethrower: "short cone of fire, ignites wood and props (4 s of fuel)",
   mine: "sticky throw, proximity or timed blast (3 throws)",
   railgun: "charged piercing beam, heavy shove (3 shots)",
@@ -102,6 +103,7 @@ export function weaponHelp(ruleset: Ruleset = CLASSIC): Record<string, string> {
   for (const [w, ammo, label] of [["rocket", table.rocket.ammo, "rockets"], ["shotgun", table.shotgun.ammo, "shells"], ["bat", table.bat.ammo, "hits"], ["grenade", table.grenade.ammo, "grenades"], ["grapple", table.grapple.ammo, "hooks"], ["mine", table.mine.ammo, "throws"], ["railgun", table.railgun.ammo, "shots"], ["hammer", table.hammer.ammo, "slams"], ["rifle", table.rifle.ammo, "rounds"], ["sniper", table.sniper.ammo, "rounds"], ["crossbow", table.crossbow.ammo, "bolts"], ["lightning", table.lightning.ammo, "bolts"]] as const) {
     if (out[w]) out[w] = out[w].replace(/\d+ (rockets|shells|hits|grenades|hooks|throws|shots|slams|rounds|bolts)/, `${ammo} ${label}`);
   }
+  if (out.freezegun) out.freezegun += ` (${table.freezegun.range} m, ${table.freezegun.ammo} pulses, ${table.freezegun.chillTicks / TICK_RATE} s at ${Math.round(table.freezegun.speedMul * 100)}% walk speed)`;
   if (out.flamethrower) out.flamethrower = out.flamethrower.replace(/[\d.]+ s of fuel/, `${+((table.flamethrower.ammo * table.flamethrower.cooldown) / TICK_RATE).toFixed(1)} s of fuel`);
   return out;
 }

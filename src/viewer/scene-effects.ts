@@ -165,7 +165,10 @@ export class SceneEffects {
         const mz = fighters.muzzle(e.fighter);
         const mx = mz ? mz.x : e.x + e.dx * 1.0;
         const my = mz ? mz.y : e.y + e.dy * 1.0;
-        if (e.weapon === "flamethrower") {
+        if (e.weapon === "freezegun") {
+          this.fx.sparks(mx, my, e.dx, e.dy, 0x93efff, 18);
+          v.recoil = 0.08;
+        } else if (e.weapon === "flamethrower") {
           v.recoil = 0.06;
           this.fx.flameJet(mz ? mz.x : e.x + e.dx * 0.9, mz ? mz.y : e.y + e.dy * 0.9, e.dx, e.dy, 7); // from the plush nozzle
         } else if (e.weapon !== "grenade" && e.weapon !== "mine" && e.weapon !== "railgun" && e.weapon !== "hammer" && e.weapon !== "lightning") {

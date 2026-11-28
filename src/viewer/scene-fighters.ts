@@ -272,6 +272,13 @@ export class FighterViews {
       au.clear();
       ov.clear();
       if (f.alive) {
+        if (weapon === "freezegun") {
+          const dx = dcos(aim), dy = dsin(aim);
+          ov.moveTo(dx * 0.28, dy * 0.28).lineTo(dx, dy).stroke({ width: 0.23, color: 0x265e7c, cap: "round" });
+          ov.circle(dx * 0.55, dy * 0.55, 0.19).fill(0x89efff);
+          ov.circle(dx, dy, 0.12).fill(0xd7ffff);
+        }
+        if (f.chilled > 0) au.ellipse(0, 0, 0.55, 0.82).stroke({ width: 0.07, color: 0xa5f1ff });
         if (f.railCharge > 0) {
           // the railgun's charge: a growing orb at the muzzle (the plush railgun's, else 0.9 m along the aim)
           const charge = f.railCharge / sim.ruleset.weapons.table.railgun.chargeTicks;

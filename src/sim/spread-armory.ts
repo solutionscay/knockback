@@ -93,7 +93,10 @@ export function stockSpreadArmory(sim: Sim, spawns: readonly SpawnPoint[]) {
       ?? choose(risky, p => Math.abs(p.x - aim) - p.y * 3 - closestSpawn2(p) * 0.5);
     if (p) put(w, p);
   }
-  const bag = sim.rng.shuffle(sim.ruleset.weapons.enabled.filter(isPickupWeapon).filter(w => !rare.includes(w)));
+  // The coolant tank arrives in drops and crates. Keep the opening caches for conventional weapons.
+  const pool = sim.ruleset.weapons.enabled.filter(isPickupWeapon).filter(w => !rare.includes(w));
+  const opening = pool.filter(w => w !== "freezegun");
+  const bag = sim.rng.shuffle(opening.length ? opening : pool);
   let i = 0;
   // Between neighbouring spawns: midway, as near equally far from both as the ground allows.
   const byX = spawns.slice().sort((a, b) => a.x - b.x);

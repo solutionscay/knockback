@@ -19,7 +19,7 @@ import { inOpen } from "./tactical";
 /** Swings: a field's edge does not stop them (#40). The lightning sword's slash too, within its reach. */
 const SWINGS: readonly Weapon[] = ["fist", "bat"];
 /** Weapons that fight up close: a fighter carrying one walks into a rival's field instead of waiting it out. */
-const CLOSE: readonly Weapon[] = ["fist", "bat", "hammer", "flamethrower", "lightning", "shotgun"];
+const CLOSE: readonly Weapon[] = ["fist", "bat", "hammer", "freezegun", "flamethrower", "lightning", "shotgun"];
 
 /** Does this fighter carry a weapon that fights from range (its reach out to `tactics.forceField.rangedReach`)? */
 export function rangedArmed(sim: Sim, f: Fighter): boolean {

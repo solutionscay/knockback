@@ -9,7 +9,7 @@ import { generateIdentities, type Look } from "./identity";
  * fighter is back to fists. Shots, throws, slams or hits (the bat counts hits on fighters); the flamethrower counts
  * pulses of fuel.
  */
-export const LIMITED_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow"] as const;
+export const LIMITED_WEAPONS = ["rocket", "shotgun", "bat", "grenade", "grapple", "flamethrower", "mine", "railgun", "hammer", "rifle", "sniper", "crossbow", "freezegun"] as const;
 /** "fist" is what everyone starts with; the rest are picked up in the arena. Keep the order: code walks this list. */
 const PICKUP_WEAPONS = [...LIMITED_WEAPONS, "lightning"] as const;
 export type Weapon = (typeof PICKUP_WEAPONS)[number] | "fist";
@@ -232,6 +232,7 @@ export interface Fighter {
   scope: number;
   /** ticks pinned by a crossbow bolt (#38): no movement, no firing */
   pinned: number;
+  chilled: number;
   stun: number;
   jumpCd: number;
   airJumped: boolean;
@@ -383,6 +384,7 @@ export type SimEvent =
   /** #94: water put out a burning fighter */
   | { type: "douse"; tick: number; fighter: number; x: number; y: number }
   /** a fighter caught fire */
+  | { type: "freeze"; tick: number; fighter: number; cells: number; hits: number }
   | { type: "burn"; tick: number; fighter: number; by: number; cause: string }
   /** a flamethrower ran dry and was thrown away (#32) */
   | { type: "fuelOut"; tick: number; fighter: number }

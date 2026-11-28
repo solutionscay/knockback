@@ -450,6 +450,7 @@ export class Sim {
       num(f.railCharge);
       num(f.scope);
       num(f.pinned);
+      num(f.chilled);
       num(f.shockCd);
       num(f.dropTicks * 4 + f.wallSide + 1);
       num(f.forceField);

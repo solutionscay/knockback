@@ -52,13 +52,15 @@ const GOLDEN = {
   // 1, and one drops in round 3 but never goes up; round 2 sees no drop (it moves by the hash's new fields and by what
   // round 1 left: morale and plans); fight 1001, the plan update and Close Quarters see no drop and move only by the
   // hash's new fields
-  fight: "3d85cb27",
-  fightWithUpdate: "e9620b86",
-  closeQuarters: "cdcf8a8b",
+  // #174: Drop and crate draws now include the freeze gun. The hash includes its ammo, cooldown and each fighter’s chill timer.
+  // #174 rebased on #200 (the #119 code-health merges, which keep every hash): the hashes stay the same
+  fight: "e1142fad",
+  fightWithUpdate: "64e07536",
+  closeQuarters: "ca151c32",
   // house bots play their souls' builds (#80)
-  match: ["710f881c", "ea9f41fb", "50be27c7"],
+  match: ["ac90c754", "33b39db7", "ff9a2114"],
   /** the same match with every house bot on a neutral build: the old game (#79) */
-  neutralMatch: ["d697d9ce", "dcabf119", "e5fc77fa"],
+  neutralMatch: ["778ee87e", "474f9510", "75c45747"],
 };
 
 const fight = (seed: number, opts: ConstructorParameters<typeof Fight>[2] = {}, updates: PlanUpdate[] = []) => {

@@ -13,7 +13,7 @@ export type WeaponChoice = { weapon: Weapon; shot?: Shot };
 const MELEE: readonly Weapon[] = ["fist", "bat", "hammer"];
 /** A weapon that fights from range (#69): its stand-off is this far or more (rocket, railgun, rifle, sniper, crossbow). */
 export const RANGED_STANDOFF = 10;
-const FIGHTER_ORDER: readonly Weapon[] = ["hammer", "bat", "flamethrower", "lightning", "shotgun", "railgun", "sniper", "rocket", "crossbow", "rifle", "grenade", "mine", "grapple", "fist"];
+const FIGHTER_ORDER: readonly Weapon[] = ["hammer", "bat", "freezegun", "flamethrower", "lightning", "shotgun", "railgun", "sniper", "rocket", "crossbow", "rifle", "grenade", "mine", "grapple", "fist"];
 const BREACH_ORDER: readonly Weapon[] = ["shotgun", "rocket", "grenade", "bat", "lightning", "fist", "hammer", "mine"];
 
 export type Reach = { min: number; max: number; maxDy: number; standOff: number };

@@ -65,11 +65,12 @@ export function addFighter(sim: Sim, id: number, def: Look, x: number, y: number
     slot: 0,
     swap: 0,
     // nobody fires on the first frame
-    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, fist: 20, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
-    ammo: { rocket: 0, shotgun: 0, bat: 0, grenade: 0, grapple: 0, flamethrower: 0, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
+    cooldown: { rocket: 45 + id * 7, shotgun: 30, bat: 20, grenade: 60, grapple: 40, flamethrower: 20, freezegun: 0, fist: 20, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
+    ammo: { rocket: 0, shotgun: 0, bat: 0, grenade: 0, grapple: 0, flamethrower: 0, freezegun: 0, mine: 0, railgun: 0, hammer: 0, rifle: 0, sniper: 0, crossbow: 0, lightning: 0 },
     railCharge: 0,
     scope: 0,
     pinned: 0,
+    chilled: 0,
     stun: 0,
     jumpCd: 0,
     airJumped: false,
@@ -110,6 +111,7 @@ export function walkSpeedNow(ruleset: Ruleset, f: Fighter, thrust = false): numb
   let speed = ruleset.combat.fighter.walkSpeed;
   if (f.power.speed > 0) speed *= P.speed.mul;
   if (f.power.heavy > 0) speed *= P.heavy.speedMul;
+  if (f.chilled > 0) speed *= ruleset.weapons.table.freezegun.speedMul;
   if (thrust) speed *= P.jetpack.speedMul;
   return speed;
 }

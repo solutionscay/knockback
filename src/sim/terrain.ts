@@ -11,7 +11,7 @@
 import RAPIER from "@dimforge/rapier2d-deterministic-compat";
 import { G, groups } from "./constants";
 import { dcos, dsin } from "./dmath";
-import { CELL, F_ANCHOR, Grid, greedyRects, Mat, MAT_DENSITY } from "./grid";
+import { CELL, F_ANCHOR, Grid, greedyRects, Liquid, Mat, MAT_DENSITY } from "./grid";
 import { moveSolidOnGrid } from "./liquid-flow";
 
 export const CHUNK = 16;
@@ -201,7 +201,7 @@ export class Terrain {
       if (cy < g.rows - 1) visit(i + g.cols);
     };
     for (let i = 0; i < n; i++) {
-      if (g.mat[i] === Mat.Bedrock) {
+      if (g.mat[i] === Mat.Bedrock || (g.mat[i] === Mat.Ice && g.liq[i - g.cols] === Liquid.Water)) {
         seen[i] = 1;
         stack.push(i);
       }

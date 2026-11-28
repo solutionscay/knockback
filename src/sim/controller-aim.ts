@@ -90,6 +90,9 @@ export function aimAndFire(
     case "grapple":
       canFire &&= los && dist >= 3.5 && dist <= sim.ruleset.weapons.table.grapple.range - 0.5;
       break;
+    case "freezegun":
+      canFire &&= los && dist <= sim.ruleset.weapons.table.freezegun.range;
+      break;
     case "flamethrower":
       canFire &&= dist <= sim.ruleset.weapons.table.flamethrower.range - 0.3;
       break;
@@ -147,6 +150,8 @@ export function inReach(w: Weapon, dist: number, los: boolean, ruleset: Ruleset,
       return dist > 2.5 && dist < 14;
     case "grapple":
       return los && dist >= 3.5 && dist <= ruleset.weapons.table.grapple.range - 0.5;
+    case "freezegun":
+      return los && dist <= ruleset.weapons.table.freezegun.range;
     case "flamethrower":
       return los && dist <= ruleset.weapons.table.flamethrower.range - 0.3;
     case "rifle":

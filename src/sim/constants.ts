@@ -131,6 +131,7 @@ export const WEAPONS = {
    * fighters it reaches, sets them and anything flammable alight, and uses one
    * pulse of fuel (ammo: pulses in a full tank). Empty: the weapon is thrown away (gone).
    */
+  freezegun: { ammo: 18, cooldown: 15, range: 5, spread: 0.35, damage: 3, chillTicks: 60, speedMul: 0.6 },
   flamethrower: {
     ammo: 60,
     cooldown: 4,

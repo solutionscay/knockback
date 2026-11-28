@@ -265,6 +265,7 @@ export function tickPowers(sim: Sim, f: Fighter) {
     f.entity.collider.setDensity(f.stats.density);
     end("heavy");
   }
+  if (f.chilled > 0) f.chilled--;
   if (f.padCd > 0) f.padCd--;
   if (f.crushCd > 0) f.crushCd--;
 }
